@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_debug import router as debug_router
 from app.api.routes_settings import router as settings_router
 from app.memory.db import init_db
 from app.trace.logger import write_log
@@ -44,3 +45,4 @@ def health():
 
 
 app.include_router(settings_router)
+app.include_router(debug_router)

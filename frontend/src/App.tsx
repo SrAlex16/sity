@@ -4,6 +4,7 @@ import {
   getPersonality,
   type PersonalitySettings,
 } from "./api/sityApi";
+import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
 import "./App.css";
 
 const LABELS: Record<keyof PersonalitySettings, string> = {
@@ -36,16 +37,59 @@ const ORDER: Array<keyof PersonalitySettings> = [
   "verbosity_level",
 ];
 
+type Tab = "settings" | "debug";
+
 function percent(value: number): number {
   return Math.round(value * 100);
 }
 
+function formatTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleTimeString();
+}
+
+function EventCard({ event }: { event: TraceEvent }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold text-cyan-200">{event.event}</p>
+          <p className="text-sm text-zinc-500">
+            {event.module} · {formatTime(event.timestamp)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="rounded-full border border-zinc-700 px-2 py-1 text-zinc-300">
+            {event.level}
+          </span>
+          {event.trace_id && (
+            <span className="rounded-full border border-zinc-700 px-2 py-1 text-zinc-300">
+              {event.trace_id}
+            </span>
+          )}
+        </div>
+      </div>
+      <pre className="mt-3 max-h-64 overflow-auto rounded-lg bg-black/50 p-3 text-xs text-zinc-300">
+        {JSON.stringify(event.payload, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
 function App() {
+  const [tab, setTab] = useState<Tab>("settings");
+
   const [personality, setPersonality] = useState<PersonalitySettings | null>(null);
   const [message, setMessage] = useState<string>("Sity inicializando personalidad...");
   const [loading, setLoading] = useState<boolean>(true);
   const [savingKey, setSavingKey] = useState<keyof PersonalitySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [recentEvents, setRecentEvents] = useState<TraceEvent[]>([]);
+  const [lastTraceEvents, setLastTraceEvents] = useState<TraceEvent[]>([]);
+  const [lastTraceId, setLastTraceId] = useState<string | null>(null);
+  const [debugError, setDebugError] = useState<string | null>(null);
 
   const averageEdge = useMemo(() => {
     if (!personality) return 0;
@@ -59,7 +103,7 @@ function App() {
     );
   }, [personality]);
 
-  async function refresh() {
+  async function refreshPersonality() {
     setLoading(true);
     setError(null);
 
@@ -72,6 +116,23 @@ function App() {
       setMessage("No he podido cargar mi personalidad. Qué forma tan elegante de empezar.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshDebug() {
+    setDebugError(null);
+
+    try {
+      const [recent, lastTrace] = await Promise.all([
+        getRecentEvents(50),
+        getLastTrace(),
+      ]);
+
+      setRecentEvents(recent.events);
+      setLastTraceId(lastTrace.trace_id);
+      setLastTraceEvents(lastTrace.events);
+    } catch (err) {
+      setDebugError(err instanceof Error ? err.message : "Error desconocido");
     }
   }
 
@@ -90,6 +151,7 @@ function App() {
           : current,
       );
       setMessage(response.message);
+      await refreshDebug();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
       setMessage("No he podido guardar el ajuste. Fascinante incompetencia técnica.");
@@ -99,111 +161,187 @@ function App() {
   }
 
   useEffect(() => {
-    refresh();
+    refreshPersonality();
+    refreshDebug();
   }, []);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
         <header className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-xl">
           <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">
             Sity Core
           </p>
-          <h1 className="mt-3 text-4xl font-bold">Personality Calibration</h1>
+          <h1 className="mt-3 text-4xl font-bold">Control Panel</h1>
           <p className="mt-3 max-w-3xl text-zinc-300">
-            Ajusta los parámetros tipo TARS. Yo protestaré si hace falta, pero el sistema aplicará los cambios. Qué tragedia para mi dignidad.
+            Configuración, personalidad y trazabilidad. Porque aparentemente ahora también tengo que explicar mis propios fallos.
           </p>
-        </header>
 
-        <section className="grid gap-4 md:grid-cols-[1fr_280px]">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-            <h2 className="text-xl font-semibold">Respuesta de Sity</h2>
-            <p className="mt-3 rounded-xl bg-zinc-950 p-4 text-cyan-100">
-              {message}
-            </p>
-            {error && (
-              <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
-                {error}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-            <h2 className="text-xl font-semibold">Encabronamiento</h2>
-            <p className="mt-4 text-5xl font-bold text-cyan-300">{averageEdge}%</p>
-            <p className="mt-2 text-sm text-zinc-400">
-              Media de sarcasmo, mala leche, GLaDOS y tsundere. Métrica científicamente dudosa, como casi todo lo divertido.
-            </p>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">Parámetros</h2>
+          <div className="mt-6 flex gap-3">
             <button
-              onClick={refresh}
-              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+              onClick={() => setTab("settings")}
+              className={`rounded-xl px-4 py-2 text-sm ${
+                tab === "settings"
+                  ? "bg-cyan-300 text-zinc-950"
+                  : "border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+              }`}
             >
-              Recargar
+              Settings
+            </button>
+            <button
+              onClick={() => {
+                setTab("debug");
+                refreshDebug();
+              }}
+              className={`rounded-xl px-4 py-2 text-sm ${
+                tab === "debug"
+                  ? "bg-cyan-300 text-zinc-950"
+                  : "border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+              }`}
+            >
+              Debug
             </button>
           </div>
+        </header>
 
-          {loading && <p className="mt-4 text-zinc-400">Cargando...</p>}
+        {tab === "settings" && (
+          <>
+            <section className="grid gap-4 md:grid-cols-[1fr_280px]">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                <h2 className="text-xl font-semibold">Respuesta de Sity</h2>
+                <p className="mt-3 rounded-xl bg-zinc-950 p-4 text-cyan-100">
+                  {message}
+                </p>
+                {error && (
+                  <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
+                    {error}
+                  </p>
+                )}
+              </div>
 
-          {personality && (
-            <div className="mt-6 grid gap-5">
-              {ORDER.map((key) => (
-                <div key={key} className="rounded-xl bg-zinc-950 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{LABELS[key]}</p>
-                      <p className="text-sm text-zinc-500">{key}</p>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                <h2 className="text-xl font-semibold">Encabronamiento</h2>
+                <p className="mt-4 text-5xl font-bold text-cyan-300">{averageEdge}%</p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Media de sarcasmo, mala leche, GLaDOS y tsundere. Métrica científicamente dudosa, como casi todo lo divertido.
+                </p>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-xl font-semibold">Parámetros</h2>
+                <button
+                  onClick={refreshPersonality}
+                  className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+                >
+                  Recargar
+                </button>
+              </div>
+
+              {loading && <p className="mt-4 text-zinc-400">Cargando...</p>}
+
+              {personality && (
+                <div className="mt-6 grid gap-5">
+                  {ORDER.map((key) => (
+                    <div key={key} className="rounded-xl bg-zinc-950 p-4">
+                      <div className="mb-3 flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-medium">{LABELS[key]}</p>
+                          <p className="text-sm text-zinc-500">{key}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-cyan-300">
+                            {percent(personality[key])}%
+                          </p>
+                          {savingKey === key && (
+                            <p className="text-xs text-zinc-500">guardando...</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={percent(personality[key])}
+                        onChange={(event) => {
+                          const value = Number(event.target.value) / 100;
+                          setPersonality((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  [key]: value,
+                                }
+                              : current,
+                          );
+                        }}
+                        onMouseUp={(event) => {
+                          const value = Number(
+                            (event.target as HTMLInputElement).value,
+                          ) / 100;
+                          setAbsolute(key, value);
+                        }}
+                        onTouchEnd={(event) => {
+                          const value = Number(
+                            (event.target as HTMLInputElement).value,
+                          ) / 100;
+                          setAbsolute(key, value);
+                        }}
+                        className="w-full"
+                      />
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-cyan-300">
-                        {percent(personality[key])}%
-                      </p>
-                      {savingKey === key && (
-                        <p className="text-xs text-zinc-500">guardando...</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={percent(personality[key])}
-                    onChange={(event) => {
-                      const value = Number(event.target.value) / 100;
-                      setPersonality((current) =>
-                        current
-                          ? {
-                              ...current,
-                              [key]: value,
-                            }
-                          : current,
-                      );
-                    }}
-                    onMouseUp={(event) => {
-                      const value = Number(
-                        (event.target as HTMLInputElement).value,
-                      ) / 100;
-                      setAbsolute(key, value);
-                    }}
-                    onTouchEnd={(event) => {
-                      const value = Number(
-                        (event.target as HTMLInputElement).value,
-                      ) / 100;
-                      setAbsolute(key, value);
-                    }}
-                    className="w-full"
-                  />
+                  ))}
                 </div>
-              ))}
+              )}
+            </section>
+          </>
+        )}
+
+        {tab === "debug" && (
+          <section className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Última traza</h2>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {lastTraceId ?? "Sin trace_id registrado todavía"}
+                  </p>
+                </div>
+                <button
+                  onClick={refreshDebug}
+                  className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+                >
+                  Refrescar
+                </button>
+              </div>
+
+              {debugError && (
+                <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
+                  {debugError}
+                </p>
+              )}
+
+              <div className="mt-5 grid gap-3">
+                {lastTraceEvents.length === 0 && (
+                  <p className="text-zinc-500">No hay eventos para esta traza.</p>
+                )}
+                {lastTraceEvents.map((event, index) => (
+                  <EventCard key={`${event.timestamp}-${index}`} event={event} />
+                ))}
+              </div>
             </div>
-          )}
-        </section>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+              <h2 className="text-xl font-semibold">Eventos recientes</h2>
+              <div className="mt-5 grid gap-3">
+                {recentEvents.map((event, index) => (
+                  <EventCard key={`${event.timestamp}-${index}`} event={event} />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );
