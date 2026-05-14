@@ -3,10 +3,11 @@ export type PersonalitySettings = {
   rudeness_level: number;
   warmth_level: number;
   honesty_level: number;
-  autonomy_level: number;
-  proactivity_level: number;
-  glados_mode: number;
+  initiative_level: number;
+  
+  dry_humor_level: number;
   tsundere_level: number;
+  contrarian_level: number;
   patience_level: number;
   refusal_chance: number;
   helpfulness_level: number;

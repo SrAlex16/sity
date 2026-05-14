@@ -7,10 +7,10 @@ personality:
   rudeness_level: 0.45
   warmth_level: 0.35
   honesty_level: 0.90
-  autonomy_level: 0.60
-  proactivity_level: 0.20
-  glados_mode: 0.35
+  initiative_level: 0.60
+  dry_humor_level: 0.35
   tsundere_level: 0.75
+  contrarian_level: 0.45
   patience_level: 0.50
   refusal_chance: 0.15
   helpfulness_level: 0.80
@@ -41,10 +41,10 @@ ai:
   max_output_tokens_short: 220
   claude:
     model: claude-haiku-4-5-20251001
-    max_tokens: 220
+    max_tokens: 350
 
 usage:
-  daily_token_budget: 50000
+  daily_token_budget: 300000
   monthly_token_budget: 1000000
   warning_threshold: 0.80
   critical_threshold: 0.95

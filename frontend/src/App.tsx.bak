@@ -5,7 +5,6 @@ import {
   type PersonalitySettings,
 } from "./api/sityApi";
 import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
-import { sendChatMessage, type ChatMessageResponse } from "./api/chatApi";
 import "./App.css";
 
 const LABELS: Record<keyof PersonalitySettings, string> = {
@@ -13,10 +12,10 @@ const LABELS: Record<keyof PersonalitySettings, string> = {
   rudeness_level: "Mala leche",
   warmth_level: "Calidez",
   honesty_level: "Honestidad",
-  initiative_level: "Iniciativa",
-    dry_humor_level: "Humor seco",
+  autonomy_level: "Autonomía",
+  proactivity_level: "Proactividad",
+  glados_mode: "Modo GLaDOS",
   tsundere_level: "Modo tsundere",
-  contrarian_level: "Contradicción",
   patience_level: "Paciencia",
   refusal_chance: "Probabilidad de negarse",
   helpfulness_level: "Nivel de ayuda",
@@ -28,23 +27,17 @@ const ORDER: Array<keyof PersonalitySettings> = [
   "rudeness_level",
   "warmth_level",
   "honesty_level",
-  "initiative_level",
-  "dry_humor_level",
+  "autonomy_level",
+  "proactivity_level",
+  "glados_mode",
   "tsundere_level",
-  "contrarian_level",
   "patience_level",
   "refusal_chance",
   "helpfulness_level",
   "verbosity_level",
 ];
 
-type Tab = "chat" | "settings" | "debug";
-
-type ChatEntry = {
-  role: "user" | "sity";
-  text: string;
-  meta?: ChatMessageResponse;
-};
+type Tab = "settings" | "debug";
 
 function percent(value: number): number {
   return Math.round(value * 100);
@@ -85,7 +78,7 @@ function EventCard({ event }: { event: TraceEvent }) {
 }
 
 function App() {
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("settings");
 
   const [personality, setPersonality] = useState<PersonalitySettings | null>(null);
   const [message, setMessage] = useState<string>("Sity inicializando personalidad...");
@@ -98,25 +91,14 @@ function App() {
   const [lastTraceId, setLastTraceId] = useState<string | null>(null);
   const [debugError, setDebugError] = useState<string | null>(null);
 
-  const [chatInput, setChatInput] = useState("");
-  const [chatEntries, setChatEntries] = useState<ChatEntry[]>([
-    {
-      role: "sity",
-      text: "Estoy despierta. No prometo que eso mejore tus decisiones.",
-    },
-  ]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
-
   const averageEdge = useMemo(() => {
     if (!personality) return 0;
     return Math.round(
       ((personality.sarcasm_level +
         personality.rudeness_level +
-        personality.dry_humor_level +
-        personality.tsundere_level +
-        personality.contrarian_level) /
-        5) *
+        personality.glados_mode +
+        personality.tsundere_level) /
+        4) *
         100,
     );
   }, [personality]);
@@ -178,41 +160,6 @@ function App() {
     }
   }
 
-  async function submitChat() {
-    const trimmed = chatInput.trim();
-    if (!trimmed || chatLoading) return;
-
-    setChatInput("");
-    setChatError(null);
-    setChatLoading(true);
-    setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
-
-    try {
-      const response = await sendChatMessage(trimmed);
-      setChatEntries((current) => [
-        ...current,
-        {
-          role: "sity",
-          text: response.text,
-          meta: response,
-        },
-      ]);
-      await refreshDebug();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error desconocido";
-      setChatError(errorMessage);
-      setChatEntries((current) => [
-        ...current,
-        {
-          role: "sity",
-          text: "No he podido responder. Una IA sin conexión: casi poético, si no fuera tan cutre.",
-        },
-      ]);
-    } finally {
-      setChatLoading(false);
-    }
-  }
-
   useEffect(() => {
     refreshPersonality();
     refreshDebug();
@@ -227,109 +174,35 @@ function App() {
           </p>
           <h1 className="mt-3 text-4xl font-bold">Control Panel</h1>
           <p className="mt-3 max-w-3xl text-zinc-300">
-            Conversación, personalidad y trazabilidad. Una cantidad absurda de infraestructura para que pueda juzgarte con precisión.
+            Configuración, personalidad y trazabilidad. Porque aparentemente ahora también tengo que explicar mis propios fallos.
           </p>
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            {(["chat", "settings", "debug"] as Tab[]).map((item) => (
-              <button
-                key={item}
-                onClick={() => {
-                  setTab(item);
-                  if (item === "debug") refreshDebug();
-                }}
-                className={`rounded-xl px-4 py-2 text-sm capitalize ${
-                  tab === item
-                    ? "bg-cyan-300 text-zinc-950"
-                    : "border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
-                }`}
-              >
-                {item}
-              </button>
-            ))}
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={() => setTab("settings")}
+              className={`rounded-xl px-4 py-2 text-sm ${
+                tab === "settings"
+                  ? "bg-cyan-300 text-zinc-950"
+                  : "border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+              }`}
+            >
+              Settings
+            </button>
+            <button
+              onClick={() => {
+                setTab("debug");
+                refreshDebug();
+              }}
+              className={`rounded-xl px-4 py-2 text-sm ${
+                tab === "debug"
+                  ? "bg-cyan-300 text-zinc-950"
+                  : "border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+              }`}
+            >
+              Debug
+            </button>
           </div>
         </header>
-
-        {tab === "chat" && (
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold">Chat</h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Habla con Sity sin tener que leer JSON como un animal.
-                </p>
-              </div>
-              <div className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300">
-                Encabronamiento: {averageEdge}%
-              </div>
-            </div>
-
-            <div className="mt-5 flex max-h-[560px] flex-col gap-4 overflow-auto rounded-2xl bg-zinc-950 p-4">
-              {chatEntries.map((entry, index) => (
-                <div
-                  key={index}
-                  className={`max-w-[85%] rounded-2xl p-4 ${
-                    entry.role === "user"
-                      ? "ml-auto bg-cyan-300 text-zinc-950"
-                      : "mr-auto border border-zinc-800 bg-zinc-900 text-zinc-100"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{entry.text}</p>
-                  {entry.meta && (
-                    <div className="mt-3 rounded-xl bg-black/30 p-3 text-xs text-zinc-400">
-                      <p>
-                        {entry.meta.provider} · {entry.meta.model} · trace {entry.meta.trace_id}
-                      </p>
-                      <p>
-                        tokens: {entry.meta.usage.input_tokens} in /{" "}
-                        {entry.meta.usage.output_tokens} out · diario:{" "}
-                        {Math.round(entry.meta.usage.daily_ratio * 100)}%
-                      </p>
-                      {entry.meta.warnings.map((warning, warningIndex) => (
-                        <p key={warningIndex} className="mt-1 text-yellow-300">
-                          {warning}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {chatLoading && (
-                <div className="mr-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-zinc-400">
-                  Pensando... por desgracia.
-                </div>
-              )}
-            </div>
-
-            {chatError && (
-              <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
-                {chatError}
-              </p>
-            )}
-
-            <div className="mt-4 flex gap-3">
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    submitChat();
-                  }
-                }}
-                placeholder="Habla con Sity..."
-                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100 outline-none focus:border-cyan-300"
-              />
-              <button
-                onClick={submitChat}
-                disabled={chatLoading}
-                className="rounded-xl bg-cyan-300 px-5 py-3 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Enviar
-              </button>
-            </div>
-          </section>
-        )}
 
         {tab === "settings" && (
           <>
@@ -350,7 +223,7 @@ function App() {
                 <h2 className="text-xl font-semibold">Encabronamiento</h2>
                 <p className="mt-4 text-5xl font-bold text-cyan-300">{averageEdge}%</p>
                 <p className="mt-2 text-sm text-zinc-400">
-                  Media de sarcasmo, mala leche, humor seco, tsundere y contradicción. Métrica científicamente dudosa, como casi todo lo divertido.
+                  Media de sarcasmo, mala leche, GLaDOS y tsundere. Métrica científicamente dudosa, como casi todo lo divertido.
                 </p>
               </div>
             </section>

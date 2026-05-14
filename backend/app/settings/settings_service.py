@@ -12,10 +12,10 @@ PERSONALITY_KEYS = {
     "rudeness_level",
     "warmth_level",
     "honesty_level",
-    "autonomy_level",
-    "proactivity_level",
-    "glados_mode",
+    "initiative_level",
+    "dry_humor_level",
     "tsundere_level",
+    "contrarian_level",
     "patience_level",
     "refusal_chance",
     "helpfulness_level",
@@ -36,6 +36,14 @@ class SettingsService:
 
         stored_settings = self.session.exec(select(Setting)).all()
         for row in stored_settings:
+            # Ignore old deprecated personality keys if they still exist in SQLite.
+            if row.key in {
+                "personality.glados_mode",
+                "personality.autonomy_level",
+                "personality.proactivity_level",
+            }:
+                continue
+
             self._set_nested(config, row.key, json.loads(row.value_json))
 
         return config

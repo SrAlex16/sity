@@ -55,6 +55,16 @@ def get_today_token_usage(session: Session) -> int:
     return total
 
 
+def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int) -> int:
+    if verbosity_level <= 0.20:
+        return min(configured_max_tokens, 140)
+    if verbosity_level <= 0.50:
+        return min(configured_max_tokens, 190)
+    if verbosity_level <= 0.80:
+        return min(configured_max_tokens, 260)
+    return configured_max_tokens
+
+
 @router.post("/message", response_model=ChatMessageResponse)
 def chat_message(
     request: ChatMessageRequest,
@@ -75,12 +85,18 @@ def chat_message(
         },
     )
 
-    persona_prompt = PersonaEngine().build_persona_prompt(personality)
+    persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
+    persona_prompt = persona_decision.system_prompt
 
     ai_config = config.get("ai", {})
     usage_config = config.get("usage", {})
 
-    max_tokens = int(ai_config.get("claude", {}).get("max_tokens", 220))
+    configured_max_tokens = int(ai_config.get("claude", {}).get("max_tokens", 300))
+    verbosity_level = float(personality.get("verbosity_level", 0.45))
+    max_tokens = max_tokens_for_verbosity(
+        verbosity_level=verbosity_level,
+        configured_max_tokens=configured_max_tokens,
+    )
     daily_budget = int(usage_config.get("daily_token_budget", 50000))
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
@@ -95,6 +111,17 @@ def chat_message(
 
     write_log(
         level="INFO",
+        module="core",
+        event="persona_context_built",
+        trace_id=trace_id,
+        payload={
+            "personality": personality,
+            "refusal_mode": persona_decision.refusal_mode,
+        },
+    )
+
+    write_log(
+        level="INFO",
         module="cortex",
         event="ai_call_started",
         trace_id=trace_id,
@@ -102,6 +129,7 @@ def chat_message(
             "provider": "anthropic",
             "task_type": "chat_message",
             "max_tokens": max_tokens,
+            "verbosity_level": verbosity_level,
         },
     )
 
