@@ -1,6 +1,13 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
+
+from app.api.routes_chat import router as chat_router
 from app.api.routes_debug import router as debug_router
 from app.api.routes_settings import router as settings_router
 from app.memory.db import init_db
@@ -46,3 +53,4 @@ def health():
 
 app.include_router(settings_router)
 app.include_router(debug_router)
+app.include_router(chat_router)

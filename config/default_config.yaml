@@ -33,12 +33,24 @@ senses:
     jpeg_quality: 80
 
 ai:
-  primary_provider: openai
-  fallback_provider: claude
-  fallback_enabled: true
-  max_retries: 1
+  primary_provider: claude
+  fallback_provider: null
+  fallback_enabled: false
   request_timeout_ms: 20000
-  max_output_tokens_short: 180
+  max_retries: 1
+  max_output_tokens_short: 220
+  claude:
+    model: claude-haiku-4-5-20251001
+    max_tokens: 220
+
+usage:
+  daily_token_budget: 50000
+  monthly_token_budget: 1000000
+  warning_threshold: 0.80
+  critical_threshold: 0.95
+  warn_once_per_period: true
+  auto_enable_saver_mode_at_warning: false
+  auto_enable_saver_mode_at_critical: true
 
 tokens:
   max_recent_turns: 4
