@@ -1,0 +1,57 @@
+project:
+  name: Sity
+  version: 0.1.0
+
+personality:
+  sarcasm_level: 0.70
+  rudeness_level: 0.45
+  warmth_level: 0.35
+  honesty_level: 0.90
+  autonomy_level: 0.60
+  proactivity_level: 0.20
+  glados_mode: 0.35
+  tsundere_level: 0.75
+  patience_level: 0.50
+  refusal_chance: 0.15
+  helpfulness_level: 0.80
+  verbosity_level: 0.45
+
+privacy:
+  store_images: false
+  store_audio: false
+  store_transcripts: ask
+  memory_enabled: true
+  cloud_ai_enabled: true
+
+senses:
+  pc_vision:
+    enabled: true
+    image_ttl_seconds: 300
+    request_timeout_ms: 5000
+    max_captures_per_minute: 12
+    max_image_long_side_px: 1280
+    jpeg_quality: 80
+
+ai:
+  primary_provider: openai
+  fallback_provider: claude
+  fallback_enabled: true
+  max_retries: 1
+  request_timeout_ms: 20000
+  max_output_tokens_short: 180
+
+tokens:
+  max_recent_turns: 4
+  max_relevant_memories: 5
+  max_input_tokens_interactive: 3000
+
+debug:
+  enabled: true
+  log_level: INFO
+  debug_logs_ttl_days: 7
+  audit_logs_ttl_days: 60
+
+storage:
+  tmp_dir: runtime/tmp
+  data_dir: data
+  export_dir: data/exports
