@@ -73,3 +73,20 @@ class MemoryFragment(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
     last_used_at: Optional[datetime] = None
     archived: bool = False
+
+
+class ChatSession(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    title: str = "Default chat"
+    status: str = "active"
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ChatMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    role: str
+    text: str
+    trace_id: Optional[str] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now)

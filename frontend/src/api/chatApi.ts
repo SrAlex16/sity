@@ -17,21 +17,48 @@ export type ChatMessageResponse = {
   error_type: string | null;
   usage: ChatUsage;
   warnings: string[];
+  personality_updated: boolean;
+  updated_parameter: string | null;
+  updated_parameters: string[];
+};
+
+export type ChatHistoryItem = {
+  role: "user" | "sity";
+  text: string;
 };
 
 const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:8000";
 
-export async function sendChatMessage(message: string): Promise<ChatMessageResponse> {
+export async function sendChatMessage(
+  message: string,
+  history: ChatHistoryItem[],
+): Promise<ChatMessageResponse> {
   const response = await fetch(`${API_BASE}/chat/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history }),
   });
 
   if (!response.ok) {
     throw new Error(`Failed to send chat message: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export type CurrentChatResponse = {
+  ok: boolean;
+  session_id: string;
+  messages: ChatHistoryItem[];
+};
+
+export async function getCurrentChat(): Promise<CurrentChatResponse> {
+  const response = await fetch(`${API_BASE}/chat/current`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load current chat: ${response.status}`);
   }
 
   return response.json();

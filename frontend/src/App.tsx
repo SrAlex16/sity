@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   adjustPersonality,
   getPersonality,
   type PersonalitySettings,
 } from "./api/sityApi";
 import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
-import { sendChatMessage, type ChatMessageResponse } from "./api/chatApi";
+import { getCurrentChat, sendChatMessage, type ChatMessageResponse } from "./api/chatApi";
 import "./App.css";
 
 const LABELS: Record<keyof PersonalitySettings, string> = {
@@ -107,6 +107,7 @@ function App() {
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
   const averageEdge = useMemo(() => {
     if (!personality) return 0;
@@ -134,6 +135,23 @@ function App() {
       setMessage("No he podido cargar mi personalidad. Qué forma tan elegante de empezar.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadCurrentChat() {
+    try {
+      const response = await getCurrentChat();
+
+      if (response.messages.length > 0) {
+        setChatEntries(
+          response.messages.map((message) => ({
+            role: message.role as "user" | "sity",
+            text: message.text,
+          })),
+        );
+      }
+    } catch {
+      // Keep local default greeting if loading fails.
     }
   }
 
@@ -188,7 +206,15 @@ function App() {
     setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
 
     try {
-      const response = await sendChatMessage(trimmed);
+      const history = chatEntries
+        .filter((entry) => entry.text.trim().length > 0)
+        .slice(-8)
+        .map((entry) => ({
+          role: entry.role,
+          text: entry.text,
+        }));
+
+      const response = await sendChatMessage(trimmed, history);
       setChatEntries((current) => [
         ...current,
         {
@@ -197,6 +223,11 @@ function App() {
           meta: response,
         },
       ]);
+
+      if (response.personality_updated) {
+        await refreshPersonality();
+      }
+
       await refreshDebug();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Error desconocido";
@@ -216,7 +247,12 @@ function App() {
   useEffect(() => {
     refreshPersonality();
     refreshDebug();
+    loadCurrentChat();
   }, []);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatEntries, chatLoading]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -299,6 +335,7 @@ function App() {
                   Pensando... por desgracia.
                 </div>
               )}
+              <div ref={chatBottomRef} />
             </div>
 
             {chatError && (
