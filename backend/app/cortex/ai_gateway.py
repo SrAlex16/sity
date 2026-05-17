@@ -29,3 +29,32 @@ class AIGateway:
                 error_type=exc.__class__.__name__,
                 error_message=str(exc),
             )
+
+    def generate_with_tool_results(
+        self,
+        *,
+        request: AIRequest,
+        first_response_content: list,
+        tool_results: list[dict],
+    ) -> AIResponse:
+        try:
+            response = self.provider.generate_with_tool_results(
+                request=request,
+                first_response_content=first_response_content,
+                tool_results=tool_results,
+            )
+            if not response.text and not response.tool_calls:
+                raise RuntimeError("Empty response from Claude after tool results")
+            return response
+        except Exception as exc:
+            return AIResponse(
+                ok=False,
+                provider="anthropic",
+                model=getattr(self.provider, "model", "unknown"),
+                text="He ejecutado la herramienta, pero no he podido generar una respuesta final. Muy elegante todo.",
+                usage=AIUsageData(),
+                latency_ms=0,
+                fallback_used=False,
+                error_type=exc.__class__.__name__,
+                error_message=str(exc),
+            )

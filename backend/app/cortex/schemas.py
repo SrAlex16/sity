@@ -10,6 +10,7 @@ class AIRequest(BaseModel):
     user_message: str
     max_tokens: int = 220
     tools_enabled: bool = True
+    tool_choice: dict[str, Any] | None = None
 
 
 class AIUsageData(BaseModel):

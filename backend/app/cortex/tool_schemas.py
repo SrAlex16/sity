@@ -13,31 +13,40 @@ PERSONALITY_PARAMETERS = [
     "verbosity_level",
 ]
 
+ALL_PERSONALITY_PARAMETERS_TEXT = ", ".join(PERSONALITY_PARAMETERS)
+
 
 UPDATE_PERSONALITY_SETTINGS_TOOL = {
     "name": "update_personality_settings",
     "description": (
-        "Actualiza uno o varios parámetros de personalidad de Sity cuando el usuario "
-        "pide cambiar su carácter, tono, estilo, nivel de ayuda, verbosidad, sarcasmo, "
-        "calidez, paciencia, contradicción, tendencia a negarse o rasgos similares. "
-        "Usa esta herramienta cuando el usuario pida explícitamente cambiar la personalidad "
-        "o cuando use lenguaje natural como 'hazte más amable', 'ponte más insoportable', "
-        "'déjalo todo al 50%', 'baja el sarcasmo', 'sé menos borde', etc."
+        "Actualiza uno o varios parámetros de personalidad de Sity. "
+        f"Parámetros permitidos: {ALL_PERSONALITY_PARAMETERS_TEXT}. "
+        "DEBES incluir siempre el campo 'updates' con al menos un elemento. "
+        "Cada item de 'updates' debe tener parameter, operation y value. "
+        "Never call this tool with an empty updates array. "
+        "Never call this tool with only reason and no updates. "
+        "When updating all personality parameters, include one update for every allowed parameter. "
     ),
     "input_schema": {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "updates": {
                 "type": "array",
+                "description": (
+                    "Lista OBLIGATORIA de cambios. Nunca la omitas. "
+                    "Para 'todo al 50%' incluye los 12 parámetros permitidos."
+                ),
                 "minItems": 1,
                 "maxItems": 12,
                 "items": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {
                         "parameter": {
                             "type": "string",
                             "enum": PERSONALITY_PARAMETERS,
-                            "description": "Parámetro de personalidad a modificar.",
+                            "description": "Parámetro exacto a modificar.",
                         },
                         "operation": {
                             "type": "string",
@@ -56,10 +65,7 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
                             "type": "number",
                             "minimum": 0,
                             "maximum": 1,
-                            "description": (
-                                "Valor entre 0 y 1. Para porcentajes, 70% = 0.7. "
-                                "Para cambios relativos como 'baja un poco', usa 0.1 o 0.2."
-                            ),
+                            "description": "Valor entre 0 y 1. 50% = 0.5, 70% = 0.7.",
                         },
                     },
                     "required": ["parameter", "operation", "value"],
@@ -67,7 +73,7 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
             },
             "reason": {
                 "type": "string",
-                "description": "Breve explicación de por qué se aplican estos cambios.",
+                "description": "Breve razón del cambio.",
             },
         },
         "required": ["updates", "reason"],
@@ -75,6 +81,27 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
 }
 
 
+NO_ACTION_REQUIRED_TOOL = {
+    "name": "no_action_required",
+    "description": (
+        "Usa esta tool cuando el mensaje del usuario NO requiere ejecutar ninguna acción real "
+        "del sistema y solo debe responderse como conversación normal."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": "Motivo breve por el que no hace falta ejecutar acción.",
+            }
+        },
+        "required": ["reason"],
+    },
+}
+
+
 TOOLS = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
 ]

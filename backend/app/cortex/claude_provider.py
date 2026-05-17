@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -25,7 +26,7 @@ class ClaudeProvider:
     def generate(self, request: AIRequest) -> AIResponse:
         started = time.perf_counter()
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": request.max_tokens,
             "system": request.system_prompt,
@@ -40,27 +41,66 @@ class ClaudeProvider:
         if request.tools_enabled:
             kwargs["tools"] = TOOLS
 
+        if request.tool_choice:
+            kwargs["tool_choice"] = request.tool_choice
+
         message = self.client.messages.create(**kwargs)
 
         latency_ms = round((time.perf_counter() - started) * 1000)
 
+        return self._to_ai_response(
+            message=message,
+            latency_ms=latency_ms,
+        )
+
+    def generate_with_tool_results(
+        self,
+        *,
+        request: AIRequest,
+        first_response_content: list[Any],
+        tool_results: list[dict[str, Any]],
+    ) -> AIResponse:
+        started = time.perf_counter()
+
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=request.max_tokens,
+            system=request.system_prompt,
+            tools=TOOLS,
+            messages=[
+                {
+                    "role": "user",
+                    "content": request.user_message,
+                },
+                {
+                    "role": "assistant",
+                    "content": first_response_content,
+                },
+                {
+                    "role": "user",
+                    "content": tool_results,
+                },
+            ],
+        )
+
+        latency_ms = round((time.perf_counter() - started) * 1000)
+
+        return self._to_ai_response(
+            message=message,
+            latency_ms=latency_ms,
+        )
+
+    def _to_ai_response(self, *, message: Any, latency_ms: int) -> AIResponse:
         text_parts: list[str] = []
         tool_calls: list[AIToolCall] = []
 
         for block in message.content:
             block_type = getattr(block, "type", None)
 
-            # Temporary debug for Anthropic content blocks.
-            try:
-                print("CLAUDE_BLOCK_TYPE:", block_type)
-                print("CLAUDE_BLOCK_RAW:", block.model_dump() if hasattr(block, "model_dump") else block)
-            except Exception:
-                print("CLAUDE_BLOCK_DEBUG_FAILED")
-
             if block_type == "text":
                 text_parts.append(block.text)
 
-            if block_type == "tool_use":
+            elif block_type == "tool_use":
                 tool_calls.append(
                     AIToolCall(
                         id=block.id,

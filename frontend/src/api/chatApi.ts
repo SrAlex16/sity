@@ -31,14 +31,13 @@ const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:8000";
 
 export async function sendChatMessage(
   message: string,
-  history: ChatHistoryItem[],
 ): Promise<ChatMessageResponse> {
   const response = await fetch(`${API_BASE}/chat/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message }),
   });
 
   if (!response.ok) {

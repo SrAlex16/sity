@@ -109,6 +109,12 @@ function App() {
   const [chatError, setChatError] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
+  function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
+    window.setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior });
+    }, 0);
+  }
+
   const averageEdge = useMemo(() => {
     if (!personality) return 0;
     return Math.round(
@@ -149,6 +155,7 @@ function App() {
             text: message.text,
           })),
         );
+        window.setTimeout(() => scrollChatToBottom("auto"), 50);
       }
     } catch {
       // Keep local default greeting if loading fails.
@@ -204,30 +211,13 @@ function App() {
     setChatError(null);
     setChatLoading(true);
     setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
+    window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
     try {
-      const history = chatEntries
-        .filter((entry) => entry.text.trim().length > 0)
-        .slice(-8)
-        .map((entry) => ({
-          role: entry.role,
-          text: entry.text,
-        }));
+      await sendChatMessage(trimmed);
 
-      const response = await sendChatMessage(trimmed, history);
-      setChatEntries((current) => [
-        ...current,
-        {
-          role: "sity",
-          text: response.text,
-          meta: response,
-        },
-      ]);
-
-      if (response.personality_updated) {
-        await refreshPersonality();
-      }
-
+      await loadCurrentChat();
+      await refreshPersonality();
       await refreshDebug();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Error desconocido";
@@ -251,7 +241,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollChatToBottom("smooth");
   }, [chatEntries, chatLoading]);
 
   return (
@@ -272,7 +262,18 @@ function App() {
                 key={item}
                 onClick={() => {
                   setTab(item);
-                  if (item === "debug") refreshDebug();
+
+                  if (item === "chat") {
+                    window.setTimeout(() => scrollChatToBottom("auto"), 50);
+                  }
+
+                  if (item === "settings") {
+                    refreshPersonality();
+                  }
+
+                  if (item === "debug") {
+                    refreshDebug();
+                  }
                 }}
                 className={`rounded-xl px-4 py-2 text-sm capitalize ${
                   tab === item

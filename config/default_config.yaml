@@ -41,7 +41,7 @@ ai:
   max_output_tokens_short: 220
   claude:
     model: claude-haiku-4-5-20251001
-    max_tokens: 350
+    max_tokens: 1500
 
 usage:
   daily_token_budget: 300000

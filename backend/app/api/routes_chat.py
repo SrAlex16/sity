@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from typing import Optional
 
@@ -72,7 +73,7 @@ def save_chat_message(
     session.commit()
 
 
-def get_recent_db_messages(session: Session, limit: int = 8) -> list[ChatMessage]:
+def get_recent_db_messages(session: Session, limit: int = 20) -> list[ChatMessage]:
     statement = (
         select(ChatMessage)
         .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
@@ -159,12 +160,12 @@ def get_today_token_usage(session: Session) -> int:
 
 def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int) -> int:
     if verbosity_level <= 0.20:
-        return min(configured_max_tokens, 140)
+        return min(configured_max_tokens, 250)
     if verbosity_level <= 0.50:
-        return min(configured_max_tokens, 190)
+        return min(configured_max_tokens, 450)
     if verbosity_level <= 0.80:
-        return min(configured_max_tokens, 260)
-    return configured_max_tokens
+        return min(configured_max_tokens, 750)
+    return min(configured_max_tokens, 1200)
 
 
 @router.post("/message", response_model=ChatMessageResponse)
@@ -188,15 +189,13 @@ def chat_message(
         },
     )
 
-    updated_parameters: list[str] = []
-
     persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
     persona_prompt = persona_decision.system_prompt
 
     ai_config = config.get("ai", {})
     usage_config = config.get("usage", {})
 
-    configured_max_tokens = int(ai_config.get("claude", {}).get("max_tokens", 300))
+    configured_max_tokens = int(ai_config.get("claude", {}).get("max_tokens", 1500))
     verbosity_level = float(personality.get("verbosity_level", 0.45))
     max_tokens = max_tokens_for_verbosity(
         verbosity_level=verbosity_level,
@@ -206,11 +205,10 @@ def chat_message(
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
 
-    db_history = [
+    recent_history = [
         ChatHistoryItem(role=row.role, text=row.text)
-        for row in get_recent_db_messages(session, limit=8)
+        for row in get_recent_db_messages(session, limit=20)
     ]
-    recent_history = request.history[-8:] if request.history else db_history
 
     history_text = ""
     if recent_history:
@@ -227,14 +225,6 @@ def chat_message(
         else request.message
     )
 
-    ai_request = AIRequest(
-        trace_id=trace_id,
-        task_type="chat_message",
-        system_prompt=persona_prompt,
-        user_message=user_message_with_history,
-        max_tokens=max_tokens,
-    )
-
     write_log(
         level="INFO",
         module="core",
@@ -246,6 +236,27 @@ def chat_message(
         },
     )
 
+    save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+
+    gateway = AIGateway(config=config)
+
+    planner_request = AIRequest(
+        trace_id=trace_id,
+        task_type="action_planner",
+        system_prompt=(
+            persona_prompt
+            + "\n\nFASE DE PLANIFICACIÓN: debes elegir exactamente una tool. "
+            "Si el usuario pide cambiar personalidad, parámetros, sliders, tono, actitud "
+            "o comportamiento configurable, usa update_personality_settings. "
+            "Si no requiere acción real, usa no_action_required. "
+            "No respondas con texto normal en esta fase."
+        ),
+        user_message=user_message_with_history,
+        max_tokens=500,
+        tools_enabled=True,
+        tool_choice={"type": "any"},
+    )
+
     write_log(
         level="INFO",
         module="cortex",
@@ -253,13 +264,16 @@ def chat_message(
         trace_id=trace_id,
         payload={
             "provider": "anthropic",
-            "task_type": "chat_message",
-            "max_tokens": max_tokens,
+            "task_type": "action_planner",
+            "max_tokens": 500,
             "verbosity_level": verbosity_level,
         },
     )
 
-    response = AIGateway(config=config).generate(ai_request)
+    planner_response = gateway.generate(planner_request)
+
+    tool_results_for_claude: list[dict] = []
+    updated_parameters: list[str] = []
 
     write_log(
         level="INFO",
@@ -267,71 +281,99 @@ def chat_message(
         event="ai_response_received",
         trace_id=trace_id,
         payload={
-            "text_length": len(response.text or ""),
-            "tool_calls_count": len(response.tool_calls),
+            "text_length": len(planner_response.text or ""),
+            "tool_calls_count": len(planner_response.tool_calls),
             "tool_calls": [
                 {
-                    "name": tool_call.name,
-                    "input": tool_call.input,
+                    "id": tc.id,
+                    "name": tc.name,
+                    "input": tc.input,
                 }
-                for tool_call in response.tool_calls
+                for tc in planner_response.tool_calls
             ],
         },
     )
 
-    tool_results = []
+    response = planner_response
 
-    if response.ok and response.tool_calls:
-        executor = ToolExecutor(session)
+    if planner_response.ok and planner_response.tool_calls:
+        first_tool = planner_response.tool_calls[0]
 
-        for tool_call in response.tool_calls:
+        if first_tool.name == "update_personality_settings":
+            executor = ToolExecutor(session)
             result = executor.execute_tool_call(
-                tool_name=tool_call.name,
-                tool_input=tool_call.input,
+                tool_name=first_tool.name,
+                tool_input=first_tool.input,
                 trace_id=trace_id,
-            )
-
-            tool_results.append(
-                {
-                    "tool_name": result.tool_name,
-                    "ok": result.ok,
-                    "message": result.message,
-                    "updated_parameters": result.updated_parameters,
-                }
             )
 
             if result.ok:
                 updated_parameters.extend(result.updated_parameters)
 
-        if updated_parameters:
+            tool_results_for_claude.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": first_tool.id,
+                    "content": json.dumps(result.raw_result, ensure_ascii=False),
+                }
+            )
+
+            write_log(
+                level="INFO",
+                module="tools",
+                event="tool_results_ready",
+                trace_id=trace_id,
+                payload={
+                    "updated_parameters": updated_parameters,
+                    "tool_results_count": len(tool_results_for_claude),
+                },
+            )
+
             personality = settings_service.get_personality()
             persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
 
-            tool_summary = "\n".join(
-                f"- {item['tool_name']}: {item['message']}"
-                for item in tool_results
+            response = gateway.generate_with_tool_results(
+                request=AIRequest(
+                    trace_id=trace_id,
+                    task_type="chat_message_tool_result",
+                    system_prompt=persona_decision.system_prompt,
+                    user_message=(
+                        "El sistema acaba de ejecutar una herramienta real. "
+                        "Confirma el resultado en 1 o 2 frases completas. "
+                        "No listes todos los parámetros salvo que el usuario lo pida."
+                    ),
+                    max_tokens=max(max_tokens, 500),
+                    tools_enabled=True,
+                ),
+                first_response_content=[
+                    {
+                        "type": "tool_use",
+                        "id": first_tool.id,
+                        "name": first_tool.name,
+                        "input": first_tool.input,
+                    }
+                ],
+                tool_results=tool_results_for_claude,
             )
 
-            followup_request = AIRequest(
+            response.usage.input_tokens += planner_response.usage.input_tokens
+            response.usage.output_tokens += planner_response.usage.output_tokens
+            response.latency_ms += planner_response.latency_ms
+
+        elif first_tool.name == "no_action_required":
+            chat_request = AIRequest(
                 trace_id=trace_id,
-                task_type="chat_message_tool_confirmation",
-                system_prompt=persona_decision.system_prompt,
-                user_message=(
-                    "El sistema ha ejecutado correctamente estas herramientas reales:\n"
-                    f"{tool_summary}\n\n"
-                    "Responde al usuario confirmando brevemente los cambios. "
-                    "No digas que solo puedes sugerirlos: ya se aplicaron en SQLite."
-                ),
+                task_type="chat_message",
+                system_prompt=persona_prompt,
+                user_message=user_message_with_history,
                 max_tokens=max_tokens,
                 tools_enabled=False,
             )
+            response = gateway.generate(chat_request)
 
-            followup_response = AIGateway(config=config).generate(followup_request)
-
-            response.text = followup_response.text
-            response.usage.input_tokens += followup_response.usage.input_tokens
-            response.usage.output_tokens += followup_response.usage.output_tokens
-            response.latency_ms += followup_response.latency_ms
+            response.usage.input_tokens += planner_response.usage.input_tokens
+            response.usage.output_tokens += planner_response.usage.output_tokens
+            response.latency_ms += planner_response.latency_ms
 
     usage_row = AIUsage(
         trace_id=trace_id,
