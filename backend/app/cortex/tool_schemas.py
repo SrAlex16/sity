@@ -81,6 +81,61 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
 }
 
 
+READ_RECENT_DEBUG_EVENTS_TOOL = {
+    "name": "read_recent_debug_events",
+    "description": (
+        "Lee eventos recientes de debug, app y audit logs. "
+        "Úsala cuando el usuario pregunte qué ha pasado, por qué falló algo, "
+        "qué tools se ejecutaron, errores recientes, trazas recientes o comportamiento interno."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200,
+                "description": "Número máximo de eventos a leer.",
+            },
+            "level": {
+                "type": "string",
+                "description": "Filtro opcional por nivel: INFO, WARN, ERROR, AUDIT.",
+            },
+            "module": {
+                "type": "string",
+                "description": (
+                    "Filtro opcional por módulo. Úsalo solo si el usuario pide explícitamente "
+                    "un módulo concreto. Para preguntas generales sobre tools, errores o actividad reciente, "
+                    "omite module para que el backend devuelva eventos variados."
+                ),
+            },
+        },
+        "required": ["limit"],
+    },
+}
+
+
+READ_TRACE_EVENTS_TOOL = {
+    "name": "read_trace_events",
+    "description": (
+        "Lee todos los eventos asociados a un trace_id concreto. "
+        "Úsala cuando el usuario pregunte por una traza específica o por la última traza visible."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "trace_id": {
+                "type": "string",
+                "description": "Trace id a consultar, por ejemplo trc_abc123.",
+            }
+        },
+        "required": ["trace_id"],
+    },
+}
+
+
 NO_ACTION_REQUIRED_TOOL = {
     "name": "no_action_required",
     "description": (
@@ -103,5 +158,7 @@ NO_ACTION_REQUIRED_TOOL = {
 
 TOOLS = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
+    READ_RECENT_DEBUG_EVENTS_TOOL,
+    READ_TRACE_EVENTS_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]

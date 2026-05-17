@@ -6,6 +6,7 @@ from sqlmodel import Session
 from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.trace.logger import write_log
+from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 
 
 ALLOWED_OPERATIONS = {
@@ -36,23 +37,36 @@ class ToolExecutor:
         tool_input: dict[str, Any],
         trace_id: str,
     ) -> ToolExecutionResult:
-        if tool_name != "update_personality_settings":
-            result = {
-                "success": False,
-                "message": f"Herramienta no soportada: {tool_name}",
-                "updated_parameters": [],
-            }
-            return ToolExecutionResult(
-                tool_name=tool_name,
-                ok=False,
-                message=result["message"],
-                updated_parameters=[],
-                raw_result=result,
+        if tool_name == "read_recent_debug_events":
+            return self._read_recent_debug_events(
+                tool_input=tool_input,
+                trace_id=trace_id,
             )
 
-        return self._update_personality_settings(
-            tool_input=tool_input,
-            trace_id=trace_id,
+        if tool_name == "read_trace_events":
+            return self._read_trace_events(
+                tool_input=tool_input,
+                trace_id=trace_id,
+            )
+
+        if tool_name == "update_personality_settings":
+            return self._update_personality_settings(
+                tool_input=tool_input,
+                trace_id=trace_id,
+            )
+
+        result = {
+            "success": False,
+            "message": f"Herramienta no soportada: {tool_name}",
+            "updated_parameters": [],
+        }
+
+        return ToolExecutionResult(
+            tool_name=tool_name,
+            ok=False,
+            message=result["message"],
+            updated_parameters=[],
+            raw_result=result,
         )
 
     def _update_personality_settings(
@@ -186,6 +200,118 @@ class ToolExecutor:
             ok=True,
             message=result["message"],
             updated_parameters=updated_parameters,
+            raw_result=result,
+        )
+
+    def _read_recent_debug_events(
+        self,
+        *,
+        tool_input: dict[str, Any],
+        trace_id: str,
+    ) -> ToolExecutionResult:
+        raw_limit = tool_input.get("limit", 50)
+        raw_level = tool_input.get("level")
+        raw_module = tool_input.get("module")
+
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError):
+            limit = 50
+
+        limit = max(1, min(200, limit))
+
+        read_limit = max(limit * 5, 200) if raw_level or raw_module else limit
+        events = get_recent_events(limit=read_limit)
+
+        if raw_level:
+            level = str(raw_level).upper()
+            events = [
+                event for event in events
+                if str(event.get("level", "")).upper() == level
+            ]
+
+        if raw_module:
+            module = str(raw_module).lower()
+            events = [
+                event for event in events
+                if str(event.get("module", "")).lower() == module
+            ]
+
+        result = {
+            "success": True,
+            "message": f"Leídos {len(events)} eventos recientes.",
+            "events": events[:limit],
+        }
+
+        write_log(
+            level="INFO",
+            module="tools",
+            event="debug_recent_events_read",
+            trace_id=trace_id,
+            payload={
+                "limit": limit,
+                "level": raw_level,
+                "module": raw_module,
+                "returned_events": len(events[:limit]),
+            },
+        )
+
+        return ToolExecutionResult(
+            tool_name="read_recent_debug_events",
+            ok=True,
+            message=result["message"],
+            updated_parameters=[],
+            raw_result=result,
+        )
+
+    def _read_trace_events(
+        self,
+        *,
+        tool_input: dict[str, Any],
+        trace_id: str,
+    ) -> ToolExecutionResult:
+        requested_trace_id = str(tool_input.get("trace_id", "")).strip()
+
+        if not requested_trace_id:
+            result = {
+                "success": False,
+                "message": "trace_id vacío.",
+                "events": [],
+            }
+
+            return ToolExecutionResult(
+                tool_name="read_trace_events",
+                ok=False,
+                message=result["message"],
+                updated_parameters=[],
+                raw_result=result,
+            )
+
+        events = get_events_by_trace_id(requested_trace_id)
+
+        result = {
+            "success": True,
+            "message": f"Leídos {len(events)} eventos para {requested_trace_id}.",
+            "trace_id": requested_trace_id,
+            "events": events,
+        }
+
+        write_log(
+            level="INFO",
+            module="tools",
+            event="debug_trace_events_read",
+            trace_id=trace_id,
+            payload={
+                "requested_trace_id": requested_trace_id,
+                "returned_events": len(events),
+            },
+        )
+
+        return ToolExecutionResult(
+            tool_name="read_trace_events",
+            ok=True,
+            message=result["message"],
+            updated_parameters=[],
             raw_result=result,
         )
 

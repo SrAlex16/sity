@@ -299,24 +299,40 @@ def chat_message(
     if planner_response.ok and planner_response.tool_calls:
         first_tool = planner_response.tool_calls[0]
 
-        if first_tool.name == "update_personality_settings":
-            executor = ToolExecutor(session)
-            result = executor.execute_tool_call(
-                tool_name=first_tool.name,
-                tool_input=first_tool.input,
+        if first_tool.name == "no_action_required":
+            chat_request = AIRequest(
                 trace_id=trace_id,
+                task_type="chat_message",
+                system_prompt=persona_prompt,
+                user_message=user_message_with_history,
+                max_tokens=max_tokens,
+                tools_enabled=False,
             )
+            response = gateway.generate(chat_request)
 
-            if result.ok:
-                updated_parameters.extend(result.updated_parameters)
+            response.usage.input_tokens += planner_response.usage.input_tokens
+            response.usage.output_tokens += planner_response.usage.output_tokens
+            response.latency_ms += planner_response.latency_ms
+        else:
+            executor = ToolExecutor(session)
 
-            tool_results_for_claude.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": first_tool.id,
-                    "content": json.dumps(result.raw_result, ensure_ascii=False),
-                }
-            )
+            for tool_call in planner_response.tool_calls:
+                result = executor.execute_tool_call(
+                    tool_name=tool_call.name,
+                    tool_input=tool_call.input,
+                    trace_id=trace_id,
+                )
+
+                if result.ok:
+                    updated_parameters.extend(result.updated_parameters)
+
+                tool_results_for_claude.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_call.id,
+                        "content": json.dumps(result.raw_result, ensure_ascii=False),
+                    }
+                )
 
             write_log(
                 level="INFO",
@@ -332,48 +348,38 @@ def chat_message(
             personality = settings_service.get_personality()
             persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
 
-            response = gateway.generate_with_tool_results(
-                request=AIRequest(
-                    trace_id=trace_id,
-                    task_type="chat_message_tool_result",
-                    system_prompt=persona_decision.system_prompt,
-                    user_message=(
-                        "El sistema acaba de ejecutar una herramienta real. "
-                        "Confirma el resultado en 1 o 2 frases completas. "
-                        "No listes todos los parámetros salvo que el usuario lo pida."
-                    ),
-                    max_tokens=max(max_tokens, 500),
-                    tools_enabled=True,
-                ),
-                first_response_content=[
-                    {
-                        "type": "tool_use",
-                        "id": first_tool.id,
-                        "name": first_tool.name,
-                        "input": first_tool.input,
-                    }
-                ],
-                tool_results=tool_results_for_claude,
-            )
-
-            response.usage.input_tokens += planner_response.usage.input_tokens
-            response.usage.output_tokens += planner_response.usage.output_tokens
-            response.latency_ms += planner_response.latency_ms
-
-        elif first_tool.name == "no_action_required":
-            chat_request = AIRequest(
+    if tool_results_for_claude:
+        response_after_tools = gateway.generate_with_tool_results(
+            request=AIRequest(
                 trace_id=trace_id,
-                task_type="chat_message",
-                system_prompt=persona_prompt,
-                user_message=user_message_with_history,
-                max_tokens=max_tokens,
-                tools_enabled=False,
-            )
-            response = gateway.generate(chat_request)
+                task_type="chat_message_tool_result",
+                system_prompt=persona_decision.system_prompt,
+                user_message=(
+                    "El sistema acaba de ejecutar una o varias herramientas reales. "
+                    "Resume el resultado en español, de forma clara y breve. "
+                    "No inventes eventos: usa solo el contenido del tool_result."
+                ),
+                max_tokens=max(max_tokens, 700),
+                tools_enabled=True,
+            ),
+            first_response_content=[
+                {
+                    "type": "tool_use",
+                    "id": tool_call.id,
+                    "name": tool_call.name,
+                    "input": tool_call.input,
+                }
+                for tool_call in response.tool_calls
+            ],
+            tool_results=tool_results_for_claude,
+        )
 
-            response.usage.input_tokens += planner_response.usage.input_tokens
-            response.usage.output_tokens += planner_response.usage.output_tokens
-            response.latency_ms += planner_response.latency_ms
+        response.text = response_after_tools.text
+        response.usage.input_tokens += response_after_tools.usage.input_tokens
+        response.usage.output_tokens += response_after_tools.usage.output_tokens
+        response.latency_ms += response_after_tools.latency_ms
+        response.error_type = response_after_tools.error_type
+        response.error_message = response_after_tools.error_message
 
     usage_row = AIUsage(
         trace_id=trace_id,
