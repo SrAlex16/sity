@@ -39,7 +39,7 @@ class ClaudeProvider:
         }
 
         if request.tools_enabled:
-            kwargs["tools"] = TOOLS
+            kwargs["tools"] = request.tools if request.tools is not None else TOOLS
 
         if request.tool_choice:
             kwargs["tool_choice"] = request.tool_choice
@@ -66,7 +66,7 @@ class ClaudeProvider:
             model=self.model,
             max_tokens=request.max_tokens,
             system=request.system_prompt,
-            tools=TOOLS,
+            tools=request.tools if request.tools is not None else TOOLS,
             messages=[
                 {
                     "role": "user",

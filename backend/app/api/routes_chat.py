@@ -10,6 +10,13 @@ from app.core.persona_engine import PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.schemas import AIRequest
+from app.cortex.tool_schemas import (
+    ALL_TOOLS,
+    DEBUG_TOOLSET,
+    GIT_TOOLSET,
+    PERSONALITY_TOOLSET,
+    SYSTEM_TOOLSET,
+)
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
 from app.settings.config_loader import load_default_config
@@ -168,6 +175,114 @@ def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int)
     return min(configured_max_tokens, 1200)
 
 
+def history_limit_for_message(message: str) -> int:
+    normalized = message.lower()
+
+    system_keywords = [
+        "raspberry",
+        "sistema",
+        "cpu",
+        "ram",
+        "disco",
+        "procesos",
+        "servicio",
+        "repo",
+        "git",
+        "commits",
+        "ramas",
+        "remotos",
+        "logs",
+        "traza",
+        "debug",
+        "tools",
+    ]
+
+    if any(keyword in normalized for keyword in system_keywords):
+        return 4
+
+    return 20
+
+
+def select_toolset_for_message(message: str) -> list[dict]:
+    normalized = message.lower()
+
+    git_terms = [
+        "git", "repo", "repositorio", "commit", "commits",
+        "rama", "ramas", "branch", "origin", "pull", "push",
+    ]
+
+    system_terms = [
+        "raspberry", "sistema", "cpu", "ram", "memoria",
+        "disco", "espacio", "procesos", "servicio", "systemd", "ssh",
+    ]
+
+    debug_terms = [
+        "debug", "log", "logs", "traza", "trace",
+        "error", "errores", "tools", "herramientas",
+    ]
+
+    personality_terms = [
+        "personalidad", "slider", "sliders", "sarcasmo", "calidez",
+        "melancolía", "melancolia", "mala leche", "verbosidad",
+        "paciencia", "tsundere",
+    ]
+
+    if any(term in normalized for term in git_terms):
+        return GIT_TOOLSET
+
+    if any(term in normalized for term in system_terms):
+        return SYSTEM_TOOLSET
+
+    if any(term in normalized for term in debug_terms):
+        return DEBUG_TOOLSET
+
+    if any(term in normalized for term in personality_terms):
+        return PERSONALITY_TOOLSET
+
+    return ALL_TOOLS
+
+
+def detect_fast_read_tool(message: str) -> dict | None:
+    normalized = message.lower()
+
+    if "disco" in normalized or "espacio" in normalized:
+        return {"name": "read_disk_usage", "input": {"path": "/"}}
+
+    if "raspberry" in normalized and any(x in normalized for x in ["cómo está", "estado", "sistema"]):
+        return {"name": "read_system_status", "input": {}}
+
+    if "repo" in normalized or "repositorio" in normalized or "git" in normalized:
+        if "commit" in normalized:
+            return {"name": "git_read_log", "input": {"repo_path": "sity", "limit": 10}}
+        if "rama" in normalized or "branch" in normalized:
+            return {"name": "git_read_branches", "input": {"repo_path": "sity"}}
+        return {"name": "git_read_status", "input": {"repo_path": "sity"}}
+
+    return None
+
+
+COMPACT_RESPONSE_PROMPT = (
+    "Eres Sity. Responde directamente a la pregunta del usuario usando el resultado de la herramienta. "
+    "Sé breve y clara. No inventes datos. No menciones detalles internos salvo que el usuario los pida."
+)
+
+
+def build_action_planner_prompt() -> str:
+    return """
+Eres el planificador de acciones de Sity.
+
+Debes elegir exactamente una herramienta:
+- Usa herramientas de personalidad si el usuario pide cambiar tono, estilo, sliders o parámetros.
+- Usa herramientas de debug si pregunta por logs, trazas, errores o tools ejecutadas.
+- Usa herramientas de sistema si pregunta por Raspberry, CPU, RAM, disco, procesos, servicios o directorios.
+- Usa herramientas Git si pregunta por repos, commits, ramas, remotos, status o diff.
+- Usa no_action_required si solo quiere conversar.
+
+No respondas con texto normal en esta fase.
+No inventes resultados.
+""".strip()
+
+
 @router.post("/message", response_model=ChatMessageResponse)
 def chat_message(
     request: ChatMessageRequest,
@@ -205,25 +320,34 @@ def chat_message(
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
 
+    history_limit = history_limit_for_message(request.message)
+
     recent_history = [
         ChatHistoryItem(role=row.role, text=row.text)
-        for row in get_recent_db_messages(session, limit=20)
+        for row in get_recent_db_messages(session, limit=history_limit)
     ]
 
-    history_text = ""
-    if recent_history:
-        rendered_items: list[str] = []
-        for item in recent_history:
-            role = "Usuario" if item.role == "user" else "Sity"
-            rendered_items.append(f"{role}: {item.text}")
-        history_text = "\n".join(rendered_items)
+    def render_history(items: list[ChatHistoryItem]) -> str:
+        return "\n".join(
+            f"{'Usuario' if item.role == 'user' else 'Sity'}: {item.text}"
+            for item in items
+        )
 
-    user_message_with_history = (
-        f"Historial reciente de esta conversación:\n{history_text}\n\n"
-        f"Mensaje actual del usuario:\n{request.message}"
-        if history_text
-        else request.message
-    )
+    def with_history(history_text: str) -> str:
+        if not history_text:
+            return request.message
+        return (
+            f"Historial reciente de esta conversación:\n{history_text}\n\n"
+            f"Mensaje actual del usuario:\n{request.message}"
+        )
+
+    user_message_with_history = with_history(render_history(recent_history))
+
+    planner_history = [
+        ChatHistoryItem(role=row.role, text=row.text)
+        for row in get_recent_db_messages(session, limit=4)
+    ]
+    planner_user_message = with_history(render_history(planner_history))
 
     write_log(
         level="INFO",
@@ -240,21 +364,70 @@ def chat_message(
 
     gateway = AIGateway(config=config)
 
+    fast_tool_call = detect_fast_read_tool(request.message)
+
+    if fast_tool_call:
+        fast_result = ToolExecutor(session).execute_tool_call(
+            tool_name=fast_tool_call["name"],
+            tool_input=fast_tool_call["input"],
+            trace_id=trace_id,
+        )
+
+        response = gateway.generate(
+            AIRequest(
+                trace_id=trace_id,
+                task_type="fast_read_tool_summary",
+                system_prompt=persona_prompt,
+                user_message=(
+                    f"Pregunta original del usuario:\n{request.message}\n\n"
+                    f"Resultado real de la herramienta:\n"
+                    f"{json.dumps(fast_result.raw_result, ensure_ascii=False)}\n\n"
+                    "Responde de forma breve y clara."
+                ),
+                max_tokens=max_tokens,
+                tools_enabled=False,
+            )
+        )
+
+        save_chat_message(session, role="sity", text=response.text, trace_id=trace_id)
+
+        daily_used = get_today_token_usage(session)
+        total_tokens = response.usage.input_tokens + response.usage.output_tokens
+        daily_ratio = daily_used / daily_budget if daily_budget > 0 else 0.0
+
+        return ChatMessageResponse(
+            ok=response.ok,
+            trace_id=trace_id,
+            text=response.text,
+            provider=response.provider,
+            model=response.model,
+            fallback_used=response.fallback_used,
+            error_type=response.error_type,
+            usage=UsageSummary(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                total_tokens=total_tokens,
+                daily_used_tokens=daily_used,
+                daily_budget_tokens=daily_budget,
+                daily_ratio=round(daily_ratio, 4),
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
+
+    selected_tools = select_toolset_for_message(request.message)
+
     planner_request = AIRequest(
         trace_id=trace_id,
         task_type="action_planner",
-        system_prompt=(
-            persona_prompt
-            + "\n\nFASE DE PLANIFICACIÓN: debes elegir exactamente una tool. "
-            "Si el usuario pide cambiar personalidad, parámetros, sliders, tono, actitud "
-            "o comportamiento configurable, usa update_personality_settings. "
-            "Si no requiere acción real, usa no_action_required. "
-            "No respondas con texto normal en esta fase."
-        ),
-        user_message=user_message_with_history,
+        system_prompt=build_action_planner_prompt(),
+        user_message=planner_user_message,
         max_tokens=500,
         tools_enabled=True,
         tool_choice={"type": "any"},
+        tools=selected_tools,
     )
 
     write_log(
@@ -355,12 +528,16 @@ def chat_message(
                 task_type="chat_message_tool_result",
                 system_prompt=persona_decision.system_prompt,
                 user_message=(
-                    "El sistema acaba de ejecutar una o varias herramientas reales. "
-                    "Resume el resultado en español, de forma clara y breve. "
-                    "No inventes eventos: usa solo el contenido del tool_result."
+                    "Acabas de recibir el resultado real de una herramienta ejecutada por el backend. "
+                    "Responde directamente a la pregunta original del usuario usando ese resultado. "
+                    "No digas que no ves resultados previos. "
+                    "No preguntes qué herramienta debía resumirse. "
+                    "No menciones detalles internos salvo que el usuario pregunte por debug. "
+                    "Si la herramienta devolvió datos válidos, da la respuesta final de forma breve y clara."
                 ),
                 max_tokens=max(max_tokens, 700),
-                tools_enabled=True,
+                tools_enabled=False,
+                tools=selected_tools,
             ),
             first_response_content=[
                 {

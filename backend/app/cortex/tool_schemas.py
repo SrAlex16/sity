@@ -97,7 +97,7 @@ READ_RECENT_DEBUG_EVENTS_TOOL = {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 200,
-                "description": "Número máximo de eventos a leer.",
+                "description": "Número máximo de eventos a leer. Usa 20 salvo que el usuario pida explícitamente más.",
             },
             "level": {
                 "type": "string",
@@ -137,6 +137,148 @@ READ_TRACE_EVENTS_TOOL = {
 }
 
 
+READ_SYSTEM_STATUS_TOOL = {
+    "name": "read_system_status",
+    "description": "Lee estado básico de la Raspberry: CPU, RAM y uptime aproximado.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {},
+    },
+}
+
+
+READ_DISK_USAGE_TOOL = {
+    "name": "read_disk_usage",
+    "description": "Lee el uso de disco de una ruta. Úsala para preguntas sobre espacio disponible.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Ruta a consultar. Por defecto '/'.",
+            }
+        },
+    },
+}
+
+
+READ_PROCESSES_TOOL = {
+    "name": "read_processes",
+    "description": "Lee procesos principales por consumo de CPU/RAM.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50,
+            }
+        },
+    },
+}
+
+
+READ_SERVICE_STATUS_TOOL = {
+    "name": "read_service_status",
+    "description": "Lee el estado de un servicio systemd permitido.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "service_name": {
+                "type": "string",
+                "description": "Nombre del servicio permitido, por ejemplo ssh, sity-backend, minecraft.",
+            }
+        },
+        "required": ["service_name"],
+    },
+}
+
+
+LIST_ALLOWED_DIRECTORY_TOOL = {
+    "name": "list_allowed_directory",
+    "description": "Lista una carpeta permitida por configuración.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "path": {
+                "type": "string",
+            }
+        },
+        "required": ["path"],
+    },
+}
+
+
+_GIT_REPO_PATH_FIELD = {
+    "type": "string",
+    "description": (
+        "Ruta local del repo permitido. Para el repo sity usa /home/alex/projects/sity. "
+        "Si el usuario dice 'sity', 'este repo' o 'el proyecto', usa /home/alex/projects/sity."
+    ),
+}
+
+GIT_READ_STATUS_TOOL = {
+    "name": "git_read_status",
+    "description": "Lee git status de un repositorio permitido. Solo lectura.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "repo_path": _GIT_REPO_PATH_FIELD,
+        },
+        "required": ["repo_path"],
+    },
+}
+
+
+GIT_READ_LOG_TOOL = {
+    "name": "git_read_log",
+    "description": "Lee últimos commits de un repositorio permitido. Solo lectura.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "repo_path": _GIT_REPO_PATH_FIELD,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+        },
+        "required": ["repo_path"],
+    },
+}
+
+
+GIT_READ_BRANCHES_TOOL = {
+    "name": "git_read_branches",
+    "description": "Lee ramas locales/remotas de un repositorio permitido. Solo lectura.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "repo_path": _GIT_REPO_PATH_FIELD,
+        },
+        "required": ["repo_path"],
+    },
+}
+
+
+GIT_READ_REMOTES_TOOL = {
+    "name": "git_read_remotes",
+    "description": "Lee remotos configurados de un repositorio permitido. Solo lectura.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "repo_path": _GIT_REPO_PATH_FIELD,
+        },
+        "required": ["repo_path"],
+    },
+}
+
+
 NO_ACTION_REQUIRED_TOOL = {
     "name": "no_action_required",
     "description": (
@@ -157,9 +299,48 @@ NO_ACTION_REQUIRED_TOOL = {
 }
 
 
-TOOLS = [
+PERSONALITY_TOOLSET = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
+DEBUG_TOOLSET = [
     READ_RECENT_DEBUG_EVENTS_TOOL,
     READ_TRACE_EVENTS_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
+
+SYSTEM_TOOLSET = [
+    READ_SYSTEM_STATUS_TOOL,
+    READ_DISK_USAGE_TOOL,
+    READ_PROCESSES_TOOL,
+    READ_SERVICE_STATUS_TOOL,
+    LIST_ALLOWED_DIRECTORY_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
+GIT_TOOLSET = [
+    GIT_READ_STATUS_TOOL,
+    GIT_READ_LOG_TOOL,
+    GIT_READ_BRANCHES_TOOL,
+    GIT_READ_REMOTES_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
+ALL_TOOLS = [
+    UPDATE_PERSONALITY_SETTINGS_TOOL,
+    READ_RECENT_DEBUG_EVENTS_TOOL,
+    READ_TRACE_EVENTS_TOOL,
+    READ_SYSTEM_STATUS_TOOL,
+    READ_DISK_USAGE_TOOL,
+    READ_PROCESSES_TOOL,
+    READ_SERVICE_STATUS_TOOL,
+    LIST_ALLOWED_DIRECTORY_TOOL,
+    GIT_READ_STATUS_TOOL,
+    GIT_READ_LOG_TOOL,
+    GIT_READ_BRANCHES_TOOL,
+    GIT_READ_REMOTES_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
+TOOLS = ALL_TOOLS

@@ -7,6 +7,14 @@ from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
+from app.system.git_reader import git_branches, git_log, git_remotes, git_status
+from app.system.system_reader import (
+    list_allowed_directory,
+    read_disk_usage,
+    read_service_status,
+    read_system_status,
+    read_top_processes,
+)
 
 
 ALLOWED_OPERATIONS = {
@@ -47,6 +55,72 @@ class ToolExecutor:
             return self._read_trace_events(
                 tool_input=tool_input,
                 trace_id=trace_id,
+            )
+
+        if tool_name == "read_system_status":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=read_system_status(),
+            )
+
+        if tool_name == "read_disk_usage":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=read_disk_usage(str(tool_input.get("path", "/"))),
+            )
+
+        if tool_name == "read_processes":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=read_top_processes(int(tool_input.get("limit", 10))),
+            )
+
+        if tool_name == "read_service_status":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=read_service_status(str(tool_input.get("service_name", ""))),
+            )
+
+        if tool_name == "list_allowed_directory":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=list_allowed_directory(str(tool_input.get("path", ""))),
+            )
+
+        if tool_name == "git_read_status":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=git_status(str(tool_input.get("repo_path", ""))),
+            )
+
+        if tool_name == "git_read_log":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=git_log(
+                    str(tool_input.get("repo_path", "")),
+                    int(tool_input.get("limit", 10)),
+                ),
+            )
+
+        if tool_name == "git_read_branches":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=git_branches(str(tool_input.get("repo_path", ""))),
+            )
+
+        if tool_name == "git_read_remotes":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=git_remotes(str(tool_input.get("repo_path", ""))),
             )
 
         if tool_name == "update_personality_settings":
@@ -203,22 +277,39 @@ class ToolExecutor:
             raw_result=result,
         )
 
+    @staticmethod
+    def _summarize_payload(payload: Any) -> Any:
+        text = str(payload)
+        if len(text) > 500:
+            return text[:500] + "...[truncated]"
+        return payload
+
+    def _compact_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "timestamp": event.get("timestamp"),
+            "level": event.get("level"),
+            "module": event.get("module"),
+            "event": event.get("event"),
+            "trace_id": event.get("trace_id"),
+            "payload_summary": self._summarize_payload(event.get("payload", {})),
+        }
+
     def _read_recent_debug_events(
         self,
         *,
         tool_input: dict[str, Any],
         trace_id: str,
     ) -> ToolExecutionResult:
-        raw_limit = tool_input.get("limit", 50)
+        raw_limit = tool_input.get("limit", 20)
         raw_level = tool_input.get("level")
         raw_module = tool_input.get("module")
 
         try:
             limit = int(raw_limit)
         except (TypeError, ValueError):
-            limit = 50
+            limit = 20
 
-        limit = max(1, min(200, limit))
+        limit = max(1, min(50, limit))
 
         read_limit = max(limit * 5, 200) if raw_level or raw_module else limit
         events = get_recent_events(limit=read_limit)
@@ -237,10 +328,12 @@ class ToolExecutor:
                 if str(event.get("module", "")).lower() == module
             ]
 
+        compact = [self._compact_event(e) for e in events[:limit]]
+
         result = {
             "success": True,
-            "message": f"Leídos {len(events)} eventos recientes.",
-            "events": events[:limit],
+            "message": f"Leídos {len(compact)} eventos recientes.",
+            "events": compact,
         }
 
         write_log(
@@ -252,7 +345,7 @@ class ToolExecutor:
                 "limit": limit,
                 "level": raw_level,
                 "module": raw_module,
-                "returned_events": len(events[:limit]),
+                "returned_events": len(compact),
             },
         )
 
@@ -313,6 +406,36 @@ class ToolExecutor:
             message=result["message"],
             updated_parameters=[],
             raw_result=result,
+        )
+
+    def _simple_read_tool(
+        self,
+        *,
+        tool_name: str,
+        trace_id: str,
+        result: dict[str, Any],
+    ) -> ToolExecutionResult:
+        write_log(
+            level="INFO",
+            module="tools",
+            event=f"{tool_name}_executed",
+            trace_id=trace_id,
+            payload={
+                "ok": result.get("ok", True),
+                "result_keys": list(result.keys()),
+            },
+        )
+
+        return ToolExecutionResult(
+            tool_name=tool_name,
+            ok=bool(result.get("ok", True)),
+            message=f"{tool_name} ejecutada.",
+            updated_parameters=[],
+            raw_result={
+                "success": bool(result.get("ok", True)),
+                "tool_name": tool_name,
+                "result": result,
+            },
         )
 
     def _build_success_message(self, applied_updates: list[dict[str, Any]]) -> str:

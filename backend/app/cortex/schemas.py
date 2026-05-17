@@ -11,6 +11,7 @@ class AIRequest(BaseModel):
     max_tokens: int = 220
     tools_enabled: bool = True
     tool_choice: dict[str, Any] | None = None
+    tools: list[dict[str, Any]] | None = None
 
 
 class AIUsageData(BaseModel):

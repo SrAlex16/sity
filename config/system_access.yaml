@@ -1,0 +1,27 @@
+system_access:
+  enabled: true
+
+  read:
+    enabled: true
+    allowed_paths:
+      - /home/alex/projects/sity
+      - /home/alex/projects
+      - /home/alex
+
+    allowed_services:
+      - ssh
+      - sity-backend
+      - sity-frontend
+      - minecraft
+      - nginx
+
+git_access:
+  enabled: true
+
+  read:
+    enabled: true
+    default_repository: /home/alex/projects/sity
+    repository_aliases:
+      sity: /home/alex/projects/sity
+    allowed_repositories:
+      - /home/alex/projects/sity
