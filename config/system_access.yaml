@@ -15,6 +15,13 @@ system_access:
       - minecraft
       - nginx
 
+  safe_actions:
+    enabled: true
+    require_confirmation: true
+    allowed_services:
+      - sity-backend
+      - sity-frontend
+
 git_access:
   enabled: true
 

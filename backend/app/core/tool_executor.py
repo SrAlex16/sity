@@ -130,6 +130,12 @@ class ToolExecutor:
                 trace_id=trace_id,
             )
 
+        if tool_name == "system_propose_action":
+            return self._system_propose_action(
+                tool_input=tool_input,
+                trace_id=trace_id,
+            )
+
         if tool_name == "update_personality_settings":
             return self._update_personality_settings(
                 tool_input=tool_input,
@@ -512,6 +518,80 @@ class ToolExecutor:
                 "tool_name": tool_name,
                 "result": result,
             },
+        )
+
+    def _system_propose_action(
+        self,
+        *,
+        tool_input: dict[str, Any],
+        trace_id: str,
+    ) -> ToolExecutionResult:
+        action = str(tool_input.get("action", "")).strip()
+        service_name = str(tool_input.get("service_name", "")).strip()
+        risk_level = str(tool_input.get("risk_level", "safe")).strip()
+        summary = str(tool_input.get("summary", "")).strip()
+
+        allowed_actions = {"start_service", "stop_service", "restart_service"}
+        allowed_services = {"sity-backend", "sity-frontend"}
+
+        if action not in allowed_actions:
+            result = {
+                "success": False,
+                "message": f"Acción de sistema no soportada: {action}",
+            }
+            return ToolExecutionResult(
+                tool_name="system_propose_action",
+                ok=False,
+                message=result["message"],
+                updated_parameters=[],
+                raw_result=result,
+            )
+
+        if service_name not in allowed_services:
+            result = {
+                "success": False,
+                "message": f"Servicio no permitido: {service_name}",
+            }
+            return ToolExecutionResult(
+                tool_name="system_propose_action",
+                ok=False,
+                message=result["message"],
+                updated_parameters=[],
+                raw_result=result,
+            )
+
+        if risk_level not in {"safe", "critical"}:
+            risk_level = "safe"
+
+        payload: dict[str, Any] = {
+            "action": action,
+            "service_name": service_name,
+        }
+
+        created = ConfirmationManager(self.session).create_pending_action(
+            action_type="system",
+            risk_level=risk_level,
+            summary=summary or f"{action} {service_name}",
+            payload=payload,
+            trace_id=trace_id,
+        )
+
+        result = {
+            "success": True,
+            "message": "Acción pendiente creada. Requiere confirmación explícita antes de ejecutarse.",
+            "action_id": created.id,
+            "risk_level": created.risk_level,
+            "summary": created.summary,
+            "confirmation_phrase": created.confirmation_phrase,
+            "payload": payload,
+        }
+
+        return ToolExecutionResult(
+            tool_name="system_propose_action",
+            ok=True,
+            message=result["message"],
+            updated_parameters=[],
+            raw_result=result,
         )
 
     def _build_confirmation_hint(self, payload: dict[str, Any]) -> str:

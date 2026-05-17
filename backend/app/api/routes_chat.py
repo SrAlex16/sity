@@ -8,7 +8,10 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.actions.confirmation_manager import ConfirmationManager
-from app.actions.git_actions import execute_git_action, parse_payload
+from app.actions.git_actions import execute_git_action
+from app.actions.git_actions import parse_payload as parse_git_payload
+from app.actions.system_actions import execute_system_action
+from app.actions.system_actions import parse_payload as parse_system_payload
 from app.core.persona_engine import PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
@@ -433,6 +436,44 @@ def build_pending_action_response(created, payload: dict) -> str:
     return "\n".join(lines)
 
 
+def detect_fast_system_action(message: str) -> dict | None:
+    normalized = message.lower().strip()
+
+    service_aliases = {
+        "backend": "sity-backend",
+        "front": "sity-frontend",
+        "frontend": "sity-frontend",
+    }
+
+    service_name = None
+    for alias, service in service_aliases.items():
+        if alias in normalized:
+            service_name = service
+            break
+
+    if not service_name:
+        return None
+
+    if any(term in normalized for term in ["reinicia", "reiniciar", "restart"]):
+        action = "restart_service"
+        verb = "Reiniciar"
+    elif any(term in normalized for term in ["arranca", "arrancar", "lanza", "lanzar", "inicia", "iniciar", "start"]):
+        action = "start_service"
+        verb = "Arrancar"
+    elif any(term in normalized for term in ["para", "parar", "detén", "detener", "stop"]):
+        action = "stop_service"
+        verb = "Parar"
+    else:
+        return None
+
+    return {
+        "action": action,
+        "service_name": service_name,
+        "risk_level": "safe",
+        "summary": f"{verb} servicio {service_name}",
+    }
+
+
 COMPACT_RESPONSE_PROMPT = (
     "Eres Sity. Responde directamente a la pregunta del usuario usando el resultado de la herramienta. "
     "Sé breve y clara. No inventes datos. No menciones detalles internos salvo que el usuario los pida."
@@ -502,7 +543,7 @@ def chat_message(
     if pending_action:
         if pending_action.action_type == "git":
             try:
-                payload = parse_payload(pending_action.payload_json)
+                payload = parse_git_payload(pending_action.payload_json)
                 execution_result = execute_git_action(payload)
 
                 if execution_result.get("ok"):
@@ -528,10 +569,117 @@ def chat_message(
                 confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
                 text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
 
+        elif pending_action.action_type == "system":
+            try:
+                payload = parse_system_payload(pending_action.payload_json)
+                execution_result = execute_system_action(payload)
+
+                if execution_result.get("ok"):
+                    confirmation_manager.mark_executed(pending_action, trace_id)
+                    text = (
+                        f"Acción ejecutada: {pending_action.summary}\n\n"
+                        f"Comando: {' '.join(str(x) for x in execution_result.get('command', []))}\n"
+                        f"Salida:\n{execution_result.get('stdout', '') or '(sin salida)'}"
+                    )
+                    post_status = execution_result.get("post_status")
+                    if post_status:
+                        text += f"\nEstado posterior: {post_status}"
+                else:
+                    error = (
+                        execution_result.get("stderr")
+                        or execution_result.get("stdout")
+                        or f"El comando terminó sin confirmación de éxito. Estado posterior: {execution_result.get('post_status', 'desconocido')}"
+                    )
+                    confirmation_manager.mark_failed(pending_action, trace_id, error)
+                    text = (
+                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
+                        f"Error:\n{error}"
+                    )
+
+            except Exception as exc:
+                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
+                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
+
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+        daily_used = get_today_token_usage(session)
+
+        return ChatMessageResponse(
+            ok=True,
+            trace_id=trace_id,
+            text=text,
+            provider="local",
+            model="confirmation-manager",
+            fallback_used=False,
+            error_type=None,
+            usage=UsageSummary(
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                daily_used_tokens=daily_used,
+                daily_budget_tokens=daily_budget,
+                daily_ratio=0.0,
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
+
+    if (
+        not pending_action
+        and confirmation_manager.has_multiple_active_pending_actions()
+        and confirmation_manager.is_generic_confirmation_message(request.message)
+    ):
+        text = (
+            "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
+            "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
+        )
+
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+        return ChatMessageResponse(
+            ok=True,
+            trace_id=trace_id,
+            text=text,
+            provider="local",
+            model="confirmation-manager",
+            fallback_used=False,
+            error_type=None,
+            usage=UsageSummary(
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                daily_used_tokens=get_today_token_usage(session),
+                daily_budget_tokens=daily_budget,
+                daily_ratio=0.0,
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
+
+    fast_system_action = detect_fast_system_action(request.message)
+
+    if fast_system_action:
+        existing_action = confirmation_manager.find_equivalent_pending_action(
+            action_type="system",
+            payload=fast_system_action,
+        )
+
+        if existing_action:
+            text = (
+                f"Ya hay una acción pendiente para esto: {existing_action.summary}\n\n"
+                "Para ejecutarla, confirma con:\n"
+                f"`{existing_action.confirmation_phrase}`\n\n"
+                'O usa una confirmación clara como: "sí, hazlo".'
+            )
+
             save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
             save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-            daily_used = get_today_token_usage(session)
 
             return ChatMessageResponse(
                 ok=True,
@@ -545,7 +693,7 @@ def chat_message(
                     input_tokens=0,
                     output_tokens=0,
                     total_tokens=0,
-                    daily_used_tokens=daily_used,
+                    daily_used_tokens=get_today_token_usage(session),
                     daily_budget_tokens=daily_budget,
                     daily_ratio=0.0,
                 ),
@@ -555,14 +703,32 @@ def chat_message(
                 updated_parameters=[],
             )
 
-    if (
-        not pending_action
-        and confirmation_manager.has_multiple_active_pending_actions()
-        and confirmation_manager.is_generic_confirmation_message(request.message)
-    ):
+        created = confirmation_manager.create_pending_action(
+            action_type="system",
+            risk_level=fast_system_action.get("risk_level", "safe"),
+            summary=fast_system_action.get("summary", "Acción de sistema"),
+            payload=fast_system_action,
+            trace_id=trace_id,
+        )
+
+        service_name = fast_system_action.get("service_name", "servicio")
+        action = fast_system_action.get("action", "")
+
+        if action == "restart_service":
+            natural_confirmation = f"sí, reinicia {service_name}"
+        elif action == "start_service":
+            natural_confirmation = f"sí, arranca {service_name}"
+        elif action == "stop_service":
+            natural_confirmation = f"sí, para {service_name}"
+        else:
+            natural_confirmation = "sí, hazlo"
+
         text = (
-            "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
-            "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
+            f"Acción pendiente creada: {created.summary}\n\n"
+            "Para ejecutarla, confirma con:\n"
+            f"`{created.confirmation_phrase}`\n\n"
+            f'También puedes decir: "{natural_confirmation}".\n\n'
+            f"Riesgo: {created.risk_level}."
         )
 
         save_chat_message(session, role="user", text=request.message, trace_id=trace_id)

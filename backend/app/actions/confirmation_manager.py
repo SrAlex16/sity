@@ -1,4 +1,5 @@
 import json
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta, timezone
@@ -100,6 +101,28 @@ class ConfirmationManager:
         self.session.commit()
         return active_actions
 
+    def find_equivalent_pending_action(
+        self,
+        *,
+        action_type: str,
+        payload: dict,
+    ) -> PendingAction | None:
+        active_actions = self._get_active_pending_actions()
+
+        for action in active_actions:
+            if action.action_type != action_type:
+                continue
+
+            try:
+                existing_payload = json.loads(action.payload_json)
+            except json.JSONDecodeError:
+                continue
+
+            if existing_payload == payload:
+                return action
+
+        return None
+
     def find_pending_action_by_confirmation(self, message: str) -> PendingAction | None:
         normalized = message.strip().lower()
         for action in self._get_active_pending_actions():
@@ -112,6 +135,14 @@ class ConfirmationManager:
         active_actions = self._get_active_pending_actions()
 
         if not active_actions:
+            return None
+
+        has_confirmation_intent = (
+            self._is_clear_confirmation(normalized)
+            or self._has_confirmation_intent(normalized)
+        )
+
+        if not has_confirmation_intent:
             return None
 
         matching_actions = [
@@ -157,10 +188,29 @@ class ConfirmationManager:
         ]
         return normalized in confirmation_terms
 
+    def _has_confirmation_intent(self, normalized: str) -> bool:
+        confirmation_patterns = [
+            r"(^|\W)sí(\W|$)",
+            r"(^|\W)si(\W|$)",
+            r"(^|\W)ok(\W|$)",
+            r"(^|\W)vale(\W|$)",
+            r"(^|\W)dale(\W|$)",
+            r"(^|\W)adelante(\W|$)",
+            r"(^|\W)confirmo(\W|$)",
+            r"(^|\W)confirmado(\W|$)",
+            r"(^|\W)ejecuta(\W|$)",
+            r"(^|\W)hazlo(\W|$)",
+        ]
+
+        return any(re.search(pattern, normalized) for pattern in confirmation_patterns)
+
     def _message_matches_action(self, normalized: str, action: PendingAction) -> bool:
         try:
             payload = json.loads(action.payload_json)
         except json.JSONDecodeError:
+            return False
+
+        if not self._has_confirmation_intent(normalized):
             return False
 
         action_name = str(payload.get("action", ""))
@@ -190,6 +240,38 @@ class ConfirmationManager:
 
             if action_name == "commit":
                 return "commit" in normalized or "commitea" in normalized
+
+        if action.action_type == "system":
+            service_name = str(payload.get("service_name", "")).lower()
+            action_name = str(payload.get("action", "")).lower()
+
+            if not service_name:
+                return False
+
+            service_aliases = {
+                "sity-backend": ["sity-backend", "backend"],
+                "sity-frontend": ["sity-frontend", "frontend", "front"],
+            }
+
+            aliases = service_aliases.get(service_name, [service_name])
+
+            if not any(alias in normalized for alias in aliases):
+                return False
+
+            if action_name == "start_service":
+                return any(term in normalized for term in [
+                    "arranca", "arrancar", "lanza", "lanzar", "inicia", "iniciar", "start"
+                ])
+
+            if action_name == "stop_service":
+                return any(term in normalized for term in [
+                    "para", "parar", "detén", "detener", "stop"
+                ])
+
+            if action_name == "restart_service":
+                return any(term in normalized for term in [
+                    "reinicia", "reiniciar", "restart"
+                ])
 
         return False
 

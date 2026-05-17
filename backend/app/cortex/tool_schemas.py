@@ -363,6 +363,48 @@ NO_ACTION_REQUIRED_TOOL = {
 }
 
 
+SYSTEM_PROPOSE_ACTION_TOOL = {
+    "name": "system_propose_action",
+    "description": (
+        "Crea una acción pendiente de sistema que requiere confirmación explícita antes de ejecutarse. "
+        "Úsala cuando el usuario pida arrancar, parar o reiniciar un servicio permitido. "
+        "En esta versión solo están permitidos sity-backend y sity-frontend. "
+        "No ejecuta la acción directamente."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": [
+                    "start_service",
+                    "stop_service",
+                    "restart_service",
+                ],
+            },
+            "service_name": {
+                "type": "string",
+                "enum": [
+                    "sity-backend",
+                    "sity-frontend",
+                ],
+            },
+            "summary": {
+                "type": "string",
+                "description": "Resumen claro de lo que se propone hacer.",
+            },
+            "risk_level": {
+                "type": "string",
+                "enum": ["safe", "critical"],
+                "description": "Para servicios allowlist usa safe.",
+            },
+        },
+        "required": ["action", "service_name", "summary", "risk_level"],
+    },
+}
+
+
 PERSONALITY_TOOLSET = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
     NO_ACTION_REQUIRED_TOOL,
@@ -380,6 +422,7 @@ SYSTEM_TOOLSET = [
     READ_PROCESSES_TOOL,
     READ_SERVICE_STATUS_TOOL,
     LIST_ALLOWED_DIRECTORY_TOOL,
+    SYSTEM_PROPOSE_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
@@ -406,6 +449,7 @@ ALL_TOOLS = [
     GIT_READ_BRANCHES_TOOL,
     GIT_READ_REMOTES_TOOL,
     GIT_PROPOSE_ACTION_TOOL,
+    SYSTEM_PROPOSE_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
