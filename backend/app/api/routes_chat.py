@@ -12,6 +12,12 @@ from app.actions.git_actions import execute_git_action
 from app.actions.git_actions import parse_payload as parse_git_payload
 from app.actions.system_actions import execute_system_action
 from app.actions.system_actions import parse_payload as parse_system_payload
+from app.system.system_reader import load_system_access_config
+from app.actions.system_config_actions import (
+    execute_system_config_action,
+    list_allowed_services,
+    parse_payload as parse_system_config_payload,
+)
 from app.core.persona_engine import PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
@@ -436,6 +442,16 @@ def build_pending_action_response(created, payload: dict) -> str:
     return "\n".join(lines)
 
 
+def is_service_action_allowed(service_name: str) -> bool:
+    config = load_system_access_config()
+    allowed = (
+        config.get("system_access", {})
+        .get("safe_actions", {})
+        .get("allowed_services", [])
+    )
+    return service_name in allowed
+
+
 def detect_fast_system_action(message: str) -> dict | None:
     normalized = message.lower().strip()
 
@@ -450,6 +466,16 @@ def detect_fast_system_action(message: str) -> dict | None:
         if alias in normalized:
             service_name = service
             break
+
+    if not service_name:
+        service_match = re.search(
+            r"(?:reinicia|reiniciar|arranca|arrancar|lanza|lanzar|inicia|iniciar|para|parar|detén|detener|stop|start|restart)\s+(?:el\s+|la\s+)?(?:servicio\s+)?([a-zA-Z0-9_.@-]+)",
+            normalized,
+        )
+        if service_match:
+            candidate = service_match.group(1).strip()
+            if candidate not in {"backend", "frontend", "front"}:
+                service_name = candidate
 
     if not service_name:
         return None
@@ -472,6 +498,68 @@ def detect_fast_system_action(message: str) -> dict | None:
         "risk_level": "safe",
         "summary": f"{verb} servicio {service_name}",
     }
+
+
+def extract_service_name_from_message(words: list[str]) -> str | None:
+    ignored = {
+        "sí", "si", "ok", "vale", "dale", "confirmo",
+        "añade", "agrega", "permite", "autoriza",
+        "quita", "elimina", "borra", "desautoriza",
+        "el", "la", "los", "las", "un", "una",
+        "servicio", "servicios",
+        "a", "al", "de", "del", "en", "como",
+        "permitido", "permitidos", "permitida", "permitidas",
+        "controlable", "controlables",
+        "sity", "puedes", "controlar",
+    }
+
+    candidates = [word for word in words if word not in ignored]
+
+    for candidate in candidates:
+        if all(char.isalnum() or char in "@_.-" for char in candidate):
+            return candidate
+
+    return None
+
+
+def detect_service_config_action(message: str) -> dict | None:
+    normalized = message.lower().strip()
+
+    if "servicio" not in normalized and "servicios" not in normalized:
+        return None
+
+    add_terms = ["añade", "agrega", "permite", "autoriza"]
+    remove_terms = ["quita", "elimina", "borra", "desautoriza"]
+
+    words = normalized.replace("`", "").replace('"', "").replace("'", "").split()
+
+    if any(term in normalized for term in add_terms):
+        service_name = extract_service_name_from_message(words)
+        if service_name:
+            return {
+                "action": "add_allowed_service",
+                "service_name": service_name,
+                "risk_level": "critical",
+                "summary": f"Añadir {service_name} a servicios permitidos",
+            }
+
+    if any(term in normalized for term in remove_terms):
+        service_name = extract_service_name_from_message(words)
+        if service_name:
+            return {
+                "action": "remove_allowed_service",
+                "service_name": service_name,
+                "risk_level": "critical",
+                "summary": f"Quitar {service_name} de servicios permitidos",
+            }
+
+    if any(term in normalized for term in [
+        "qué servicios", "que servicios", "servicios puedes",
+        "servicios permitidos", "qué puedes controlar", "que puedes controlar",
+    ]):
+        return {"action": "list_allowed_services"}
+
+    return None
 
 
 COMPACT_RESPONSE_PROMPT = (
@@ -535,6 +623,81 @@ def chat_message(
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
 
     confirmation_manager = ConfirmationManager(session)
+
+    referenced_action_id = confirmation_manager.extract_action_id_from_message(request.message)
+
+    if referenced_action_id:
+        referenced_action = confirmation_manager.find_action_by_id(referenced_action_id)
+
+        if referenced_action and referenced_action.status != "pending":
+            text = (
+                f"La acción `{referenced_action_id}` no está pendiente; "
+                f"su estado actual es `{referenced_action.status}`."
+            )
+
+            if referenced_action.status == "executed":
+                text += " Ya fue ejecutada, no voy a repetirla."
+            elif referenced_action.status == "expired":
+                text += " Ya expiró. Crea una acción nueva si todavía quieres hacer eso."
+            elif referenced_action.status == "failed":
+                text += " Falló anteriormente. Crea una acción nueva si quieres reintentarlo."
+
+            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+            return ChatMessageResponse(
+                ok=True,
+                trace_id=trace_id,
+                text=text,
+                provider="local",
+                model="confirmation-manager",
+                fallback_used=False,
+                error_type=None,
+                usage=UsageSummary(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    daily_used_tokens=get_today_token_usage(session),
+                    daily_budget_tokens=daily_budget,
+                    daily_ratio=0.0,
+                ),
+                warnings=[],
+                personality_updated=False,
+                updated_parameter=None,
+                updated_parameters=[],
+            )
+
+        if not referenced_action:
+            text = (
+                f"No encuentro ninguna acción con ID `{referenced_action_id}`. "
+                "Puede que sea antigua, incorrecta o de otra base de datos."
+            )
+
+            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+            return ChatMessageResponse(
+                ok=True,
+                trace_id=trace_id,
+                text=text,
+                provider="local",
+                model="confirmation-manager",
+                fallback_used=False,
+                error_type=None,
+                usage=UsageSummary(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    daily_used_tokens=get_today_token_usage(session),
+                    daily_budget_tokens=daily_budget,
+                    daily_ratio=0.0,
+                ),
+                warnings=[],
+                personality_updated=False,
+                updated_parameter=None,
+                updated_parameters=[],
+            )
+
     pending_action = confirmation_manager.find_pending_action_by_confirmation(request.message)
 
     if not pending_action:
@@ -590,6 +753,29 @@ def chat_message(
                         or execution_result.get("stdout")
                         or f"El comando terminó sin confirmación de éxito. Estado posterior: {execution_result.get('post_status', 'desconocido')}"
                     )
+                    confirmation_manager.mark_failed(pending_action, trace_id, error)
+                    text = (
+                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
+                        f"Error:\n{error}"
+                    )
+
+            except Exception as exc:
+                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
+                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
+
+        elif pending_action.action_type == "system_config":
+            try:
+                payload = parse_system_config_payload(pending_action.payload_json)
+                execution_result = execute_system_config_action(payload)
+
+                if execution_result.get("ok"):
+                    confirmation_manager.mark_executed(pending_action, trace_id)
+                    text = (
+                        f"Acción ejecutada: {pending_action.summary}\n\n"
+                        f"{execution_result.get('message', 'Configuración actualizada.')}"
+                    )
+                else:
+                    error = execution_result.get("stderr", "Error desconocido")
                     confirmation_manager.mark_failed(pending_action, trace_id, error)
                     text = (
                         f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
@@ -662,9 +848,143 @@ def chat_message(
             updated_parameters=[],
         )
 
+    service_config_action = detect_service_config_action(request.message)
+
+    if service_config_action:
+        action = service_config_action.get("action")
+
+        if action == "list_allowed_services":
+            result = list_allowed_services()
+            text = (
+                "Servicios permitidos para lectura:\n"
+                + "\n".join(f"- {service}" for service in result["read_allowed_services"])
+                + "\n\nServicios permitidos para acciones:\n"
+                + "\n".join(f"- {service}" for service in result["action_allowed_services"])
+            )
+
+            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+            return ChatMessageResponse(
+                ok=True,
+                trace_id=trace_id,
+                text=text,
+                provider="local",
+                model="system-config",
+                fallback_used=False,
+                error_type=None,
+                usage=UsageSummary(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    daily_used_tokens=get_today_token_usage(session),
+                    daily_budget_tokens=daily_budget,
+                    daily_ratio=0.0,
+                ),
+                warnings=[],
+                personality_updated=False,
+                updated_parameter=None,
+                updated_parameters=[],
+            )
+
+        service_name = service_config_action.get("service_name", "")
+
+        existing_action = confirmation_manager.find_equivalent_pending_action(
+            action_type="system_config",
+            payload=service_config_action,
+        )
+
+        if existing_action:
+            text = (
+                f"Ya hay una acción pendiente para esto: {existing_action.summary}\n\n"
+                "Para ejecutarla, confirma con:\n"
+                f"`{existing_action.confirmation_phrase}`\n\n"
+                'O usa una confirmación clara como: "sí, hazlo".'
+            )
+        else:
+            created = confirmation_manager.create_pending_action(
+                action_type="system_config",
+                risk_level=service_config_action.get("risk_level", "critical"),
+                summary=service_config_action.get("summary", "Cambiar allowlist de servicios"),
+                payload=service_config_action,
+                trace_id=trace_id,
+            )
+
+            if action == "add_allowed_service":
+                natural = f"sí, añade {service_name}"
+            else:
+                natural = f"sí, quita {service_name}"
+
+            text = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                "Esto modifica la allowlist de servicios de Sity. "
+                "No crea ni elimina servicios systemd; solo cambia qué servicios puedo controlar.\n\n"
+                "Para ejecutarla, confirma con:\n"
+                f"`{created.confirmation_phrase}`\n\n"
+                f'También puedes decir: "{natural}".\n\n'
+                f"Riesgo: {created.risk_level}."
+            )
+
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+        return ChatMessageResponse(
+            ok=True,
+            trace_id=trace_id,
+            text=text,
+            provider="local",
+            model="system-config",
+            fallback_used=False,
+            error_type=None,
+            usage=UsageSummary(
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                daily_used_tokens=get_today_token_usage(session),
+                daily_budget_tokens=daily_budget,
+                daily_ratio=0.0,
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
+
     fast_system_action = detect_fast_system_action(request.message)
 
     if fast_system_action:
+        if not is_service_action_allowed(fast_system_action["service_name"]):
+            service_name = fast_system_action["service_name"]
+            text = (
+                f"No puedo controlar `{service_name}` todavía porque no está en la allowlist de servicios.\n\n"
+                f"Puedes pedirme: `añade {service_name} a servicios permitidos`."
+            )
+
+            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+            return ChatMessageResponse(
+                ok=True,
+                trace_id=trace_id,
+                text=text,
+                provider="local",
+                model="confirmation-manager",
+                fallback_used=False,
+                error_type=None,
+                usage=UsageSummary(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    daily_used_tokens=get_today_token_usage(session),
+                    daily_budget_tokens=daily_budget,
+                    daily_ratio=0.0,
+                ),
+                warnings=[],
+                personality_updated=False,
+                updated_parameter=None,
+                updated_parameters=[],
+            )
+
         existing_action = confirmation_manager.find_equivalent_pending_action(
             action_type="system",
             payload=fast_system_action,

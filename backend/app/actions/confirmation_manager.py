@@ -101,6 +101,16 @@ class ConfirmationManager:
         self.session.commit()
         return active_actions
 
+    def extract_action_id_from_message(self, message: str) -> str | None:
+        match = re.search(r"\bact_[a-fA-F0-9]{8}\b", message.strip())
+        if not match:
+            return None
+        return match.group(0).lower()
+
+    def find_action_by_id(self, action_id: str) -> PendingAction | None:
+        statement = select(PendingAction).where(PendingAction.id == action_id)
+        return self.session.exec(statement).first()
+
     def find_equivalent_pending_action(
         self,
         *,
@@ -271,6 +281,23 @@ class ConfirmationManager:
             if action_name == "restart_service":
                 return any(term in normalized for term in [
                     "reinicia", "reiniciar", "restart"
+                ])
+
+        if action.action_type == "system_config":
+            service_name = str(payload.get("service_name", "")).lower()
+            action_name = str(payload.get("action", "")).lower()
+
+            if not service_name or service_name not in normalized:
+                return False
+
+            if action_name == "add_allowed_service":
+                return any(term in normalized for term in [
+                    "añade", "agrega", "permite", "autoriza"
+                ])
+
+            if action_name == "remove_allowed_service":
+                return any(term in normalized for term in [
+                    "quita", "elimina", "borra", "desautoriza"
                 ])
 
         return False
