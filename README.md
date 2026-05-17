@@ -31,6 +31,8 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Servicio de prueba `sity-test`.
 - Fast paths locales para evitar gasto innecesario de tokens.
 - Presupuesto diario local de tokens y avisos de uso.
+- Prompt/tool routing corregido para no usar debug en conversación normal.
+- Reconocimiento de personalidad actual desde el estado inyectado por backend.
 
 ---
 
@@ -61,6 +63,9 @@ deploy/
 
 scripts/
   Scripts de desarrollo, instalación y estado.
+
+services/
+  Servicios auxiliares del proyecto.
 ```
 
 ---
@@ -72,8 +77,11 @@ El backend expone, entre otros:
 ```text
 GET  /health
 POST /chat/message
+GET  /chat/current
 GET  /settings/personality
 POST /settings/personality/adjust
+GET  /debug/events/recent
+GET  /debug/last-trace
 ```
 
 El endpoint principal es:
@@ -90,6 +98,12 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"hola"}'
 ```
 
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
+
 ---
 
 ## Frontend
@@ -102,6 +116,20 @@ El frontend permite:
 - Ver uso de tokens.
 - Ajustar personalidad con sliders.
 - Mantener conversación tras refrescar la página.
+- Mostrar historial persistente desde backend.
+- Consultar paneles de debug.
+
+El frontend usa:
+
+```text
+VITE_SITY_API_BASE
+```
+
+Ejemplo:
+
+```env
+VITE_SITY_API_BASE=http://192.168.1.133:8000
+```
 
 ---
 
@@ -116,6 +144,24 @@ claude-haiku-4-5-20251001
 ```
 
 El sistema está planteado para que en el futuro exista fallback a otros modelos, pero ahora mismo el proyecto está centrado en Claude.
+
+Claude se usa para:
+
+- Conversación.
+- Interpretación flexible de intención.
+- Decidir cuándo usar tools.
+- Transformar peticiones naturales en acciones estructuradas.
+- Responder con personalidad actual.
+
+El backend se encarga de:
+
+- Seguridad.
+- Confirmaciones.
+- Fast paths deterministas.
+- Ejecución de acciones.
+- Persistencia.
+- Logs.
+- Control de costes.
 
 ---
 
@@ -151,9 +197,14 @@ Ejemplos:
 sube la melancolía al 90%
 pon todos los parámetros al 50%
 baja el sarcasmo al 30%
+hazte menos borde pero mantén algo de sarcasmo
 ```
 
-Sity puede leer la configuración actual que el backend le inyecta en el prompt y adaptar su comportamiento a esos valores.
+La personalidad actual inyectada por el backend es la fuente de verdad.
+
+Si el usuario cambia sliders desde el frontend, Sity debe usar los valores actuales recibidos en el prompt. No necesita una confirmación de tool para reconocer cambios hechos desde la UI.
+
+Solo debe hablar de "cambio aplicado por tool" cuando el backend indique explícitamente que una tool de personalidad ha ejecutado un cambio.
 
 ---
 
@@ -166,6 +217,7 @@ Esto permite:
 - Recargar la UI sin perder conversación.
 - Usar contexto anterior.
 - Evitar depender de memoria temporal del frontend.
+- Consultar `/chat/current` para reconstruir la conversación.
 
 La memoria de frontend se ha reducido para evitar contradicciones. El backend es la fuente principal de verdad.
 
@@ -185,9 +237,24 @@ Git read tools
 Git action tools
 System action tools
 System config tools
+No-action / respuesta normal
 ```
 
 Las tools críticas no se ejecutan directamente. Se crea una acción pendiente y se exige confirmación.
+
+Las herramientas de debug solo deben usarse cuando el usuario pide explícitamente:
+
+```text
+logs
+trazas
+errores
+eventos
+tools ejecutadas
+diagnóstico técnico
+auditoría
+```
+
+No deben usarse para conversación normal, frases ambiguas o seguimiento contextual.
 
 ---
 
@@ -240,6 +307,8 @@ Reglas importantes:
 - Las confirmaciones viejas no caen en Claude.
 - Repetir una orden no cuenta como confirmación.
 - Si ya existe una acción pendiente equivalente, se reutiliza.
+- Las acciones duplicadas se detectan.
+- La confirmación contextual exige intención explícita.
 
 ---
 
@@ -257,9 +326,27 @@ haz fetch del repo sity
 haz pull del repo sity
 cambia a la rama main
 añade sity-test a servicios permitidos
+confirmo ejecutar act_xxxxxxxx
 ```
 
 Esto evita gastar miles de tokens en tareas deterministas.
+
+El criterio general:
+
+```text
+Backend local:
+- Seguridad.
+- Confirmaciones.
+- Acciones deterministas.
+- Dedupe.
+- Estados de acciones.
+
+Claude:
+- Interpretación flexible.
+- Conversación.
+- Decidir si hace falta tool.
+- Explicar resultados.
+```
 
 ---
 
@@ -292,11 +379,25 @@ Ejemplos:
 cómo está el repo sity?
 qué últimos commits tiene el repo sity?
 haz pull del repo sity
+haz fetch del repo sity
 crea una rama feature/test
 cambia a la rama main
 ```
 
 Las acciones modificadoras requieren confirmación.
+
+Ejemplo:
+
+```text
+Usuario:
+haz pull del repo sity
+
+Sity:
+Acción pendiente creada: Pull fast-forward del repo sity desde origin
+
+Para ejecutarla, confirma con:
+confirmo ejecutar act_xxxxxxxx
+```
 
 ---
 
@@ -354,6 +455,7 @@ Importante:
 - Añadir un servicio a la allowlist no crea el servicio systemd.
 - Quitar un servicio de la allowlist no borra el servicio systemd.
 - Solo cambia qué servicios puede consultar/controlar Sity.
+- La modificación de allowlist requiere confirmación.
 
 ---
 
@@ -389,6 +491,12 @@ Servicio Vite dev server.
 http://localhost:5173
 ```
 
+En red local:
+
+```text
+http://192.168.1.133:5173
+```
+
 ### sity-test
 
 Servicio HTTP mínimo para pruebas.
@@ -402,6 +510,8 @@ Devuelve:
 ```text
 sity service test
 ```
+
+Está pensado para probar control de servicios sin levantar algo pesado como Minecraft.
 
 ---
 
@@ -423,6 +533,12 @@ systemctl start/stop/restart sity-test
 
 No se concede sudo general.
 
+Ejemplo de línea:
+
+```text
+alex ALL=(root) NOPASSWD: /usr/bin/systemctl start sity-backend, /usr/bin/systemctl stop sity-backend, /usr/bin/systemctl restart sity-backend
+```
+
 ---
 
 ## Instalación de servicios
@@ -441,6 +557,14 @@ Hace:
 3. Valida sudoers con visudo
 4. Recarga systemd
 5. Habilita servicios
+```
+
+Después se pueden arrancar manualmente:
+
+```bash
+sudo systemctl start sity-backend
+sudo systemctl start sity-frontend
+sudo systemctl start sity-test
 ```
 
 ---
@@ -502,6 +626,18 @@ SITY_ENV
 
 No debe subirse a Git.
 
+Frontend local:
+
+```text
+frontend/.env.local
+```
+
+Ejemplo:
+
+```env
+VITE_SITY_API_BASE=http://192.168.1.133:8000
+```
+
 ---
 
 ## Logs y datos
@@ -522,6 +658,14 @@ audit logs
 
 Debe permanecer fuera de Git.
 
+Logs systemd:
+
+```bash
+journalctl -u sity-backend -n 80 --no-pager
+journalctl -u sity-frontend -n 80 --no-pager
+journalctl -u sity-test -n 80 --no-pager
+```
+
 ---
 
 ## Seguridad
@@ -538,94 +682,58 @@ Principios actuales:
 7. Las acciones viejas no se reejecutan.
 8. Las acciones duplicadas se detectan.
 9. Confirmación contextual solo con intención explícita.
+10. Las herramientas de debug no se usan para conversación normal.
 ```
+
+Regla base:
+
+```text
+Puede mirar.
+Puede proponer.
+Puede actuar solo si se confirma.
+```
+
+Para capacidades que salen del entorno local —internet, Bluetooth, WiFi, Google, correo, calendario o archivos externos— Sity debe pedir permiso antes de actuar, explicar qué va a consultar o modificar, y dejar trazabilidad en logs/auditoría.
 
 ---
 
-## Pendiente / Roadmap
+## Desarrollo
 
-### Core pendiente
+### Backend
 
-- Mejorar manejo de múltiples acciones pendientes.
-- Añadir vista/listado de pending actions desde chat.
-- Permitir cancelar acciones pendientes desde chat.
-- Deduplicar también acciones Git.
-- Mejorar mensajes de confirmación para usar nombres humanos en vez de nombres systemd.
-- Añadir tests automatizados para confirmation manager.
-- Añadir migraciones de base de datos si el esquema crece.
+Si el backend está corriendo como servicio, lanzarlo manualmente puede dar:
 
-### System Access
+```text
+ERROR: [Errno 98] Address already in use
+```
 
-- Añadir gestión de allowlist de rutas.
-- Añadir lectura segura de archivos permitidos.
-- Añadir logs de servicios systemd.
-- Añadir health checks por servicio.
-- Añadir plantillas para crear nuevos servicios systemd desde planes confirmados.
-- Añadir acciones críticas planificadas para instalar/configurar servicios.
+Eso es normal: el puerto `8000` ya está ocupado por `sity-backend.service`.
 
-### Git
+Reiniciar backend:
 
-- Prevalidación más inteligente antes de pull/push/commit.
-- Proponer stash/commit si el working tree está sucio.
-- Crear PRs en GitHub.
-- Leer issues y pull requests.
-- Integración con GitHub CLI o API.
-- Gestión segura de ramas remotas.
+```bash
+sudo systemctl restart sity-backend
+```
 
-### Sentidos / Hardware
+Comprobar salud:
 
-Pendiente para la siguiente fase:
-
-- Detectar orientación de RasPad 3.
-- Leer sensores disponibles.
-- Detectar cámara.
-- Detectar micrófono integrado en la cámara.
-- Capturar snapshot de cámara.
-- Grabar muestra de audio.
-- Añadir análisis de imagen.
-- Añadir transcripción de audio.
-- Añadir wake word o modo escucha.
-
-### Google Integration
-
-Pendiente:
-
-- OAuth local.
-- Google Drive read-only.
-- Gmail read-only.
-- Google Calendar read-only.
-- Confirmación para acciones sensibles:
-  - enviar email
-  - borrar email
-  - mover archivos
-  - crear/modificar eventos
-- Separar scopes por capacidad.
-- Guardar tokens fuera de Git.
-- Revocación/rotación de credenciales.
-
-### IA / Modelos
-
-Pendiente:
-
-- Fallback a futuros modelos.
-- Mejor routing entre modelo barato/caro.
-- Compresión de contexto.
-- Resumen automático de memoria.
-- Control más fino del coste de tokens.
-- Modo offline/local en el futuro si hay modelo viable.
+```bash
+curl http://localhost:8000/health
+```
 
 ### Frontend
 
-Pendiente:
+Reiniciar frontend:
 
-- Vista de acciones pendientes.
-- Botones de confirmar/cancelar acción.
-- Panel de servicios permitidos.
-- Panel de estado de sistema.
-- Panel de logs/debug.
-- Mejor visualización de tokens.
-- Mejor edición de personalidad.
-- Mejor UX móvil/RasPad.
+```bash
+sudo systemctl restart sity-frontend
+```
+
+Abrir:
+
+```text
+http://192.168.1.133:5173
+```
 
 ---
 
@@ -677,11 +785,171 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"qué servicios puedes controlar?"}' | python3 -m json.tool
 ```
 
+### CORS / preflight
+
+```bash
+curl -i -X OPTIONS http://localhost:8000/chat/message \
+  -H "Origin: http://192.168.1.133:5173" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+---
+
+## Roadmap
+
+### Core pendiente
+
+- Mejorar manejo de múltiples acciones pendientes.
+- Añadir vista/listado de pending actions desde chat.
+- Permitir cancelar acciones pendientes desde chat.
+- Deduplicar también acciones Git.
+- Mejorar mensajes de confirmación para usar nombres humanos en vez de nombres systemd.
+- Añadir tests automatizados para confirmation manager.
+- Añadir migraciones de base de datos si el esquema crece.
+- Mejorar compactación de historial largo.
+- Evitar que `/chat/current` devuelva mensajes antiguos cuando debería devolver los últimos.
+
+### System Access
+
+- Añadir gestión de allowlist de rutas.
+- Añadir lectura segura de archivos permitidos.
+- Añadir logs de servicios systemd.
+- Añadir health checks por servicio.
+- Añadir plantillas para crear nuevos servicios systemd desde planes confirmados.
+- Añadir acciones críticas planificadas para instalar/configurar servicios.
+- Integrar servicios pesados como Minecraft solo bajo confirmación.
+- Permitir añadir/quitar servicios conforme el usuario los cree o elimine.
+
+### Git
+
+- Prevalidación más inteligente antes de pull/push/commit.
+- Proponer stash/commit si el working tree está sucio.
+- Crear PRs en GitHub.
+- Leer issues y pull requests.
+- Integración con GitHub CLI o API.
+- Gestión segura de ramas remotas.
+- Deduplicar acciones Git pendientes igual que system actions.
+
+### Sentidos / Hardware
+
+Pendiente para la siguiente fase:
+
+- Detectar orientación de RasPad 3.
+- Leer sensores disponibles.
+- Detectar cámara.
+- Detectar micrófono integrado en la cámara.
+- Capturar snapshot de cámara.
+- Grabar muestra de audio.
+- Añadir análisis de imagen.
+- Añadir transcripción de audio.
+- Añadir wake word o modo escucha.
+- Detectar estado de pantalla.
+- Explorar integración con sensor de movimiento/orientación.
+
+### Cámara y micrófono
+
+Pendiente:
+
+- Listar dispositivos de vídeo.
+- Listar dispositivos de audio.
+- Capturar una imagen bajo petición.
+- Grabar audio corto bajo petición.
+- Guardar capturas en ruta controlada.
+- No activar cámara/micrófono sin confirmación.
+- Añadir indicadores visibles/logs cuando se usen sensores.
+- Integrar transcripción.
+- Integrar descripción de imágenes.
+
+### Conectividad local
+
+Pendiente:
+
+- Integración con Bluetooth de la Raspberry.
+- Escaneo de dispositivos Bluetooth cercanos.
+- Emparejamiento controlado de dispositivos.
+- Transferencia de archivos por Bluetooth con confirmación.
+- Integración con WiFi.
+- Lectura de redes WiFi visibles.
+- Diagnóstico de conectividad local.
+- Gestión segura de conexiones conocidas.
+- Compartición o recepción de archivos en red local.
+- Detección de dispositivos de la LAN.
+- Acciones de red siempre bajo allowlist y confirmación.
+
+### Internet / Web Access
+
+Pendiente:
+
+- Añadir herramienta de búsqueda web.
+- Sity debe preguntar antes de buscar en internet si la acción implica salir del entorno local.
+- Separar claramente conocimiento local de información buscada online.
+- Mostrar fuentes/enlaces usados para responder.
+- Resumir resultados sin inventar.
+- Permitir preguntas como:
+  - “¿Cuándo sale Forza Horizon 6?”
+  - “Busca documentación de X.”
+  - “Qué ha pasado hoy con Y.”
+- Definir política de permisos:
+  - búsqueda puntual con confirmación
+  - dominios permitidos/opcionales
+  - bloqueo de webs sensibles si hace falta
+- Cachear búsquedas recientes para ahorrar llamadas.
+
+### Google Integration
+
+Pendiente:
+
+- OAuth local.
+- Google Drive read-only.
+- Gmail read-only.
+- Google Calendar read-only.
+- Confirmación para acciones sensibles:
+  - enviar email
+  - borrar email
+  - mover archivos
+  - crear/modificar eventos
+- Separar scopes por capacidad.
+- Guardar tokens fuera de Git.
+- Revocación/rotación de credenciales.
+- Mostrar claramente cuándo Sity está consultando Google.
+
+### IA / Modelos
+
+Pendiente:
+
+- Fallback a futuros modelos.
+- Mejor routing entre modelo barato/caro.
+- Compresión de contexto.
+- Resumen automático de memoria.
+- Control más fino del coste de tokens.
+- Modo offline/local en el futuro si hay modelo viable.
+- Separar mejor planner, conversación y ejecución.
+- Evitar llamadas a IA en casos claramente locales.
+
+### Frontend
+
+Pendiente:
+
+- Vista de acciones pendientes.
+- Botones de confirmar/cancelar acción.
+- Panel de servicios permitidos.
+- Panel de estado de sistema.
+- Panel de logs/debug.
+- Mejor visualización de tokens.
+- Mejor edición de personalidad.
+- Mejor UX móvil/RasPad.
+- Scroll automático robusto al último mensaje.
+- Mostrar errores de red/API de forma clara.
+- Mostrar si una respuesta vino de Claude o de fast path local.
+
 ---
 
 ## Filosofía del proyecto
 
 Sity debe ser útil, local, extensible y con personalidad propia, pero sin perder control.
+
+No debe convertirse en una shell con cara amable ni en una IA que ejecuta cosas sin explicar.
 
 La regla base:
 
@@ -691,4 +959,18 @@ Puede proponer.
 Puede actuar solo si se confirma.
 ```
 
-Para acciones críticas, primero plan. Luego confirmación. Después ejecución.
+Para acciones críticas:
+
+```text
+Primero plan.
+Luego confirmación.
+Después ejecución.
+```
+
+Para capacidades externas:
+
+```text
+Primero permiso.
+Luego consulta.
+Después respuesta con trazabilidad.
+```
