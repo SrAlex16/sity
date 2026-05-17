@@ -279,6 +279,48 @@ GIT_READ_REMOTES_TOOL = {
 }
 
 
+GIT_PROPOSE_ACTION_TOOL = {
+    "name": "git_propose_action",
+    "description": (
+        "Crea una acción pendiente de Git que requiere confirmación explícita antes de ejecutarse. "
+        "Úsala cuando el usuario pida git pull, git push, crear rama, fetch u otra acción que modifique "
+        "el estado local o remoto del repositorio."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["fetch", "pull_ff_only", "push", "create_branch"],
+            },
+            "repo_path": {
+                "type": "string",
+                "description": "Repo permitido. Para Sity usa sity o /home/alex/projects/sity.",
+            },
+            "branch": {
+                "type": "string",
+                "description": "Rama objetivo cuando aplique.",
+            },
+            "remote": {
+                "type": "string",
+                "description": "Remote objetivo cuando aplique. Normalmente origin.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "Resumen claro de lo que se propone hacer.",
+            },
+            "risk_level": {
+                "type": "string",
+                "enum": ["safe", "critical"],
+                "description": "fetch puede ser safe. pull, push y crear rama son critical.",
+            },
+        },
+        "required": ["action", "repo_path", "summary", "risk_level"],
+    },
+}
+
+
 NO_ACTION_REQUIRED_TOOL = {
     "name": "no_action_required",
     "description": (
@@ -324,6 +366,7 @@ GIT_TOOLSET = [
     GIT_READ_LOG_TOOL,
     GIT_READ_BRANCHES_TOOL,
     GIT_READ_REMOTES_TOOL,
+    GIT_PROPOSE_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
@@ -340,6 +383,7 @@ ALL_TOOLS = [
     GIT_READ_LOG_TOOL,
     GIT_READ_BRANCHES_TOOL,
     GIT_READ_REMOTES_TOOL,
+    GIT_PROPOSE_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 

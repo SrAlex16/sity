@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from app.actions.confirmation_manager import ConfirmationManager
+from app.actions.git_actions import execute_git_action, parse_payload
 from app.core.persona_engine import PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
@@ -242,8 +244,35 @@ def select_toolset_for_message(message: str) -> list[dict]:
     return ALL_TOOLS
 
 
+def is_git_mutating_request(message: str) -> bool:
+    normalized = message.lower()
+
+    mutating_terms = [
+        "pull",
+        "push",
+        "commit",
+        "commitea",
+        "commitear",
+        "crear rama",
+        "crea rama",
+        "nueva rama",
+        "checkout",
+        "merge",
+        "rebase",
+        "reset",
+        "stash",
+        "aplica",
+        "aplicar",
+    ]
+
+    return any(term in normalized for term in mutating_terms)
+
+
 def detect_fast_read_tool(message: str) -> dict | None:
     normalized = message.lower()
+
+    if is_git_mutating_request(message):
+        return None
 
     if "disco" in normalized or "espacio" in normalized:
         return {"name": "read_disk_usage", "input": {"path": "/"}}
@@ -275,7 +304,8 @@ Debes elegir exactamente una herramienta:
 - Usa herramientas de personalidad si el usuario pide cambiar tono, estilo, sliders o parámetros.
 - Usa herramientas de debug si pregunta por logs, trazas, errores o tools ejecutadas.
 - Usa herramientas de sistema si pregunta por Raspberry, CPU, RAM, disco, procesos, servicios o directorios.
-- Usa herramientas Git si pregunta por repos, commits, ramas, remotos, status o diff.
+- Usa herramientas Git de lectura si pregunta por repos, commits, ramas, remotos, status o diff.
+- Usa git_propose_action si el usuario pide git pull, git push, commit, crear rama, checkout, merge, rebase, reset o stash. No respondas solo con texto para estas acciones.
 - Usa no_action_required si solo quiere conversar.
 
 No respondas con texto normal en esta fase.
@@ -319,6 +349,60 @@ def chat_message(
     daily_budget = int(usage_config.get("daily_token_budget", 50000))
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
+
+    pending_action = ConfirmationManager(session).find_pending_action_by_confirmation(request.message)
+
+    if pending_action:
+        if pending_action.action_type == "git":
+            try:
+                payload = parse_payload(pending_action.payload_json)
+                execution_result = execute_git_action(payload)
+
+                if execution_result.get("ok"):
+                    ConfirmationManager(session).mark_executed(pending_action, trace_id)
+                    text = (
+                        f"Acción ejecutada: {pending_action.summary}\n\n"
+                        f"Comando: {' '.join(str(x) for x in execution_result.get('command', []))}\n"
+                        f"Salida:\n{execution_result.get('stdout', '') or '(sin salida)'}"
+                    )
+                else:
+                    error = execution_result.get("stderr", "Error desconocido")
+                    ConfirmationManager(session).mark_failed(pending_action, trace_id, error)
+                    text = (
+                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
+                        f"Error:\n{error}"
+                    )
+
+            except Exception as exc:
+                ConfirmationManager(session).mark_failed(pending_action, trace_id, str(exc))
+                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
+
+            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+            daily_used = get_today_token_usage(session)
+
+            return ChatMessageResponse(
+                ok=True,
+                trace_id=trace_id,
+                text=text,
+                provider="local",
+                model="confirmation-manager",
+                fallback_used=False,
+                error_type=None,
+                usage=UsageSummary(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    daily_used_tokens=daily_used,
+                    daily_budget_tokens=daily_budget,
+                    daily_ratio=0.0,
+                ),
+                warnings=[],
+                personality_updated=False,
+                updated_parameter=None,
+                updated_parameters=[],
+            )
 
     history_limit = history_limit_for_message(request.message)
 

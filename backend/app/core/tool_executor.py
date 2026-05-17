@@ -5,6 +5,7 @@ from sqlmodel import Session
 
 from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
+from app.actions.confirmation_manager import ConfirmationManager
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 from app.system.git_reader import git_branches, git_log, git_remotes, git_status
@@ -121,6 +122,12 @@ class ToolExecutor:
                 tool_name=tool_name,
                 trace_id=trace_id,
                 result=git_remotes(str(tool_input.get("repo_path", ""))),
+            )
+
+        if tool_name == "git_propose_action":
+            return self._git_propose_action(
+                tool_input=tool_input,
+                trace_id=trace_id,
             )
 
         if tool_name == "update_personality_settings":
@@ -402,6 +409,68 @@ class ToolExecutor:
 
         return ToolExecutionResult(
             tool_name="read_trace_events",
+            ok=True,
+            message=result["message"],
+            updated_parameters=[],
+            raw_result=result,
+        )
+
+    def _git_propose_action(
+        self,
+        *,
+        tool_input: dict[str, Any],
+        trace_id: str,
+    ) -> ToolExecutionResult:
+        action = str(tool_input.get("action", "")).strip()
+        repo_path = str(tool_input.get("repo_path", "sity")).strip() or "sity"
+        branch = str(tool_input.get("branch", "main")).strip() or "main"
+        remote = str(tool_input.get("remote", "origin")).strip() or "origin"
+        risk_level = str(tool_input.get("risk_level", "critical")).strip()
+        summary = str(tool_input.get("summary", "")).strip()
+
+        if action not in {"fetch", "pull_ff_only", "push", "create_branch"}:
+            result = {
+                "success": False,
+                "message": f"Acción Git no soportada: {action}",
+            }
+            return ToolExecutionResult(
+                tool_name="git_propose_action",
+                ok=False,
+                message=result["message"],
+                updated_parameters=[],
+                raw_result=result,
+            )
+
+        if risk_level not in {"safe", "critical"}:
+            risk_level = "critical"
+
+        payload = {
+            "action": action,
+            "repo_path": repo_path,
+            "branch": branch,
+            "remote": remote,
+        }
+
+        created = ConfirmationManager(self.session).create_pending_action(
+            action_type="git",
+            risk_level=risk_level,
+            summary=summary or f"Git action {action} on {repo_path}",
+            payload=payload,
+            trace_id=trace_id,
+        )
+
+        result = {
+            "success": True,
+            "message": "Acción pendiente creada. Requiere confirmación explícita antes de ejecutarse.",
+            "action_id": created.id,
+            "risk_level": created.risk_level,
+            "summary": created.summary,
+            "confirmation_phrase": created.confirmation_phrase,
+            "payload": payload,
+        }
+
+        return ToolExecutionResult(
+            tool_name="git_propose_action",
             ok=True,
             message=result["message"],
             updated_parameters=[],

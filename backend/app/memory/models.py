@@ -90,3 +90,17 @@ class ChatMessage(SQLModel, table=True):
     text: str
     trace_id: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
+
+
+class PendingAction(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    action_type: str = Field(index=True)
+    risk_level: str = Field(index=True)
+    status: str = Field(default="pending", index=True)
+    summary: str
+    payload_json: str
+    confirmation_phrase: str
+    created_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime
+    executed_at: Optional[datetime] = None
+    trace_id: Optional[str] = Field(default=None, index=True)
