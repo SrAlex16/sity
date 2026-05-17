@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date
 from typing import Optional
 
@@ -293,6 +294,145 @@ def detect_fast_read_tool(message: str) -> dict | None:
     return None
 
 
+def detect_fast_git_action(message: str) -> dict | None:
+    normalized = message.lower().strip()
+
+    if not any(term in normalized for term in ["git", "repo", "rama", "branch", "pull", "push", "fetch", "commit"]):
+        return None
+
+    repo_path = "sity"
+
+    if "fetch" in normalized:
+        return {
+            "action": "fetch",
+            "repo_path": repo_path,
+            "branch": "main",
+            "remote": "origin",
+            "risk_level": "safe",
+            "summary": "Fetch del repo sity",
+        }
+
+    if "pull" in normalized:
+        return {
+            "action": "pull_ff_only",
+            "repo_path": repo_path,
+            "branch": "main",
+            "remote": "origin",
+            "risk_level": "critical",
+            "summary": "Pull fast-forward del repo sity desde origin",
+        }
+
+    if "push" in normalized:
+        return {
+            "action": "push",
+            "repo_path": repo_path,
+            "branch": "main",
+            "remote": "origin",
+            "risk_level": "critical",
+            "summary": "Push del repo sity a origin/main",
+        }
+
+    checkout_patterns = [
+        r"(?:cambia|cambiar|vuelve|volver|checkout)\s+a\s+la\s+rama\s+([a-zA-Z0-9._/\-]+)",
+        r"(?:cambia|cambiar|vuelve|volver|checkout)\s+a\s+([a-zA-Z0-9._/\-]+)",
+        r"(?:checkout)\s+([a-zA-Z0-9._/\-]+)",
+    ]
+
+    for pattern in checkout_patterns:
+        checkout_match = re.search(pattern, normalized)
+        if checkout_match:
+            branch = checkout_match.group(1).strip()
+
+            if branch in {"en", "a", "la", "rama", "branch", "repo", "sity"}:
+                return None
+
+            return {
+                "action": "checkout_branch",
+                "repo_path": repo_path,
+                "branch": branch,
+                "remote": "origin",
+                "risk_level": "critical",
+                "summary": f"Cambiar a la rama {branch} en el repo sity",
+            }
+
+    create_branch_patterns = [
+        r"(?:crea|crear)\s+(?:una\s+)?(?:rama|branch)\s+([a-zA-Z0-9._/\-]+)",
+        r"(?:nueva)\s+(?:rama|branch)\s+([a-zA-Z0-9._/\-]+)",
+    ]
+
+    for pattern in create_branch_patterns:
+        create_branch_match = re.search(pattern, normalized)
+        if create_branch_match:
+            branch = create_branch_match.group(1).strip()
+
+            if branch in {"en", "a", "la", "rama", "branch", "repo", "sity"}:
+                return None
+
+            return {
+                "action": "create_branch",
+                "repo_path": repo_path,
+                "branch": branch,
+                "remote": "origin",
+                "risk_level": "critical",
+                "summary": f"Crear rama {branch} en el repo sity",
+            }
+
+    commit_match = re.search(
+        r"(?:commit|commitea|commitear).*?(?:mensaje|con mensaje)\s+['\"]?(.+?)['\"]?$",
+        message,
+        flags=re.IGNORECASE,
+    )
+
+    if commit_match:
+        commit_message = commit_match.group(1).strip()
+
+        return {
+            "action": "commit",
+            "repo_path": repo_path,
+            "branch": "main",
+            "remote": "origin",
+            "risk_level": "critical",
+            "summary": f"Commit en el repo sity: {commit_message}",
+            "commit_message": commit_message,
+        }
+
+    return None
+
+
+def build_pending_action_response(created, payload: dict) -> str:
+    action = payload.get("action")
+    branch = payload.get("branch")
+
+    lines = [
+        f"Acción pendiente creada: {created.summary}",
+        "",
+        "Para ejecutarla, confirma con:",
+        f"`{created.confirmation_phrase}`",
+    ]
+
+    if action == "checkout_branch" and branch:
+        lines.extend(["", f'También puedes decir: "sí, vuelve a {branch}".'])
+
+    elif action == "create_branch" and branch:
+        lines.extend(["", f'También puedes decir: "sí, crea la rama {branch}".'])
+
+    elif action == "pull_ff_only":
+        lines.extend(["", 'También puedes decir: "sí, haz pull".'])
+
+    elif action == "push":
+        lines.extend(["", 'También puedes decir: "sí, haz push".'])
+
+    elif action == "fetch":
+        lines.extend(["", 'También puedes decir: "sí, haz fetch".'])
+
+    elif action == "commit":
+        lines.extend(["", 'También puedes decir: "sí, haz commit".'])
+
+    lines.extend(["", f"Riesgo: {created.risk_level}."])
+
+    return "\n".join(lines)
+
+
 COMPACT_RESPONSE_PROMPT = (
     "Eres Sity. Responde directamente a la pregunta del usuario usando el resultado de la herramienta. "
     "Sé breve y clara. No inventes datos. No menciones detalles internos salvo que el usuario los pida."
@@ -424,6 +564,44 @@ def chat_message(
             "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
             "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
         )
+
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+        return ChatMessageResponse(
+            ok=True,
+            trace_id=trace_id,
+            text=text,
+            provider="local",
+            model="confirmation-manager",
+            fallback_used=False,
+            error_type=None,
+            usage=UsageSummary(
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                daily_used_tokens=get_today_token_usage(session),
+                daily_budget_tokens=daily_budget,
+                daily_ratio=0.0,
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
+
+    fast_git_action = detect_fast_git_action(request.message)
+
+    if fast_git_action:
+        created = ConfirmationManager(session).create_pending_action(
+            action_type="git",
+            risk_level=fast_git_action.get("risk_level", "critical"),
+            summary=fast_git_action.get("summary", "Acción Git"),
+            payload=fast_git_action,
+            trace_id=trace_id,
+        )
+
+        text = build_pending_action_response(created, fast_git_action)
 
         save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
         save_chat_message(session, role="sity", text=text, trace_id=trace_id)
