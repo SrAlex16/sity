@@ -216,11 +216,19 @@ function App() {
     window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
     try {
-      await sendChatMessage(trimmed);
+      const response = await sendChatMessage(trimmed);
 
-      await loadCurrentChat();
-      await refreshPersonality();
-      await refreshDebug();
+      setChatEntries((current) => [
+        ...current,
+        {
+          role: "sity",
+          text: response.text || "(sin respuesta)",
+          meta: response,
+        },
+      ]);
+      window.setTimeout(() => scrollChatToBottom("smooth"), 50);
+
+      await Promise.all([refreshPersonality(), refreshDebug()]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Error desconocido";
       setChatError(errorMessage);
@@ -228,7 +236,7 @@ function App() {
         ...current,
         {
           role: "sity",
-          text: "No he podido responder. Una IA sin conexión: casi poético, si no fuera tan cutre.",
+          text: `No he podido responder. ${errorMessage}`,
         },
       ]);
     } finally {

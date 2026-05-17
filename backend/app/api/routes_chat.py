@@ -110,9 +110,12 @@ def current_chat(session: Session = Depends(get_session)):
     statement = (
         select(ChatMessage)
         .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
-        .order_by(ChatMessage.id.asc())
+        .order_by(ChatMessage.id.desc())
         .limit(200)
     )
+
+    rows = list(session.exec(statement))
+    rows.reverse()
 
     messages = [
         ChatMessageItem(
@@ -120,7 +123,7 @@ def current_chat(session: Session = Depends(get_session)):
             text=row.text,
             trace_id=row.trace_id,
         )
-        for row in session.exec(statement)
+        for row in rows
     ]
 
     return CurrentChatResponse(
@@ -1320,15 +1323,14 @@ def chat_message(
             request=AIRequest(
                 trace_id=trace_id,
                 task_type="chat_message_tool_result",
-                system_prompt=persona_decision.system_prompt,
-                user_message=(
-                    "Acabas de recibir el resultado real de una herramienta ejecutada por el backend. "
-                    "Responde directamente a la pregunta original del usuario usando ese resultado. "
-                    "No digas que no ves resultados previos. "
-                    "No preguntes qué herramienta debía resumirse. "
-                    "No menciones detalles internos salvo que el usuario pregunte por debug. "
-                    "Si la herramienta devolvió datos válidos, da la respuesta final de forma breve y clara."
+                system_prompt=(
+                    persona_decision.system_prompt
+                    + "\n\nLa herramienta ya se ha ejecutado. Responde ahora a la petición original del usuario. "
+                    "No digas que no ves la pregunta original: está en el historial de esta llamada. "
+                    "Si la herramienta no era necesaria o no aporta nada, ignórala y responde conversacionalmente. "
+                    "No menciones detalles internos salvo que el usuario pregunte por debug."
                 ),
+                user_message=user_message_with_history,
                 max_tokens=max(max_tokens, 700),
                 tools_enabled=False,
                 tools=selected_tools,

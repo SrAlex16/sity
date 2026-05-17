@@ -85,9 +85,13 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
 READ_RECENT_DEBUG_EVENTS_TOOL = {
     "name": "read_recent_debug_events",
     "description": (
-        "Lee eventos recientes de debug, app y audit logs. "
-        "Úsala cuando el usuario pregunte qué ha pasado, por qué falló algo, "
-        "qué tools se ejecutaron, errores recientes, trazas recientes o comportamiento interno."
+        "Lee eventos técnicos recientes de debug/logs. "
+        "Úsala SOLO si el usuario pide explícitamente logs, trazas, errores, eventos, "
+        "tools ejecutadas, auditoría o diagnóstico técnico. "
+        "NO la uses para mensajes conversacionales, preguntas ambiguas, seguimiento de conversación, "
+        "cambios de personalidad, ni frases como 'qué tal ahora', 'mejor', 'ahora', 'hola' o similares. "
+        "Si hay duda sobre si el usuario quiere debug o solo una respuesta conversacional, "
+        "responde conversacionalmente sin usar esta herramienta."
     ),
     "input_schema": {
         "type": "object",
@@ -346,8 +350,13 @@ GIT_PROPOSE_ACTION_TOOL = {
 NO_ACTION_REQUIRED_TOOL = {
     "name": "no_action_required",
     "description": (
-        "Usa esta tool cuando el mensaje del usuario NO requiere ejecutar ninguna acción real "
-        "del sistema y solo debe responderse como conversación normal."
+        "Usa esta herramienta cuando el mensaje del usuario no requiere ejecutar ninguna acción, "
+        "leer logs, consultar sistema, tocar Git ni cambiar configuración. "
+        "Sirve para mensajes conversacionales, aclaraciones, respuestas cortas, bromas, seguimiento "
+        "de una conversación o preguntas que pueden responderse con el contexto actual. "
+        "Ejemplos: 'mejor?', 'y ahora?', 'ok', 'gracias', 'tiene sentido', reacciones al resultado "
+        "anterior, preguntas sobre tu personalidad que ya están respondidas en el prompt. "
+        "Si puedes responder sin ninguna herramienta, hazlo directamente sin usar no_action_required."
     ),
     "input_schema": {
         "type": "object",
@@ -355,7 +364,7 @@ NO_ACTION_REQUIRED_TOOL = {
         "properties": {
             "reason": {
                 "type": "string",
-                "description": "Motivo breve por el que no hace falta ejecutar acción.",
+                "description": "Por qué no hace falta herramienta.",
             }
         },
         "required": ["reason"],
