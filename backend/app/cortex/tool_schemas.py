@@ -283,8 +283,10 @@ GIT_PROPOSE_ACTION_TOOL = {
     "name": "git_propose_action",
     "description": (
         "Crea una acción pendiente de Git que requiere confirmación explícita antes de ejecutarse. "
-        "Úsala cuando el usuario pida git pull, git push, crear rama, fetch u otra acción que modifique "
-        "el estado local o remoto del repositorio."
+        "Úsala cuando el usuario pida git pull, git push, commit, crear rama, cambiar rama, fetch "
+        "u otra acción que modifique el estado local o remoto del repositorio. "
+        "fetch puede ser safe pero requiere confirmación en esta versión. "
+        "pull, push, commit, create_branch y checkout_branch son acciones críticas o sensibles."
     ),
     "input_schema": {
         "type": "object",
@@ -292,7 +294,14 @@ GIT_PROPOSE_ACTION_TOOL = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["fetch", "pull_ff_only", "push", "create_branch"],
+                "enum": [
+                    "fetch",
+                    "pull_ff_only",
+                    "push",
+                    "create_branch",
+                    "checkout_branch",
+                    "commit",
+                ],
             },
             "repo_path": {
                 "type": "string",
@@ -300,7 +309,11 @@ GIT_PROPOSE_ACTION_TOOL = {
             },
             "branch": {
                 "type": "string",
-                "description": "Rama objetivo cuando aplique.",
+                "description": (
+                    "Rama objetivo cuando aplique. "
+                    "Si el usuario proporciona un nombre de rama explícito en su mensaje, úsalo directamente. "
+                    "La confirmación de seguridad ya la gestiona el sistema mediante la frase de confirmación; no pidas doble confirmación del nombre."
+                ),
             },
             "remote": {
                 "type": "string",
@@ -313,7 +326,16 @@ GIT_PROPOSE_ACTION_TOOL = {
             "risk_level": {
                 "type": "string",
                 "enum": ["safe", "critical"],
-                "description": "fetch puede ser safe. pull, push y crear rama son critical.",
+                "description": "fetch puede ser safe. pull, push, commit, create_branch y checkout_branch son critical.",
+            },
+            "commit_message": {
+                "type": "string",
+                "description": "Mensaje de commit cuando action=commit.",
+            },
+            "files": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Archivos a añadir al commit. Si se omite en commit, se hará git add -A.",
             },
         },
         "required": ["action", "repo_path", "summary", "risk_level"],

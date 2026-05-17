@@ -80,13 +80,12 @@ class ConfirmationManager:
             risk_level=risk_level,
         )
 
-    def find_pending_action_by_confirmation(self, message: str) -> PendingAction | None:
-        normalized = message.strip().lower()
-
+    def _get_active_pending_actions(self) -> list[PendingAction]:
         statement = select(PendingAction).where(PendingAction.status == "pending")
         actions = list(self.session.exec(statement))
 
         now = ensure_aware_utc(utc_now())
+        active_actions: list[PendingAction] = []
 
         for action in actions:
             expires_at = ensure_aware_utc(action.expires_at)
@@ -96,12 +95,103 @@ class ConfirmationManager:
                 self.session.add(action)
                 continue
 
-            if normalized == action.confirmation_phrase.lower():
-                self.session.commit()
-                return action
+            active_actions.append(action)
 
         self.session.commit()
+        return active_actions
+
+    def find_pending_action_by_confirmation(self, message: str) -> PendingAction | None:
+        normalized = message.strip().lower()
+        for action in self._get_active_pending_actions():
+            if normalized == action.confirmation_phrase.lower():
+                return action
         return None
+
+    def find_pending_action_by_context(self, message: str) -> PendingAction | None:
+        normalized = message.strip().lower()
+        active_actions = self._get_active_pending_actions()
+
+        if not active_actions:
+            return None
+
+        matching_actions = [
+            action for action in active_actions
+            if self._message_matches_action(normalized, action)
+        ]
+
+        if len(matching_actions) == 1:
+            return matching_actions[0]
+
+        if len(matching_actions) > 1:
+            return None
+
+        if len(active_actions) == 1 and self._is_clear_confirmation(normalized):
+            return active_actions[0]
+
+        return None
+
+    def has_multiple_active_pending_actions(self) -> bool:
+        return len(self._get_active_pending_actions()) > 1
+
+    def is_generic_confirmation_message(self, message: str) -> bool:
+        return self._is_clear_confirmation(message.strip().lower())
+
+    def _is_clear_confirmation(self, normalized: str) -> bool:
+        confirmation_terms = [
+            "si",
+            "sí",
+            "ok",
+            "vale",
+            "dale",
+            "adelante",
+            "ejecuta",
+            "hazlo",
+            "confirmo",
+            "confirmado",
+            "sí, hazlo",
+            "si, hazlo",
+            "sí, ejecuta",
+            "si, ejecuta",
+            "vale, hazlo",
+            "ok, hazlo",
+        ]
+        return normalized in confirmation_terms
+
+    def _message_matches_action(self, normalized: str, action: PendingAction) -> bool:
+        try:
+            payload = json.loads(action.payload_json)
+        except json.JSONDecodeError:
+            return False
+
+        action_name = str(payload.get("action", ""))
+        branch = str(payload.get("branch", "")).lower()
+
+        if action.action_type == "git":
+            if action_name == "checkout_branch" and branch:
+                return branch in normalized and any(
+                    term in normalized
+                    for term in ["cambia", "cambiar", "vuelve", "volver", "checkout", "rama"]
+                )
+
+            if action_name == "create_branch" and branch:
+                return branch in normalized and any(
+                    term in normalized
+                    for term in ["crea", "crear", "rama"]
+                )
+
+            if action_name == "pull_ff_only":
+                return "pull" in normalized or "actualiza" in normalized
+
+            if action_name == "push":
+                return "push" in normalized or "sube" in normalized
+
+            if action_name == "fetch":
+                return "fetch" in normalized
+
+            if action_name == "commit":
+                return "commit" in normalized or "commitea" in normalized
+
+        return False
 
     def mark_executed(self, action: PendingAction, trace_id: str) -> None:
         action.status = "executed"

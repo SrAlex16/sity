@@ -45,7 +45,7 @@ ai:
     max_tokens: 1500
 
 usage:
-  daily_token_budget: 300000
+  daily_token_budget: 1000000
   monthly_token_budget: 1000000
   warning_threshold: 0.80
   critical_threshold: 0.95

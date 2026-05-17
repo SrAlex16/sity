@@ -248,6 +248,7 @@ def is_git_mutating_request(message: str) -> bool:
     normalized = message.lower()
 
     mutating_terms = [
+        "fetch",
         "pull",
         "push",
         "commit",
@@ -256,6 +257,8 @@ def is_git_mutating_request(message: str) -> bool:
         "crear rama",
         "crea rama",
         "nueva rama",
+        "cambia a la rama",
+        "cambiar a la rama",
         "checkout",
         "merge",
         "rebase",
@@ -350,7 +353,11 @@ def chat_message(
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
 
-    pending_action = ConfirmationManager(session).find_pending_action_by_confirmation(request.message)
+    confirmation_manager = ConfirmationManager(session)
+    pending_action = confirmation_manager.find_pending_action_by_confirmation(request.message)
+
+    if not pending_action:
+        pending_action = confirmation_manager.find_pending_action_by_context(request.message)
 
     if pending_action:
         if pending_action.action_type == "git":
@@ -359,22 +366,26 @@ def chat_message(
                 execution_result = execute_git_action(payload)
 
                 if execution_result.get("ok"):
-                    ConfirmationManager(session).mark_executed(pending_action, trace_id)
-                    text = (
-                        f"Acción ejecutada: {pending_action.summary}\n\n"
-                        f"Comando: {' '.join(str(x) for x in execution_result.get('command', []))}\n"
-                        f"Salida:\n{execution_result.get('stdout', '') or '(sin salida)'}"
-                    )
+                    confirmation_manager.mark_executed(pending_action, trace_id)
+                    lines = [f"Acción ejecutada: {pending_action.summary}"]
+                    if execution_result.get("pre_command"):
+                        lines.append(f"\nPreparación: {' '.join(str(x) for x in execution_result['pre_command'])}")
+                        pre_out = execution_result.get("pre_stdout", "").strip()
+                        if pre_out:
+                            lines.append(f"Salida: {pre_out}")
+                    lines.append(f"\nComando: {' '.join(str(x) for x in execution_result.get('command', []))}")
+                    lines.append(f"Salida:\n{execution_result.get('stdout', '') or '(sin salida)'}")
+                    text = "\n".join(lines)
                 else:
                     error = execution_result.get("stderr", "Error desconocido")
-                    ConfirmationManager(session).mark_failed(pending_action, trace_id, error)
+                    confirmation_manager.mark_failed(pending_action, trace_id, error)
                     text = (
                         f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
                         f"Error:\n{error}"
                     )
 
             except Exception as exc:
-                ConfirmationManager(session).mark_failed(pending_action, trace_id, str(exc))
+                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
                 text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
 
             save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
@@ -403,6 +414,41 @@ def chat_message(
                 updated_parameter=None,
                 updated_parameters=[],
             )
+
+    if (
+        not pending_action
+        and confirmation_manager.has_multiple_active_pending_actions()
+        and confirmation_manager.is_generic_confirmation_message(request.message)
+    ):
+        text = (
+            "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
+            "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
+        )
+
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+        return ChatMessageResponse(
+            ok=True,
+            trace_id=trace_id,
+            text=text,
+            provider="local",
+            model="confirmation-manager",
+            fallback_used=False,
+            error_type=None,
+            usage=UsageSummary(
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                daily_used_tokens=get_today_token_usage(session),
+                daily_budget_tokens=daily_budget,
+                daily_ratio=0.0,
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
 
     history_limit = history_limit_for_message(request.message)
 

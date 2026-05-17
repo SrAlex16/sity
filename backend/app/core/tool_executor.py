@@ -428,7 +428,8 @@ class ToolExecutor:
         risk_level = str(tool_input.get("risk_level", "critical")).strip()
         summary = str(tool_input.get("summary", "")).strip()
 
-        if action not in {"fetch", "pull_ff_only", "push", "create_branch"}:
+        ALLOWED_GIT_ACTIONS = {"fetch", "pull_ff_only", "push", "create_branch", "checkout_branch", "commit"}
+        if action not in ALLOWED_GIT_ACTIONS:
             result = {
                 "success": False,
                 "message": f"Acción Git no soportada: {action}",
@@ -441,15 +442,20 @@ class ToolExecutor:
                 raw_result=result,
             )
 
-        if risk_level not in {"safe", "critical"}:
-            risk_level = "critical"
+        risk_level = "safe" if action == "fetch" else "critical"
 
-        payload = {
+        payload: dict[str, Any] = {
             "action": action,
             "repo_path": repo_path,
             "branch": branch,
             "remote": remote,
         }
+
+        if action == "commit":
+            commit_message = str(tool_input.get("commit_message", "")).strip()
+            files = tool_input.get("files") or []
+            payload["commit_message"] = commit_message
+            payload["files"] = files
 
         created = ConfirmationManager(self.session).create_pending_action(
             action_type="git",
@@ -466,6 +472,7 @@ class ToolExecutor:
             "risk_level": created.risk_level,
             "summary": created.summary,
             "confirmation_phrase": created.confirmation_phrase,
+            "confirmation_hint": self._build_confirmation_hint(payload),
             "payload": payload,
         }
 
@@ -506,6 +513,27 @@ class ToolExecutor:
                 "result": result,
             },
         )
+
+    def _build_confirmation_hint(self, payload: dict[str, Any]) -> str:
+        action = payload.get("action")
+        branch = payload.get("branch")
+
+        if action == "checkout_branch" and branch:
+            return f'También puedes confirmar con algo claro como: "sí, vuelve a {branch}".'
+
+        if action == "create_branch" and branch:
+            return f'También puedes confirmar con algo claro como: "sí, crea la rama {branch}".'
+
+        if action == "pull_ff_only":
+            return 'También puedes confirmar con algo claro como: "sí, haz pull".'
+
+        if action == "push":
+            return 'También puedes confirmar con algo claro como: "sí, haz push".'
+
+        if action == "fetch":
+            return 'También puedes confirmar con algo claro como: "sí, haz fetch".'
+
+        return 'También puedes confirmar con algo claro como: "sí, hazlo".'
 
     def _build_success_message(self, applied_updates: list[dict[str, Any]]) -> str:
         if len(applied_updates) == 1:
