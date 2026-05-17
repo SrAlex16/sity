@@ -1,0 +1,1 @@
+alex ALL=(root) NOPASSWD: /usr/bin/systemctl start sity-backend, /usr/bin/systemctl stop sity-backend, /usr/bin/systemctl restart sity-backend, /usr/bin/systemctl start sity-frontend, /usr/bin/systemctl stop sity-frontend, /usr/bin/systemctl restart sity-frontend, /usr/bin/systemctl start sity-test, /usr/bin/systemctl stop sity-test, /usr/bin/systemctl restart sity-test

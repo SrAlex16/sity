@@ -1,0 +1,15 @@
+[Unit]
+Description=Sity Backend
+After=network.target
+
+[Service]
+Type=simple
+User=alex
+WorkingDirectory=/home/alex/projects/sity/backend
+EnvironmentFile=/home/alex/projects/sity/.env
+ExecStart=/home/alex/projects/sity/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
