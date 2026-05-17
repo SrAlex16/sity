@@ -20,6 +20,7 @@ PERSONALITY_KEYS = {
     "refusal_chance",
     "helpfulness_level",
     "verbosity_level",
+    "melancholy_level",
 }
 
 

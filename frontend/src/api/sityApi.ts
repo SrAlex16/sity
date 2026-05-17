@@ -12,6 +12,7 @@ export type PersonalitySettings = {
   refusal_chance: number;
   helpfulness_level: number;
   verbosity_level: number;
+  melancholy_level: number;
 };
 
 export type PersonalityAdjustResponse = {

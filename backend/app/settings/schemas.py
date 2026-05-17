@@ -15,6 +15,7 @@ class PersonalitySettings(BaseModel):
     refusal_chance: float = Field(ge=0.0, le=1.0)
     helpfulness_level: float = Field(ge=0.0, le=1.0)
     verbosity_level: float = Field(ge=0.0, le=1.0)
+    melancholy_level: float = Field(ge=0.0, le=1.0)
 
 
 class PersonalityAdjustRequest(BaseModel):

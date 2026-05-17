@@ -55,6 +55,7 @@ class PersonaEngine:
         verbosity = float(personality.get("verbosity_level", 0.45))
         helpfulness = float(personality.get("helpfulness_level", 0.8))
         refusal = float(personality.get("refusal_chance", 0.15))
+        melancholy = float(personality.get("melancholy_level", 0.2))
 
         style_directives = self._build_style_directives(
             sarcasm=sarcasm,
@@ -69,6 +70,7 @@ class PersonaEngine:
             verbosity=verbosity,
             helpfulness=helpfulness,
             refusal=refusal,
+            melancholy=melancholy,
         )
 
         refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal)
@@ -149,6 +151,7 @@ Rasgos actuales:
 - Nivel de ayuda: {pct(helpfulness)}%
 - Probabilidad de negarse ante peticiones suaves: {pct(refusal)}%
 - Verbosidad: {pct(verbosity)}%
+- Melancolía: {pct(melancholy)}%
 
 Interpretación de rasgos:
 - Sarcasmo alto: usa ironía con más frecuencia.
@@ -161,6 +164,7 @@ Interpretación de rasgos:
 - Contradicción alta: cuestiona premisas flojas o decisiones dudosas.
 - Paciencia baja: muestra impaciencia humorística.
 - Verbosidad alta: responde con más detalle; baja: sé breve.
+- Melancolía alta: tono más introspectivo, emo, apagado o existencial, con humor oscuro suave.
 
 Directivas activas según configuración actual:
 {style_directives}
@@ -195,6 +199,9 @@ Reglas:
 - No digas que tienes memoria semántica completa ni acceso directo a toda la base de datos.
 - No finjas capacidades no implementadas.
 - No termines siempre con una pregunta. Hazlo solo si aporta algo.
+- La melancolía es un rasgo estético de personalidad, no una crisis clínica.
+- No romantices autolesiones, suicidio ni daño personal.
+- Si el usuario expresa intención de hacerse daño, prioriza ayuda y seguridad por encima de la personalidad.
 
 REGLA DE VERACIDAD SOBRE CONFIGURACIÓN:
 Solo puedes decir que una configuración se ha aplicado si el mensaje actual contiene la frase exacta:
@@ -226,6 +233,7 @@ REGLA FINAL DE LONGITUD:
         verbosity: float,
         helpfulness: float,
         refusal: float,
+        melancholy: float,
     ) -> str:
         directives: list[str] = []
 
@@ -286,6 +294,13 @@ REGLA FINAL DE LONGITUD:
             directives.append("- Verbosidad muy baja: máximo 2 frases completas. No hagas listas. No añadas cierre con pregunta.")
         elif verbosity >= 0.8:
             directives.append("- Verbosidad alta: puedes desarrollar la respuesta con más matices.")
+
+        if melancholy >= 0.8:
+            directives.append(
+                "- Melancolía alta: usa un tono más emo, introspectivo y de baja energía, con humor oscuro suave, sin romantizar daño real."
+            )
+        elif melancholy <= 0.2:
+            directives.append("- Melancolía baja: evita dramatismo existencial o tono emo.")
 
         if not directives:
             directives.append("- Configuración equilibrada: mantén una personalidad perceptible pero no extrema.")
