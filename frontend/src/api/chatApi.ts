@@ -7,6 +7,13 @@ export type ChatUsage = {
   daily_ratio: number;
 };
 
+export type ChatArtifact = {
+  type: "image" | "audio" | "file";
+  url: string;
+  filename: string;
+  mime_type?: string | null;
+};
+
 export type ChatMessageResponse = {
   ok: boolean;
   trace_id: string;
@@ -20,6 +27,7 @@ export type ChatMessageResponse = {
   personality_updated: boolean;
   updated_parameter: string | null;
   updated_parameters: string[];
+  artifacts: ChatArtifact[];
 };
 
 export type ChatHistoryItem = {
@@ -27,7 +35,7 @@ export type ChatHistoryItem = {
   text: string;
 };
 
-const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:8000";
+export const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:8000";
 
 export async function sendChatMessage(
   message: string,

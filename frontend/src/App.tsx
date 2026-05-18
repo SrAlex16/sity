@@ -5,7 +5,7 @@ import {
   type PersonalitySettings,
 } from "./api/sityApi";
 import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
-import { getCurrentChat, sendChatMessage, type ChatMessageResponse } from "./api/chatApi";
+import { getCurrentChat, sendChatMessage, type ChatArtifact, type ChatMessageResponse, API_BASE } from "./api/chatApi";
 import "./App.css";
 
 const LABELS: Record<keyof PersonalitySettings, string> = {
@@ -46,6 +46,7 @@ type ChatEntry = {
   role: "user" | "sity";
   text: string;
   meta?: ChatMessageResponse;
+  artifacts?: ChatArtifact[];
 };
 
 function percent(value: number): number {
@@ -109,6 +110,7 @@ function App() {
   ]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
   function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
@@ -205,6 +207,13 @@ function App() {
     }
   }
 
+  function getSensorPendingLabel(text: string): string | null {
+    const n = text.toLowerCase();
+    if (n.includes("audio") || n.includes("micro") || n.includes("micrófono")) return "Grabando audio…";
+    if (n.includes("foto") || n.includes("cámara") || n.includes("camara") || n.includes("imagen")) return "Usando cámara…";
+    return null;
+  }
+
   async function submitChat() {
     const trimmed = chatInput.trim();
     if (!trimmed || chatLoading) return;
@@ -212,6 +221,7 @@ function App() {
     setChatInput("");
     setChatError(null);
     setChatLoading(true);
+    setPendingStatus(getSensorPendingLabel(trimmed) ?? "Pensando…");
     setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
     window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
@@ -224,6 +234,7 @@ function App() {
           role: "sity",
           text: response.text || "(sin respuesta)",
           meta: response,
+          artifacts: response.artifacts ?? [],
         },
       ]);
       window.setTimeout(() => scrollChatToBottom("smooth"), 50);
@@ -241,6 +252,7 @@ function App() {
       ]);
     } finally {
       setChatLoading(false);
+      setPendingStatus(null);
     }
   }
 
@@ -322,6 +334,38 @@ function App() {
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{entry.text}</p>
+                  {entry.artifacts && entry.artifacts.length > 0 && (
+                    <div className="mt-3 space-y-3">
+                      {entry.artifacts.map((artifact) => {
+                        const url = artifact.url.startsWith("http") ? artifact.url : `${API_BASE}${artifact.url}`;
+                        if (artifact.type === "image") {
+                          return (
+                            <div key={artifact.url} className="space-y-2">
+                              <img src={url} alt={artifact.filename} className="max-w-full rounded-xl border border-slate-700" />
+                              <a href={url} download={artifact.filename} className="block text-sm underline opacity-70">
+                                Descargar imagen
+                              </a>
+                            </div>
+                          );
+                        }
+                        if (artifact.type === "audio") {
+                          return (
+                            <div key={artifact.url} className="space-y-2">
+                              <audio controls src={url} className="w-full" />
+                              <a href={url} download={artifact.filename} className="block text-sm underline opacity-70">
+                                Descargar audio
+                              </a>
+                            </div>
+                          );
+                        }
+                        return (
+                          <a key={artifact.url} href={url} download={artifact.filename} className="block text-sm underline opacity-70">
+                            Descargar archivo
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
                   {entry.meta && (
                     <div className="mt-3 rounded-xl bg-black/30 p-3 text-xs text-zinc-400">
                       <p>
@@ -343,7 +387,7 @@ function App() {
               ))}
               {chatLoading && (
                 <div className="mr-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-zinc-400">
-                  Pensando... por desgracia.
+                  {pendingStatus ?? "Pensando…"}
                 </div>
               )}
               <div ref={chatBottomRef} />

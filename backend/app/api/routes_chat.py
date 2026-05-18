@@ -1,10 +1,11 @@
 import json
 import re
 from datetime import date
-from typing import Optional
+from pathlib import Path
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.actions.confirmation_manager import ConfirmationManager
@@ -146,6 +147,13 @@ class ChatMessageRequest(BaseModel):
     history: list[ChatHistoryItem] = []
 
 
+class ChatArtifact(BaseModel):
+    type: Literal["image", "audio", "file"]
+    url: str
+    filename: str
+    mime_type: Optional[str] = None
+
+
 class UsageSummary(BaseModel):
     input_tokens: int
     output_tokens: int
@@ -168,6 +176,7 @@ class ChatMessageResponse(BaseModel):
     personality_updated: bool = False
     updated_parameter: Optional[str] = None
     updated_parameters: list[str] = []
+    artifacts: list[ChatArtifact] = Field(default_factory=list)
 
 
 def get_today_token_usage(session: Session) -> int:
@@ -567,6 +576,38 @@ def detect_service_config_action(message: str) -> dict | None:
     return None
 
 
+def capture_artifact_from_path(path_value: str) -> ChatArtifact | None:
+    if not path_value:
+        return None
+
+    path = Path(path_value)
+    filename = path.name
+    suffix = path.suffix.lower()
+
+    if suffix in {".jpg", ".jpeg", ".png"}:
+        return ChatArtifact(
+            type="image",
+            url=f"/captures/camera/{filename}",
+            filename=filename,
+            mime_type="image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png",
+        )
+
+    if suffix in {".wav", ".mp3", ".ogg", ".m4a"}:
+        return ChatArtifact(
+            type="audio",
+            url=f"/captures/audio/{filename}",
+            filename=filename,
+            mime_type="audio/wav" if suffix == ".wav" else None,
+        )
+
+    return ChatArtifact(
+        type="file",
+        url=f"/captures/file/{filename}",
+        filename=filename,
+        mime_type=None,
+    )
+
+
 COMPACT_RESPONSE_PROMPT = (
     "Eres Sity. Responde directamente a la pregunta del usuario usando el resultado de la herramienta. "
     "Sé breve y clara. No inventes datos. No menciones detalles internos salvo que el usuario los pida."
@@ -709,6 +750,8 @@ def chat_message(
         pending_action = confirmation_manager.find_pending_action_by_context(request.message)
 
     if pending_action:
+        _pending_artifact: ChatArtifact | None = None
+
         if pending_action.action_type == "git":
             try:
                 payload = parse_git_payload(pending_action.payload_json)
@@ -798,10 +841,8 @@ def chat_message(
 
                 if execution_result.get("ok"):
                     confirmation_manager.mark_executed(pending_action, trace_id)
-                    text = (
-                        f"Acción ejecutada: {pending_action.summary}\n\n"
-                        f"Archivo generado: {execution_result.get('path')}"
-                    )
+                    _pending_artifact = capture_artifact_from_path(str(execution_result.get("path", "")))
+                    text = f"Listo. {pending_action.summary}."
                 else:
                     error = (
                         execution_result.get("stderr")
@@ -843,6 +884,7 @@ def chat_message(
             personality_updated=False,
             updated_parameter=None,
             updated_parameters=[],
+            artifacts=[_pending_artifact] if _pending_artifact else [],
         )
 
     if (
@@ -1273,6 +1315,7 @@ def chat_message(
 
     tool_results_for_claude: list[dict] = []
     updated_parameters: list[str] = []
+    response_artifacts: list[ChatArtifact] = []
 
     write_log(
         level="INFO",
@@ -1324,6 +1367,11 @@ def chat_message(
 
                 if result.ok:
                     updated_parameters.extend(result.updated_parameters)
+                    _raw_path = result.raw_result.get("result", {}).get("path")
+                    if _raw_path:
+                        _artifact = capture_artifact_from_path(str(_raw_path))
+                        if _artifact:
+                            response_artifacts.append(_artifact)
 
                 tool_results_for_claude.append(
                     {
@@ -1459,4 +1507,5 @@ def chat_message(
         personality_updated=bool(updated_parameters),
         updated_parameter=updated_parameters[0] if updated_parameters else None,
         updated_parameters=updated_parameters,
+        artifacts=response_artifacts,
     )
