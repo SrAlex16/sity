@@ -10,6 +10,8 @@ from sqlmodel import Session, select
 from app.actions.confirmation_manager import ConfirmationManager
 from app.actions.git_actions import execute_git_action
 from app.actions.git_actions import parse_payload as parse_git_payload
+from app.actions.sense_actions import execute_sense_action
+from app.actions.sense_actions import parse_payload as parse_sense_payload
 from app.actions.system_actions import execute_system_action
 from app.actions.system_actions import parse_payload as parse_system_payload
 from app.system.system_reader import load_system_access_config
@@ -779,6 +781,33 @@ def chat_message(
                     )
                 else:
                     error = execution_result.get("stderr", "Error desconocido")
+                    confirmation_manager.mark_failed(pending_action, trace_id, error)
+                    text = (
+                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
+                        f"Error:\n{error}"
+                    )
+
+            except Exception as exc:
+                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
+                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
+
+        elif pending_action.action_type == "sense":
+            try:
+                payload = parse_sense_payload(pending_action.payload_json)
+                execution_result = execute_sense_action(payload)
+
+                if execution_result.get("ok"):
+                    confirmation_manager.mark_executed(pending_action, trace_id)
+                    text = (
+                        f"Acción ejecutada: {pending_action.summary}\n\n"
+                        f"Archivo generado: {execution_result.get('path')}"
+                    )
+                else:
+                    error = (
+                        execution_result.get("stderr")
+                        or execution_result.get("stdout")
+                        or "Error desconocido"
+                    )
                     confirmation_manager.mark_failed(pending_action, trace_id, error)
                     text = (
                         f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"

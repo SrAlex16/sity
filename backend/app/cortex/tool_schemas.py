@@ -347,6 +347,101 @@ GIT_PROPOSE_ACTION_TOOL = {
 }
 
 
+LIST_CAMERA_DEVICES_TOOL = {
+    "name": "list_camera_devices",
+    "description": "Lista cámaras disponibles. No activa la cámara ni captura imágenes.",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+LIST_AUDIO_DEVICES_TOOL = {
+    "name": "list_audio_devices",
+    "description": "Lista dispositivos de audio. Debe distinguir dispositivos virtuales como Loopback del micrófono real.",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+CAPTURE_CAMERA_SNAPSHOT_TOOL = {
+    "name": "capture_camera_snapshot",
+    "description": (
+        "Captura una única imagen con la cámara conectada. "
+        "Úsala cuando el usuario pida explícitamente hacer/sacar/tomar/probar una foto o imagen. "
+        "No la uses para captura continua ni vigilancia."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "device": {
+                "type": "string",
+                "description": "Dispositivo de cámara. Por defecto /dev/video0.",
+            },
+            "width": {"type": "integer"},
+            "height": {"type": "integer"},
+            "skip_frames": {
+                "type": "integer",
+                "description": "Frames a saltar para autoexposición. Por defecto 20.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+
+RECORD_AUDIO_SAMPLE_TOOL = {
+    "name": "record_audio_sample",
+    "description": (
+        "Graba una muestra corta de audio desde el micrófono real de la webcam. "
+        "Úsala cuando el usuario pida explícitamente grabar una muestra o prueba de audio. "
+        "No uses Loopback como micrófono. No la uses para grabación continua."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "duration_seconds": {
+                "type": "integer",
+                "description": "Duración entre 1 y 10 segundos. Por defecto 3.",
+            },
+            "device": {
+                "type": "string",
+                "description": "Dispositivo ALSA. Por defecto plughw:CARD=webcam,DEV=0.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+
+CANCEL_PENDING_ACTION_TOOL = {
+    "name": "cancel_pending_action",
+    "description": (
+        "Cancela una acción pendiente cuando el usuario indique que quiere dejarlo, cancelar o no seguir. "
+        "Proporciona el action_id si lo conoces. Si no, el backend intentará cancelar la más reciente activa."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "action_id": {
+                "type": "string",
+                "description": "ID de la acción pendiente, por ejemplo act_abc12345. Opcional.",
+            },
+            "reason": {
+                "type": "string",
+                "description": "Razón de la cancelación.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+
 NO_ACTION_REQUIRED_TOOL = {
     "name": "no_action_required",
     "description": (
@@ -444,6 +539,14 @@ GIT_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+SENSES_TOOLSET = [
+    LIST_CAMERA_DEVICES_TOOL,
+    LIST_AUDIO_DEVICES_TOOL,
+    CAPTURE_CAMERA_SNAPSHOT_TOOL,
+    RECORD_AUDIO_SAMPLE_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
 ALL_TOOLS = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
     READ_RECENT_DEBUG_EVENTS_TOOL,
@@ -459,7 +562,30 @@ ALL_TOOLS = [
     GIT_READ_REMOTES_TOOL,
     GIT_PROPOSE_ACTION_TOOL,
     SYSTEM_PROPOSE_ACTION_TOOL,
+    LIST_CAMERA_DEVICES_TOOL,
+    LIST_AUDIO_DEVICES_TOOL,
+    CAPTURE_CAMERA_SNAPSHOT_TOOL,
+    RECORD_AUDIO_SAMPLE_TOOL,
+    CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
 TOOLS = ALL_TOOLS
+
+
+TOOL_RISK_POLICY: dict[str, str] = {
+    "list_camera_devices": "read",
+    "list_audio_devices": "read",
+    "capture_camera_snapshot": "sensitive_direct",
+    "record_audio_sample": "sensitive_direct",
+    "git_fetch": "safe_confirm",
+    "git_pull": "critical_confirm",
+    "git_push": "critical_confirm",
+    "git_commit": "critical_confirm",
+    "git_create_branch": "critical_confirm",
+    "git_checkout_branch": "critical_confirm",
+    "system_restart_service": "safe_confirm",
+    "system_start_service": "safe_confirm",
+    "system_stop_service": "safe_confirm",
+    "system_config_update": "critical_confirm",
+}

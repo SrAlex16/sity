@@ -6,6 +6,7 @@ from sqlmodel import Session
 from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.actions.confirmation_manager import ConfirmationManager
+from app.actions.sense_actions import execute_sense_action
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 from app.system.git_reader import git_branches, git_log, git_remotes, git_status
@@ -16,6 +17,8 @@ from app.system.system_reader import (
     read_system_status,
     read_top_processes,
 )
+from app.senses.audio import list_audio_devices
+from app.senses.camera import list_camera_devices
 
 
 ALLOWED_OPERATIONS = {
@@ -91,6 +94,50 @@ class ToolExecutor:
                 tool_name=tool_name,
                 trace_id=trace_id,
                 result=list_allowed_directory(str(tool_input.get("path", ""))),
+            )
+
+        if tool_name == "list_camera_devices":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=list_camera_devices(),
+            )
+
+        if tool_name == "list_audio_devices":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=list_audio_devices(),
+            )
+
+        if tool_name == "capture_camera_snapshot":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_sense_action({
+                    "action": "capture_camera_snapshot",
+                    "device": str(tool_input.get("device", "/dev/video0")),
+                    "width": int(tool_input.get("width", 1280)),
+                    "height": int(tool_input.get("height", 720)),
+                    "skip_frames": int(tool_input.get("skip_frames", 20)),
+                }),
+            )
+
+        if tool_name == "record_audio_sample":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_sense_action({
+                    "action": "record_audio_sample",
+                    "duration_seconds": int(tool_input.get("duration_seconds", 3)),
+                    "device": str(tool_input.get("device", "plughw:CARD=webcam,DEV=0")),
+                }),
+            )
+
+        if tool_name == "cancel_pending_action":
+            return self._cancel_pending_action(
+                tool_input=tool_input,
+                trace_id=trace_id,
             )
 
         if tool_name == "git_read_status":
@@ -614,6 +661,67 @@ class ToolExecutor:
             return 'También puedes confirmar con algo claro como: "sí, haz fetch".'
 
         return 'También puedes confirmar con algo claro como: "sí, hazlo".'
+
+    def _cancel_pending_action(
+        self,
+        *,
+        tool_input: dict[str, Any],
+        trace_id: str,
+    ) -> ToolExecutionResult:
+        action_id = str(tool_input.get("action_id", "")).strip().lower()
+        reason = str(tool_input.get("reason", "")).strip()
+
+        manager = ConfirmationManager(self.session)
+
+        if action_id:
+            action = manager.find_action_by_id(action_id)
+        else:
+            active = manager._get_active_pending_actions()
+            action = active[-1] if active else None
+
+        if not action or action.status != "pending":
+            result = {
+                "ok": False,
+                "message": "No encontré ninguna acción pendiente activa para cancelar.",
+            }
+            return ToolExecutionResult(
+                tool_name="cancel_pending_action",
+                ok=False,
+                message=result["message"],
+                updated_parameters=[],
+                raw_result=result,
+            )
+
+        action.status = "cancelled"
+        self.session.add(action)
+        self.session.commit()
+
+        write_log(
+            level="AUDIT",
+            module="tools",
+            event="pending_action_cancelled",
+            trace_id=trace_id,
+            payload={
+                "action_id": action.id,
+                "action_type": action.action_type,
+                "reason": reason,
+            },
+            audit=True,
+        )
+
+        result = {
+            "ok": True,
+            "message": f"Acción {action.id} cancelada.",
+            "action_id": action.id,
+            "summary": action.summary,
+        }
+        return ToolExecutionResult(
+            tool_name="cancel_pending_action",
+            ok=True,
+            message=result["message"],
+            updated_parameters=[],
+            raw_result=result,
+        )
 
     def _build_success_message(self, applied_updates: list[dict[str, Any]]) -> str:
         if len(applied_updates) == 1:

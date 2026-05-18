@@ -300,6 +300,21 @@ class ConfirmationManager:
                     "quita", "elimina", "borra", "desautoriza"
                 ])
 
+        if action.action_type == "sense":
+            action_name = str(payload.get("action", "")).lower()
+
+            if action_name == "capture_camera_snapshot":
+                return any(term in normalized for term in [
+                    "foto", "captura", "snapshot", "imagen", "cámara", "camara", "webcam"
+                ])
+
+            if action_name == "record_audio_sample":
+                return any(term in normalized for term in [
+                    "graba", "grabar", "audio", "micro", "micrófono", "microfono"
+                ])
+
+            return False
+
         return False
 
     def mark_executed(self, action: PendingAction, trace_id: str) -> None:
