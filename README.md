@@ -604,7 +604,7 @@ El micro de la webcam graba correctamente.
 Ejemplo manual:
 
 ```bash
-arecord -D plughw:3,0 -d 5 -f cd captures/audio/test-webcam.wav
+arecord -D plughw:CARD=webcam,DEV=0 -d 5 -f cd captures/audio/test-webcam.wav
 ```
 
 Importante:
@@ -900,7 +900,7 @@ fswebcam -d /dev/video0 -r 1280x720 --no-banner --skip 20 captures/camera/test.j
 ### Micrófono real de webcam
 
 ```bash
-arecord -D plughw:3,0 -d 5 -f cd captures/audio/test-webcam.wav
+arecord -D plughw:CARD=webcam,DEV=0 -d 5 -f cd captures/audio/test-webcam.wav
 ```
 
 ### Audio HDMI workaround
