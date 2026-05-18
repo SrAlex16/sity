@@ -2,7 +2,7 @@
 
 Sity es una IA doméstica de ocio pensada para ejecutarse en una Raspberry Pi/RasPad y vivir en un entorno local controlado.
 
-El objetivo del proyecto no es solo tener un chatbot, sino una asistente con personalidad configurable, memoria conversacional, acceso controlado al sistema y capacidad de ejecutar acciones reales con confirmación explícita.
+El objetivo del proyecto no es solo tener un chatbot, sino una asistente con personalidad configurable, memoria conversacional, acceso controlado al sistema, integración progresiva con hardware y capacidad de ejecutar acciones reales con confirmación explícita.
 
 Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura preparada para añadir fallback a otros modelos en el futuro.
 
@@ -33,6 +33,11 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Presupuesto diario local de tokens y avisos de uso.
 - Prompt/tool routing corregido para no usar debug en conversación normal.
 - Reconocimiento de personalidad actual desde el estado inyectado por backend.
+- Cámara USB detectada y funcionando.
+- Micrófono USB de webcam detectado y grabando.
+- Workaround de audio RasPad 3 documentado.
+- Audio HDMI funcionando mediante pipeline ALSA Loopback → IEC958.
+- Vivaldi y VLC funcionando con el pipeline custom de audio.
 
 ---
 
@@ -50,6 +55,7 @@ backend/
   Tools.
   Confirmaciones.
   Acceso controlado a sistema/Git.
+  Futuras integraciones de sensores.
 
 config/
   Configuración local versionada.
@@ -59,13 +65,17 @@ data/
   Ignorado por git.
 
 deploy/
-  Plantillas systemd y sudoers versionadas.
+  Plantillas systemd, sudoers y documentación de despliegue.
 
 scripts/
   Scripts de desarrollo, instalación y estado.
 
 services/
   Servicios auxiliares del proyecto.
+
+captures/
+  Capturas temporales de cámara/audio.
+  Ignorado por git salvo `.gitkeep`.
 ```
 
 ---
@@ -84,7 +94,7 @@ GET  /debug/events/recent
 GET  /debug/last-trace
 ```
 
-El endpoint principal es:
+Endpoint principal:
 
 ```text
 POST /chat/message
@@ -142,8 +152,6 @@ Modelo usado durante el desarrollo:
 ```text
 claude-haiku-4-5-20251001
 ```
-
-El sistema está planteado para que en el futuro exista fallback a otros modelos, pero ahora mismo el proyecto está centrado en Claude.
 
 Claude se usa para:
 
@@ -329,9 +337,7 @@ añade sity-test a servicios permitidos
 confirmo ejecutar act_xxxxxxxx
 ```
 
-Esto evita gastar miles de tokens en tareas deterministas.
-
-El criterio general:
+Criterio general:
 
 ```text
 Backend local:
@@ -385,19 +391,6 @@ cambia a la rama main
 ```
 
 Las acciones modificadoras requieren confirmación.
-
-Ejemplo:
-
-```text
-Usuario:
-haz pull del repo sity
-
-Sity:
-Acción pendiente creada: Pull fast-forward del repo sity desde origin
-
-Para ejecutarla, confirma con:
-confirmo ejecutar act_xxxxxxxx
-```
 
 ---
 
@@ -533,12 +526,6 @@ systemctl start/stop/restart sity-test
 
 No se concede sudo general.
 
-Ejemplo de línea:
-
-```text
-alex ALL=(root) NOPASSWD: /usr/bin/systemctl start sity-backend, /usr/bin/systemctl stop sity-backend, /usr/bin/systemctl restart sity-backend
-```
-
 ---
 
 ## Instalación de servicios
@@ -584,6 +571,92 @@ is-enabled
 is-active
 health backend
 respuesta de sity-test
+```
+
+---
+
+## Cámara y micrófono
+
+Hardware detectado:
+
+```text
+Cámara:
+Full HD webcam
+/dev/video0
+/dev/video1
+
+Micrófono:
+Full HD webcam
+ALSA card webcam
+PipeWire source Full HD webcam Mono
+```
+
+La cámara funciona, pero necesita tiempo para autoexposición. Las capturas deben usar `fswebcam` con `--skip 20` o `--skip 30`.
+
+Ejemplo manual:
+
+```bash
+fswebcam -d /dev/video0 -r 1280x720 --no-banner --skip 20 captures/camera/test.jpg
+```
+
+El micro de la webcam graba correctamente.
+
+Ejemplo manual:
+
+```bash
+arecord -D plughw:3,0 -d 5 -f cd captures/audio/test-webcam.wav
+```
+
+Importante:
+
+- No usar `Loopback` como micrófono real.
+- `Loopback` forma parte del pipeline de audio HDMI.
+- Cámara y micrófono son sensores sensibles.
+- Capturar foto o grabar audio debe requerir confirmación.
+- Listar dispositivos puede ser local/directo.
+
+---
+
+## Audio RasPad 3
+
+El RasPad 3 no expone correctamente HPD en HDMI. El driver `vc4-hdmi` no ofrece audio PCM normal y solo expone `IEC958_SUBFRAME_LE`.
+
+Para resolverlo, el sistema usa un pipeline custom:
+
+```text
+Vivaldi / VLC / ALSA
+  -> snd-aloop Loopback
+  -> arecord hw:Loopback,1,0
+  -> pcm2iec958.py
+  -> aplay hw:vc4hdmi0,0 IEC958_SUBFRAME_LE
+  -> HDMI
+```
+
+Componentes documentados en:
+
+```text
+deploy/audio/
+```
+
+Puntos importantes:
+
+- `snd-aloop` crea una tarjeta virtual Loopback.
+- `/etc/asound.conf` redirige ALSA `default` a `hw:Loopback,0`.
+- `pcm2iec958.py` convierte PCM S16LE a `IEC958_SUBFRAME_LE`.
+- `hdmi-audio-forward.service` mantiene el pipeline activo.
+- WirePlumber debe ignorar Loopback para evitar feedback con el micrófono.
+- Vivaldi 32-bit usa ALSA directo y necesita que `default` apunte al Loopback.
+- VLC necesita `aout=alsa` y `alsa-audio-device=hw:Loopback,0`.
+
+No tocar a ciegas:
+
+```text
+/etc/asound.conf
+/etc/modules-load.d/snd-aloop.conf
+/home/alex/.local/bin/pcm2iec958.py
+~/.config/systemd/user/hdmi-audio-forward.service
+~/.config/wireplumber/main.lua.d/51-default-sink.lua
+~/.config/vlc/vlcrc
 ```
 
 ---
@@ -668,6 +741,28 @@ journalctl -u sity-test -n 80 --no-pager
 
 ---
 
+## Capturas temporales
+
+Directorio:
+
+```text
+captures/
+```
+
+Usado para futuras capturas de cámara/audio.
+
+Debe estar ignorado por git salvo `.gitkeep`.
+
+Política pendiente:
+
+- No acumular capturas indefinidamente.
+- Borrar por antigüedad.
+- Borrar por número máximo de archivos.
+- Borrar por tamaño máximo total.
+- Permitir comando tipo `limpia capturas antiguas`.
+
+---
+
 ## Seguridad
 
 Principios actuales:
@@ -683,6 +778,8 @@ Principios actuales:
 8. Las acciones duplicadas se detectan.
 9. Confirmación contextual solo con intención explícita.
 10. Las herramientas de debug no se usan para conversación normal.
+11. Cámara y micro no se activan sin confirmación.
+12. Audio Loopback se trata como dispositivo virtual, no como micro real.
 ```
 
 Regla base:
@@ -794,6 +891,25 @@ curl -i -X OPTIONS http://localhost:8000/chat/message \
   -H "Access-Control-Request-Headers: content-type"
 ```
 
+### Cámara
+
+```bash
+fswebcam -d /dev/video0 -r 1280x720 --no-banner --skip 20 captures/camera/test.jpg
+```
+
+### Micrófono real de webcam
+
+```bash
+arecord -D plughw:3,0 -d 5 -f cd captures/audio/test-webcam.wav
+```
+
+### Audio HDMI workaround
+
+```bash
+systemctl --user status hdmi-audio-forward.service
+systemctl --user restart hdmi-audio-forward.service
+```
+
 ---
 
 ## Roadmap
@@ -860,6 +976,41 @@ Pendiente:
 - Añadir indicadores visibles/logs cuando se usen sensores.
 - Integrar transcripción.
 - Integrar descripción de imágenes.
+- Ignorar dispositivos virtuales como `Loopback` al elegir micro.
+- Usar `fswebcam --skip 20/30` para evitar capturas oscuras.
+- Usar el micro real de la webcam, no la salida del sistema.
+
+### Retención de archivos generados
+
+Pendiente:
+
+- No acumular capturas de cámara/audio indefinidamente.
+- Añadir limpieza automática de `captures/camera/` y `captures/audio/`.
+- Configurar retención por:
+  - antigüedad
+  - número máximo de archivos
+  - tamaño máximo total
+- Añadir comando local:
+  - `limpia capturas antiguas`
+  - `borra audios temporales`
+  - `borra fotos de prueba`
+- Las capturas sensibles deben poder borrarse bajo petición.
+
+### Audio routing
+
+Pendiente:
+
+- Detectar dispositivos virtuales como `Loopback`.
+- No usar `Loopback` como micrófono por defecto.
+- Exponer estado del pipeline HDMI audio forward.
+- Tool local para comprobar si `hdmi-audio-forward.service` está activo.
+- Documentar RasPad 3 audio workaround.
+- Evitar que futuras tools de audio rompan:
+  - `/etc/asound.conf`
+  - WirePlumber
+  - `snd-aloop`
+  - `pcm2iec958.py`
+  - configuración VLC/Vivaldi
 
 ### Conectividad local
 
@@ -913,6 +1064,24 @@ Pendiente:
 - Guardar tokens fuera de Git.
 - Revocación/rotación de credenciales.
 - Mostrar claramente cuándo Sity está consultando Google.
+
+### Música / Spotify
+
+Pendiente:
+
+- Integración con Spotify.
+- Explorar dos rutas:
+  - Spotify Web en Vivaldi.
+  - Raspotify como Spotify Connect en Raspberry.
+- Permitir acciones como:
+  - “pon música”
+  - “pon mi playlist X”
+  - “pausa”
+  - “siguiente canción”
+  - “qué está sonando”
+- Leer gustos/playlists si se usa API de Spotify.
+- Pedir permiso antes de enlazar cuentas o controlar reproducción.
+- No romper el pipeline custom de audio HDMI.
 
 ### IA / Modelos
 

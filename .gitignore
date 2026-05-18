@@ -18,3 +18,7 @@ build/
 coverage/
 
 .DS_Store
+
+captures/camera/*
+captures/audio/*
+!captures/.gitkeep
