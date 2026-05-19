@@ -446,7 +446,9 @@ Debes elegir exactamente una herramienta:
 - Usa herramientas Git (git_read_status, git_read_log, git_read_branches) si pregunta explícitamente por commits, ramas, diff, status git, remotos o el estado del repositorio git.
 - Usa git_propose_action si el usuario pide git pull, git push, commit, crear rama, checkout, merge, rebase, reset o stash. No respondas solo con texto para estas acciones.
 - Usa read_file o list_directory si el usuario pide ver, leer o listar un archivo o directorio concreto del proyecto.
-- Usa write_file si el usuario pide crear, escribir o modificar un archivo concreto. Nunca se ejecuta directamente: crea una acción pendiente.
+- Usa write_file si el usuario pide crear o sobrescribir un archivo concreto. Nunca se ejecuta directamente: crea una acción pendiente.
+- Usa apply_text_patch si el usuario pide cambiar una parte concreta de un archivo existente y proporciona el texto exacto a reemplazar. Llama a apply_text_patch DIRECTAMENTE con el old_text y new_text del mensaje — no llames a read_file antes. Nunca se ejecuta directamente: crea una acción pendiente con diff.
+- Si el usuario quiere editar un archivo pero no proporciona el texto exacto a reemplazar, usa read_file primero para mostrarle el contenido.
 - Usa no_action_required si solo quiere conversar.
 
 Regla de contexto: Si el turno anterior fue sobre leer un archivo y el usuario confirma o aclara, mantén la intención de lectura. No cambies a herramientas Git salvo que el usuario pida explícitamente commits, ramas, diff, status git, pull o push.
@@ -695,19 +697,30 @@ def _chat_message_inner(
         elif pending_action.action_type == "file":
             try:
                 payload = json.loads(pending_action.payload_json)
+                file_action = payload.get("action", "")
                 execution_result = execute_file_action(payload)
 
                 if execution_result.get("ok"):
                     confirmation_manager.mark_executed(pending_action, trace_id)
-                    text = f"Archivo escrito: {execution_result.get('path')}"
+                    path = execution_result.get("path", "")
+                    if file_action == "apply_text_patch":
+                        text = f"Patch aplicado: {path}"
+                    elif file_action == "write_file":
+                        created = execution_result.get("created", True)
+                        text = f"Archivo {'creado' if created else 'sobreescrito'}: {path}"
+                    else:
+                        text = f"Acción de archivo ejecutada: {path}"
                 else:
                     error = execution_result.get("error", "Error desconocido")
                     confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    text = f"No he podido escribir el archivo: {error}"
+                    if file_action == "apply_text_patch":
+                        text = f"No he podido aplicar el patch: {error}"
+                    else:
+                        text = f"No he podido escribir el archivo: {error}"
 
             except Exception as exc:
                 confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
-                text = f"Falló la escritura del archivo: {exc}"
+                text = f"Falló la acción de archivo: {exc}"
 
         elif pending_action.action_type == "sense":
             try:
@@ -1076,7 +1089,9 @@ def _chat_message_inner(
                     + "\n\nLa herramienta ya se ha ejecutado. Responde ahora a la petición original del usuario. "
                     "No digas que no ves la pregunta original: está en el historial de esta llamada. "
                     "Si la herramienta no era necesaria o no aporta nada, ignórala y responde conversacionalmente. "
-                    "No menciones detalles internos salvo que el usuario pregunte por debug."
+                    "No menciones detalles internos salvo que el usuario pregunte por debug. "
+                    "IMPORTANTE: Si el resultado de la herramienta contiene un campo 'diff', muéstralo completo al usuario en un bloque de código con lenguaje diff antes de pedir confirmación. "
+                    "Si contiene 'confirmation_phrase', indícala claramente para que el usuario sepa cómo confirmar."
                 ),
                 user_message=user_message_with_history,
                 max_tokens=max(max_tokens, 700),

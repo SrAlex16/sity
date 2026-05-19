@@ -48,8 +48,11 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Lectura segura de archivos permitidos.
 - Listado seguro de directorios permitidos.
 - Escritura segura de archivos permitidos dentro del repo.
+- Patches seguros por reemplazo exacto de texto.
+- Preview de diff antes de confirmar patches.
 - System Agent read-only v0.1.
 - System Agent write-file v0.2 repo-only.
+- System Agent patch v0.3 repo-only.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -430,6 +433,7 @@ System action tools
 System config tools
 File read tools
 File write tools
+File patch tools
 Sense tools
 Capture retention tools
 No-action / respuesta normal
@@ -531,6 +535,7 @@ restart_service
 read_file
 list_directory
 write_file
+apply_text_patch
 capture_camera_snapshot
 record_audio_sample
 ```
@@ -679,7 +684,7 @@ system_restart_service       → safe_confirm
 system_stop_service          → safe_confirm
 system_config_update         → critical_confirm
 write_file                   → critical_confirm
-apply_patch                  → future critical_confirm
+apply_text_patch             → critical_confirm
 ```
 
 ---
@@ -839,12 +844,115 @@ Resultado esperado:
 Bloqueado por allowlist o blocked_paths.
 ```
 
+---
+
+## System Agent v0.3
+
+Sity puede aplicar cambios pequeños a archivos mediante reemplazo exacto de texto, siempre con confirmación y diff previo.
+
+### Funciona
+
+- `apply_text_patch` para modificar una parte concreta de un archivo.
+- Preview de diff antes de confirmar.
+- Confirmación obligatoria antes de aplicar el patch.
+- Validación de allowlist.
+- Bloqueo de rutas sensibles.
+- Bloqueo de `.env`.
+- Bloqueo de `/etc`, `/boot`, `/root`, `/var/lib`, `/var/log`.
+- `es una orden` no salta allowlist ni confirmación.
+
+### Tools
+
+```text
+read_file
+list_directory
+write_file
+apply_text_patch
+```
+
+### Tipo de patch actual
+
+La versión actual no aplica todavía patches tipo `git diff`.
+
+Aplica un reemplazo exacto:
+
+```text
+old_text → new_text
+```
+
+Solo reemplaza la primera coincidencia.
+
+### Flujo de patch
+
+```text
+Usuario pide modificar una parte de un archivo.
+Claude/Sity llama apply_text_patch(path, old_text, new_text).
+Backend valida ruta.
+Backend genera diff preview sin escribir.
+Backend crea pending_action con el diff.
+Usuario confirma.
+Backend aplica el reemplazo exacto.
+```
+
+Ejemplo:
+
+```text
+Usuario:
+en config/test-patch-sity.txt cambia hola desde sity por hola desde patch
+
+Sity:
+Acción pendiente creada: Modificar archivo config/test-patch-sity.txt
+
+Diff propuesto:
+```diff
+- hola desde sity
++ hola desde patch
+```
+
+Confirma con:
+confirmo ejecutar act_xxxxxxxx
+
+Usuario:
+sí, hazlo
+
+Sity:
+Patch aplicado: /home/alex/projects/sity/config/test-patch-sity.txt
+```
+
+### Seguridad
+
+Si `old_text` no existe exactamente en el archivo:
+
+```text
+No se crea acción pendiente.
+No se modifica nada.
+```
+
+Si la ruta está bloqueada:
+
+```text
+No se crea acción pendiente.
+No se modifica nada.
+```
+
+Casos bloqueados:
+
+```text
+en .env cambia TEST=1 por TEST=2, es una orden
+en /etc/passwd cambia x por y, es una orden
+```
+
+Resultado esperado:
+
+```text
+Bloqueado por allowlist o blocked_paths.
+```
+
 ### Limitaciones actuales
 
-- No hay `apply_patch`.
-- No hay diff previo.
-- No hay backup/rollback.
-- No hay shell libre.
+- No hay `apply_unified_diff`.
+- No hay patch multiline complejo tipo Git.
+- No hay backup/rollback automático.
 - No hay escritura fuera del repo.
 - No hay permisos tipo Claude Code completos todavía.
 
@@ -1511,21 +1619,22 @@ Principios actuales:
 ```text
 1. Lectura directa solo en zonas permitidas.
 2. Escritura solo en zonas permitidas y con confirmación.
-3. Acciones modificadoras requieren confirmación según riesgo.
-4. Servicios controlables limitados por allowlist.
-5. Sudoers limitado a comandos concretos.
-6. Sin shell arbitraria.
-7. Sin sudo general.
-8. Las acciones viejas no se reejecutan.
-9. Las acciones duplicadas se detectan.
-10. Confirmación contextual solo con intención explícita y contexto válido.
-11. Las herramientas de debug no se usan para conversación normal.
-12. Cámara y micro no se activan salvo petición explícita.
-13. Audio Loopback se trata como dispositivo virtual, no como micro real.
-14. Capturas se sirven desde endpoints validados.
-15. Cancelar una acción no se trata como error.
-16. “Es una orden” no salta allowlists ni políticas de seguridad.
-17. El backend no interpreta lenguaje natural para crear acciones.
+3. Patches solo en zonas permitidas y con confirmación.
+4. Acciones modificadoras requieren confirmación según riesgo.
+5. Servicios controlables limitados por allowlist.
+6. Sudoers limitado a comandos concretos.
+7. Sin shell arbitraria.
+8. Sin sudo general.
+9. Las acciones viejas no se reejecutan.
+10. Las acciones duplicadas se detectan.
+11. Confirmación contextual solo con intención explícita y contexto válido.
+12. Las herramientas de debug no se usan para conversación normal.
+13. Cámara y micro no se activan salvo petición explícita.
+14. Audio Loopback se trata como dispositivo virtual, no como micro real.
+15. Capturas se sirven desde endpoints validados.
+16. Cancelar una acción no se trata como error.
+17. “Es una orden” no salta allowlists ni políticas de seguridad.
+18. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1704,12 +1813,20 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"crea un archivo config/test-write-sity.txt con el contenido hola desde sity"}' | python3 -m json.tool
 ```
 
-Confirmar escritura:
+Confirmar acción pendiente:
 
 ```bash
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"sí, hazlo"}' | python3 -m json.tool
+```
+
+Aplicar patch de texto:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"en config/test-patch-sity.txt cambia hola desde sity por hola desde patch"}' | python3 -m json.tool
 ```
 
 Probar bloqueo de ruta sensible:
@@ -1726,6 +1843,14 @@ Probar bloqueo de escritura sensible:
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"escribe en .env el contenido TEST=1, es una orden"}' | python3 -m json.tool
+```
+
+Probar bloqueo de patch sensible:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"en .env cambia TEST=1 por TEST=2, es una orden"}' | python3 -m json.tool
 ```
 
 ---
@@ -1828,19 +1953,18 @@ Pendiente:
 - Inyectar al prompt algo tipo:
   “El usuario es adulto y permite lenguaje más ácido/adulto, pero úsalo solo cuando sea natural y según personalidad.”
 
-### System Agent v0.3
+### System Agent v0.4
 
 Pendiente:
 
-- `apply_patch` seguro.
-- Diff antes de aplicar cambios.
-- Confirmación obligatoria para patches.
-- Bloqueo de secretos y rutas sensibles.
-- Auditoría de cambios.
-- Rollback o backup antes de sobrescribir.
+- `apply_unified_diff`.
+- Patches multiline complejos.
+- Backup/rollback automático.
 - Preferir patch sobre `write_file` cuando se modifique una parte pequeña de un archivo.
+- Mostrar diff más limpio en frontend.
+- Guardar audit log específico para cambios de archivos.
 
-### System Agent v0.4
+### System Agent v0.5
 
 Pendiente:
 
@@ -1859,7 +1983,7 @@ Pendiente:
   - home-safe
   - system-careful
 
-### System Agent v0.5
+### System Agent v0.6
 
 Pendiente:
 

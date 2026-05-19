@@ -126,16 +126,36 @@ class ToolExecutor:
                     updated_parameters=[], raw_result={"success": False, "message": err},
                 )
 
-            created = ConfirmationManager(self.session).create_pending_action(
+            write_payload = {
+                "action": "write_file",
+                "path": path,
+                "content": content,
+                "create_parent_dirs": create_parent_dirs,
+            }
+            manager = ConfirmationManager(self.session)
+            existing = manager.find_equivalent_pending_action(
+                action_type="file",
+                payload=write_payload,
+            )
+            if existing:
+                result = {
+                    "success": True,
+                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "action_id": existing.id,
+                    "confirmation_phrase": existing.confirmation_phrase,
+                    "summary": existing.summary,
+                    "already_existed": True,
+                }
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=True, message=result["message"],
+                    updated_parameters=[], raw_result=result,
+                )
+
+            created = manager.create_pending_action(
                 action_type="file",
                 risk_level="critical",
                 summary=f"Escribir archivo {path}",
-                payload={
-                    "action": "write_file",
-                    "path": path,
-                    "content": content,
-                    "create_parent_dirs": create_parent_dirs,
-                },
+                payload=write_payload,
                 trace_id=trace_id,
             )
             result = {
@@ -151,6 +171,99 @@ class ToolExecutor:
                 message=result["message"],
                 updated_parameters=[],
                 raw_result=result,
+            )
+
+        if tool_name == "apply_text_patch":
+            path = str(tool_input.get("path", ""))
+            old_text = str(tool_input.get("old_text", ""))
+            new_text = str(tool_input.get("new_text", ""))
+
+            from app.system_agent.file_access import FileAccessError, _resolve_path, assert_write_allowed
+            try:
+                assert_write_allowed(_resolve_path(path))
+            except FileAccessError as exc:
+                err = str(exc)
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=err,
+                    updated_parameters=[], raw_result={"success": False, "message": err},
+                )
+
+            preview = execute_file_action({
+                "action": "preview_text_patch",
+                "path": path,
+                "old_text": old_text,
+                "new_text": new_text,
+            })
+
+            if not preview.get("ok"):
+                msg = preview.get("error", "Error generando preview")
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                )
+
+            diff = preview.get("diff", "")
+            diff_truncated = preview.get("diff_truncated", False)
+            diff_display = diff[:2000] + ("\n... diff truncado ..." if len(diff) > 2000 else "")
+
+            patch_payload = {
+                "action": "apply_text_patch",
+                "path": path,
+                "old_text": old_text,
+                "new_text": new_text,
+            }
+            manager = ConfirmationManager(self.session)
+            existing = manager.find_equivalent_pending_action(
+                action_type="file",
+                payload=patch_payload,
+            )
+            if existing:
+                result = {
+                    "success": True,
+                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "action_id": existing.id,
+                    "confirmation_phrase": existing.confirmation_phrase,
+                    "summary": existing.summary,
+                    "diff": diff_display,
+                    "diff_truncated": diff_truncated,
+                    "already_existed": True,
+                }
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=True, message=result["message"],
+                    updated_parameters=[], raw_result=result,
+                )
+
+            created = manager.create_pending_action(
+                action_type="file",
+                risk_level="critical",
+                summary=f"Modificar {path}",
+                payload={
+                    "action": "apply_text_patch",
+                    "path": path,
+                    "old_text": old_text,
+                    "new_text": new_text,
+                },
+                trace_id=trace_id,
+            )
+
+            display_message = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                f"Diff propuesto:\n```diff\n{diff_display}```\n\n"
+                f"Confirma con: `{created.confirmation_phrase}`"
+            )
+
+            result = {
+                "success": True,
+                "message": display_message,
+                "action_id": created.id,
+                "confirmation_phrase": created.confirmation_phrase,
+                "summary": created.summary,
+                "diff": diff_display,
+                "diff_truncated": diff_truncated,
+            }
+            return ToolExecutionResult(
+                tool_name=tool_name, ok=True, message=display_message,
+                updated_parameters=[], raw_result=result,
             )
 
         if tool_name == "read_recent_debug_events":

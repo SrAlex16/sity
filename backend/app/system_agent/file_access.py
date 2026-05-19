@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ CONFIG_PATH = PROJECT_ROOT / "config" / "system_access.yaml"
 MAX_READ_BYTES = 120_000
 MAX_READ_CHARS_FOR_MODEL = 12_000
 MAX_WRITE_BYTES = 250_000
+MAX_PATCH_PREVIEW_CHARS = 12_000
 MAX_DIRECTORY_ITEMS = 200
 
 
@@ -219,3 +221,107 @@ def list_directory(path_value: str) -> dict[str, Any]:
 
     except Exception as exc:
         return {"ok": False, "error": f"Error listando directorio: {exc}"}
+
+
+def preview_text_patch(
+    path_value: str,
+    old_text: str,
+    new_text: str,
+) -> dict[str, Any]:
+    try:
+        path = _resolve_path(path_value)
+        assert_write_allowed(path)
+
+        if not path.exists():
+            return {"ok": False, "error": f"No existe el archivo: {path}"}
+
+        if not path.is_file():
+            return {"ok": False, "error": f"No es un archivo: {path}"}
+
+        original_content = path.read_text(encoding="utf-8", errors="replace")
+
+        if old_text not in original_content:
+            return {
+                "ok": False,
+                "error": "No se encontró el texto exacto que se quería reemplazar.",
+                "path": str(path),
+            }
+
+        updated_content = original_content.replace(old_text, new_text, 1)
+
+        diff = "".join(
+            difflib.unified_diff(
+                original_content.splitlines(keepends=True),
+                updated_content.splitlines(keepends=True),
+                fromfile=str(path),
+                tofile=str(path),
+            )
+        )
+
+        truncated = len(diff) > MAX_PATCH_PREVIEW_CHARS
+        if truncated:
+            diff = diff[:MAX_PATCH_PREVIEW_CHARS] + "\n... diff truncado ...\n"
+
+        return {
+            "ok": True,
+            "path": str(path),
+            "diff": diff,
+            "diff_truncated": truncated,
+            "replacements": 1,
+        }
+
+    except FileAccessError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    except Exception as exc:
+        return {"ok": False, "error": f"Error generando preview de patch: {exc}"}
+
+
+def apply_text_patch(
+    path_value: str,
+    old_text: str,
+    new_text: str,
+) -> dict[str, Any]:
+    try:
+        path = _resolve_path(path_value)
+        assert_write_allowed(path)
+
+        if not path.exists():
+            return {"ok": False, "error": f"No existe el archivo: {path}"}
+
+        if not path.is_file():
+            return {"ok": False, "error": f"No es un archivo: {path}"}
+
+        original_content = path.read_text(encoding="utf-8", errors="replace")
+
+        if old_text not in original_content:
+            return {
+                "ok": False,
+                "error": "No se encontró el texto exacto que se quería reemplazar.",
+                "path": str(path),
+            }
+
+        updated_content = original_content.replace(old_text, new_text, 1)
+        updated_bytes = updated_content.encode("utf-8")
+
+        if len(updated_bytes) > MAX_WRITE_BYTES:
+            return {
+                "ok": False,
+                "error": f"El archivo resultante sería demasiado grande: {len(updated_bytes)} bytes",
+                "max_bytes": MAX_WRITE_BYTES,
+            }
+
+        path.write_text(updated_content, encoding="utf-8")
+
+        return {
+            "ok": True,
+            "path": str(path),
+            "bytes_written": len(updated_bytes),
+            "replacements": 1,
+        }
+
+    except FileAccessError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    except Exception as exc:
+        return {"ok": False, "error": f"Error aplicando patch: {exc}"}

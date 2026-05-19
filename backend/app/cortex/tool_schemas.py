@@ -703,6 +703,34 @@ WRITE_FILE_TOOL = {
     },
 }
 
+APPLY_TEXT_PATCH_TOOL = {
+    "name": "apply_text_patch",
+    "description": (
+        "Propone modificar un archivo permitido reemplazando un fragmento exacto de texto por otro. "
+        "Esta acción siempre requiere confirmación antes de ejecutarse. "
+        "Úsala cuando el usuario pida cambiar una parte concreta de un archivo sin sobrescribirlo entero."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Ruta del archivo a modificar. Puede ser absoluta o relativa al proyecto.",
+            },
+            "old_text": {
+                "type": "string",
+                "description": "Texto exacto existente que se reemplazará. Debe aparecer literalmente en el archivo.",
+            },
+            "new_text": {
+                "type": "string",
+                "description": "Texto nuevo que sustituirá al texto anterior.",
+            },
+        },
+        "required": ["path", "old_text", "new_text"],
+    },
+}
+
 FILE_READ_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
@@ -712,6 +740,7 @@ FILE_AGENT_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
+    APPLY_TEXT_PATCH_TOOL,
 ]
 
 
@@ -724,6 +753,7 @@ BASE_TOOLSET: list[dict] = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
+    APPLY_TEXT_PATCH_TOOL,
 ]
 
 DEBUG_TOOLSET = [
@@ -812,6 +842,7 @@ ALL_TOOLS = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
+    APPLY_TEXT_PATCH_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
