@@ -736,11 +736,33 @@ FILE_READ_TOOLSET = [
     LIST_DIRECTORY_TOOL,
 ]
 
+LIST_FILE_CHANGES_TOOL = {
+    "name": "list_file_changes",
+    "description": (
+        "Lista los últimos cambios de archivos hechos por Sity leyendo el audit log real. "
+        "Úsala SIEMPRE que el usuario pregunte qué archivos ha tocado Sity, qué cambió recientemente, "
+        "qué acciones de archivo ejecutó, qué backups existen o quiera revisar auditoría de cambios. "
+        "No respondas de memoria ni desde el historial conversacional para estas preguntas. "
+        "No lee el contenido de backups."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Número máximo de eventos recientes a devolver. Máximo 50.",
+            },
+        },
+    },
+}
+
 FILE_AGENT_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
+    LIST_FILE_CHANGES_TOOL,
 ]
 
 
@@ -754,6 +776,7 @@ BASE_TOOLSET: list[dict] = [
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
+    LIST_FILE_CHANGES_TOOL,
 ]
 
 DEBUG_TOOLSET = [
@@ -843,6 +866,7 @@ ALL_TOOLS = [
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
+    LIST_FILE_CHANGES_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]

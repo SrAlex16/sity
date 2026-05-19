@@ -73,3 +73,50 @@ def append_file_audit_event(event: dict[str, Any]) -> None:
     with AUDIT_LOG_PATH.open("a", encoding="utf-8") as file:
         file.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         file.write("\n")
+
+
+def list_file_audit_events(limit: int = 10) -> dict[str, Any]:
+    try:
+        if limit <= 0:
+            limit = 10
+
+        limit = min(limit, 50)
+
+        if not AUDIT_LOG_PATH.exists():
+            return {
+                "ok": True,
+                "events": [],
+                "count": 0,
+                "audit_log_path": str(AUDIT_LOG_PATH),
+            }
+
+        lines = AUDIT_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+        selected_lines = lines[-limit:]
+
+        events: list[dict[str, Any]] = []
+
+        for line in selected_lines:
+            if not line.strip():
+                continue
+
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                events.append({
+                    "ok": False,
+                    "error": "audit_log_line_invalid_json",
+                    "raw": line[:500],
+                })
+
+        return {
+            "ok": True,
+            "events": events,
+            "count": len(events),
+            "audit_log_path": str(AUDIT_LOG_PATH),
+        }
+
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": f"Error leyendo audit log de archivos: {exc}",
+        }

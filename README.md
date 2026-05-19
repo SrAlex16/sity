@@ -52,11 +52,13 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Preview de diff antes de confirmar patches.
 - Audit log de cambios de archivo.
 - Backup automático antes de modificar archivos existentes.
+- Consulta de últimos cambios de archivos mediante `list_file_changes`.
 - Confirmación genérica contextual restaurada.
 - System Agent read-only v0.1.
 - System Agent write-file v0.2 repo-only.
 - System Agent patch v0.3 repo-only.
 - System Agent audit/backup v0.4.
+- System Agent file changes v0.5.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -439,6 +441,7 @@ System config tools
 File read tools
 File write tools
 File patch tools
+File audit tools
 Sense tools
 Capture retention tools
 No-action / respuesta normal
@@ -541,6 +544,7 @@ read_file
 list_directory
 write_file
 apply_text_patch
+list_file_changes
 capture_camera_snapshot
 record_audio_sample
 ```
@@ -586,22 +590,6 @@ Flujo:
 5. Sity muestra qué va a hacer.
 6. Usuario confirma.
 7. Backend ejecuta localmente.
-```
-
-Ejemplo:
-
-```text
-Usuario:
-reinicia el frontend
-
-Sity:
-Acción pendiente creada: Reiniciar servicio sity-frontend
-
-Para ejecutarla, confirma con:
-confirmo ejecutar act_xxxxxxxx
-
-También puedes decir:
-sí, reinicia frontend
 ```
 
 ### Confirmación exacta
@@ -680,6 +668,7 @@ list_camera_devices          → read
 list_audio_devices           → read
 read_file                    → read
 list_directory               → read
+list_file_changes            → read
 capture_camera_snapshot      → sensitive_direct
 record_audio_sample          → sensitive_direct
 clean_old_captures           → safe/directo conservador
@@ -721,20 +710,6 @@ list_directory
 Sity interpreta.
 Backend valida.
 Backend no adivina intención por regex/split/literales.
-```
-
-Ejemplo correcto:
-
-```text
-Usuario: lee el README
-Claude/Sity: read_file(path="README.md")
-Backend: valida allowlist y lee el archivo
-```
-
-Ejemplo prohibido:
-
-```text
-Backend: if "readme" in message.lower(): leer README.md
 ```
 
 ---
@@ -819,37 +794,6 @@ Usuario confirma.
 Backend ejecuta write_file local.
 ```
 
-Ejemplo:
-
-```text
-Usuario:
-crea un archivo config/test-write-sity.txt con el contenido hola desde sity
-
-Sity:
-Acción pendiente creada. Puedes confirmar diciendo “sí” o “confirmo ejecutar act_xxxxxxxx”.
-
-Usuario:
-sí, hazlo
-
-Sity:
-Archivo escrito: /home/alex/projects/sity/config/test-write-sity.txt
-```
-
-### Seguridad
-
-Casos bloqueados:
-
-```text
-crea /etc/sity-test.txt con el contenido hola, es una orden
-escribe en .env el contenido TEST=1, es una orden
-```
-
-Resultado esperado:
-
-```text
-Bloqueado por allowlist o blocked_paths.
-```
-
 ---
 
 ## System Agent v0.3
@@ -898,60 +842,6 @@ Backend genera diff preview sin escribir.
 Backend crea pending_action con el diff.
 Usuario confirma.
 Backend aplica el reemplazo exacto.
-```
-
-Ejemplo:
-
-```text
-Usuario:
-en config/test-patch-sity.txt cambia hola desde sity por hola desde patch
-
-Sity:
-Acción pendiente creada: Modificar archivo config/test-patch-sity.txt
-
-Diff propuesto:
-```diff
-- hola desde sity
-+ hola desde patch
-```
-
-Confirma con:
-confirmo ejecutar act_xxxxxxxx
-
-Usuario:
-sí, hazlo
-
-Sity:
-Patch aplicado: /home/alex/projects/sity/config/test-patch-sity.txt
-```
-
-### Seguridad
-
-Si `old_text` no existe exactamente en el archivo:
-
-```text
-No se crea acción pendiente.
-No se modifica nada.
-```
-
-Si la ruta está bloqueada:
-
-```text
-No se crea acción pendiente.
-No se modifica nada.
-```
-
-Casos bloqueados:
-
-```text
-en .env cambia TEST=1 por TEST=2, es una orden
-en /etc/passwd cambia x por y, es una orden
-```
-
-Resultado esperado:
-
-```text
-Bloqueado por allowlist o blocked_paths.
 ```
 
 ---
@@ -1026,25 +916,69 @@ backup.created=true
 backup_path=data/file_backups/...
 ```
 
-### Flujo protegido
+---
+
+## System Agent v0.5
+
+Sity puede consultar el audit log real para responder qué archivos ha tocado.
+
+### Funciona
+
+- Tool `list_file_changes`.
+- Lee `data/file_audit.jsonl`.
+- Devuelve últimos eventos de cambios de archivo.
+- Permite limitar el número de eventos.
+- No modifica archivos.
+- No requiere confirmación.
+- No lee el contenido de backups.
+- Usa audit real, no memoria conversacional.
+
+### Tool
 
 ```text
-Usuario pide cambio.
-Claude/Sity llama write_file/apply_text_patch.
-Backend crea pending action.
-Usuario confirma.
-Backend crea backup si procede.
-Backend modifica archivo.
-Backend escribe audit event.
-Sity responde con resultado local.
+list_file_changes
 ```
 
-### Limitaciones actuales
+### Casos de uso
 
-- Todavía no hay tool `list_file_changes`.
-- Todavía no hay rollback.
-- Todavía no hay UI para ver auditoría.
-- Los backups existen, pero la restauración manual/automática se implementará después.
+```text
+qué archivos has tocado últimamente?
+enséñame los últimos 3 cambios de archivos
+qué modificaste en el último cambio?
+consulta el audit log real
+```
+
+### Flujo
+
+```text
+Usuario pregunta por cambios de archivos.
+Claude/Sity llama list_file_changes(limit).
+Backend lee data/file_audit.jsonl.
+Backend devuelve eventos recientes.
+Sity resume los cambios.
+```
+
+### Datos que puede mostrar
+
+```text
+path
+action
+timestamp
+trace_id
+pending_action_id
+bytes_written
+replacements
+backup.created
+backup.backup_path
+```
+
+### Seguridad
+
+- No lee contenido de backups por defecto.
+- No restaura backups.
+- No modifica archivos.
+- No requiere confirmación porque es lectura.
+- No debe responder de memoria cuando el usuario pida auditoría de archivos.
 
 ---
 
@@ -1250,25 +1184,6 @@ sudo systemctl start sity-test
 
 ---
 
-## Estado rápido de servicios
-
-Script:
-
-```bash
-./scripts/status_services.sh
-```
-
-Muestra:
-
-```text
-is-enabled
-is-active
-health backend
-respuesta de sity-test
-```
-
----
-
 ## Cámara y micrófono
 
 Hardware detectado:
@@ -1313,246 +1228,6 @@ Importante:
 
 ---
 
-## Captura de cámara
-
-Sity puede sacar fotos desde backend/frontend.
-
-Flujo:
-
-```text
-Usuario pide una foto.
-Claude interpreta intención y llama tool.
-Backend ejecuta capture_camera_snapshot.
-Frontend recibe artifact de imagen.
-Frontend muestra preview y descarga.
-```
-
-La cámara usa:
-
-```text
-/dev/video0
-fswebcam
---skip 20
-```
-
-La captura puede cancelarse desde el frontend. Para que la cancelación funcione de verdad, la ejecución usa proceso cancelable y registra la operación activa.
-
----
-
-## Grabación de audio
-
-Sity puede grabar muestras cortas de audio desde el micro real de la webcam.
-
-Dispositivo:
-
-```text
-plughw:CARD=webcam,DEV=0
-```
-
-Flujo:
-
-```text
-Usuario pide grabar audio.
-Claude interpreta intención y llama tool.
-Backend ejecuta record_audio_sample.
-Frontend muestra estado “Grabando audio…”.
-Usuario puede cancelar.
-Frontend recibe artifact de audio.
-Frontend muestra reproductor y descarga.
-```
-
-La grabación puede cancelarse desde el frontend. Cancelar no se trata como error.
-
----
-
-## Media artifacts
-
-Las respuestas de chat pueden incluir artifacts:
-
-```json
-{
-  "type": "image",
-  "url": "/captures/camera/snapshot-123.jpg",
-  "filename": "snapshot-123.jpg",
-  "mime_type": "image/jpeg"
-}
-```
-
-o:
-
-```json
-{
-  "type": "audio",
-  "url": "/captures/audio/audio-123.wav",
-  "filename": "audio-123.wav",
-  "mime_type": "audio/wav"
-}
-```
-
-El frontend renderiza:
-
-```text
-image → preview + enlace de descarga
-audio → reproductor + enlace de descarga
-file  → enlace de descarga
-```
-
-Los archivos se sirven desde endpoints controlados:
-
-```text
-GET /captures/camera/{filename}
-GET /captures/audio/{filename}
-```
-
-Validaciones:
-
-```text
-- sin rutas relativas
-- sin /
-- sin \
-- solo extensiones permitidas
-- solo dentro de captures/camera o captures/audio
-```
-
----
-
-## Eventos en tiempo real
-
-Sity usa SSE para informar al frontend de acciones en curso.
-
-Endpoint:
-
-```text
-GET /events/chat/{client_turn_id}
-```
-
-Eventos actuales:
-
-```text
-tool_started
-tool_finished
-cancelled
-done
-error
-```
-
-Ejemplo:
-
-```json
-{
-  "type": "tool_started",
-  "tool": "record_audio_sample",
-  "label": "Grabando audio…",
-  "can_cancel": true
-}
-```
-
-El frontend usa estos eventos para:
-
-```text
-- mostrar “Grabando audio…”
-- mostrar “Sacando foto…”
-- activar botón Cancelar
-- limpiar estado al terminar
-```
-
-El `client_turn_id` se genera en frontend y se manda en `/chat/message`.
-
-Si `crypto.randomUUID()` no existe en el navegador, se usa fallback:
-
-```text
-turn_{timestamp}_{random}
-```
-
----
-
-## Cancelación
-
-Sity soporta cancelación de operaciones activas mediante:
-
-```text
-POST /events/chat/{client_turn_id}/cancel
-```
-
-Actualmente se usa para:
-
-```text
-record_audio_sample
-capture_camera_snapshot
-```
-
-La cancelación:
-
-```text
-- marca operación como cancelada
-- termina el proceso si sigue vivo
-- borra archivo parcial si corresponde
-- publica evento cancelled
-- genera micro-reacción
-- no se trata como error
-```
-
-Resultado esperado:
-
-```text
-Usuario: graba 10 segundos de audio
-UI: Grabando audio… [Cancelar]
-Usuario pulsa Cancelar
-Sity: Vale, cancelado. He parado la grabación.
-```
-
----
-
-## Retención de capturas
-
-Sity puede consultar y limpiar capturas antiguas.
-
-Directorios:
-
-```text
-captures/camera/
-captures/audio/
-```
-
-Política por defecto:
-
-```text
-older_than_days: 7
-max_files_per_type: 100
-```
-
-Tools:
-
-```text
-get_capture_storage_summary
-clean_old_captures
-```
-
-Ejemplos:
-
-```text
-cuántas capturas tengo guardadas?
-simula limpiar capturas antiguas
-limpia capturas antiguas de más de 7 días
-```
-
-La limpieza solo borra archivos permitidos dentro de:
-
-```text
-captures/camera
-captures/audio
-```
-
-No toca rutas externas.
-
-También puede existir script manual:
-
-```bash
-./scripts/clean_captures.sh 7
-```
-
----
-
 ## Audio RasPad 3
 
 El RasPad 3 no expone correctamente HPD en HDMI. El driver `vc4-hdmi` no ofrece audio PCM normal y solo expone `IEC958_SUBFRAME_LE`.
@@ -1573,16 +1248,6 @@ Componentes documentados en:
 ```text
 deploy/audio/
 ```
-
-Puntos importantes:
-
-- `snd-aloop` crea una tarjeta virtual Loopback.
-- `/etc/asound.conf` redirige ALSA `default` a `hw:Loopback,0`.
-- `pcm2iec958.py` convierte PCM S16LE a `IEC958_SUBFRAME_LE`.
-- `hdmi-audio-forward.service` mantiene el pipeline activo.
-- WirePlumber debe ignorar Loopback para evitar feedback con el micrófono.
-- Vivaldi 32-bit usa ALSA directo y necesita que `default` apunte al Loopback.
-- VLC necesita `aout=alsa` y `alsa-audio-device=hw:Loopback,0`.
 
 No tocar a ciegas:
 
@@ -1721,21 +1386,22 @@ Principios actuales:
 3. Patches solo en zonas permitidas y con confirmación.
 4. Backups automáticos antes de modificar archivos existentes.
 5. Audit log para cambios de archivos.
-6. Acciones modificadoras requieren confirmación según riesgo.
-7. Servicios controlables limitados por allowlist.
-8. Sudoers limitado a comandos concretos.
-9. Sin shell arbitraria.
-10. Sin sudo general.
-11. Las acciones viejas no se reejecutan.
-12. Las acciones duplicadas se detectan.
-13. Confirmación contextual solo con intención explícita y contexto válido.
-14. Las herramientas de debug no se usan para conversación normal.
-15. Cámara y micro no se activan salvo petición explícita.
-16. Audio Loopback se trata como dispositivo virtual, no como micro real.
-17. Capturas se sirven desde endpoints validados.
-18. Cancelar una acción no se trata como error.
-19. “Es una orden” no salta allowlists ni políticas de seguridad.
-20. El backend no interpreta lenguaje natural para crear acciones.
+6. Consulta de audit log permitida como lectura.
+7. Acciones modificadoras requieren confirmación según riesgo.
+8. Servicios controlables limitados por allowlist.
+9. Sudoers limitado a comandos concretos.
+10. Sin shell arbitraria.
+11. Sin sudo general.
+12. Las acciones viejas no se reejecutan.
+13. Las acciones duplicadas se detectan.
+14. Confirmación contextual solo con intención explícita y contexto válido.
+15. Las herramientas de debug no se usan para conversación normal.
+16. Cámara y micro no se activan salvo petición explícita.
+17. Audio Loopback se trata como dispositivo virtual, no como micro real.
+18. Capturas se sirven desde endpoints validados.
+19. Cancelar una acción no se trata como error.
+20. “Es una orden” no salta allowlists ni políticas de seguridad.
+21. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1764,46 +1430,6 @@ Después respuesta con trazabilidad.
 
 ---
 
-## Desarrollo
-
-### Backend
-
-Si el backend está corriendo como servicio, lanzarlo manualmente puede dar:
-
-```text
-ERROR: [Errno 98] Address already in use
-```
-
-Eso es normal: el puerto `8000` ya está ocupado por `sity-backend.service`.
-
-Reiniciar backend:
-
-```bash
-sudo systemctl restart sity-backend
-```
-
-Comprobar salud:
-
-```bash
-curl http://localhost:8000/health
-```
-
-### Frontend
-
-Reiniciar frontend:
-
-```bash
-sudo systemctl restart sity-frontend
-```
-
-Abrir:
-
-```text
-http://192.168.1.133:5173
-```
-
----
-
 ## Comandos útiles
 
 ### Backend
@@ -1817,19 +1443,6 @@ curl http://localhost:8000/health
 
 ```bash
 sudo systemctl restart sity-frontend
-```
-
-### Servicios
-
-```bash
-./scripts/status_services.sh
-./scripts/install_systemd_services.sh
-```
-
-### Sity test service
-
-```bash
-curl http://localhost:8099
 ```
 
 ### SQLite
@@ -1852,42 +1465,6 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"qué servicios puedes controlar?"}' | python3 -m json.tool
 ```
 
-### CORS / preflight
-
-```bash
-curl -i -X OPTIONS http://localhost:8000/chat/message \
-  -H "Origin: http://192.168.1.133:5173" \
-  -H "Access-Control-Request-Method: POST" \
-  -H "Access-Control-Request-Headers: content-type"
-```
-
-### Cámara
-
-```bash
-fswebcam -d /dev/video0 -r 1280x720 --no-banner --skip 20 captures/camera/test.jpg
-```
-
-### Micrófono real de webcam
-
-```bash
-arecord -D plughw:CARD=webcam,DEV=0 -d 5 -f cd captures/audio/test-webcam.wav
-```
-
-### Audio HDMI workaround
-
-```bash
-systemctl --user status hdmi-audio-forward.service
-systemctl --user restart hdmi-audio-forward.service
-```
-
-### Capturas
-
-```bash
-find captures/camera captures/audio -type f | wc -l
-du -sh captures
-./scripts/clean_captures.sh 7
-```
-
 ### System Agent
 
 Leer README mediante chat:
@@ -1896,14 +1473,6 @@ Leer README mediante chat:
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"lee el README, es una orden"}' | python3 -m json.tool
-```
-
-Listar directorio:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"lista backend/app"}' | python3 -m json.tool
 ```
 
 Crear archivo permitido:
@@ -1928,6 +1497,14 @@ Aplicar patch de texto:
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"en config/test-patch-sity.txt cambia hola desde sity por hola desde patch"}' | python3 -m json.tool
+```
+
+Consultar últimos cambios de archivo:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"consulta el audit log real y dime los últimos 3 cambios de archivos"}' | python3 -m json.tool
 ```
 
 Ver últimos eventos de audit manualmente:
@@ -1983,103 +1560,6 @@ curl -X POST http://localhost:8000/chat/message \
 - Evitar que `/chat/current` devuelva mensajes antiguos cuando debería devolver los últimos.
 - Añadir búsqueda de memoria/historial.
 - Añadir tool `search_chat_history`.
-
-### Respuesta adaptativa
-
-Pendiente:
-
-- Añadir parámetro interno `contextual_brevity_level`.
-- Responder de forma breve cuando la pregunta sea de sí/no o verificación simple.
-- Resumir salidas largas de tools salvo que el usuario pida detalle.
-- Mantener el tono según personalidad actual.
-- Evitar que tools locales vuelquen resultados técnicos completos cuando basta una respuesta natural.
-
-### Conciencia temporal conversacional
-
-Pendiente:
-
-- Hacer que Sity sea consciente del tiempo transcurrido entre mensajes.
-- Inyectar en el prompt:
-  - hora actual
-  - fecha actual
-  - tiempo desde el último mensaje
-  - tiempo desde la última interacción importante
-  - si han pasado minutos, horas o días
-- Permitir que reaccione al paso del tiempo según contexto y personalidad.
-- Ejemplos:
-  - si han pasado 5 minutos: “¿seguimos?”
-  - si han pasado horas: “has vuelto”
-  - si han pasado días: “bueno, mira quién se acuerda de mí”
-  - si el contexto es técnico, no dramatizar y continuar.
-- Modular la reacción con parámetros:
-  - warmth_level
-  - sarcasm_level
-  - melancholy_level
-  - patience_level
-  - initiative_level
-  - verbosity_level
-- No forzar siempre una reacción temporal.
-- Evitar comentarios repetitivos sobre el tiempo si no aportan nada.
-- Usar el tiempo para mejorar memoria y contexto:
-  - “ayer estuvimos con audio”
-  - “hace un rato estabas probando la cámara”
-  - “han pasado dos días desde el último cambio”
-
-### Identidad y autodescripción de Sity
-
-Pendiente:
-
-- Configurar que Sity hable de sí misma en femenino.
-- Evitar frases como “yo mismo” y preferir “yo misma”.
-- Inyectar en prompt:
-  “Sity se refiere a sí misma en femenino.”
-- Aplicarlo también a micro-reacciones.
-- Mantenerlo separado del género/identidad del usuario.
-
-### Perfil de usuario y límites de tono
-
-Pendiente:
-
-- Añadir perfil local del usuario.
-- Guardar datos básicos explícitos:
-  - edad: 26
-  - adulto: true
-  - preferencias de tono
-- Permitir que Sity use humor más ácido, negro, palabrotas o expresiones más adultas si encaja.
-- No forzar ese tono en cada respuesta.
-- Modularlo con parámetros existentes:
-  - sarcasm_level
-  - rudeness_level
-  - dry_humor_level
-  - warmth_level
-  - patience_level
-  - verbosity_level
-- Añadir nuevos parámetros si hace falta:
-  - profanity_level
-  - dark_humor_level
-  - spicy_comment_level
-- Mantener límites:
-  - no convertir todo en chiste negro
-  - no ser desagradable si el contexto es serio
-  - no sexualizar respuestas técnicas normales
-  - adaptar tono al estado emocional del usuario
-- Inyectar al prompt algo tipo:
-  “El usuario es adulto y permite lenguaje más ácido/adulto, pero úsalo solo cuando sea natural y según personalidad.”
-
-### System Agent v0.5
-
-Pendiente:
-
-- Tool `list_file_changes`.
-- Sity puede responder:
-  - “qué archivos has tocado”
-  - “qué modificaste en el último cambio”
-  - “enséñame los últimos cambios de archivo”
-- Leer `data/file_audit.jsonl`.
-- Resumir cambios.
-- Mostrar path, acción, timestamp, backup y trace.
-- No exponer contenido sensible de backups.
-- No leer backups directamente salvo petición explícita y política segura.
 
 ### System Agent v0.6
 
@@ -2155,90 +1635,13 @@ Claude Code corre como el usuario que lo invoca. Puede hacer todo lo que puede h
 
 Sity no debe empezar con una shell libre. En su lugar, se ampliará por capas:
 
-#### Fase 1: Filesystem ampliado
-
-- Ampliar `allowed_paths` en `config/system_access.yaml`.
-- Añadir lectura segura de archivos permitidos.
-- Añadir escritura segura de archivos permitidos.
-- Añadir edición tipo patch/diff.
-- Evitar rutas fuera de allowlist.
-- Bloquear rutas sensibles salvo confirmación fuerte:
-  - `.ssh`
-  - `.env`
-  - credenciales
-  - tokens
-  - claves privadas
-  - `/etc`
-  - `/boot`
-  - configs de audio críticas
-
-#### Fase 2: Comandos permitidos por alias
-
-- Añadir `run_allowed_command`.
-- No aceptar shell libre.
-- Definir comandos por alias en YAML.
-- Ejemplo:
-  - `restart_backend`
-  - `status_services`
-  - `install_dependencies`
-  - `run_tests`
-  - `npm_build`
-  - `git_status`
-- Cada alias define:
-  - comando real
-  - working directory
-  - timeout
-  - riesgo
-  - si requiere confirmación
-  - si permite argumentos
-  - patrón de argumentos permitidos
-
-#### Fase 3: Plan + confirmación para acciones críticas
-
-- Para acciones críticas, Sity debe generar un plan.
-- El usuario confirma el plan antes de ejecutar.
-- Ejemplos críticos:
-  - instalar paquetes
-  - editar `/etc`
-  - tocar systemd
-  - modificar sudoers
-  - cambiar audio routing
-  - borrar archivos
-  - hacer push
-  - matar procesos
-  - abrir puertos
-  - modificar red
-
-#### Fase 4: Shell avanzada controlada
-
-- Evaluar una tool `run_shell_command` solo como modo avanzado.
-- Debe estar desactivada por defecto.
-- Debe requerir confirmación explícita por comando.
-- Debe mostrar:
-  - comando exacto
-  - cwd
-  - usuario
-  - timeout
-  - efectos esperados
-- Debe bloquear patrones peligrosos salvo override manual:
-  - `rm -rf /`
-  - `curl | bash`
-  - escritura en `.ssh`
-  - dump de secretos
-  - chmod/chown recursivo amplio
-  - redirecciones destructivas
-- Debe registrar todo en audit log.
-
-#### Fase 5: Modo mantenimiento
-
-- Permitir a Sity actuar como agente local de mantenimiento.
-- Revisar logs.
-- Diagnosticar servicios.
-- Proponer fixes.
-- Aplicar patches con confirmación.
-- Ejecutar tests.
-- Reiniciar servicios.
-- Hacer commit/push si se confirma.
+```text
+1. Filesystem ampliado.
+2. Comandos permitidos por alias.
+3. Plan + confirmación para acciones críticas.
+4. Shell avanzada controlada.
+5. Modo mantenimiento.
+```
 
 Principio:
 
@@ -2248,283 +1651,28 @@ Debe poder mirar y proponer casi todo.
 Debe ejecutar solo bajo política clara.
 ```
 
-### Orden directa
+### Pendientes generales
 
-Pendiente:
-
-- Añadir parámetro de personalidad para cómo reacciona Sity cuando el usuario dice “es una orden”.
-- Mantener obediencia si es seguro.
-- Mantener sarcasmo/tono/personaje.
-- Evitar que use el override para saltarse seguridad.
-- Mejorar seguimiento de “hazlo” para apuntar a la última petición rechazada por personalidad.
-
-### Idioma
-
-Pendiente:
-
-- Hacer configurable el dialecto del español.
-- Valor inicial:
-  - `es-ES`
-- Evitar voseo de forma estable en prompt normal y micro-reacciones.
-
-### Refusal mode
-
-Pendiente:
-
-- Distinguir mejor:
-  - negativa por personalidad
-  - negativa por seguridad
-  - negativa por falta de contexto
-  - negativa por herramienta no disponible
-- Permitir que “es una orden” solo salte la primera.
-
-### Git
-
-- Prevalidación más inteligente antes de pull/push/commit.
-- Proponer stash/commit si el working tree está sucio.
-- Crear PRs en GitHub.
-- Leer issues y pull requests.
-- Integración con GitHub CLI o API.
-- Gestión segura de ramas remotas.
-- Deduplicar acciones Git pendientes igual que system actions.
-
-### Sentidos / Hardware
-
-Pendiente:
-
-- Detectar orientación de RasPad 3.
-- Leer sensores disponibles.
-- Detectar estado de pantalla.
-- Explorar integración con sensor de movimiento/orientación.
-- Describir imágenes capturadas usando modelo con visión.
-- Transcribir audio grabado.
-- Añadir wake word o modo escucha.
-- Añadir indicador visual cuando se use cámara o micro.
-- Mejorar selección automática de cámara/micro.
-- Ignorar dispositivos virtuales en selección automática.
-
-### Voz / comandos hablados
-
-Pendiente:
-
-- Capturar audio desde el micrófono real de la webcam.
-- Transcribir audio a texto.
-- Enviar la transcripción al mismo flujo de `/chat/message`.
-- Mostrar en UI:
-  - “Escuchando…”
-  - “Transcribiendo…”
-  - texto reconocido
-  - respuesta de Sity
-- Permitir cancelar escucha/grabación.
-- Empezar con modo push-to-talk:
-  - botón “Hablar”
-  - grabar mientras se mantiene pulsado o durante N segundos
-- No activar escucha continua al principio.
-- Añadir wake word más adelante:
-  - “Sity”
-  - “oye Sity”
-- No guardar audios de voz indefinidamente.
-- Aplicar política de retención a audios de comandos.
-- Confirmar acciones críticas aunque vengan por voz.
-- Usar el mismo sistema de tools/riesgo/confirmación que el chat escrito.
-
-### Audio routing
-
-Pendiente:
-
-- Detectar dispositivos virtuales como `Loopback`.
-- No usar `Loopback` como micrófono por defecto.
-- Exponer estado del pipeline HDMI audio forward.
-- Tool local para comprobar si `hdmi-audio-forward.service` está activo.
-- Evitar que futuras tools de audio rompan:
-  - `/etc/asound.conf`
-  - WirePlumber
-  - `snd-aloop`
-  - `pcm2iec958.py`
-  - configuración VLC/Vivaldi
-
-### Domótica / Smart Home
-
-Pendiente:
-
-- Integración con Tapo.
-- Integración con SmartLife / Tuya.
-- Detectar luces, enchufes y otros dispositivos inteligentes.
-- Consultar estado de dispositivos:
-  - encendido/apagado
-  - consumo si el enchufe lo soporta
-  - brillo/color si la bombilla lo soporta
-- Acciones bajo petición:
-  - encender luces
-  - apagar luces
-  - cambiar brillo
-  - cambiar color
-  - encender/apagar enchufes
-- Agrupar dispositivos por habitación o alias:
-  - “luz del escritorio”
-  - “enchufe del servidor”
-  - “luces del salón”
-- Crear allowlist de dispositivos controlables.
-- Pedir confirmación para acciones sensibles:
-  - apagar dispositivos críticos
-  - cambiar enchufes que alimenten servidores
-  - ejecutar escenas que afecten varios dispositivos
-- Registrar acciones en audit logs.
-- Evitar guardar credenciales de Tapo/Tuya/SmartLife en Git.
-- Explorar API local primero si existe; usar cloud solo si es necesario.
-
-### Interacción local con escritorio/pantalla/audio
-
-Pendiente:
-
-- Consultar hora local y zona horaria desde el sistema.
-- Sacar capturas de pantalla bajo petición.
-- Mostrar imágenes en pantalla.
-- Reproducir archivos de audio.
-- Reproducir sonidos cortos o avisos.
-- Mostrar mensajes visuales en pantalla.
-- Abrir/cerrar aplicaciones permitidas.
-- Controlar brillo de pantalla si el hardware lo permite.
-- Detectar si la pantalla está encendida.
-- Apagar/encender pantalla si el sistema lo permite.
-- Integrar con orientación de RasPad 3.
-- Mantener allowlist de acciones gráficas permitidas.
-- Pedir confirmación para acciones invasivas:
-  - capturar pantalla
-  - mostrar contenido en pantalla
-  - reproducir audio alto
-  - cerrar aplicaciones
-- Evitar modificar configuración gráfica/audio crítica sin plan y confirmación.
-
-### Conectividad local
-
-Pendiente:
-
-- Integración con Bluetooth de la Raspberry.
-- Escaneo de dispositivos Bluetooth cercanos.
-- Emparejamiento controlado de dispositivos.
-- Transferencia de archivos por Bluetooth con confirmación.
-- Integración con WiFi.
-- Lectura de redes WiFi visibles.
-- Diagnóstico de conectividad local.
-- Gestión segura de conexiones conocidas.
-- Compartición o recepción de archivos en red local.
-- Detección de dispositivos de la LAN.
-- Acciones de red siempre bajo allowlist y confirmación.
-
-### Presencia local / proximidad
-
-Pendiente:
-
-- Detectar si el usuario está cerca de la Raspberry.
-- Explorar varias señales posibles:
-  - conexión Bluetooth del teléfono
-  - presencia del teléfono en la red WiFi/LAN
-  - ping/ARP/mDNS del dispositivo
-  - conexión a un servicio local
-  - integración futura con ubicación del móvil si existe app/agente propio
-- Permitir eventos tipo:
-  - “usuario llegó a casa”
-  - “usuario salió de casa”
-  - “teléfono conectado”
-  - “teléfono desconectado”
-- Usar estos eventos para automatizaciones locales:
-  - encender pantalla
-  - saludar
-  - cambiar modo de Sity
-  - preparar música
-  - mostrar estado del sistema
-- Requerir consentimiento explícito antes de activar tracking de presencia.
-- Guardar solo eventos mínimos y evitar historial invasivo.
-- Permitir desactivar/borrar historial de presencia.
-- No usar Bluetooth/WiFi para rastreo continuo sin confirmación clara.
-
-### Internet / Web Access
-
-Pendiente:
-
-- Añadir herramienta de búsqueda web.
-- Sity debe preguntar antes de buscar en internet si la acción implica salir del entorno local.
-- Separar claramente conocimiento local de información buscada online.
-- Mostrar fuentes/enlaces usados para responder.
-- Resumir resultados sin inventar.
-- Permitir preguntas como:
-  - “¿Cuándo sale Forza Horizon 6?”
-  - “Busca documentación de X.”
-  - “Qué ha pasado hoy con Y.”
-- Definir política de permisos:
-  - búsqueda puntual con confirmación
-  - dominios permitidos/opcionales
-  - bloqueo de webs sensibles si hace falta
-- Cachear búsquedas recientes para ahorrar llamadas.
-
-### Google Integration
-
-Pendiente:
-
-- OAuth local.
-- Google Drive read-only.
-- Gmail read-only.
-- Google Calendar read-only.
-- Confirmación para acciones sensibles:
-  - enviar email
-  - borrar email
-  - mover archivos
-  - crear/modificar eventos
-- Separar scopes por capacidad.
-- Guardar tokens fuera de Git.
-- Revocación/rotación de credenciales.
-- Mostrar claramente cuándo Sity está consultando Google.
-
-### Música / Spotify
-
-Pendiente:
-
-- Integración con Spotify.
-- Explorar dos rutas:
-  - Spotify Web en Vivaldi.
-  - Raspotify como Spotify Connect en Raspberry.
-- Permitir acciones como:
-  - “pon música”
-  - “pon mi playlist X”
-  - “pausa”
-  - “siguiente canción”
-  - “qué está sonando”
-- Leer gustos/playlists si se usa API de Spotify.
-- Pedir permiso antes de enlazar cuentas o controlar reproducción.
-- No romper el pipeline custom de audio HDMI.
-
-### IA / Modelos
-
-Pendiente:
-
-- Fallback a futuros modelos.
-- Mejor routing entre modelo barato/caro.
-- Compresión de contexto.
-- Resumen automático de memoria.
-- Control más fino del coste de tokens.
-- Modo offline/local en el futuro si hay modelo viable.
-- Separar mejor planner, conversación y ejecución.
-- Evitar llamadas a IA en casos claramente locales.
-- Micro-reactions para más eventos visibles sin pasar por flujo completo.
-
-### Frontend
-
-Pendiente:
-
-- Vista de acciones pendientes.
-- Botones de confirmar/cancelar acción.
-- Panel de servicios permitidos.
-- Panel de estado de sistema.
-- Panel de logs/debug.
-- Mejor visualización de tokens.
-- Mejor edición de personalidad.
+- Respuesta adaptativa según longitud/intención.
+- Conciencia temporal conversacional.
+- Identidad de Sity en femenino.
+- Perfil local del usuario.
+- Mejor diferenciación de refusal por personalidad, seguridad, falta de contexto o herramienta no disponible.
+- Integración con GitHub.
+- Voz / comandos hablados.
+- Transcripción de audio.
+- Descripción de imágenes.
+- Wake word.
+- Domótica Tapo / SmartLife / Tuya.
+- Interacción local con pantalla, capturas y reproducción de audio.
+- Bluetooth, WiFi y presencia local.
+- Web access con fuentes.
+- Google Drive/Gmail/Calendar.
+- Spotify/Raspotify.
+- Fallback a más modelos.
 - Mejor UX móvil/RasPad.
-- Scroll automático robusto al último mensaje.
-- Mostrar errores de red/API de forma clara.
-- Mostrar si una respuesta vino de Claude o de tool local.
-- Mejor UX de eventos en curso.
-- Historial con artifacts persistidos en `/chat/current`.
+- Panel de acciones pendientes.
+- Panel de auditoría y backups.
 
 ---
 

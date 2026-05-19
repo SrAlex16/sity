@@ -9,6 +9,7 @@ from app.system_agent.file_access import (
     read_file,
     write_file,
 )
+from app.system_agent.file_audit import list_file_audit_events
 
 
 def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
@@ -44,6 +45,9 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
             pending_action_id=payload.get("pending_action_id"),
             trace_id=payload.get("trace_id"),
         )
+
+    if action == "list_file_changes":
+        return list_file_audit_events(limit=int(payload.get("limit", 10)))
 
     return {
         "ok": False,

@@ -266,6 +266,16 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
+        if tool_name == "list_file_changes":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_file_action({
+                    "action": "list_file_changes",
+                    "limit": tool_input.get("limit", 10),
+                }),
+            )
+
         if tool_name == "read_recent_debug_events":
             return self._read_recent_debug_events(
                 tool_input=tool_input,
