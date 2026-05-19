@@ -55,6 +55,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Consulta de últimos cambios de archivos mediante `list_file_changes`.
 - Rollback de archivos desde backup explícito.
 - Rollback natural del último cambio reversible de archivo.
+- Script de regresión repo-only para System Agent.
 - Confirmación genérica contextual restaurada.
 - System Agent read-only v0.1.
 - System Agent write-file v0.2 repo-only.
@@ -101,7 +102,7 @@ deploy/
   Plantillas systemd, sudoers y documentación de despliegue.
 
 scripts/
-  Scripts de desarrollo, instalación, estado y limpieza.
+  Scripts de desarrollo, instalación, estado, limpieza y regresión.
 
 services/
   Servicios auxiliares del proyecto.
@@ -672,24 +673,24 @@ blocked            → rechazar
 Ejemplos:
 
 ```text
-list_camera_devices               → read
-list_audio_devices                → read
-read_file                         → read
-list_directory                    → read
-list_file_changes                 → read
+list_camera_devices                → read
+list_audio_devices                 → read
+read_file                          → read
+list_directory                     → read
+list_file_changes                  → read
 find_latest_reversible_file_change → read
-capture_camera_snapshot           → sensitive_direct
-record_audio_sample               → sensitive_direct
-clean_old_captures                → safe/directo conservador
-git_push                          → critical_confirm
-git_pull                          → critical_confirm
-system_restart_service            → safe_confirm
-system_stop_service               → safe_confirm
-system_config_update              → critical_confirm
-write_file                        → critical_confirm
-apply_text_patch                  → critical_confirm
-rollback_file_change              → critical_confirm
-rollback_latest_file_change       → critical_confirm
+capture_camera_snapshot            → sensitive_direct
+record_audio_sample                → sensitive_direct
+clean_old_captures                 → safe/directo conservador
+git_push                           → critical_confirm
+git_pull                           → critical_confirm
+system_restart_service             → safe_confirm
+system_stop_service                → safe_confirm
+system_config_update               → critical_confirm
+write_file                         → critical_confirm
+apply_text_patch                   → critical_confirm
+rollback_file_change               → critical_confirm
+rollback_latest_file_change        → critical_confirm
 ```
 
 ---
@@ -1118,6 +1119,67 @@ rollback_latest_file_change(include_rollbacks=true)
 - No restaura backups externos.
 - No toca rutas arbitrarias.
 - Crea backup antes de restaurar.
+
+---
+
+## Script de regresión repo-only
+
+El proyecto incluye un script para comprobar que el System Agent repo-only sigue funcionando tras cambios futuros:
+
+```text
+scripts/test_system_agent_repo.sh
+```
+
+### Qué prueba
+
+```text
+- health del backend
+- expiración de pending actions
+- creación de archivo mediante write_file
+- confirmación genérica con “sí, hazlo”
+- verificación de contenido creado
+- patch con apply_text_patch
+- preview de diff
+- confirmación de patch
+- verificación de contenido modificado
+- consulta de audit log mediante list_file_changes
+- rollback_latest_file_change
+- confirmación de rollback
+- verificación de contenido restaurado
+- bloqueo de escritura en .env
+- limpieza del archivo de prueba
+```
+
+### Uso
+
+Desde la raíz del proyecto:
+
+```bash
+./scripts/test_system_agent_repo.sh
+```
+
+Con URL explícita:
+
+```bash
+SITY_BASE_URL=http://192.168.1.133:8000 ./scripts/test_system_agent_repo.sh
+```
+
+### Objetivo
+
+Evitar romper sin darte cuenta:
+
+```text
+write_file
+apply_text_patch
+list_file_changes
+rollback_latest_file_change
+confirmación genérica
+audit log
+backups
+bloqueo de rutas sensibles
+```
+
+Debe ejecutarse antes de tocar partes delicadas del System Agent.
 
 ---
 
@@ -1663,6 +1725,12 @@ Restaurar backup explícito:
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"restaura el backup data/file_backups/NOMBRE_DEL_BACKUP.bak"}' | python3 -m json.tool
+```
+
+Ejecutar regresión repo-only:
+
+```bash
+./scripts/test_system_agent_repo.sh
 ```
 
 Ver últimos eventos de audit manualmente:
