@@ -757,12 +757,41 @@ LIST_FILE_CHANGES_TOOL = {
     },
 }
 
+ROLLBACK_FILE_CHANGE_TOOL = {
+    "name": "rollback_file_change",
+    "description": (
+        "Propone restaurar un archivo desde un backup creado por Sity. "
+        "Esta acción siempre requiere confirmación antes de ejecutarse. "
+        "Úsala cuando el usuario pida revertir un cambio de archivo, restaurar un backup "
+        "o deshacer una modificación previa. "
+        "Si el usuario pide revertir el último cambio de archivo, primero usa list_file_changes "
+        "para localizar el último evento con backup.created=true y luego usa rollback_file_change "
+        "con ese backup_path. "
+        "El backup debe venir de data/file_backups y estar asociado al audit log."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "backup_path": {
+                "type": "string",
+                "description": (
+                    "Ruta del backup que se restaurará. Debe estar dentro de data/file_backups "
+                    "y aparecer asociado a un evento en el audit log."
+                ),
+            },
+        },
+        "required": ["backup_path"],
+    },
+}
+
 FILE_AGENT_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    ROLLBACK_FILE_CHANGE_TOOL,
 ]
 
 
@@ -777,6 +806,7 @@ BASE_TOOLSET: list[dict] = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    ROLLBACK_FILE_CHANGE_TOOL,
 ]
 
 DEBUG_TOOLSET = [
@@ -867,6 +897,7 @@ ALL_TOOLS = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    ROLLBACK_FILE_CHANGE_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]

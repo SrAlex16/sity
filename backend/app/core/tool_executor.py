@@ -276,6 +276,76 @@ class ToolExecutor:
                 }),
             )
 
+        if tool_name == "rollback_file_change":
+            backup_path = str(tool_input.get("backup_path", ""))
+
+            from app.system_agent.file_access import FileAccessError, _resolve_path, assert_write_allowed
+            from app.system_agent.file_audit import find_audit_event_by_backup_path, _resolve_backup_path
+            try:
+                source_event = find_audit_event_by_backup_path(backup_path)
+                if not source_event:
+                    msg = "No se encontró ningún evento de auditoría asociado a ese backup."
+                    return ToolExecutionResult(
+                        tool_name=tool_name, ok=False, message=msg,
+                        updated_parameters=[], raw_result={"success": False, "message": msg},
+                    )
+                target_path = str(source_event.get("path", ""))
+                assert_write_allowed(_resolve_path(target_path))
+            except FileAccessError as exc:
+                err = str(exc)
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=err,
+                    updated_parameters=[], raw_result={"success": False, "message": err},
+                )
+            except Exception as exc:
+                err = str(exc)
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=err,
+                    updated_parameters=[], raw_result={"success": False, "message": err},
+                )
+
+            rollback_payload = {
+                "action": "rollback_file_change",
+                "backup_path": backup_path,
+            }
+            manager = ConfirmationManager(self.session)
+            existing = manager.find_equivalent_pending_action(
+                action_type="file",
+                payload=rollback_payload,
+            )
+            if existing:
+                result = {
+                    "success": True,
+                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "action_id": existing.id,
+                    "confirmation_phrase": existing.confirmation_phrase,
+                    "summary": existing.summary,
+                    "already_existed": True,
+                }
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=True, message=result["message"],
+                    updated_parameters=[], raw_result=result,
+                )
+
+            created = manager.create_pending_action(
+                action_type="file",
+                risk_level="critical",
+                summary=f"Restaurar {target_path} desde backup",
+                payload=rollback_payload,
+                trace_id=trace_id,
+            )
+            result = {
+                "success": True,
+                "message": "Acción pendiente creada. Requiere confirmación explícita.",
+                "action_id": created.id,
+                "confirmation_phrase": created.confirmation_phrase,
+                "summary": created.summary,
+            }
+            return ToolExecutionResult(
+                tool_name=tool_name, ok=True, message=result["message"],
+                updated_parameters=[], raw_result=result,
+            )
+
         if tool_name == "read_recent_debug_events":
             return self._read_recent_debug_events(
                 tool_input=tool_input,

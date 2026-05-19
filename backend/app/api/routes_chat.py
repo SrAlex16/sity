@@ -450,6 +450,7 @@ Debes elegir exactamente una herramienta:
 - Usa apply_text_patch si el usuario pide cambiar una parte concreta de un archivo existente y proporciona el texto exacto a reemplazar. Llama a apply_text_patch DIRECTAMENTE con el old_text y new_text del mensaje — no llames a read_file antes. Nunca se ejecuta directamente: crea una acción pendiente con diff.
 - Si el usuario quiere editar un archivo pero no proporciona el texto exacto a reemplazar, usa read_file primero para mostrarle el contenido.
 - Usa list_file_changes SIEMPRE que el usuario pregunte qué archivos ha tocado Sity, qué cambió recientemente, qué acciones de archivo ejecutó o qué backups existen. No respondas de memoria ni basándote solo en el historial conversacional para estas preguntas.
+- Si el usuario pide revertir, deshacer o restaurar el último cambio de archivo: usa list_file_changes primero para localizar el último evento con backup.created=true y después llama a rollback_file_change con ese backup_path. No te limites a mencionar el backup: crea la acción pendiente directamente.
 - Usa no_action_required si solo quiere conversar.
 
 Regla de contexto: Si el turno anterior fue sobre leer un archivo y el usuario confirma o aclara, mantén la intención de lectura. No cambies a herramientas Git salvo que el usuario pida explícitamente commits, ramas, diff, status git, pull o push.
@@ -737,7 +738,10 @@ def _chat_message_inner(
                 if execution_result.get("ok"):
                     confirmation_manager.mark_executed(pending_action, trace_id)
                     path = execution_result.get("path", "")
-                    if file_action == "apply_text_patch":
+                    if file_action == "rollback_file_change":
+                        restored_from = execution_result.get("restored_from_backup_path", "")
+                        text = f"Rollback aplicado: {path}\nRestaurado desde: {restored_from}"
+                    elif file_action == "apply_text_patch":
                         text = f"Patch aplicado: {path}"
                     elif file_action == "write_file":
                         created = execution_result.get("created", True)
@@ -747,7 +751,9 @@ def _chat_message_inner(
                 else:
                     error = execution_result.get("error", "Error desconocido")
                     confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    if file_action == "apply_text_patch":
+                    if file_action == "rollback_file_change":
+                        text = f"No he podido hacer el rollback: {error}"
+                    elif file_action == "apply_text_patch":
                         text = f"No he podido aplicar el patch: {error}"
                     else:
                         text = f"No he podido escribir el archivo: {error}"
