@@ -6,7 +6,9 @@ from sqlmodel import Session
 from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.actions.confirmation_manager import ConfirmationManager
+from app.actions.capture_retention_actions import execute_capture_retention_action
 from app.actions.sense_actions import execute_sense_action
+from app.core.realtime_events import publish_event_sync
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 from app.system.git_reader import git_branches, git_log, git_remotes, git_status
@@ -25,6 +27,13 @@ ALLOWED_OPERATIONS = {
     "set_absolute",
     "increase_absolute",
     "decrease_absolute",
+}
+
+TOOL_LABELS: dict[str, str] = {
+    "capture_camera_snapshot": "Sacando foto…",
+    "record_audio_sample": "Grabando audio…",
+    "clean_old_captures": "Limpiando capturas antiguas…",
+    "get_capture_storage_summary": "Consultando almacenamiento…",
 }
 
 
@@ -48,6 +57,38 @@ class ToolExecutor:
         tool_name: str,
         tool_input: dict[str, Any],
         trace_id: str,
+        client_turn_id: str | None = None,
+    ) -> ToolExecutionResult:
+        if tool_name in TOOL_LABELS:
+            publish_event_sync(client_turn_id, {
+                "type": "tool_started",
+                "tool": tool_name,
+                "label": TOOL_LABELS[tool_name],
+                "can_cancel": tool_name in {"record_audio_sample", "capture_camera_snapshot"},
+            })
+
+        result = self._dispatch_tool_call(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            trace_id=trace_id,
+            client_turn_id=client_turn_id,
+        )
+
+        if tool_name in TOOL_LABELS:
+            publish_event_sync(client_turn_id, {
+                "type": "tool_finished",
+                "tool": tool_name,
+            })
+
+        return result
+
+    def _dispatch_tool_call(
+        self,
+        *,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        trace_id: str,
+        client_turn_id: str | None = None,
     ) -> ToolExecutionResult:
         if tool_name == "read_recent_debug_events":
             return self._read_recent_debug_events(
@@ -120,6 +161,7 @@ class ToolExecutor:
                     "width": int(tool_input.get("width", 1280)),
                     "height": int(tool_input.get("height", 720)),
                     "skip_frames": int(tool_input.get("skip_frames", 20)),
+                    "client_turn_id": client_turn_id,
                 }),
             )
 
@@ -131,6 +173,26 @@ class ToolExecutor:
                     "action": "record_audio_sample",
                     "duration_seconds": int(tool_input.get("duration_seconds", 3)),
                     "device": str(tool_input.get("device", "plughw:CARD=webcam,DEV=0")),
+                    "client_turn_id": client_turn_id,
+                }),
+            )
+
+        if tool_name == "get_capture_storage_summary":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_capture_retention_action({"action": "get_capture_storage_summary"}),
+            )
+
+        if tool_name == "clean_old_captures":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_capture_retention_action({
+                    "action": "clean_old_captures",
+                    "older_than_days": int(tool_input.get("older_than_days", 7)),
+                    "max_files_per_type": int(tool_input.get("max_files_per_type", 100)),
+                    "dry_run": bool(tool_input.get("dry_run", False)),
                 }),
             )
 

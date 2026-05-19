@@ -87,6 +87,13 @@ function EventCard({ event }: { event: TraceEvent }) {
   );
 }
 
+function createClientTurnId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `turn_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 function App() {
   const [tab, setTab] = useState<Tab>("chat");
 
@@ -111,6 +118,8 @@ function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [activeClientTurnId, setActiveClientTurnId] = useState<string | null>(null);
+  const [canCancel, setCanCancel] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
   function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
@@ -207,26 +216,78 @@ function App() {
     }
   }
 
-  function getSensorPendingLabel(text: string): string | null {
-    const n = text.toLowerCase();
-    if (n.includes("audio") || n.includes("micro") || n.includes("micrófono")) return "Grabando audio…";
-    if (n.includes("foto") || n.includes("cámara") || n.includes("camara") || n.includes("imagen")) return "Usando cámara…";
-    return null;
+  async function cancelActiveOperation() {
+    if (!activeClientTurnId) return;
+    setCanCancel(false);
+    setPendingStatus("Cancelando…");
+    await fetch(`${API_BASE}/events/chat/${activeClientTurnId}/cancel`, { method: "POST" });
   }
 
   async function submitChat() {
+    console.log("[Sity submit] called", { chatInput, chatLoading });
+
     const trimmed = chatInput.trim();
-    if (!trimmed || chatLoading) return;
+
+    if (!trimmed || chatLoading) {
+      console.log("[Sity submit] blocked", { trimmed, chatLoading });
+      return;
+    }
+
+    const clientTurnId = createClientTurnId();
+    console.log("[Sity submit] clientTurnId", clientTurnId);
 
     setChatInput("");
     setChatError(null);
     setChatLoading(true);
-    setPendingStatus(getSensorPendingLabel(trimmed) ?? "Pensando…");
+    setCanCancel(false);
+    setPendingStatus("Sity está trabajando…");
+    setActiveClientTurnId(clientTurnId);
     setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
     window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
+    const eventSource = new EventSource(`${API_BASE}/events/chat/${clientTurnId}`);
+    console.log("[Sity submit] EventSource opened");
+
+    eventSource.onopen = () => {
+      console.log("[Sity SSE] open", clientTurnId);
+    };
+
+    eventSource.onmessage = (e) => {
+      console.log("[Sity SSE] message raw", e.data);
+      const data = JSON.parse(e.data) as {
+        type: string;
+        label?: string;
+        can_cancel?: boolean;
+      };
+      console.log("[Sity SSE] message parsed", data);
+      if (data.type === "tool_started") {
+        setPendingStatus(data.label ?? "Trabajando…");
+        setCanCancel(Boolean(data.can_cancel));
+      }
+      if (data.type === "tool_finished") {
+        setCanCancel(false);
+        setPendingStatus("Procesando respuesta…");
+      }
+      if (data.type === "cancelled") {
+        setPendingStatus(data.label ?? "Cancelado.");
+        setCanCancel(false);
+      }
+
+      if (data.type === "done" || data.type === "error") {
+        setCanCancel(false);
+        setActiveClientTurnId(null);
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error("[Sity SSE] error", error);
+    };
+
     try {
-      const response = await sendChatMessage(trimmed);
+      console.log("[Sity submit] sending chat message");
+      const response = await sendChatMessage(trimmed, clientTurnId);
+      console.log("[Sity submit] response", response);
 
       setChatEntries((current) => [
         ...current,
@@ -239,7 +300,8 @@ function App() {
       ]);
       window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
-      await Promise.all([refreshPersonality(), refreshDebug()]);
+      refreshPersonality();
+      refreshDebug();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Error desconocido";
       setChatError(errorMessage);
@@ -251,8 +313,12 @@ function App() {
         },
       ]);
     } finally {
-      setChatLoading(false);
+      console.log("[Sity submit] finally cleanup");
+      eventSource.close();
       setPendingStatus(null);
+      setCanCancel(false);
+      setActiveClientTurnId(null);
+      setChatLoading(false);
     }
   }
 
@@ -412,13 +478,24 @@ function App() {
                 placeholder="Habla con Sity..."
                 className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100 outline-none focus:border-cyan-300"
               />
-              <button
-                onClick={submitChat}
-                disabled={chatLoading}
-                className="rounded-xl bg-cyan-300 px-5 py-3 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Enviar
-              </button>
+              {activeClientTurnId && canCancel ? (
+                <button
+                  type="button"
+                  onClick={cancelActiveOperation}
+                  className="rounded-xl bg-red-500 px-5 py-3 font-medium text-white hover:bg-red-600"
+                >
+                  Cancelar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submitChat}
+                  disabled={chatLoading}
+                  className="rounded-xl bg-cyan-300 px-5 py-3 font-medium text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Enviar
+                </button>
+              )}
             </div>
           </section>
         )}

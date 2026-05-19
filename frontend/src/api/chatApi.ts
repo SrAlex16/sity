@@ -39,13 +39,14 @@ export const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:
 
 export async function sendChatMessage(
   message: string,
+  clientTurnId?: string,
 ): Promise<ChatMessageResponse> {
   const response = await fetch(`${API_BASE}/chat/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, client_turn_id: clientTurnId }),
   });
 
   if (!response.ok) {

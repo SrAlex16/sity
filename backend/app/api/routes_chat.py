@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.actions.confirmation_manager import ConfirmationManager
+from app.core.cancellation import clear_operation, register_operation
+from app.core.realtime_events import publish_event_sync
 from app.actions.git_actions import execute_git_action
 from app.actions.git_actions import parse_payload as parse_git_payload
 from app.actions.sense_actions import execute_sense_action
@@ -21,6 +23,7 @@ from app.actions.system_config_actions import (
     list_allowed_services,
     parse_payload as parse_system_config_payload,
 )
+from app.core.micro_reactions import generate_micro_reaction
 from app.core.persona_engine import PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
@@ -145,6 +148,7 @@ class ChatHistoryItem(BaseModel):
 class ChatMessageRequest(BaseModel):
     message: str
     history: list[ChatHistoryItem] = []
+    client_turn_id: str | None = None
 
 
 class ChatArtifact(BaseModel):
@@ -635,6 +639,26 @@ No inventes resultados.
 def chat_message(
     request: ChatMessageRequest,
     session: Session = Depends(get_session),
+):
+    cid = request.client_turn_id
+    if cid:
+        register_operation(cid)
+
+    try:
+        return _chat_message_inner(request=request, session=session)
+    except Exception:
+        publish_event_sync(cid, {"type": "error", "label": "Error procesando la petición."})
+        raise
+    finally:
+        publish_event_sync(cid, {"type": "done"})
+        if cid:
+            clear_operation(cid)
+
+
+def _chat_message_inner(
+    *,
+    request: ChatMessageRequest,
+    session: Session,
 ):
     trace_id = new_trace_id()
     config = load_default_config()
@@ -1239,6 +1263,7 @@ def chat_message(
             tool_name=fast_tool_call["name"],
             tool_input=fast_tool_call["input"],
             trace_id=trace_id,
+            client_turn_id=request.client_turn_id,
         )
 
         response = gateway.generate(
@@ -1363,11 +1388,113 @@ def chat_message(
                     tool_name=tool_call.name,
                     tool_input=tool_call.input,
                     trace_id=trace_id,
+                    client_turn_id=request.client_turn_id,
                 )
+
+                _inner = result.raw_result.get("result", {})
+                _tool_name = tool_call.name
+                _is_sensor = _tool_name in {"record_audio_sample", "capture_camera_snapshot"}
+                _personality_dict = personality if isinstance(personality, dict) else {}
+
+                if _inner.get("cancelled"):
+                    _event_type = (
+                        "audio_recording_cancelled"
+                        if "audio" in _tool_name
+                        else "camera_capture_cancelled"
+                    )
+                    _react_text = generate_micro_reaction(
+                        ai_client=gateway.provider,
+                        event_type=_event_type,
+                        event_description="El usuario ha cancelado voluntariamente la operación.",
+                        personality=_personality_dict,
+                        trace_id=trace_id,
+                    )
+                    write_log(
+                        level="AUDIT",
+                        module="senses",
+                        event=_event_type,
+                        trace_id=trace_id,
+                        payload={"tool": _tool_name},
+                        audit=True,
+                    )
+                    save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
+                    return ChatMessageResponse(
+                        ok=True,
+                        trace_id=trace_id,
+                        text=_react_text,
+                        provider="local",
+                        model="micro_reaction",
+                        fallback_used=False,
+                        error_type=None,
+                        usage=UsageSummary(
+                            input_tokens=0,
+                            output_tokens=0,
+                            total_tokens=0,
+                            daily_used_tokens=get_today_token_usage(session),
+                            daily_budget_tokens=daily_budget,
+                            daily_ratio=0.0,
+                        ),
+                        warnings=[],
+                        personality_updated=False,
+                        updated_parameter=None,
+                        updated_parameters=[],
+                        artifacts=[],
+                    )
+
+                if result.ok and _is_sensor:
+                    _event_type = (
+                        "audio_recording_finished"
+                        if "audio" in _tool_name
+                        else "camera_capture_finished"
+                    )
+                    _react_text = generate_micro_reaction(
+                        ai_client=gateway.provider,
+                        event_type=_event_type,
+                        event_description="La operación de sensor ha completado correctamente.",
+                        personality=_personality_dict,
+                        trace_id=trace_id,
+                    )
+                    write_log(
+                        level="AUDIT",
+                        module="senses",
+                        event=_event_type,
+                        trace_id=trace_id,
+                        payload={"tool": _tool_name},
+                        audit=True,
+                    )
+                    _finished_artifacts: list[ChatArtifact] = []
+                    _raw_path = _inner.get("path")
+                    if _raw_path:
+                        _artifact = capture_artifact_from_path(str(_raw_path))
+                        if _artifact:
+                            _finished_artifacts.append(_artifact)
+                    save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
+                    return ChatMessageResponse(
+                        ok=True,
+                        trace_id=trace_id,
+                        text=_react_text,
+                        provider="local",
+                        model="micro_reaction",
+                        fallback_used=False,
+                        error_type=None,
+                        usage=UsageSummary(
+                            input_tokens=0,
+                            output_tokens=0,
+                            total_tokens=0,
+                            daily_used_tokens=get_today_token_usage(session),
+                            daily_budget_tokens=daily_budget,
+                            daily_ratio=0.0,
+                        ),
+                        warnings=[],
+                        personality_updated=False,
+                        updated_parameter=None,
+                        updated_parameters=[],
+                        artifacts=_finished_artifacts,
+                    )
 
                 if result.ok:
                     updated_parameters.extend(result.updated_parameters)
-                    _raw_path = result.raw_result.get("result", {}).get("path")
+                    _raw_path = _inner.get("path")
                     if _raw_path:
                         _artifact = capture_artifact_from_path(str(_raw_path))
                         if _artifact:

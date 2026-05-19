@@ -509,6 +509,48 @@ SYSTEM_PROPOSE_ACTION_TOOL = {
 }
 
 
+GET_CAPTURE_STORAGE_SUMMARY_TOOL = {
+    "name": "get_capture_storage_summary",
+    "description": (
+        "Consulta cuántas capturas de cámara/audio hay guardadas y cuánto ocupan. "
+        "No borra nada."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+CLEAN_OLD_CAPTURES_TOOL = {
+    "name": "clean_old_captures",
+    "description": (
+        "Limpia capturas antiguas de cámara/audio dentro del directorio captures. "
+        "Úsala cuando el usuario pida limpiar, borrar capturas antiguas o evitar acumulación. "
+        "Solo borra archivos permitidos dentro de captures/camera y captures/audio."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "older_than_days": {
+                "type": "integer",
+                "description": "Borra archivos con más de estos días. Por defecto 7.",
+            },
+            "max_files_per_type": {
+                "type": "integer",
+                "description": "Mantiene como mínimo este máximo de archivos recientes por tipo. Por defecto 100.",
+            },
+            "dry_run": {
+                "type": "boolean",
+                "description": "Si true, solo simula la limpieza sin borrar archivos.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+
 PERSONALITY_TOOLSET = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
     NO_ACTION_REQUIRED_TOOL,
@@ -544,6 +586,8 @@ SENSES_TOOLSET = [
     LIST_AUDIO_DEVICES_TOOL,
     CAPTURE_CAMERA_SNAPSHOT_TOOL,
     RECORD_AUDIO_SAMPLE_TOOL,
+    GET_CAPTURE_STORAGE_SUMMARY_TOOL,
+    CLEAN_OLD_CAPTURES_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
@@ -566,6 +610,8 @@ ALL_TOOLS = [
     LIST_AUDIO_DEVICES_TOOL,
     CAPTURE_CAMERA_SNAPSHOT_TOOL,
     RECORD_AUDIO_SAMPLE_TOOL,
+    GET_CAPTURE_STORAGE_SUMMARY_TOOL,
+    CLEAN_OLD_CAPTURES_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]

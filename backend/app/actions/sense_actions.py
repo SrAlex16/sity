@@ -18,12 +18,14 @@ def execute_sense_action(payload: dict[str, Any]) -> dict[str, Any]:
             width=int(payload.get("width", 1280)),
             height=int(payload.get("height", 720)),
             skip_frames=int(payload.get("skip_frames", 20)),
+            client_turn_id=payload.get("client_turn_id"),
         )
 
     if action == "record_audio_sample":
         return record_audio_sample(
             duration_seconds=int(payload.get("duration_seconds", 3)),
             device=str(payload.get("device", REAL_WEBCAM_MIC_DEVICE)),
+            client_turn_id=payload.get("client_turn_id"),
         )
 
     return {

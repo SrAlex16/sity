@@ -10,7 +10,9 @@ load_dotenv(PROJECT_ROOT / ".env")
 from app.api.routes_captures import router as captures_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_debug import router as debug_router
+from app.api.routes_events import router as events_router
 from app.api.routes_settings import router as settings_router
+from app.core.realtime_events import set_event_loop
 from app.memory.db import init_db
 from app.trace.logger import write_log
 
@@ -33,7 +35,9 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
+    import asyncio
+    set_event_loop(asyncio.get_running_loop())
     init_db()
     write_log(
         level="INFO",
@@ -56,3 +60,4 @@ app.include_router(settings_router)
 app.include_router(debug_router)
 app.include_router(chat_router)
 app.include_router(captures_router)
+app.include_router(events_router)

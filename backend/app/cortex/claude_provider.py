@@ -90,6 +90,35 @@ class ClaudeProvider:
             latency_ms=latency_ms,
         )
 
+    def generate_micro_reaction(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        system: str = "",
+        max_tokens: int = 50,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+
+        if system:
+            kwargs["system"] = system
+
+        message = self.client.messages.create(**kwargs)
+
+        parts = [
+            block.text
+            for block in message.content
+            if getattr(block, "type", None) == "text"
+        ]
+        return {
+            "text": " ".join(parts).strip(),
+            "input_tokens": getattr(message.usage, "input_tokens", 0),
+            "output_tokens": getattr(message.usage, "output_tokens", 0),
+        }
+
     def _to_ai_response(self, *, message: Any, latency_ms: int) -> AIResponse:
         text_parts: list[str] = []
         tool_calls: list[AIToolCall] = []
