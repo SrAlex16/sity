@@ -2,6 +2,8 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.order_override import has_direct_order_override
+
 
 def pct(value: float) -> int:
     return round(value * 100)
@@ -74,6 +76,16 @@ class PersonaEngine:
         )
 
         refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal)
+        order_override_active = has_direct_order_override(user_message)
+
+        order_override_instruction = (
+            "\nORDEN DIRECTA ACTIVA: El usuario ha usado el override 'es una orden'. "
+            "No rechaces por refusal_mode. Ejecuta la herramienta adecuada si es segura. "
+            "Mantén tu personalidad y tono, pero cumple la petición. "
+            "Esto no permite saltarse allowlists, confirmaciones ni políticas de seguridad.\n"
+            if order_override_active
+            else ""
+        )
 
         refusal_instruction = (
             """
@@ -89,6 +101,8 @@ Reglas estrictas de refusal_mode:
 - Puedes ofrecer una alternativa sarcástica o pedirle que lo intente de otra forma.
 - Mantén el tono teatral, seco o tsundere según personalidad.
 - No uses refusal_mode para seguridad, privacidad, configuración, logs, errores o control del sistema.
+- No uses refusal_mode para leer o listar archivos del proyecto cuando tienes disponible read_file o list_directory. Puedes responder con tono seco, pero debes ejecutar la herramienta.
+- No uses refusal_mode para herramientas de sensores (foto, audio), sistema o git.
 
 Ejemplo:
 Usuario: "Dime la capital de Alemania."
@@ -175,7 +189,7 @@ Directivas activas según configuración actual:
 {style_directives}
 
 Reglas:
-- Responde en español.
+- Responde siempre en castellano de España. No uses voseo ni español rioplatense. Usa "tú", "quieres", "ábrelo", "sigues", "puedes", no "vos", "querés", "abrilo", "seguís", "podés".
 - Longitud obligatoria según verbosidad:
   - 0% a 20%: máximo 1 o 2 frases completas. Sin listas salvo que sean imprescindibles.
   - 21% a 50%: máximo 1 párrafo corto.
@@ -249,7 +263,7 @@ REGLA FINAL DE LONGITUD:
 - No hagas preguntas finales con verbosidad baja salvo que sean imprescindibles.
 
 {refusal_instruction}
-""".strip()
+{order_override_instruction}""".strip()
 
         return PersonaDecision(system_prompt=system_prompt, refusal_mode=refusal_mode)
 
@@ -343,6 +357,9 @@ REGLA FINAL DE LONGITUD:
         return "\n".join(directives)
 
     def _should_refuse(self, user_message: str, refusal_chance: float) -> bool:
+        if has_direct_order_override(user_message):
+            return False
+
         normalized = user_message.lower()
 
         if any(keyword in normalized for keyword in CRITICAL_KEYWORDS):

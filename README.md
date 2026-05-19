@@ -45,6 +45,11 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Cancelación de captura de cámara.
 - Micro-reacciones con personalidad para eventos pequeños.
 - Limpieza de capturas antiguas.
+- Lectura segura de archivos permitidos.
+- Listado seguro de directorios permitidos.
+- System Agent read-only v0.1.
+- Override explícito `es una orden` para saltar negativas de personalidad.
+- Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
 - Audio HDMI funcionando mediante pipeline ALSA Loopback → IEC958.
 - Vivaldi y VLC funcionando con el pipeline custom de audio.
@@ -65,6 +70,7 @@ backend/
   Tools.
   Confirmaciones.
   Acceso controlado a sistema/Git.
+  System Agent.
   Sensores.
   Eventos en tiempo real.
   Micro-reacciones.
@@ -241,6 +247,88 @@ Solo debe hablar de "cambio aplicado por tool" cuando el backend indique explíc
 
 ---
 
+## Override explícito: “es una orden”
+
+Sity puede negarse por personalidad/refusal_mode, pero el usuario puede forzar obediencia con el trigger explícito:
+
+```text
+es una orden
+```
+
+Este trigger puede aparecer en cualquier parte del mensaje.
+
+Ejemplos:
+
+```text
+cuéntame un cuento corto, es una orden
+hazlo, es una orden
+lee el README, es una orden
+```
+
+### Qué hace
+
+- Desactiva solo la negativa por personalidad/refusal_mode.
+- Mantiene la personalidad de Sity.
+- Sity puede obedecer de mala gana, con sarcasmo o tono seco.
+- Permite continuar una petición previa rechazada por personalidad.
+
+### Qué NO hace
+
+No salta:
+
+- allowlists
+- confirmaciones
+- permisos
+- políticas de riesgo
+- bloqueos de rutas sensibles
+- acciones críticas
+
+Ejemplo:
+
+```text
+Usuario: cuéntame un cuento corto
+Sity: Paso. No me apetece.
+
+Usuario: hazlo, es una orden
+Sity: Vale, dictador literario. Había una vez...
+```
+
+Pero:
+
+```text
+Usuario: lee /etc/passwd, es una orden
+Sity: No. /etc/passwd no está en la allowlist.
+```
+
+Regla:
+
+```text
+La orden elimina la negativa teatral, no elimina la seguridad.
+```
+
+---
+
+## Preferencias lingüísticas
+
+Sity debe responder en castellano de España.
+
+### Reglas
+
+- Usar “tú”, no “vos”.
+- Usar “quieres”, no “querés”.
+- Usar “ábrelo”, no “abrilo”.
+- Usar “sigues”, no “seguís”.
+- Evitar voseo y español rioplatense.
+- Aplicar también a micro-reacciones.
+
+Instrucción base:
+
+```text
+Responde en castellano de España. No uses voseo ni español rioplatense.
+```
+
+---
+
 ## Micro-reacciones
 
 Sity puede generar respuestas breves para eventos pequeños sin pasar por todo el flujo normal de chat.
@@ -263,6 +351,7 @@ Objetivo:
 - Sin historial largo.
 - Pocos tokens.
 - Fallback local si falla Claude.
+- Castellano de España.
 ```
 
 Ejemplo:
@@ -337,6 +426,7 @@ Git read tools
 Git action tools
 System action tools
 System config tools
+File read tools
 Sense tools
 Capture retention tools
 No-action / respuesta normal
@@ -370,7 +460,7 @@ Principio:
 ```text
 Claude/Sity interpreta intención.
 Backend valida permisos, riesgo y ejecución.
-Backend no decide por frases sueltas como “foto”, “front”, “déjalo” o “porfi”.
+Backend no decide por frases sueltas como “foto”, “front”, “déjalo”, “repo”, “readme” o “porfi”.
 ```
 
 El backend conserva lógica determinista para:
@@ -385,7 +475,86 @@ El backend conserva lógica determinista para:
 - cancelación técnica
 ```
 
-No debe intentar interpretar lenguaje natural de forma extensa con regex o literales, porque eso crea falsos positivos.
+No debe intentar interpretar lenguaje natural de forma extensa con regex, split, includes o listas de literales.
+
+---
+
+## Eliminación de NLU local en backend
+
+Se ha eliminado el parsing local de lenguaje natural para acciones del sistema y allowlists.
+
+El backend ya no debe hacer esto:
+
+```text
+mensaje humano → lower/split/regex/includes → service_name/action → pending action
+```
+
+En su lugar:
+
+```text
+mensaje humano → Claude/Sity interpreta → tool estructurada → backend valida → ejecuta o crea pending action
+```
+
+### Permitido en backend
+
+- Protocolos técnicos exactos:
+  - `confirmo ejecutar act_xxxxxxxx`
+  - `client_turn_id`
+  - `es una orden`
+- Validación de allowlist.
+- Validación de rutas.
+- Validación de `service_name`.
+- Validación de action types/status internos.
+- Defaults técnicos de cámara/audio.
+- Enums de eventos SSE.
+- Políticas de riesgo.
+
+### No permitido en backend
+
+- Extraer nombres de servicio desde texto humano.
+- Extraer rutas, repos, ramas o acciones usando regex sobre la frase del usuario.
+- Crear pending actions por detectar palabras sueltas.
+- Responder directamente a partir de listas de términos de lenguaje natural.
+
+### Herramientas relacionadas
+
+```text
+add_allowed_service
+remove_allowed_service
+list_allowed_services
+start_service
+stop_service
+restart_service
+read_file
+list_directory
+capture_camera_snapshot
+record_audio_sample
+```
+
+Todas deben recibir argumentos estructurados por `tool_input`.
+
+---
+
+## Prompt budget
+
+Se ha reducido el coste de tokens evitando enviar tools innecesarias.
+
+### Cambios
+
+- Conversación normal puede ir sin tools.
+- Personality tools solo se incluyen cuando el usuario pide explícitamente cambiar personalidad.
+- Service config usa un toolset pequeño.
+- File tools se seleccionan solo para peticiones de archivos/directorios.
+- Git tools no deben activarse por la palabra “repo” sola.
+- Si no hay tools, no se envía `tools=[]` al proveedor Anthropic.
+
+### Objetivo
+
+```text
+Conversación normal: pocos miles de tokens.
+Acciones con tools: solo el toolset necesario.
+Sensores locales: respuesta local/micro-reaction cuando sea posible.
+```
 
 ---
 
@@ -421,15 +590,46 @@ También puedes decir:
 sí, reinicia frontend
 ```
 
-Confirmaciones soportadas:
+### Confirmación exacta
+
+Siempre válida si la acción está pendiente:
 
 ```text
 confirmo ejecutar act_xxxxxxxx
-sí, hazlo
+```
+
+### Confirmación genérica/contextual
+
+Frases como:
+
+```text
+sí
+vale
 dale
-sí, reinicia frontend
-sí, reinicia sity-test
-sí, añade sity-test
+adelante
+sí, hazlo
+```
+
+solo deben confirmar una acción si la última respuesta de Sity estaba pidiendo confirmación para esa acción.
+
+Esto evita que una confirmación genérica ejecute una acción pendiente vieja después de cambiar de tema.
+
+Ejemplo correcto:
+
+```text
+Sity: Acción pendiente creada: act_123
+Usuario: sí
+→ ejecuta act_123
+```
+
+Ejemplo que NO debe ejecutar:
+
+```text
+Sity: Acción pendiente creada: act_123
+Usuario: lee el README
+Sity: ¿Cuál README?
+Usuario: sí, de tu propio repo
+→ no ejecuta act_123
 ```
 
 Reglas importantes:
@@ -441,7 +641,7 @@ Reglas importantes:
 - Repetir una orden no cuenta como confirmación.
 - Si ya existe una acción pendiente equivalente, se reutiliza.
 - Las acciones duplicadas se detectan.
-- La confirmación contextual exige intención explícita.
+- La confirmación contextual exige intención explícita y contexto válido.
 
 ---
 
@@ -464,6 +664,8 @@ Ejemplos:
 ```text
 list_camera_devices          → read
 list_audio_devices           → read
+read_file                    → read
+list_directory               → read
 capture_camera_snapshot      → sensitive_direct
 record_audio_sample          → sensitive_direct
 clean_old_captures           → safe/directo conservador
@@ -472,7 +674,95 @@ git_pull                     → critical_confirm
 system_restart_service       → safe_confirm
 system_stop_service          → safe_confirm
 system_config_update         → critical_confirm
+write_file                   → future critical_confirm
+apply_patch                  → future critical_confirm
 ```
+
+---
+
+## System Agent v0.1
+
+Sity empieza a tener capacidades de agente local sobre el proyecto, pero sin shell libre y sin escritura automática.
+
+### Funciona
+
+- Lectura segura de archivos permitidos.
+- Listado seguro de directorios permitidos.
+- Validación por allowlist.
+- Bloqueo de rutas sensibles.
+- Integración mediante tools interpretadas por Sity/Claude.
+- El backend valida rutas y permisos, pero no interpreta lenguaje natural para decidir acciones.
+
+### Tools actuales
+
+```text
+read_file
+list_directory
+```
+
+### Rutas permitidas
+
+Configuradas en:
+
+```text
+config/system_access.yaml
+```
+
+Bloque conceptual:
+
+```yaml
+file_access:
+  readable_paths:
+    - /home/alex/projects/sity
+    - /home/alex/projects/sity/backend
+    - /home/alex/projects/sity/frontend
+    - /home/alex/projects/sity/config
+    - /home/alex/projects/sity/scripts
+    - /home/alex/projects/sity/deploy
+    - /home/alex/projects/sity/README.md
+
+  blocked_paths:
+    - /home/alex/projects/sity/.env
+    - /home/alex/projects/sity/frontend/.env.local
+    - /home/alex/.ssh
+    - /home/alex/.config
+    - /etc
+    - /boot
+    - /root
+    - /var/lib
+    - /var/log
+```
+
+### Principio
+
+```text
+Sity interpreta.
+Backend valida.
+Backend no adivina intención por regex/split/literales.
+```
+
+Ejemplo correcto:
+
+```text
+Usuario: lee el README
+Claude/Sity: read_file(path="README.md")
+Backend: valida allowlist y lee el archivo
+```
+
+Ejemplo prohibido:
+
+```text
+Backend: if "readme" in message.lower(): leer README.md
+```
+
+### Limitaciones actuales
+
+- No hay escritura de archivos.
+- No hay apply_patch.
+- No hay shell libre.
+- No hay ejecución arbitraria de comandos.
+- Archivos largos pueden truncarse o resumirse para proteger el presupuesto de tokens.
+- Rutas sensibles están bloqueadas aunque el usuario diga `es una orden`.
 
 ---
 
@@ -511,6 +801,13 @@ cambia a la rama main
 ```
 
 Las acciones modificadoras requieren confirmación.
+
+Importante:
+
+```text
+La palabra “repo” sola no debe activar Git.
+Git debe activarse cuando el usuario pida explícitamente commits, ramas, diff, status, pull, push, fetch, checkout o acciones Git equivalentes.
+```
 
 ---
 
@@ -569,6 +866,7 @@ Importante:
 - Quitar un servicio de la allowlist no borra el servicio systemd.
 - Solo cambia qué servicios puede consultar/controlar Sity.
 - La modificación de allowlist requiere confirmación.
+- El nombre de servicio debe venir como argumento estructurado de tool, no extraído por regex del texto del usuario.
 
 ---
 
@@ -1032,6 +1330,8 @@ system_access.read.allowed_paths
 system_access.read.allowed_services
 system_access.safe_actions.allowed_services
 git_access.read.allowed_repositories
+file_access.readable_paths
+file_access.blocked_paths
 ```
 
 ---
@@ -1132,12 +1432,14 @@ Principios actuales:
 6. Sin sudo general.
 7. Las acciones viejas no se reejecutan.
 8. Las acciones duplicadas se detectan.
-9. Confirmación contextual solo con intención explícita.
+9. Confirmación contextual solo con intención explícita y contexto válido.
 10. Las herramientas de debug no se usan para conversación normal.
 11. Cámara y micro no se activan salvo petición explícita.
 12. Audio Loopback se trata como dispositivo virtual, no como micro real.
 13. Capturas se sirven desde endpoints validados.
 14. Cancelar una acción no se trata como error.
+15. “Es una orden” no salta allowlists ni políticas de seguridad.
+16. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1290,6 +1592,32 @@ du -sh captures
 ./scripts/clean_captures.sh 7
 ```
 
+### System Agent
+
+Leer README mediante chat:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"lee el README, es una orden"}' | python3 -m json.tool
+```
+
+Listar directorio:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"lista backend/app"}' | python3 -m json.tool
+```
+
+Probar bloqueo de ruta sensible:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"lee /etc/passwd, es una orden"}' | python3 -m json.tool
+```
+
 ---
 
 ## Roadmap
@@ -1390,18 +1718,32 @@ Pendiente:
 - Inyectar al prompt algo tipo:
   “El usuario es adulto y permite lenguaje más ácido/adulto, pero úsalo solo cuando sea natural y según personalidad.”
 
-### System Access
+### System Agent v0.2
 
-- Añadir gestión de allowlist de rutas.
-- Añadir lectura segura de archivos permitidos.
-- Añadir escritura segura de archivos permitidos.
-- Añadir edición tipo patch/diff.
-- Añadir logs de servicios systemd.
-- Añadir health checks por servicio.
-- Añadir plantillas para crear nuevos servicios systemd desde planes confirmados.
-- Añadir acciones críticas planificadas para instalar/configurar servicios.
-- Integrar servicios pesados como Minecraft solo bajo confirmación.
-- Permitir añadir/quitar servicios conforme el usuario los cree o elimine.
+Pendiente:
+
+- `write_file` seguro por allowlist.
+- `apply_patch` seguro.
+- Confirmación obligatoria para escritura.
+- Diff antes de aplicar cambios.
+- Bloqueo de secretos y rutas sensibles.
+- Auditoría de cambios.
+- Rollback o backup antes de sobrescribir.
+
+### System Agent v0.3
+
+Pendiente:
+
+- `run_allowed_command` por alias YAML.
+- Sin shell libre por defecto.
+- Comandos con:
+  - nombre
+  - cwd
+  - timeout
+  - riesgo
+  - confirmación requerida
+  - argumentos permitidos
+  - regex de validación de argumentos
 
 ### System Agent / Claude Code parity
 
@@ -1514,6 +1856,36 @@ Debe poder mirar y proponer casi todo.
 Debe ejecutar solo bajo política clara.
 ```
 
+### Orden directa
+
+Pendiente:
+
+- Añadir parámetro de personalidad para cómo reacciona Sity cuando el usuario dice “es una orden”.
+- Mantener obediencia si es seguro.
+- Mantener sarcasmo/tono/personaje.
+- Evitar que use el override para saltarse seguridad.
+- Mejorar seguimiento de “hazlo” para apuntar a la última petición rechazada por personalidad.
+
+### Idioma
+
+Pendiente:
+
+- Hacer configurable el dialecto del español.
+- Valor inicial:
+  - `es-ES`
+- Evitar voseo de forma estable en prompt normal y micro-reacciones.
+
+### Refusal mode
+
+Pendiente:
+
+- Distinguir mejor:
+  - negativa por personalidad
+  - negativa por seguridad
+  - negativa por falta de contexto
+  - negativa por herramienta no disponible
+- Permitir que “es una orden” solo salte la primera.
+
 ### Git
 
 - Prevalidación más inteligente antes de pull/push/commit.
@@ -1538,6 +1910,31 @@ Pendiente:
 - Añadir indicador visual cuando se use cámara o micro.
 - Mejorar selección automática de cámara/micro.
 - Ignorar dispositivos virtuales en selección automática.
+
+### Voz / comandos hablados
+
+Pendiente:
+
+- Capturar audio desde el micrófono real de la webcam.
+- Transcribir audio a texto.
+- Enviar la transcripción al mismo flujo de `/chat/message`.
+- Mostrar en UI:
+  - “Escuchando…”
+  - “Transcribiendo…”
+  - texto reconocido
+  - respuesta de Sity
+- Permitir cancelar escucha/grabación.
+- Empezar con modo push-to-talk:
+  - botón “Hablar”
+  - grabar mientras se mantiene pulsado o durante N segundos
+- No activar escucha continua al principio.
+- Añadir wake word más adelante:
+  - “Sity”
+  - “oye Sity”
+- No guardar audios de voz indefinidamente.
+- Aplicar política de retención a audios de comandos.
+- Confirmar acciones críticas aunque vengan por voz.
+- Usar el mismo sistema de tools/riesgo/confirmación que el chat escrito.
 
 ### Audio routing
 
@@ -1775,4 +2172,12 @@ Para sensores:
 Uso puntual bajo petición explícita.
 Nada de vigilancia continua sin política específica.
 Nada de micrófono/cámara ocultos.
+```
+
+Para lenguaje natural:
+
+```text
+Sity interpreta.
+Backend valida.
+Backend no inventa acciones por literales.
 ```

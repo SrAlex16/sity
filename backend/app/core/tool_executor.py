@@ -7,6 +7,7 @@ from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.actions.confirmation_manager import ConfirmationManager
 from app.actions.capture_retention_actions import execute_capture_retention_action
+from app.actions.file_actions import execute_file_action
 from app.actions.sense_actions import execute_sense_action
 from app.core.realtime_events import publish_event_sync
 from app.trace.logger import write_log
@@ -90,6 +91,26 @@ class ToolExecutor:
         trace_id: str,
         client_turn_id: str | None = None,
     ) -> ToolExecutionResult:
+        if tool_name == "read_file":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_file_action({
+                    "action": "read_file",
+                    "path": str(tool_input.get("path", "")),
+                }),
+            )
+
+        if tool_name == "list_directory":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_file_action({
+                    "action": "list_directory",
+                    "path": str(tool_input.get("path", "")),
+                }),
+            )
+
         if tool_name == "read_recent_debug_events":
             return self._read_recent_debug_events(
                 tool_input=tool_input,
@@ -280,7 +301,7 @@ class ToolExecutor:
             )
 
         if tool_name == "list_allowed_services":
-            from app.system.system_config_actions import execute_system_config_action
+            from app.actions.system_config_actions import execute_system_config_action
             raw = execute_system_config_action({"action": "list_allowed_services"})
             return self._simple_read_tool(tool_name=tool_name, trace_id=trace_id, result=raw)
 

@@ -20,6 +20,25 @@ system_access:
     - sity-backend
     - sity-frontend
     - sity-test
+file_access:
+  readable_paths:
+    - /home/alex/projects/sity
+    - /home/alex/projects/sity/backend
+    - /home/alex/projects/sity/frontend
+    - /home/alex/projects/sity/config
+    - /home/alex/projects/sity/scripts
+    - /home/alex/projects/sity/deploy
+    - /home/alex/projects/sity/README.md
+  blocked_paths:
+    - /home/alex/projects/sity/.env
+    - /home/alex/projects/sity/frontend/.env.local
+    - /home/alex/.ssh
+    - /home/alex/.config
+    - /etc
+    - /boot
+    - /root
+    - /var/lib
+    - /var/log
 git_access:
   enabled: true
   read:

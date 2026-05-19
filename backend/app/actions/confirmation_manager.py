@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from app.memory.models import PendingAction, utc_now
+from app.memory.models import ChatMessage, PendingAction, utc_now
 from app.trace.logger import write_log
 
 
@@ -155,21 +155,25 @@ class ConfirmationManager:
         if not has_confirmation_intent:
             return None
 
-        matching_actions = [
-            action for action in active_actions
-            if self._message_matches_action(normalized, action)
-        ]
-
-        if len(matching_actions) == 1:
-            return matching_actions[0]
-
-        if len(matching_actions) > 1:
-            return None
-
         if len(active_actions) == 1 and self._is_clear_confirmation(normalized):
-            return active_actions[0]
+            action = active_actions[0]
+            if self._last_sity_message_references_action(action.id):
+                return action
 
         return None
+
+    def _last_sity_message_references_action(self, action_id: str) -> bool:
+        statement = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == "default")
+            .where(ChatMessage.role == "sity")
+            .order_by(ChatMessage.id.desc())
+            .limit(1)
+        )
+        last_message = self.session.exec(statement).first()
+        if not last_message:
+            return False
+        return action_id in (last_message.text or "")
 
     def has_multiple_active_pending_actions(self) -> bool:
         return len(self._get_active_pending_actions()) > 1
@@ -215,93 +219,10 @@ class ConfirmationManager:
         return any(re.search(pattern, normalized) for pattern in confirmation_patterns)
 
     def _message_matches_action(self, normalized: str, action: PendingAction) -> bool:
-        try:
-            payload = json.loads(action.payload_json)
-        except json.JSONDecodeError:
-            return False
-
         if not self._has_confirmation_intent(normalized):
             return False
 
-        action_name = str(payload.get("action", ""))
-        branch = str(payload.get("branch", "")).lower()
-
-        if action.action_type == "git":
-            if action_name == "checkout_branch" and branch:
-                return branch in normalized and any(
-                    term in normalized
-                    for term in ["cambia", "cambiar", "vuelve", "volver", "checkout", "rama"]
-                )
-
-            if action_name == "create_branch" and branch:
-                return branch in normalized and any(
-                    term in normalized
-                    for term in ["crea", "crear", "rama"]
-                )
-
-            if action_name == "pull_ff_only":
-                return "pull" in normalized or "actualiza" in normalized
-
-            if action_name == "push":
-                return "push" in normalized or "sube" in normalized
-
-            if action_name == "fetch":
-                return "fetch" in normalized
-
-            if action_name == "commit":
-                return "commit" in normalized or "commitea" in normalized
-
-        if action.action_type == "system":
-            service_name = str(payload.get("service_name", "")).lower()
-            action_name = str(payload.get("action", "")).lower()
-
-            if not service_name:
-                return False
-
-            service_aliases = {
-                "sity-backend": ["sity-backend", "backend"],
-                "sity-frontend": ["sity-frontend", "frontend", "front"],
-            }
-
-            aliases = service_aliases.get(service_name, [service_name])
-
-            if not any(alias in normalized for alias in aliases):
-                return False
-
-            if action_name == "start_service":
-                return any(term in normalized for term in [
-                    "arranca", "arrancar", "lanza", "lanzar", "inicia", "iniciar", "start"
-                ])
-
-            if action_name == "stop_service":
-                return any(term in normalized for term in [
-                    "para", "parar", "detén", "detener", "stop"
-                ])
-
-            if action_name == "restart_service":
-                return any(term in normalized for term in [
-                    "reinicia", "reiniciar", "restart"
-                ])
-
-        if action.action_type == "system_config":
-            return self._is_clear_confirmation(normalized)
-
-        if action.action_type == "sense":
-            action_name = str(payload.get("action", "")).lower()
-
-            if action_name == "capture_camera_snapshot":
-                return any(term in normalized for term in [
-                    "foto", "captura", "snapshot", "imagen", "cámara", "camara", "webcam"
-                ])
-
-            if action_name == "record_audio_sample":
-                return any(term in normalized for term in [
-                    "graba", "grabar", "audio", "micro", "micrófono", "microfono"
-                ])
-
-            return False
-
-        return False
+        return self._is_clear_confirmation(normalized)
 
     def mark_executed(self, action: PendingAction, trace_id: str) -> None:
         action.status = "executed"

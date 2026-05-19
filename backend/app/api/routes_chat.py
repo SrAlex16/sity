@@ -24,7 +24,9 @@ from app.actions.system_config_actions import (
     parse_payload as parse_system_config_payload,
 )
 from app.core.micro_reactions import generate_micro_reaction
+from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
+from app.core.refusal_tracker import get_last_refusal, set_last_refusal
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.schemas import AIRequest
@@ -32,6 +34,7 @@ from app.cortex.tool_schemas import (
     ALL_TOOLS,
     BASE_TOOLSET,
     DEBUG_TOOLSET,
+    FILE_READ_TOOLSET,
     GIT_TOOLSET,
     PERSONALITY_TOOLSET,
     SENSES_TOOLSET,
@@ -278,8 +281,10 @@ def select_toolset_for_message(message: str) -> list[dict]:
     normalized = message.lower()
 
     git_terms = [
-        "git", "repo", "repositorio", "commit", "commits",
-        "rama", "ramas", "branch", "origin", "pull", "push", "fetch",
+        "git", "commit", "commits",
+        "rama", "ramas", "branch", "branches",
+        "pull", "push", "fetch", "checkout",
+        "diff", "estado git", "status git",
     ]
 
     service_config_terms = [
@@ -305,6 +310,12 @@ def select_toolset_for_message(message: str) -> list[dict]:
         "foto", "cámara", "camara", "webcam",
         "micro", "micrófono", "microfono", "audio",
         "capturas", "graba", "grabar",
+    ]
+
+    file_terms = [
+        "archivo", "fichero", "directorio", "carpeta",
+        "lee", "lista", "revisa", "mira el archivo", "qué hay en", "que hay en",
+        "readme", ".py", ".ts", ".tsx", ".yaml", ".yml", ".md",
     ]
 
     debug_terms = [
@@ -337,6 +348,9 @@ def select_toolset_for_message(message: str) -> list[dict]:
     if any(term in normalized for term in sense_terms):
         selected.extend(SENSES_TOOLSET)
 
+    if any(term in normalized for term in file_terms):
+        selected.extend(FILE_READ_TOOLSET)
+
     if any(term in normalized for term in debug_terms):
         selected.extend(DEBUG_TOOLSET)
 
@@ -349,53 +363,6 @@ def select_toolset_for_message(message: str) -> list[dict]:
     return _dedupe_tools(selected)
 
 
-def is_git_mutating_request(message: str) -> bool:
-    normalized = message.lower()
-
-    mutating_terms = [
-        "fetch",
-        "pull",
-        "push",
-        "commit",
-        "commitea",
-        "commitear",
-        "crear rama",
-        "crea rama",
-        "nueva rama",
-        "cambia a la rama",
-        "cambiar a la rama",
-        "checkout",
-        "merge",
-        "rebase",
-        "reset",
-        "stash",
-        "aplica",
-        "aplicar",
-    ]
-
-    return any(term in normalized for term in mutating_terms)
-
-
-def detect_fast_read_tool(message: str) -> dict | None:
-    normalized = message.lower()
-
-    if is_git_mutating_request(message):
-        return None
-
-    if "disco" in normalized or "espacio" in normalized:
-        return {"name": "read_disk_usage", "input": {"path": "/"}}
-
-    if "raspberry" in normalized and any(x in normalized for x in ["cómo está", "estado", "sistema"]):
-        return {"name": "read_system_status", "input": {}}
-
-    if "repo" in normalized or "repositorio" in normalized or "git" in normalized:
-        if "commit" in normalized:
-            return {"name": "git_read_log", "input": {"repo_path": "sity", "limit": 10}}
-        if "rama" in normalized or "branch" in normalized:
-            return {"name": "git_read_branches", "input": {"repo_path": "sity"}}
-        return {"name": "git_read_status", "input": {"repo_path": "sity"}}
-
-    return None
 
 
 
@@ -469,12 +436,7 @@ def capture_artifact_from_path(path_value: str) -> ChatArtifact | None:
             mime_type="audio/wav" if suffix == ".wav" else None,
         )
 
-    return ChatArtifact(
-        type="file",
-        url=f"/captures/file/{filename}",
-        filename=filename,
-        mime_type=None,
-    )
+    return None
 
 
 COMPACT_RESPONSE_PROMPT = (
@@ -491,9 +453,14 @@ Debes elegir exactamente una herramienta:
 - Usa herramientas de personalidad si el usuario pide cambiar tono, estilo, sliders o parámetros.
 - Usa herramientas de debug si pregunta por logs, trazas, errores o tools ejecutadas.
 - Usa herramientas de sistema si pregunta por Raspberry, CPU, RAM, disco, procesos, servicios o directorios.
-- Usa herramientas Git de lectura si pregunta por repos, commits, ramas, remotos, status o diff.
+- Usa herramientas Git (git_read_status, git_read_log, git_read_branches) si pregunta explícitamente por commits, ramas, diff, status git, remotos o el estado del repositorio git.
 - Usa git_propose_action si el usuario pide git pull, git push, commit, crear rama, checkout, merge, rebase, reset o stash. No respondas solo con texto para estas acciones.
+- Usa read_file o list_directory si el usuario pide ver, leer o listar un archivo o directorio concreto del proyecto.
 - Usa no_action_required si solo quiere conversar.
+
+Regla de contexto: Si el turno anterior fue sobre leer un archivo y el usuario confirma o aclara, mantén la intención de lectura. No cambies a herramientas Git salvo que el usuario pida explícitamente commits, ramas, diff, status git, pull o push.
+
+Regla Git vs archivo: "repo", "proyecto" o "tu código" no activan Git por sí solos. Solo activan Git si viene acompañado de términos explícitos: commit, rama, branch, pull, push, fetch, checkout, diff.
 
 No respondas con texto normal en esta fase.
 No inventes resultados.
@@ -543,6 +510,17 @@ def _chat_message_inner(
 
     persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
     persona_prompt = persona_decision.system_prompt
+
+    if has_direct_order_override(request.message):
+        last = get_last_refusal()
+        if last:
+            persona_prompt += (
+                "\n\nCONTEXTO DE OVERRIDE: El usuario está ordenando ejecutar esta petición "
+                "que fue rechazada antes por personalidad:\n"
+                f"\"{last['user_message']}\"\n\n"
+                "Responde a esa petición ahora. Mantén tu personalidad y tono, "
+                "pero no rechaces por refusal_mode. La seguridad y las allowlists siguen activas."
+            )
 
     ai_config = config.get("ai", {})
     usage_config = config.get("usage", {})
@@ -854,60 +832,6 @@ def _chat_message_inner(
     save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
 
     gateway = AIGateway(config=config)
-
-    fast_tool_call = detect_fast_read_tool(request.message)
-
-    if fast_tool_call:
-        fast_result = ToolExecutor(session).execute_tool_call(
-            tool_name=fast_tool_call["name"],
-            tool_input=fast_tool_call["input"],
-            trace_id=trace_id,
-            client_turn_id=request.client_turn_id,
-        )
-
-        response = gateway.generate(
-            AIRequest(
-                trace_id=trace_id,
-                task_type="fast_read_tool_summary",
-                system_prompt=persona_prompt,
-                user_message=(
-                    f"Pregunta original del usuario:\n{request.message}\n\n"
-                    f"Resultado real de la herramienta:\n"
-                    f"{json.dumps(fast_result.raw_result, ensure_ascii=False)}\n\n"
-                    "Responde de forma breve y clara."
-                ),
-                max_tokens=max_tokens,
-                tools_enabled=False,
-            )
-        )
-
-        save_chat_message(session, role="sity", text=response.text, trace_id=trace_id)
-
-        daily_used = get_today_token_usage(session)
-        total_tokens = response.usage.input_tokens + response.usage.output_tokens
-        daily_ratio = daily_used / daily_budget if daily_budget > 0 else 0.0
-
-        return ChatMessageResponse(
-            ok=response.ok,
-            trace_id=trace_id,
-            text=response.text,
-            provider=response.provider,
-            model=response.model,
-            fallback_used=response.fallback_used,
-            error_type=response.error_type,
-            usage=UsageSummary(
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-                total_tokens=total_tokens,
-                daily_used_tokens=daily_used,
-                daily_budget_tokens=daily_budget,
-                daily_ratio=round(daily_ratio, 4),
-            ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
-        )
 
     selected_tools = select_toolset_for_message(request.message)
 
@@ -1225,6 +1149,13 @@ def _chat_message_inner(
         text=response.text,
         trace_id=trace_id,
     )
+
+    if persona_decision.refusal_mode:
+        set_last_refusal(
+            user_message=request.message,
+            assistant_message=response.text,
+            trace_id=trace_id,
+        )
 
     return ChatMessageResponse(
         ok=response.ok,

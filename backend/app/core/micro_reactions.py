@@ -41,6 +41,8 @@ def build_micro_reaction_prompt(
 
     system = (
         "Eres Sity. Responde a un evento pequeño del sistema con una sola frase breve. "
+        "Responde en castellano de España. No uses voseo ni español rioplatense. "
+        "Usa 'tú', 'quieres', 'puedes', no 'vos', 'querés', 'podés'. "
         "No uses herramientas. No expliques el sistema. No inventes acciones. "
         "No lo trates como error si el usuario canceló algo voluntariamente. "
         "Mantén tu personalidad según estos parámetros, pero no exageres. "

@@ -637,6 +637,50 @@ CLEAN_OLD_CAPTURES_TOOL = {
 }
 
 
+READ_FILE_TOOL = {
+    "name": "read_file",
+    "description": (
+        "Lee un archivo permitido por la allowlist de Sity. "
+        "Úsala cuando el usuario pida ver, revisar o inspeccionar un archivo concreto."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Ruta del archivo a leer. Puede ser absoluta o relativa al proyecto.",
+            },
+        },
+        "required": ["path"],
+    },
+}
+
+LIST_DIRECTORY_TOOL = {
+    "name": "list_directory",
+    "description": (
+        "Lista el contenido de un directorio permitido por la allowlist de Sity. "
+        "Úsala cuando el usuario pida ver qué hay en una carpeta o explorar el repo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Ruta del directorio a listar. Puede ser absoluta o relativa al proyecto.",
+            },
+        },
+        "required": ["path"],
+    },
+}
+
+FILE_READ_TOOLSET = [
+    READ_FILE_TOOL,
+    LIST_DIRECTORY_TOOL,
+]
+
+
 PERSONALITY_TOOLSET = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
     NO_ACTION_REQUIRED_TOOL,
@@ -727,6 +771,8 @@ ALL_TOOLS = [
     RECORD_AUDIO_SAMPLE_TOOL,
     GET_CAPTURE_STORAGE_SUMMARY_TOOL,
     CLEAN_OLD_CAPTURES_TOOL,
+    READ_FILE_TOOL,
+    LIST_DIRECTORY_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
