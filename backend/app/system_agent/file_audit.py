@@ -167,6 +167,68 @@ def find_audit_event_by_backup_path(backup_path_value: str) -> dict[str, Any] | 
         return None
 
 
+def find_latest_reversible_file_change(
+    *,
+    include_rollbacks: bool = False,
+) -> dict[str, Any]:
+    try:
+        if not AUDIT_LOG_PATH.exists():
+            return {
+                "ok": False,
+                "error": "No existe audit log de archivos.",
+            }
+
+        lines = AUDIT_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+
+        for line in reversed(lines):
+            if not line.strip():
+                continue
+
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            action = event.get("action")
+
+            if action == "rollback_file_change" and not include_rollbacks:
+                continue
+
+            backup = event.get("backup") or {}
+
+            if not backup.get("created"):
+                continue
+
+            backup_path = backup.get("backup_path")
+            if not backup_path:
+                continue
+
+            try:
+                resolved_backup_path = _resolve_backup_path(str(backup_path))
+            except Exception:
+                continue
+
+            if not resolved_backup_path.exists() or not resolved_backup_path.is_file():
+                continue
+
+            return {
+                "ok": True,
+                "event": event,
+                "backup_path": str(resolved_backup_path),
+            }
+
+        return {
+            "ok": False,
+            "error": "No se encontró ningún cambio reversible con backup disponible.",
+        }
+
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": f"Error buscando último cambio reversible: {exc}",
+        }
+
+
 def rollback_file_change(
     *,
     backup_path: str,

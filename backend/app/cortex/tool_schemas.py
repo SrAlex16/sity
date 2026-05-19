@@ -785,12 +785,63 @@ ROLLBACK_FILE_CHANGE_TOOL = {
     },
 }
 
+FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL = {
+    "name": "find_latest_reversible_file_change",
+    "description": (
+        "Busca en el audit log el último cambio de archivo reversible con backup disponible. "
+        "Por defecto ignora rollbacks para evitar deshacer un rollback accidentalmente. "
+        "Úsala cuando el usuario pida revertir, deshacer o restaurar el último cambio de archivo "
+        "sin dar un backup concreto."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "include_rollbacks": {
+                "type": "boolean",
+                "description": (
+                    "Si true, también permite seleccionar eventos rollback_file_change como reversibles. "
+                    "Usar solo si el usuario pide explícitamente revertir un rollback."
+                ),
+            },
+        },
+        "required": [],
+        "additionalProperties": False,
+    },
+}
+
+ROLLBACK_LATEST_FILE_CHANGE_TOOL = {
+    "name": "rollback_latest_file_change",
+    "description": (
+        "Propone revertir el último cambio de archivo reversible encontrado en el audit log. "
+        "Por defecto ignora rollbacks para no deshacer un rollback accidentalmente. "
+        "Siempre requiere confirmación antes de ejecutar. "
+        "Úsala cuando el usuario diga 'revierte el último cambio de archivo', "
+        "'deshaz el último cambio de archivo' o equivalente, sin dar un backup concreto."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "include_rollbacks": {
+                "type": "boolean",
+                "description": (
+                    "Si true, permite revertir un rollback anterior. "
+                    "Usar solo si el usuario lo pide explícitamente."
+                ),
+            },
+        },
+        "required": [],
+        "additionalProperties": False,
+    },
+}
+
 FILE_AGENT_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
+    ROLLBACK_LATEST_FILE_CHANGE_TOOL,
     ROLLBACK_FILE_CHANGE_TOOL,
 ]
 
@@ -806,6 +857,8 @@ BASE_TOOLSET: list[dict] = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
+    ROLLBACK_LATEST_FILE_CHANGE_TOOL,
     ROLLBACK_FILE_CHANGE_TOOL,
 ]
 
@@ -897,6 +950,8 @@ ALL_TOOLS = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
+    ROLLBACK_LATEST_FILE_CHANGE_TOOL,
     ROLLBACK_FILE_CHANGE_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,

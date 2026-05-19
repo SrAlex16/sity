@@ -9,7 +9,11 @@ from app.system_agent.file_access import (
     read_file,
     write_file,
 )
-from app.system_agent.file_audit import list_file_audit_events, rollback_file_change
+from app.system_agent.file_audit import (
+    find_latest_reversible_file_change,
+    list_file_audit_events,
+    rollback_file_change,
+)
 
 
 def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
@@ -48,6 +52,11 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
 
     if action == "list_file_changes":
         return list_file_audit_events(limit=int(payload.get("limit", 10)))
+
+    if action == "find_latest_reversible_file_change":
+        return find_latest_reversible_file_change(
+            include_rollbacks=bool(payload.get("include_rollbacks", False)),
+        )
 
     if action == "rollback_file_change":
         return rollback_file_change(

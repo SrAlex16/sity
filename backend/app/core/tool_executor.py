@@ -266,6 +266,98 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
+        if tool_name == "find_latest_reversible_file_change":
+            return self._simple_read_tool(
+                tool_name=tool_name,
+                trace_id=trace_id,
+                result=execute_file_action({
+                    "action": "find_latest_reversible_file_change",
+                    "include_rollbacks": bool(tool_input.get("include_rollbacks", False)),
+                }),
+            )
+
+        if tool_name == "rollback_latest_file_change":
+            lookup = execute_file_action({
+                "action": "find_latest_reversible_file_change",
+                "include_rollbacks": bool(tool_input.get("include_rollbacks", False)),
+            })
+
+            if not lookup.get("ok"):
+                msg = lookup.get("error", "No se encontró ningún cambio reversible.")
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                )
+
+            event = lookup.get("event") or {}
+            backup_path = str(lookup.get("backup_path", ""))
+            target_path = str(event.get("path", "archivo desconocido"))
+            source_action = str(event.get("action", "cambio desconocido"))
+            source_trace = str(event.get("trace_id", ""))
+            source_pending = str(event.get("pending_action_id", ""))
+
+            from app.system_agent.file_access import FileAccessError, _resolve_path, assert_write_allowed
+            try:
+                assert_write_allowed(_resolve_path(target_path))
+            except FileAccessError as exc:
+                err = str(exc)
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=err,
+                    updated_parameters=[], raw_result={"success": False, "message": err},
+                )
+
+            rollback_payload = {
+                "action": "rollback_file_change",
+                "backup_path": backup_path,
+            }
+            manager = ConfirmationManager(self.session)
+            existing = manager.find_equivalent_pending_action(
+                action_type="file",
+                payload=rollback_payload,
+            )
+            if existing:
+                result = {
+                    "success": True,
+                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "action_id": existing.id,
+                    "confirmation_phrase": existing.confirmation_phrase,
+                    "summary": existing.summary,
+                    "already_existed": True,
+                }
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=True, message=result["message"],
+                    updated_parameters=[], raw_result=result,
+                )
+
+            created = manager.create_pending_action(
+                action_type="file",
+                risk_level="critical",
+                summary=f"Revertir último cambio de archivo: {target_path}",
+                payload=rollback_payload,
+                trace_id=trace_id,
+            )
+            display_message = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                f"Archivo: {target_path}\n"
+                f"Acción original: {source_action}\n"
+                f"Trace original: {source_trace}\n"
+                f"Pending action original: {source_pending}\n"
+                f"Backup: {backup_path}\n\n"
+                "Antes de restaurar, Sity creará un backup del estado actual.\n\n"
+                f"Confirma con: `{created.confirmation_phrase}`"
+            )
+            result = {
+                "success": True,
+                "message": display_message,
+                "action_id": created.id,
+                "confirmation_phrase": created.confirmation_phrase,
+                "summary": created.summary,
+            }
+            return ToolExecutionResult(
+                tool_name=tool_name, ok=True, message=display_message,
+                updated_parameters=[], raw_result=result,
+            )
+
         if tool_name == "list_file_changes":
             return self._simple_read_tool(
                 tool_name=tool_name,

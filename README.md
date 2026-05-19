@@ -53,12 +53,16 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Audit log de cambios de archivo.
 - Backup automático antes de modificar archivos existentes.
 - Consulta de últimos cambios de archivos mediante `list_file_changes`.
+- Rollback de archivos desde backup explícito.
+- Rollback natural del último cambio reversible de archivo.
 - Confirmación genérica contextual restaurada.
 - System Agent read-only v0.1.
 - System Agent write-file v0.2 repo-only.
 - System Agent patch v0.3 repo-only.
 - System Agent audit/backup v0.4.
 - System Agent file changes v0.5.
+- System Agent rollback v0.6.
+- System Agent latest rollback v0.6.1.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -442,6 +446,7 @@ File read tools
 File write tools
 File patch tools
 File audit tools
+File rollback tools
 Sense tools
 Capture retention tools
 No-action / respuesta normal
@@ -545,6 +550,9 @@ list_directory
 write_file
 apply_text_patch
 list_file_changes
+find_latest_reversible_file_change
+rollback_file_change
+rollback_latest_file_change
 capture_camera_snapshot
 record_audio_sample
 ```
@@ -664,22 +672,24 @@ blocked            → rechazar
 Ejemplos:
 
 ```text
-list_camera_devices          → read
-list_audio_devices           → read
-read_file                    → read
-list_directory               → read
-list_file_changes            → read
-capture_camera_snapshot      → sensitive_direct
-record_audio_sample          → sensitive_direct
-clean_old_captures           → safe/directo conservador
-git_push                     → critical_confirm
-git_pull                     → critical_confirm
-system_restart_service       → safe_confirm
-system_stop_service          → safe_confirm
-system_config_update         → critical_confirm
-write_file                   → critical_confirm
-apply_text_patch             → critical_confirm
-rollback_file_change         → future critical_confirm
+list_camera_devices               → read
+list_audio_devices                → read
+read_file                         → read
+list_directory                    → read
+list_file_changes                 → read
+find_latest_reversible_file_change → read
+capture_camera_snapshot           → sensitive_direct
+record_audio_sample               → sensitive_direct
+clean_old_captures                → safe/directo conservador
+git_push                          → critical_confirm
+git_pull                          → critical_confirm
+system_restart_service            → safe_confirm
+system_stop_service               → safe_confirm
+system_config_update              → critical_confirm
+write_file                        → critical_confirm
+apply_text_patch                  → critical_confirm
+rollback_file_change              → critical_confirm
+rollback_latest_file_change       → critical_confirm
 ```
 
 ---
@@ -972,13 +982,142 @@ backup.created
 backup.backup_path
 ```
 
+---
+
+## System Agent v0.6
+
+Sity puede restaurar archivos desde backups creados por ella.
+
+### Funciona
+
+- Tool `rollback_file_change`.
+- Requiere confirmación siempre.
+- Solo acepta backups dentro de `data/file_backups`.
+- El backup debe estar asociado a un evento real del audit log.
+- Restaura el archivo original indicado por el audit event.
+- Crea backup del estado actual antes de restaurar.
+- Registra el rollback en `data/file_audit.jsonl`.
+- Guarda `restored_from_backup_path`.
+- Guarda `source_event`.
+- Guarda `pending_action_id` y `trace_id`.
+
+### Tool
+
+```text
+rollback_file_change
+```
+
+### Flujo con backup explícito
+
+```text
+Usuario pide restaurar un backup concreto.
+Claude/Sity llama rollback_file_change(backup_path).
+Backend valida que el backup está en data/file_backups.
+Backend valida que aparece en audit log.
+Backend crea pending_action.
+Usuario confirma.
+Backend crea backup del estado actual.
+Backend restaura desde el backup indicado.
+Backend registra audit event rollback_file_change.
+```
+
+### Ejemplo
+
+```text
+Usuario:
+restaura el backup data/file_backups/20260519T215319Z__apply_text_patch__...bak
+
+Sity:
+Acción pendiente: restaurar /home/alex/projects/sity/config/test-rollback-sity.txt desde backup.
+
+Usuario:
+sí, hazlo
+
+Sity:
+Rollback aplicado: /home/alex/projects/sity/config/test-rollback-sity.txt
+Restaurado desde: /home/alex/projects/sity/data/file_backups/...
+```
+
 ### Seguridad
 
-- No lee contenido de backups por defecto.
-- No restaura backups.
-- No modifica archivos.
-- No requiere confirmación porque es lectura.
-- No debe responder de memoria cuando el usuario pida auditoría de archivos.
+- No restaura backups fuera de `data/file_backups`.
+- No permite elegir una ruta objetivo arbitraria.
+- La ruta objetivo sale del audit log original.
+- No ejecuta rollback sin confirmación.
+- Crea backup del estado actual antes de restaurar.
+- `es una orden` no salta validaciones ni confirmación.
+
+---
+
+## System Agent v0.6.1
+
+Sity puede revertir el último cambio reversible de archivo sin que el usuario proporcione el backup manualmente.
+
+### Funciona
+
+- Tool `find_latest_reversible_file_change`.
+- Tool `rollback_latest_file_change`.
+- Busca el último evento reversible con backup disponible.
+- Por defecto ignora eventos `rollback_file_change` para evitar deshacer un rollback accidentalmente.
+- Crea pending action de rollback usando el backup encontrado.
+- Requiere confirmación siempre.
+- Mantiene el mismo flujo seguro de `rollback_file_change`.
+
+### Tools
+
+```text
+find_latest_reversible_file_change
+rollback_latest_file_change
+```
+
+### Casos de uso
+
+```text
+revierte el último cambio de archivo
+deshaz el último cambio de archivo
+restaura el último cambio reversible
+revierte el último patch
+```
+
+### Flujo
+
+```text
+Usuario pide revertir el último cambio de archivo.
+Claude/Sity llama rollback_latest_file_change.
+Backend busca el último evento reversible con backup real.
+Backend ignora rollbacks salvo petición explícita.
+Backend crea pending_action rollback_file_change.
+Usuario confirma.
+Backend crea backup del estado actual.
+Backend restaura desde backup.
+Backend registra rollback en audit log.
+```
+
+### Revertir un rollback
+
+Por defecto, `rollback_latest_file_change` ignora rollbacks.
+
+Si el usuario pide explícitamente revertir un rollback:
+
+```text
+revierte el último rollback
+deshaz el rollback anterior
+```
+
+entonces puede usarse:
+
+```text
+rollback_latest_file_change(include_rollbacks=true)
+```
+
+### Seguridad
+
+- No restaura nada sin confirmación.
+- No usa memoria conversacional como fuente de verdad.
+- Usa audit log y backups reales.
+- No restaura backups externos.
+- No toca rutas arbitrarias.
+- Crea backup antes de restaurar.
 
 ---
 
@@ -1387,21 +1526,24 @@ Principios actuales:
 4. Backups automáticos antes de modificar archivos existentes.
 5. Audit log para cambios de archivos.
 6. Consulta de audit log permitida como lectura.
-7. Acciones modificadoras requieren confirmación según riesgo.
-8. Servicios controlables limitados por allowlist.
-9. Sudoers limitado a comandos concretos.
-10. Sin shell arbitraria.
-11. Sin sudo general.
-12. Las acciones viejas no se reejecutan.
-13. Las acciones duplicadas se detectan.
-14. Confirmación contextual solo con intención explícita y contexto válido.
-15. Las herramientas de debug no se usan para conversación normal.
-16. Cámara y micro no se activan salvo petición explícita.
-17. Audio Loopback se trata como dispositivo virtual, no como micro real.
-18. Capturas se sirven desde endpoints validados.
-19. Cancelar una acción no se trata como error.
-20. “Es una orden” no salta allowlists ni políticas de seguridad.
-21. El backend no interpreta lenguaje natural para crear acciones.
+7. Rollback solo desde backups creados por Sity.
+8. Rollback siempre con confirmación.
+9. Rollback crea backup del estado actual antes de restaurar.
+10. Acciones modificadoras requieren confirmación según riesgo.
+11. Servicios controlables limitados por allowlist.
+12. Sudoers limitado a comandos concretos.
+13. Sin shell arbitraria.
+14. Sin sudo general.
+15. Las acciones viejas no se reejecutan.
+16. Las acciones duplicadas se detectan.
+17. Confirmación contextual solo con intención explícita y contexto válido.
+18. Las herramientas de debug no se usan para conversación normal.
+19. Cámara y micro no se activan salvo petición explícita.
+20. Audio Loopback se trata como dispositivo virtual, no como micro real.
+21. Capturas se sirven desde endpoints validados.
+22. Cancelar una acción no se trata como error.
+23. “Es una orden” no salta allowlists ni políticas de seguridad.
+24. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1507,6 +1649,22 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"consulta el audit log real y dime los últimos 3 cambios de archivos"}' | python3 -m json.tool
 ```
 
+Revertir último cambio reversible:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"revierte el último cambio de archivo"}' | python3 -m json.tool
+```
+
+Restaurar backup explícito:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"restaura el backup data/file_backups/NOMBRE_DEL_BACKUP.bak"}' | python3 -m json.tool
+```
+
 Ver últimos eventos de audit manualmente:
 
 ```bash
@@ -1560,17 +1718,6 @@ curl -X POST http://localhost:8000/chat/message \
 - Evitar que `/chat/current` devuelva mensajes antiguos cuando debería devolver los últimos.
 - Añadir búsqueda de memoria/historial.
 - Añadir tool `search_chat_history`.
-
-### System Agent v0.6
-
-Pendiente:
-
-- `rollback_file_change`.
-- Restaurar un backup concreto.
-- Requerir confirmación.
-- Mostrar qué archivo se restaurará.
-- Crear backup del estado actual antes de hacer rollback.
-- Registrar rollback en audit log.
 
 ### System Agent v0.7
 
