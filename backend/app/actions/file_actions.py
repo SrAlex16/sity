@@ -25,6 +25,8 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
             path_value=str(payload.get("path", "")),
             content=str(payload.get("content", "")),
             create_parent_dirs=bool(payload.get("create_parent_dirs", False)),
+            pending_action_id=payload.get("pending_action_id"),
+            trace_id=payload.get("trace_id"),
         )
 
     if action == "preview_text_patch":
@@ -39,6 +41,8 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
             str(payload.get("path", "")),
             str(payload.get("old_text", "")),
             str(payload.get("new_text", "")),
+            pending_action_id=payload.get("pending_action_id"),
+            trace_id=payload.get("trace_id"),
         )
 
     return {

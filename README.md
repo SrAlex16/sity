@@ -50,9 +50,13 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Escritura segura de archivos permitidos dentro del repo.
 - Patches seguros por reemplazo exacto de texto.
 - Preview de diff antes de confirmar patches.
+- Audit log de cambios de archivo.
+- Backup automático antes de modificar archivos existentes.
+- Confirmación genérica contextual restaurada.
 - System Agent read-only v0.1.
 - System Agent write-file v0.2 repo-only.
 - System Agent patch v0.3 repo-only.
+- System Agent audit/backup v0.4.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -84,7 +88,7 @@ config/
   Configuración local versionada.
 
 data/
-  SQLite, logs y datos runtime.
+  SQLite, logs, audit logs y backups runtime.
   Ignorado por git.
 
 deploy/
@@ -206,6 +210,7 @@ El backend se encarga de:
 - Eventos en tiempo real.
 - Cancelación de procesos.
 - Validación de rutas y dispositivos.
+- Auditoría y backups de cambios de archivos.
 
 ---
 
@@ -685,6 +690,7 @@ system_stop_service          → safe_confirm
 system_config_update         → critical_confirm
 write_file                   → critical_confirm
 apply_text_patch             → critical_confirm
+rollback_file_change         → future critical_confirm
 ```
 
 ---
@@ -948,13 +954,97 @@ Resultado esperado:
 Bloqueado por allowlist o blocked_paths.
 ```
 
+---
+
+## System Agent v0.4
+
+Sity registra cambios de archivos y crea backups automáticos antes de modificar archivos existentes.
+
+### Funciona
+
+- Audit log para `write_file`.
+- Audit log para `apply_text_patch`.
+- Backup antes de sobrescribir un archivo existente.
+- Backup antes de aplicar un patch.
+- Asociación del cambio con `pending_action_id`.
+- Asociación del cambio con `trace_id`.
+- Registro de bytes escritos.
+- Registro de ruta modificada.
+- Registro de si el archivo fue creado o modificado.
+- Confirmación genérica contextual para acciones pendientes.
+
+### Archivos runtime
+
+Audit log:
+
+```text
+data/file_audit.jsonl
+```
+
+Backups:
+
+```text
+data/file_backups/
+```
+
+Ambos deben estar ignorados por git.
+
+### Formato conceptual de audit event
+
+```json
+{
+  "timestamp": "2026-05-19T21:15:31.707878+00:00",
+  "action": "apply_text_patch",
+  "path": "/home/alex/projects/sity/config/test-audit-sity.txt",
+  "pending_action_id": "act_xxxxxxxx",
+  "trace_id": "trc_xxxxxxxx",
+  "bytes_written": 15,
+  "replacements": 1,
+  "backup": {
+    "created": true,
+    "backup_path": "/home/alex/projects/sity/data/file_backups/20260519T211531Z__apply_text_patch__home__alex__projects__sity__config__test-audit-sity.txt__act_xxxxxxxx.bak",
+    "size_bytes": 15,
+    "source_path": "/home/alex/projects/sity/config/test-audit-sity.txt"
+  },
+  "status": "ok"
+}
+```
+
+### Comportamiento de backups
+
+Si el archivo no existía antes:
+
+```text
+backup.created=false
+reason=source_missing_or_not_file
+```
+
+Si el archivo existía:
+
+```text
+backup.created=true
+backup_path=data/file_backups/...
+```
+
+### Flujo protegido
+
+```text
+Usuario pide cambio.
+Claude/Sity llama write_file/apply_text_patch.
+Backend crea pending action.
+Usuario confirma.
+Backend crea backup si procede.
+Backend modifica archivo.
+Backend escribe audit event.
+Sity responde con resultado local.
+```
+
 ### Limitaciones actuales
 
-- No hay `apply_unified_diff`.
-- No hay patch multiline complejo tipo Git.
-- No hay backup/rollback automático.
-- No hay escritura fuera del repo.
-- No hay permisos tipo Claude Code completos todavía.
+- Todavía no hay tool `list_file_changes`.
+- Todavía no hay rollback.
+- Todavía no hay UI para ver auditoría.
+- Los backups existen, pero la restauración manual/automática se implementará después.
 
 ---
 
@@ -1576,6 +1666,8 @@ Incluye:
 app.db
 logs
 audit logs
+file_audit.jsonl
+file_backups/
 ```
 
 Debe permanecer fuera de Git.
@@ -1610,6 +1702,13 @@ captures/audio/*
 !captures/.gitkeep
 ```
 
+También deben quedar fuera de Git:
+
+```gitignore
+data/file_audit.jsonl
+data/file_backups/
+```
+
 ---
 
 ## Seguridad
@@ -1620,21 +1719,23 @@ Principios actuales:
 1. Lectura directa solo en zonas permitidas.
 2. Escritura solo en zonas permitidas y con confirmación.
 3. Patches solo en zonas permitidas y con confirmación.
-4. Acciones modificadoras requieren confirmación según riesgo.
-5. Servicios controlables limitados por allowlist.
-6. Sudoers limitado a comandos concretos.
-7. Sin shell arbitraria.
-8. Sin sudo general.
-9. Las acciones viejas no se reejecutan.
-10. Las acciones duplicadas se detectan.
-11. Confirmación contextual solo con intención explícita y contexto válido.
-12. Las herramientas de debug no se usan para conversación normal.
-13. Cámara y micro no se activan salvo petición explícita.
-14. Audio Loopback se trata como dispositivo virtual, no como micro real.
-15. Capturas se sirven desde endpoints validados.
-16. Cancelar una acción no se trata como error.
-17. “Es una orden” no salta allowlists ni políticas de seguridad.
-18. El backend no interpreta lenguaje natural para crear acciones.
+4. Backups automáticos antes de modificar archivos existentes.
+5. Audit log para cambios de archivos.
+6. Acciones modificadoras requieren confirmación según riesgo.
+7. Servicios controlables limitados por allowlist.
+8. Sudoers limitado a comandos concretos.
+9. Sin shell arbitraria.
+10. Sin sudo general.
+11. Las acciones viejas no se reejecutan.
+12. Las acciones duplicadas se detectan.
+13. Confirmación contextual solo con intención explícita y contexto válido.
+14. Las herramientas de debug no se usan para conversación normal.
+15. Cámara y micro no se activan salvo petición explícita.
+16. Audio Loopback se trata como dispositivo virtual, no como micro real.
+17. Capturas se sirven desde endpoints validados.
+18. Cancelar una acción no se trata como error.
+19. “Es una orden” no salta allowlists ni políticas de seguridad.
+20. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1829,6 +1930,18 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"en config/test-patch-sity.txt cambia hola desde sity por hola desde patch"}' | python3 -m json.tool
 ```
 
+Ver últimos eventos de audit manualmente:
+
+```bash
+tail -n 10 data/file_audit.jsonl
+```
+
+Ver backups:
+
+```bash
+ls -lh data/file_backups | tail
+```
+
 Probar bloqueo de ruta sensible:
 
 ```bash
@@ -1953,7 +2066,33 @@ Pendiente:
 - Inyectar al prompt algo tipo:
   “El usuario es adulto y permite lenguaje más ácido/adulto, pero úsalo solo cuando sea natural y según personalidad.”
 
-### System Agent v0.4
+### System Agent v0.5
+
+Pendiente:
+
+- Tool `list_file_changes`.
+- Sity puede responder:
+  - “qué archivos has tocado”
+  - “qué modificaste en el último cambio”
+  - “enséñame los últimos cambios de archivo”
+- Leer `data/file_audit.jsonl`.
+- Resumir cambios.
+- Mostrar path, acción, timestamp, backup y trace.
+- No exponer contenido sensible de backups.
+- No leer backups directamente salvo petición explícita y política segura.
+
+### System Agent v0.6
+
+Pendiente:
+
+- `rollback_file_change`.
+- Restaurar un backup concreto.
+- Requerir confirmación.
+- Mostrar qué archivo se restaurará.
+- Crear backup del estado actual antes de hacer rollback.
+- Registrar rollback en audit log.
+
+### System Agent v0.7
 
 Pendiente:
 
@@ -1964,7 +2103,7 @@ Pendiente:
 - Mostrar diff más limpio en frontend.
 - Guardar audit log específico para cambios de archivos.
 
-### System Agent v0.5
+### System Agent v0.8
 
 Pendiente:
 
@@ -1983,7 +2122,7 @@ Pendiente:
   - home-safe
   - system-careful
 
-### System Agent v0.6
+### System Agent v0.9
 
 Pendiente:
 

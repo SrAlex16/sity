@@ -6,6 +6,8 @@ from typing import Any
 
 import yaml
 
+from app.system_agent.file_audit import append_file_audit_event, create_file_backup
+
 
 PROJECT_ROOT = Path("/home/alex/projects/sity")
 CONFIG_PATH = PROJECT_ROOT / "config" / "system_access.yaml"
@@ -133,6 +135,8 @@ def write_file(
     content: str,
     *,
     create_parent_dirs: bool = False,
+    pending_action_id: str | None = None,
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     try:
         path = _resolve_path(path_value)
@@ -160,7 +164,26 @@ def write_file(
         previous_exists = path.exists()
         previous_size = path.stat().st_size if previous_exists else None
 
+        backup = create_file_backup(
+            path,
+            action="write_file",
+            pending_action_id=pending_action_id,
+            trace_id=trace_id,
+        )
+
         path.write_text(content, encoding="utf-8")
+
+        append_file_audit_event({
+            "action": "write_file",
+            "path": str(path),
+            "pending_action_id": pending_action_id,
+            "trace_id": trace_id,
+            "created": not previous_exists,
+            "previous_size_bytes": previous_size,
+            "bytes_written": len(content_bytes),
+            "backup": backup,
+            "status": "ok",
+        })
 
         return {
             "ok": True,
@@ -168,6 +191,7 @@ def write_file(
             "created": not previous_exists,
             "previous_size_bytes": previous_size,
             "bytes_written": len(content_bytes),
+            "backup": backup,
         }
 
     except FileAccessError as exc:
@@ -281,6 +305,9 @@ def apply_text_patch(
     path_value: str,
     old_text: str,
     new_text: str,
+    *,
+    pending_action_id: str | None = None,
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     try:
         path = _resolve_path(path_value)
@@ -311,13 +338,32 @@ def apply_text_patch(
                 "max_bytes": MAX_WRITE_BYTES,
             }
 
+        backup = create_file_backup(
+            path,
+            action="apply_text_patch",
+            pending_action_id=pending_action_id,
+            trace_id=trace_id,
+        )
+
         path.write_text(updated_content, encoding="utf-8")
+
+        append_file_audit_event({
+            "action": "apply_text_patch",
+            "path": str(path),
+            "pending_action_id": pending_action_id,
+            "trace_id": trace_id,
+            "bytes_written": len(updated_bytes),
+            "replacements": 1,
+            "backup": backup,
+            "status": "ok",
+        })
 
         return {
             "ok": True,
             "path": str(path),
             "bytes_written": len(updated_bytes),
             "replacements": 1,
+            "backup": backup,
         }
 
     except FileAccessError as exc:

@@ -147,20 +147,25 @@ class ConfirmationManager:
         if not active_actions:
             return None
 
-        has_confirmation_intent = (
-            self._is_clear_confirmation(normalized)
-            or self._has_confirmation_intent(normalized)
-        )
-
-        if not has_confirmation_intent:
+        if not (self._is_clear_confirmation(normalized) or self._has_confirmation_intent(normalized)):
             return None
 
-        if len(active_actions) == 1 and self._is_clear_confirmation(normalized):
-            action = active_actions[0]
-            if self._last_sity_message_references_action(action.id):
-                return action
+        latest = self._latest_action(active_actions)
+
+        if self._is_clear_confirmation(normalized) and self._last_sity_message_references_action(latest.id):
+            return latest
 
         return None
+
+    def get_latest_active_pending_action(self) -> PendingAction | None:
+        active = self._get_active_pending_actions()
+        if not active:
+            return None
+        return self._latest_action(active)
+
+    @staticmethod
+    def _latest_action(actions: list[PendingAction]) -> PendingAction:
+        return max(actions, key=lambda a: a.created_at)
 
     def _last_sity_message_references_action(self, action_id: str) -> bool:
         statement = (

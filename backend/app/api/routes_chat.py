@@ -609,6 +609,37 @@ def _chat_message_inner(
     if not pending_action:
         pending_action = confirmation_manager.find_pending_action_by_context(request.message)
 
+    if not pending_action and confirmation_manager.is_generic_confirmation_message(request.message):
+        latest = confirmation_manager.get_latest_active_pending_action()
+        if latest:
+            text = (
+                f"¿Te refieres a «{latest.summary}»? "
+                f"Usa `{latest.confirmation_phrase}` para confirmar."
+            )
+            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+            return ChatMessageResponse(
+                ok=True,
+                trace_id=trace_id,
+                text=text,
+                provider="local",
+                model="confirmation-manager",
+                fallback_used=False,
+                error_type=None,
+                usage=UsageSummary(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    daily_used_tokens=get_today_token_usage(session),
+                    daily_budget_tokens=daily_budget,
+                    daily_ratio=0.0,
+                ),
+                warnings=[],
+                personality_updated=False,
+                updated_parameter=None,
+                updated_parameters=[],
+            )
+
     if pending_action:
         _pending_artifact: ChatArtifact | None = None
 
@@ -697,6 +728,8 @@ def _chat_message_inner(
         elif pending_action.action_type == "file":
             try:
                 payload = json.loads(pending_action.payload_json)
+                payload["pending_action_id"] = pending_action.id
+                payload["trace_id"] = trace_id
                 file_action = payload.get("action", "")
                 execution_result = execute_file_action(payload)
 
