@@ -284,21 +284,7 @@ class ConfirmationManager:
                 ])
 
         if action.action_type == "system_config":
-            service_name = str(payload.get("service_name", "")).lower()
-            action_name = str(payload.get("action", "")).lower()
-
-            if not service_name or service_name not in normalized:
-                return False
-
-            if action_name == "add_allowed_service":
-                return any(term in normalized for term in [
-                    "añade", "agrega", "permite", "autoriza"
-                ])
-
-            if action_name == "remove_allowed_service":
-                return any(term in normalized for term in [
-                    "quita", "elimina", "borra", "desautoriza"
-                ])
+            return self._is_clear_confirmation(normalized)
 
         if action.action_type == "sense":
             action_name = str(payload.get("action", "")).lower()

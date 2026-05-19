@@ -30,9 +30,13 @@ from app.cortex.ai_gateway import AIGateway
 from app.cortex.schemas import AIRequest
 from app.cortex.tool_schemas import (
     ALL_TOOLS,
+    BASE_TOOLSET,
     DEBUG_TOOLSET,
     GIT_TOOLSET,
     PERSONALITY_TOOLSET,
+    SENSES_TOOLSET,
+    SERVICE_CONFIG_TOOLSET,
+    SERVICE_CONTROL_TOOLSET,
     SYSTEM_TOOLSET,
 )
 from app.memory.db import get_session
@@ -208,68 +212,141 @@ def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int)
 def history_limit_for_message(message: str) -> int:
     normalized = message.lower()
 
-    system_keywords = [
-        "raspberry",
-        "sistema",
-        "cpu",
-        "ram",
-        "disco",
-        "procesos",
-        "servicio",
-        "repo",
-        "git",
-        "commits",
-        "ramas",
-        "remotos",
-        "logs",
-        "traza",
-        "debug",
-        "tools",
+    context_heavy_terms = [
+        "ayer", "antes", "recuerdas", "dijiste", "hablamos",
+        "historial", "qué hicimos", "que hicimos", "resume",
     ]
 
-    if any(keyword in normalized for keyword in system_keywords):
+    single_action_terms = [
+        "añade", "agrega", "quita", "elimina",
+        "reinicia", "arranca", "para el",
+        "servicios permitidos", "allowlist",
+        "saca una foto", "graba audio", "graba ",
+    ]
+
+    technical_terms = [
+        "error", "bug", "trace", "debug", "logs", "falló", "fallo",
+        "repo", "git", "servicio", "backend", "frontend",
+        "raspberry", "sistema", "cpu", "ram", "disco",
+    ]
+
+    if any(term in normalized for term in single_action_terms):
         return 4
 
-    return 20
+    if any(term in normalized for term in context_heavy_terms):
+        return 8
+
+    if any(term in normalized for term in technical_terms):
+        return 8
+
+    return 4
+
+
+def _dedupe_tools(tools: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    result = []
+    for tool in tools:
+        name = tool.get("name", "")
+        if name not in seen:
+            seen.add(name)
+            result.append(tool)
+    return result
+
+
+def _looks_like_conversation_only(message: str) -> bool:
+    normalized = message.lower()
+    action_terms = [
+        "reinicia", "arranca", "para el servicio", "para el backend", "para el frontend",
+        "haz pull", "haz push", "haz fetch", "haz commit",
+        "saca una foto", "graba", "graba audio",
+        "lee el archivo", "escribe", "crea un archivo",
+        "añade", "quita", "limpia capturas",
+        "git", "repo", "repositorio",
+        "foto", "cámara", "camara", "webcam", "micrófono", "microfono",
+        "debug", "traza", "trace", "logs",
+        "servicio", "systemd", "backend", "frontend",
+        "cpu", "ram", "disco", "raspberry",
+        "personalidad", "sarcasmo", "calidez",
+    ]
+    return not any(term in normalized for term in action_terms)
 
 
 def select_toolset_for_message(message: str) -> list[dict]:
+    if _looks_like_conversation_only(message):
+        return list(BASE_TOOLSET)
+
     normalized = message.lower()
 
     git_terms = [
         "git", "repo", "repositorio", "commit", "commits",
-        "rama", "ramas", "branch", "origin", "pull", "push",
+        "rama", "ramas", "branch", "origin", "pull", "push", "fetch",
+    ]
+
+    service_config_terms = [
+        "añade", "agrega", "quita", "elimina",
+        "servicios permitidos", "allowlist",
+        "lista de servicios", "servicios que puedes",
+        "add_allowed", "remove_allowed",
+    ]
+
+    service_control_terms = [
+        "reinicia", "arranca", "para el", "detén", "detener",
+        "estado del servicio", "systemctl",
+        "sity-backend", "sity-frontend", "sity-test",
+        "backend", "frontend",
     ]
 
     system_terms = [
         "raspberry", "sistema", "cpu", "ram", "memoria",
-        "disco", "espacio", "procesos", "servicio", "systemd", "ssh",
+        "disco", "espacio", "procesos", "systemd",
+    ]
+
+    sense_terms = [
+        "foto", "cámara", "camara", "webcam",
+        "micro", "micrófono", "microfono", "audio",
+        "capturas", "graba", "grabar",
     ]
 
     debug_terms = [
-        "debug", "log", "logs", "traza", "trace",
-        "error", "errores", "tools", "herramientas",
+        "debug", "traza", "trace", "logs", "eventos",
+        "errores", "herramientas",
     ]
 
-    personality_terms = [
-        "personalidad", "slider", "sliders", "sarcasmo", "calidez",
-        "melancolía", "melancolia", "mala leche", "verbosidad",
-        "paciencia", "tsundere",
+    personality_fields = [
+        "sarcasmo", "rudeza", "borde", "calidez", "honestidad",
+        "paciencia", "melancolía", "melancolia", "tsundere",
+        "verbosidad", "personalidad", "mala leche",
     ]
+
+    personality_action_terms = [
+        "sube", "baja", "ajusta", "cambia", "pon", "ponte", "slider",
+    ]
+
+    selected = list(BASE_TOOLSET)
 
     if any(term in normalized for term in git_terms):
-        return GIT_TOOLSET
+        selected.extend(GIT_TOOLSET)
 
-    if any(term in normalized for term in system_terms):
-        return SYSTEM_TOOLSET
+    if any(term in normalized for term in service_config_terms):
+        selected.extend(SERVICE_CONFIG_TOOLSET)
+    elif any(term in normalized for term in service_control_terms):
+        selected.extend(SERVICE_CONTROL_TOOLSET)
+    elif any(term in normalized for term in system_terms):
+        selected.extend(SYSTEM_TOOLSET)
+
+    if any(term in normalized for term in sense_terms):
+        selected.extend(SENSES_TOOLSET)
 
     if any(term in normalized for term in debug_terms):
-        return DEBUG_TOOLSET
+        selected.extend(DEBUG_TOOLSET)
 
-    if any(term in normalized for term in personality_terms):
-        return PERSONALITY_TOOLSET
+    if (
+        any(field in normalized for field in personality_fields)
+        and any(term in normalized for term in personality_action_terms)
+    ):
+        selected.extend(PERSONALITY_TOOLSET)
 
-    return ALL_TOOLS
+    return _dedupe_tools(selected)
 
 
 def is_git_mutating_request(message: str) -> bool:
@@ -321,110 +398,6 @@ def detect_fast_read_tool(message: str) -> dict | None:
     return None
 
 
-def detect_fast_git_action(message: str) -> dict | None:
-    normalized = message.lower().strip()
-
-    if not any(term in normalized for term in ["git", "repo", "rama", "branch", "pull", "push", "fetch", "commit"]):
-        return None
-
-    repo_path = "sity"
-
-    if "fetch" in normalized:
-        return {
-            "action": "fetch",
-            "repo_path": repo_path,
-            "branch": "main",
-            "remote": "origin",
-            "risk_level": "safe",
-            "summary": "Fetch del repo sity",
-        }
-
-    if "pull" in normalized:
-        return {
-            "action": "pull_ff_only",
-            "repo_path": repo_path,
-            "branch": "main",
-            "remote": "origin",
-            "risk_level": "critical",
-            "summary": "Pull fast-forward del repo sity desde origin",
-        }
-
-    if "push" in normalized:
-        return {
-            "action": "push",
-            "repo_path": repo_path,
-            "branch": "main",
-            "remote": "origin",
-            "risk_level": "critical",
-            "summary": "Push del repo sity a origin/main",
-        }
-
-    checkout_patterns = [
-        r"(?:cambia|cambiar|vuelve|volver|checkout)\s+a\s+la\s+rama\s+([a-zA-Z0-9._/\-]+)",
-        r"(?:cambia|cambiar|vuelve|volver|checkout)\s+a\s+([a-zA-Z0-9._/\-]+)",
-        r"(?:checkout)\s+([a-zA-Z0-9._/\-]+)",
-    ]
-
-    for pattern in checkout_patterns:
-        checkout_match = re.search(pattern, normalized)
-        if checkout_match:
-            branch = checkout_match.group(1).strip()
-
-            if branch in {"en", "a", "la", "rama", "branch", "repo", "sity"}:
-                return None
-
-            return {
-                "action": "checkout_branch",
-                "repo_path": repo_path,
-                "branch": branch,
-                "remote": "origin",
-                "risk_level": "critical",
-                "summary": f"Cambiar a la rama {branch} en el repo sity",
-            }
-
-    create_branch_patterns = [
-        r"(?:crea|crear)\s+(?:una\s+)?(?:rama|branch)\s+([a-zA-Z0-9._/\-]+)",
-        r"(?:nueva)\s+(?:rama|branch)\s+([a-zA-Z0-9._/\-]+)",
-    ]
-
-    for pattern in create_branch_patterns:
-        create_branch_match = re.search(pattern, normalized)
-        if create_branch_match:
-            branch = create_branch_match.group(1).strip()
-
-            if branch in {"en", "a", "la", "rama", "branch", "repo", "sity"}:
-                return None
-
-            return {
-                "action": "create_branch",
-                "repo_path": repo_path,
-                "branch": branch,
-                "remote": "origin",
-                "risk_level": "critical",
-                "summary": f"Crear rama {branch} en el repo sity",
-            }
-
-    commit_match = re.search(
-        r"(?:commit|commitea|commitear).*?(?:mensaje|con mensaje)\s+['\"]?(.+?)['\"]?$",
-        message,
-        flags=re.IGNORECASE,
-    )
-
-    if commit_match:
-        commit_message = commit_match.group(1).strip()
-
-        return {
-            "action": "commit",
-            "repo_path": repo_path,
-            "branch": "main",
-            "remote": "origin",
-            "risk_level": "critical",
-            "summary": f"Commit en el repo sity: {commit_message}",
-            "commit_message": commit_message,
-        }
-
-    return None
-
 
 def build_pending_action_response(created, payload: dict) -> str:
     action = payload.get("action")
@@ -470,114 +443,6 @@ def is_service_action_allowed(service_name: str) -> bool:
     return service_name in allowed
 
 
-def detect_fast_system_action(message: str) -> dict | None:
-    normalized = message.lower().strip()
-
-    service_aliases = {
-        "backend": "sity-backend",
-        "front": "sity-frontend",
-        "frontend": "sity-frontend",
-    }
-
-    service_name = None
-    for alias, service in service_aliases.items():
-        if alias in normalized:
-            service_name = service
-            break
-
-    if not service_name:
-        service_match = re.search(
-            r"(?:reinicia|reiniciar|arranca|arrancar|lanza|lanzar|inicia|iniciar|para|parar|detén|detener|stop|start|restart)\s+(?:el\s+|la\s+)?(?:servicio\s+)?([a-zA-Z0-9_.@-]+)",
-            normalized,
-        )
-        if service_match:
-            candidate = service_match.group(1).strip()
-            if candidate not in {"backend", "frontend", "front"}:
-                service_name = candidate
-
-    if not service_name:
-        return None
-
-    if any(term in normalized for term in ["reinicia", "reiniciar", "restart"]):
-        action = "restart_service"
-        verb = "Reiniciar"
-    elif any(term in normalized for term in ["arranca", "arrancar", "lanza", "lanzar", "inicia", "iniciar", "start"]):
-        action = "start_service"
-        verb = "Arrancar"
-    elif any(term in normalized for term in ["para", "parar", "detén", "detener", "stop"]):
-        action = "stop_service"
-        verb = "Parar"
-    else:
-        return None
-
-    return {
-        "action": action,
-        "service_name": service_name,
-        "risk_level": "safe",
-        "summary": f"{verb} servicio {service_name}",
-    }
-
-
-def extract_service_name_from_message(words: list[str]) -> str | None:
-    ignored = {
-        "sí", "si", "ok", "vale", "dale", "confirmo",
-        "añade", "agrega", "permite", "autoriza",
-        "quita", "elimina", "borra", "desautoriza",
-        "el", "la", "los", "las", "un", "una",
-        "servicio", "servicios",
-        "a", "al", "de", "del", "en", "como",
-        "permitido", "permitidos", "permitida", "permitidas",
-        "controlable", "controlables",
-        "sity", "puedes", "controlar",
-    }
-
-    candidates = [word for word in words if word not in ignored]
-
-    for candidate in candidates:
-        if all(char.isalnum() or char in "@_.-" for char in candidate):
-            return candidate
-
-    return None
-
-
-def detect_service_config_action(message: str) -> dict | None:
-    normalized = message.lower().strip()
-
-    if "servicio" not in normalized and "servicios" not in normalized:
-        return None
-
-    add_terms = ["añade", "agrega", "permite", "autoriza"]
-    remove_terms = ["quita", "elimina", "borra", "desautoriza"]
-
-    words = normalized.replace("`", "").replace('"', "").replace("'", "").split()
-
-    if any(term in normalized for term in add_terms):
-        service_name = extract_service_name_from_message(words)
-        if service_name:
-            return {
-                "action": "add_allowed_service",
-                "service_name": service_name,
-                "risk_level": "critical",
-                "summary": f"Añadir {service_name} a servicios permitidos",
-            }
-
-    if any(term in normalized for term in remove_terms):
-        service_name = extract_service_name_from_message(words)
-        if service_name:
-            return {
-                "action": "remove_allowed_service",
-                "service_name": service_name,
-                "risk_level": "critical",
-                "summary": f"Quitar {service_name} de servicios permitidos",
-            }
-
-    if any(term in normalized for term in [
-        "qué servicios", "que servicios", "servicios puedes",
-        "servicios permitidos", "qué puedes controlar", "que puedes controlar",
-    ]):
-        return {"action": "list_allowed_services"}
-
-    return None
 
 
 def capture_artifact_from_path(path_value: str) -> ChatArtifact | None:
@@ -946,272 +811,6 @@ def _chat_message_inner(
             updated_parameters=[],
         )
 
-    service_config_action = detect_service_config_action(request.message)
-
-    if service_config_action:
-        action = service_config_action.get("action")
-
-        if action == "list_allowed_services":
-            result = list_allowed_services()
-            text = (
-                "Servicios permitidos para lectura:\n"
-                + "\n".join(f"- {service}" for service in result["read_allowed_services"])
-                + "\n\nServicios permitidos para acciones:\n"
-                + "\n".join(f"- {service}" for service in result["action_allowed_services"])
-            )
-
-            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-            return ChatMessageResponse(
-                ok=True,
-                trace_id=trace_id,
-                text=text,
-                provider="local",
-                model="system-config",
-                fallback_used=False,
-                error_type=None,
-                usage=UsageSummary(
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    daily_used_tokens=get_today_token_usage(session),
-                    daily_budget_tokens=daily_budget,
-                    daily_ratio=0.0,
-                ),
-                warnings=[],
-                personality_updated=False,
-                updated_parameter=None,
-                updated_parameters=[],
-            )
-
-        service_name = service_config_action.get("service_name", "")
-
-        existing_action = confirmation_manager.find_equivalent_pending_action(
-            action_type="system_config",
-            payload=service_config_action,
-        )
-
-        if existing_action:
-            text = (
-                f"Ya hay una acción pendiente para esto: {existing_action.summary}\n\n"
-                "Para ejecutarla, confirma con:\n"
-                f"`{existing_action.confirmation_phrase}`\n\n"
-                'O usa una confirmación clara como: "sí, hazlo".'
-            )
-        else:
-            created = confirmation_manager.create_pending_action(
-                action_type="system_config",
-                risk_level=service_config_action.get("risk_level", "critical"),
-                summary=service_config_action.get("summary", "Cambiar allowlist de servicios"),
-                payload=service_config_action,
-                trace_id=trace_id,
-            )
-
-            if action == "add_allowed_service":
-                natural = f"sí, añade {service_name}"
-            else:
-                natural = f"sí, quita {service_name}"
-
-            text = (
-                f"Acción pendiente creada: {created.summary}\n\n"
-                "Esto modifica la allowlist de servicios de Sity. "
-                "No crea ni elimina servicios systemd; solo cambia qué servicios puedo controlar.\n\n"
-                "Para ejecutarla, confirma con:\n"
-                f"`{created.confirmation_phrase}`\n\n"
-                f'También puedes decir: "{natural}".\n\n'
-                f"Riesgo: {created.risk_level}."
-            )
-
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-        return ChatMessageResponse(
-            ok=True,
-            trace_id=trace_id,
-            text=text,
-            provider="local",
-            model="system-config",
-            fallback_used=False,
-            error_type=None,
-            usage=UsageSummary(
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                daily_used_tokens=get_today_token_usage(session),
-                daily_budget_tokens=daily_budget,
-                daily_ratio=0.0,
-            ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
-        )
-
-    fast_system_action = detect_fast_system_action(request.message)
-
-    if fast_system_action:
-        if not is_service_action_allowed(fast_system_action["service_name"]):
-            service_name = fast_system_action["service_name"]
-            text = (
-                f"No puedo controlar `{service_name}` todavía porque no está en la allowlist de servicios.\n\n"
-                f"Puedes pedirme: `añade {service_name} a servicios permitidos`."
-            )
-
-            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-            return ChatMessageResponse(
-                ok=True,
-                trace_id=trace_id,
-                text=text,
-                provider="local",
-                model="confirmation-manager",
-                fallback_used=False,
-                error_type=None,
-                usage=UsageSummary(
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    daily_used_tokens=get_today_token_usage(session),
-                    daily_budget_tokens=daily_budget,
-                    daily_ratio=0.0,
-                ),
-                warnings=[],
-                personality_updated=False,
-                updated_parameter=None,
-                updated_parameters=[],
-            )
-
-        existing_action = confirmation_manager.find_equivalent_pending_action(
-            action_type="system",
-            payload=fast_system_action,
-        )
-
-        if existing_action:
-            text = (
-                f"Ya hay una acción pendiente para esto: {existing_action.summary}\n\n"
-                "Para ejecutarla, confirma con:\n"
-                f"`{existing_action.confirmation_phrase}`\n\n"
-                'O usa una confirmación clara como: "sí, hazlo".'
-            )
-
-            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-            return ChatMessageResponse(
-                ok=True,
-                trace_id=trace_id,
-                text=text,
-                provider="local",
-                model="confirmation-manager",
-                fallback_used=False,
-                error_type=None,
-                usage=UsageSummary(
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    daily_used_tokens=get_today_token_usage(session),
-                    daily_budget_tokens=daily_budget,
-                    daily_ratio=0.0,
-                ),
-                warnings=[],
-                personality_updated=False,
-                updated_parameter=None,
-                updated_parameters=[],
-            )
-
-        created = confirmation_manager.create_pending_action(
-            action_type="system",
-            risk_level=fast_system_action.get("risk_level", "safe"),
-            summary=fast_system_action.get("summary", "Acción de sistema"),
-            payload=fast_system_action,
-            trace_id=trace_id,
-        )
-
-        service_name = fast_system_action.get("service_name", "servicio")
-        action = fast_system_action.get("action", "")
-
-        if action == "restart_service":
-            natural_confirmation = f"sí, reinicia {service_name}"
-        elif action == "start_service":
-            natural_confirmation = f"sí, arranca {service_name}"
-        elif action == "stop_service":
-            natural_confirmation = f"sí, para {service_name}"
-        else:
-            natural_confirmation = "sí, hazlo"
-
-        text = (
-            f"Acción pendiente creada: {created.summary}\n\n"
-            "Para ejecutarla, confirma con:\n"
-            f"`{created.confirmation_phrase}`\n\n"
-            f'También puedes decir: "{natural_confirmation}".\n\n'
-            f"Riesgo: {created.risk_level}."
-        )
-
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-        return ChatMessageResponse(
-            ok=True,
-            trace_id=trace_id,
-            text=text,
-            provider="local",
-            model="confirmation-manager",
-            fallback_used=False,
-            error_type=None,
-            usage=UsageSummary(
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                daily_used_tokens=get_today_token_usage(session),
-                daily_budget_tokens=daily_budget,
-                daily_ratio=0.0,
-            ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
-        )
-
-    fast_git_action = detect_fast_git_action(request.message)
-
-    if fast_git_action:
-        created = ConfirmationManager(session).create_pending_action(
-            action_type="git",
-            risk_level=fast_git_action.get("risk_level", "critical"),
-            summary=fast_git_action.get("summary", "Acción Git"),
-            payload=fast_git_action,
-            trace_id=trace_id,
-        )
-
-        text = build_pending_action_response(created, fast_git_action)
-
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-        return ChatMessageResponse(
-            ok=True,
-            trace_id=trace_id,
-            text=text,
-            provider="local",
-            model="confirmation-manager",
-            fallback_used=False,
-            error_type=None,
-            usage=UsageSummary(
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                daily_used_tokens=get_today_token_usage(session),
-                daily_budget_tokens=daily_budget,
-                daily_ratio=0.0,
-            ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
-        )
-
     history_limit = history_limit_for_message(request.message)
 
     recent_history = [
@@ -1312,58 +911,71 @@ def _chat_message_inner(
 
     selected_tools = select_toolset_for_message(request.message)
 
-    planner_request = AIRequest(
-        trace_id=trace_id,
-        task_type="action_planner",
-        system_prompt=build_action_planner_prompt(),
-        user_message=planner_user_message,
-        max_tokens=500,
-        tools_enabled=True,
-        tool_choice={"type": "any"},
-        tools=selected_tools,
-    )
-
-    write_log(
-        level="INFO",
-        module="cortex",
-        event="ai_call_started",
-        trace_id=trace_id,
-        payload={
-            "provider": "anthropic",
-            "task_type": "action_planner",
-            "max_tokens": 500,
-            "verbosity_level": verbosity_level,
-        },
-    )
-
-    planner_response = gateway.generate(planner_request)
 
     tool_results_for_claude: list[dict] = []
     updated_parameters: list[str] = []
     response_artifacts: list[ChatArtifact] = []
 
-    write_log(
-        level="INFO",
-        module="cortex",
-        event="ai_response_received",
-        trace_id=trace_id,
-        payload={
-            "text_length": len(planner_response.text or ""),
-            "tool_calls_count": len(planner_response.tool_calls),
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "name": tc.name,
-                    "input": tc.input,
-                }
-                for tc in planner_response.tool_calls
-            ],
-        },
-    )
+    if not selected_tools:
+        response = gateway.generate(
+            AIRequest(
+                trace_id=trace_id,
+                task_type="chat_message",
+                system_prompt=persona_prompt,
+                user_message=user_message_with_history,
+                max_tokens=max_tokens,
+                tools_enabled=False,
+            )
+        )
+    else:
+        planner_request = AIRequest(
+            trace_id=trace_id,
+            task_type="action_planner",
+            system_prompt=build_action_planner_prompt(),
+            user_message=planner_user_message,
+            max_tokens=500,
+            tools_enabled=True,
+            tool_choice={"type": "any"},
+            tools=selected_tools,
+        )
 
-    response = planner_response
+        write_log(
+            level="INFO",
+            module="cortex",
+            event="ai_call_started",
+            trace_id=trace_id,
+            payload={
+                "provider": "anthropic",
+                "task_type": "action_planner",
+                "max_tokens": 500,
+                "verbosity_level": verbosity_level,
+            },
+        )
 
-    if planner_response.ok and planner_response.tool_calls:
+        planner_response = gateway.generate(planner_request)
+
+        write_log(
+            level="INFO",
+            module="cortex",
+            event="ai_response_received",
+            trace_id=trace_id,
+            payload={
+                "text_length": len(planner_response.text or ""),
+                "tool_calls_count": len(planner_response.tool_calls),
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "name": tc.name,
+                        "input": tc.input,
+                    }
+                    for tc in planner_response.tool_calls
+                ],
+            },
+        )
+
+        response = planner_response
+
+    if selected_tools and planner_response.ok and planner_response.tool_calls:
         first_tool = planner_response.tool_calls[0]
 
         if first_tool.name == "no_action_required":

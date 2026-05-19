@@ -27,9 +27,7 @@ async def publish_event(client_turn_id: str, event: dict[str, Any]) -> None:
 
 def publish_event_sync(client_turn_id: str | None, event: dict[str, Any]) -> None:
     if not client_turn_id or _loop is None:
-        print(f"[SSE skip] client_turn_id={client_turn_id!r} loop={_loop} event={event}", flush=True)
         return
-    print(f"[SSE publish] client_turn_id={client_turn_id} event={event}", flush=True)
     asyncio.run_coroutine_threadsafe(publish_event(client_turn_id, event), _loop)
 
 

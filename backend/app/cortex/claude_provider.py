@@ -38,11 +38,11 @@ class ClaudeProvider:
             ],
         }
 
-        if request.tools_enabled:
-            kwargs["tools"] = request.tools if request.tools is not None else TOOLS
-
-        if request.tool_choice:
-            kwargs["tool_choice"] = request.tool_choice
+        effective_tools = request.tools if request.tools is not None else TOOLS
+        if request.tools_enabled and effective_tools:
+            kwargs["tools"] = effective_tools
+            if request.tool_choice:
+                kwargs["tool_choice"] = request.tool_choice
 
         message = self.client.messages.create(**kwargs)
 

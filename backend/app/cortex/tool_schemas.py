@@ -509,6 +509,92 @@ SYSTEM_PROPOSE_ACTION_TOOL = {
 }
 
 
+_SERVICE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "service_name": {
+            "type": "string",
+            "enum": ["sity-backend", "sity-frontend"],
+            "description": "Nombre exacto del servicio systemd a controlar.",
+        },
+    },
+    "required": ["service_name"],
+}
+
+RESTART_SERVICE_TOOL = {
+    "name": "restart_service",
+    "description": "Reinicia un servicio systemd permitido. Requiere confirmación del usuario antes de ejecutarse.",
+    "input_schema": _SERVICE_SCHEMA,
+}
+
+START_SERVICE_TOOL = {
+    "name": "start_service",
+    "description": "Arranca un servicio systemd permitido. Requiere confirmación del usuario antes de ejecutarse.",
+    "input_schema": _SERVICE_SCHEMA,
+}
+
+STOP_SERVICE_TOOL = {
+    "name": "stop_service",
+    "description": "Para un servicio systemd permitido. Requiere confirmación del usuario antes de ejecutarse.",
+    "input_schema": _SERVICE_SCHEMA,
+}
+
+
+ADD_ALLOWED_SERVICE_TOOL = {
+    "name": "add_allowed_service",
+    "description": (
+        "Añade un servicio systemd concreto a la allowlist de servicios controlables por Sity. "
+        "Úsala solo cuando el usuario pida explícitamente añadir un servicio concreto. "
+        "Requiere confirmación del usuario antes de ejecutarse."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "service_name": {
+                "type": "string",
+                "description": "Nombre exacto del servicio systemd, por ejemplo sity-test.",
+            },
+        },
+        "required": ["service_name"],
+    },
+}
+
+REMOVE_ALLOWED_SERVICE_TOOL = {
+    "name": "remove_allowed_service",
+    "description": (
+        "Quita un servicio systemd concreto de la allowlist de servicios controlables por Sity. "
+        "Úsala solo cuando el usuario pida explícitamente quitar un servicio concreto. "
+        "Requiere confirmación del usuario antes de ejecutarse."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "service_name": {
+                "type": "string",
+                "description": "Nombre exacto del servicio systemd.",
+            },
+        },
+        "required": ["service_name"],
+    },
+}
+
+LIST_ALLOWED_SERVICES_TOOL = {
+    "name": "list_allowed_services",
+    "description": (
+        "Lista los servicios que Sity puede leer o controlar. "
+        "No modifica la allowlist."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
 GET_CAPTURE_STORAGE_SUMMARY_TOOL = {
     "name": "get_capture_storage_summary",
     "description": (
@@ -556,9 +642,26 @@ PERSONALITY_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+BASE_TOOLSET: list[dict] = []
+
 DEBUG_TOOLSET = [
     READ_RECENT_DEBUG_EVENTS_TOOL,
     READ_TRACE_EVENTS_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
+SERVICE_CONFIG_TOOLSET = [
+    LIST_ALLOWED_SERVICES_TOOL,
+    ADD_ALLOWED_SERVICE_TOOL,
+    REMOVE_ALLOWED_SERVICE_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
+SERVICE_CONTROL_TOOLSET = [
+    READ_SERVICE_STATUS_TOOL,
+    START_SERVICE_TOOL,
+    STOP_SERVICE_TOOL,
+    RESTART_SERVICE_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
@@ -568,7 +671,13 @@ SYSTEM_TOOLSET = [
     READ_PROCESSES_TOOL,
     READ_SERVICE_STATUS_TOOL,
     LIST_ALLOWED_DIRECTORY_TOOL,
+    RESTART_SERVICE_TOOL,
+    START_SERVICE_TOOL,
+    STOP_SERVICE_TOOL,
     SYSTEM_PROPOSE_ACTION_TOOL,
+    ADD_ALLOWED_SERVICE_TOOL,
+    REMOVE_ALLOWED_SERVICE_TOOL,
+    LIST_ALLOWED_SERVICES_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
@@ -605,7 +714,13 @@ ALL_TOOLS = [
     GIT_READ_BRANCHES_TOOL,
     GIT_READ_REMOTES_TOOL,
     GIT_PROPOSE_ACTION_TOOL,
+    RESTART_SERVICE_TOOL,
+    START_SERVICE_TOOL,
+    STOP_SERVICE_TOOL,
     SYSTEM_PROPOSE_ACTION_TOOL,
+    ADD_ALLOWED_SERVICE_TOOL,
+    REMOVE_ALLOWED_SERVICE_TOOL,
+    LIST_ALLOWED_SERVICES_TOOL,
     LIST_CAMERA_DEVICES_TOOL,
     LIST_AUDIO_DEVICES_TOOL,
     CAPTURE_CAMERA_SNAPSHOT_TOOL,
