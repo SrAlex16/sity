@@ -111,6 +111,48 @@ class ToolExecutor:
                 }),
             )
 
+        if tool_name == "write_file":
+            path = str(tool_input.get("path", ""))
+            content = str(tool_input.get("content", ""))
+            create_parent_dirs = bool(tool_input.get("create_parent_dirs", False))
+
+            from app.system_agent.file_access import FileAccessError, _resolve_path, assert_write_allowed
+            try:
+                assert_write_allowed(_resolve_path(path))
+            except FileAccessError as exc:
+                err = str(exc)
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=err,
+                    updated_parameters=[], raw_result={"success": False, "message": err},
+                )
+
+            created = ConfirmationManager(self.session).create_pending_action(
+                action_type="file",
+                risk_level="critical",
+                summary=f"Escribir archivo {path}",
+                payload={
+                    "action": "write_file",
+                    "path": path,
+                    "content": content,
+                    "create_parent_dirs": create_parent_dirs,
+                },
+                trace_id=trace_id,
+            )
+            result = {
+                "success": True,
+                "message": "Acción pendiente creada. Requiere confirmación explícita.",
+                "action_id": created.id,
+                "confirmation_phrase": created.confirmation_phrase,
+                "summary": created.summary,
+            }
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                ok=True,
+                message=result["message"],
+                updated_parameters=[],
+                raw_result=result,
+            )
+
         if tool_name == "read_recent_debug_events":
             return self._read_recent_debug_events(
                 tool_input=tool_input,

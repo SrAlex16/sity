@@ -30,11 +30,11 @@ from app.core.refusal_tracker import get_last_refusal, set_last_refusal
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.schemas import AIRequest
+from app.actions.file_actions import execute_file_action
 from app.cortex.tool_schemas import (
     ALL_TOOLS,
     BASE_TOOLSET,
     DEBUG_TOOLSET,
-    FILE_READ_TOOLSET,
     GIT_TOOLSET,
     PERSONALITY_TOOLSET,
     SENSES_TOOLSET,
@@ -262,7 +262,6 @@ def _looks_like_conversation_only(message: str) -> bool:
         "reinicia", "arranca", "para el servicio", "para el backend", "para el frontend",
         "haz pull", "haz push", "haz fetch", "haz commit",
         "saca una foto", "graba", "graba audio",
-        "lee el archivo", "escribe", "crea un archivo",
         "añade", "quita", "limpia capturas",
         "git", "repo", "repositorio",
         "foto", "cámara", "camara", "webcam", "micrófono", "microfono",
@@ -312,12 +311,6 @@ def select_toolset_for_message(message: str) -> list[dict]:
         "capturas", "graba", "grabar",
     ]
 
-    file_terms = [
-        "archivo", "fichero", "directorio", "carpeta",
-        "lee", "lista", "revisa", "mira el archivo", "qué hay en", "que hay en",
-        "readme", ".py", ".ts", ".tsx", ".yaml", ".yml", ".md",
-    ]
-
     debug_terms = [
         "debug", "traza", "trace", "logs", "eventos",
         "errores", "herramientas",
@@ -347,9 +340,6 @@ def select_toolset_for_message(message: str) -> list[dict]:
 
     if any(term in normalized for term in sense_terms):
         selected.extend(SENSES_TOOLSET)
-
-    if any(term in normalized for term in file_terms):
-        selected.extend(FILE_READ_TOOLSET)
 
     if any(term in normalized for term in debug_terms):
         selected.extend(DEBUG_TOOLSET)
@@ -456,6 +446,7 @@ Debes elegir exactamente una herramienta:
 - Usa herramientas Git (git_read_status, git_read_log, git_read_branches) si pregunta explícitamente por commits, ramas, diff, status git, remotos o el estado del repositorio git.
 - Usa git_propose_action si el usuario pide git pull, git push, commit, crear rama, checkout, merge, rebase, reset o stash. No respondas solo con texto para estas acciones.
 - Usa read_file o list_directory si el usuario pide ver, leer o listar un archivo o directorio concreto del proyecto.
+- Usa write_file si el usuario pide crear, escribir o modificar un archivo concreto. Nunca se ejecuta directamente: crea una acción pendiente.
 - Usa no_action_required si solo quiere conversar.
 
 Regla de contexto: Si el turno anterior fue sobre leer un archivo y el usuario confirma o aclara, mantén la intención de lectura. No cambies a herramientas Git salvo que el usuario pida explícitamente commits, ramas, diff, status git, pull o push.
@@ -700,6 +691,23 @@ def _chat_message_inner(
             except Exception as exc:
                 confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
                 text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
+
+        elif pending_action.action_type == "file":
+            try:
+                payload = json.loads(pending_action.payload_json)
+                execution_result = execute_file_action(payload)
+
+                if execution_result.get("ok"):
+                    confirmation_manager.mark_executed(pending_action, trace_id)
+                    text = f"Archivo escrito: {execution_result.get('path')}"
+                else:
+                    error = execution_result.get("error", "Error desconocido")
+                    confirmation_manager.mark_failed(pending_action, trace_id, error)
+                    text = f"No he podido escribir el archivo: {error}"
+
+            except Exception as exc:
+                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
+                text = f"Falló la escritura del archivo: {exc}"
 
         elif pending_action.action_type == "sense":
             try:

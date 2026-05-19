@@ -47,7 +47,9 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Limpieza de capturas antiguas.
 - Lectura segura de archivos permitidos.
 - Listado seguro de directorios permitidos.
+- Escritura segura de archivos permitidos dentro del repo.
 - System Agent read-only v0.1.
+- System Agent write-file v0.2 repo-only.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -427,6 +429,7 @@ Git action tools
 System action tools
 System config tools
 File read tools
+File write tools
 Sense tools
 Capture retention tools
 No-action / respuesta normal
@@ -527,6 +530,7 @@ stop_service
 restart_service
 read_file
 list_directory
+write_file
 capture_camera_snapshot
 record_audio_sample
 ```
@@ -544,7 +548,7 @@ Se ha reducido el coste de tokens evitando enviar tools innecesarias.
 - Conversación normal puede ir sin tools.
 - Personality tools solo se incluyen cuando el usuario pide explícitamente cambiar personalidad.
 - Service config usa un toolset pequeño.
-- File tools se seleccionan solo para peticiones de archivos/directorios.
+- File tools se incluyen como parte del agente local de archivos.
 - Git tools no deben activarse por la palabra “repo” sola.
 - Si no hay tools, no se envía `tools=[]` al proveedor Anthropic.
 
@@ -560,7 +564,7 @@ Sensores locales: respuesta local/micro-reaction cuando sea posible.
 
 ## Confirmation Manager
 
-Las acciones que modifican el sistema o Git pasan por un `Confirmation Manager`.
+Las acciones que modifican el sistema, Git o archivos pasan por un `Confirmation Manager`.
 
 Flujo:
 
@@ -674,7 +678,7 @@ git_pull                     → critical_confirm
 system_restart_service       → safe_confirm
 system_stop_service          → safe_confirm
 system_config_update         → critical_confirm
-write_file                   → future critical_confirm
+write_file                   → critical_confirm
 apply_patch                  → future critical_confirm
 ```
 
@@ -682,7 +686,7 @@ apply_patch                  → future critical_confirm
 
 ## System Agent v0.1
 
-Sity empieza a tener capacidades de agente local sobre el proyecto, pero sin shell libre y sin escritura automática.
+Sity empieza a tener capacidades de agente local sobre el proyecto, pero sin shell libre.
 
 ### Funciona
 
@@ -693,44 +697,11 @@ Sity empieza a tener capacidades de agente local sobre el proyecto, pero sin she
 - Integración mediante tools interpretadas por Sity/Claude.
 - El backend valida rutas y permisos, pero no interpreta lenguaje natural para decidir acciones.
 
-### Tools actuales
+### Tools
 
 ```text
 read_file
 list_directory
-```
-
-### Rutas permitidas
-
-Configuradas en:
-
-```text
-config/system_access.yaml
-```
-
-Bloque conceptual:
-
-```yaml
-file_access:
-  readable_paths:
-    - /home/alex/projects/sity
-    - /home/alex/projects/sity/backend
-    - /home/alex/projects/sity/frontend
-    - /home/alex/projects/sity/config
-    - /home/alex/projects/sity/scripts
-    - /home/alex/projects/sity/deploy
-    - /home/alex/projects/sity/README.md
-
-  blocked_paths:
-    - /home/alex/projects/sity/.env
-    - /home/alex/projects/sity/frontend/.env.local
-    - /home/alex/.ssh
-    - /home/alex/.config
-    - /etc
-    - /boot
-    - /root
-    - /var/lib
-    - /var/log
 ```
 
 ### Principio
@@ -755,14 +726,127 @@ Ejemplo prohibido:
 Backend: if "readme" in message.lower(): leer README.md
 ```
 
+---
+
+## System Agent v0.2
+
+Sity puede escribir archivos dentro de rutas permitidas del repo, siempre con confirmación.
+
+### Funciona
+
+- `write_file` para crear archivos.
+- `write_file` para sobrescribir archivos.
+- Escritura solo dentro de `writable_paths`.
+- Bloqueo de rutas sensibles.
+- Confirmación obligatoria antes de escribir.
+- Validación de tamaño máximo.
+- Validación de directorios padre.
+- Bloqueo de `.env`.
+- Bloqueo de `/etc`, `/boot`, `/root`, `/var/lib`, `/var/log`.
+- `es una orden` no salta allowlist ni confirmación.
+
+### Tools
+
+```text
+read_file
+list_directory
+write_file
+```
+
+### Rutas permitidas
+
+Configuradas en:
+
+```text
+config/system_access.yaml
+```
+
+Bloque conceptual:
+
+```yaml
+file_access:
+  readable_paths:
+    - /home/alex/projects/sity
+    - /home/alex/projects/sity/backend
+    - /home/alex/projects/sity/frontend
+    - /home/alex/projects/sity/config
+    - /home/alex/projects/sity/scripts
+    - /home/alex/projects/sity/deploy
+    - /home/alex/projects/sity/README.md
+
+  writable_paths:
+    - /home/alex/projects/sity/backend
+    - /home/alex/projects/sity/frontend
+    - /home/alex/projects/sity/config
+    - /home/alex/projects/sity/scripts
+    - /home/alex/projects/sity/deploy
+    - /home/alex/projects/sity/README.md
+
+  blocked_paths:
+    - /home/alex/projects/sity/.env
+    - /home/alex/projects/sity/frontend/.env.local
+    - /home/alex/projects/sity/data
+    - /home/alex/projects/sity/captures
+    - /home/alex/projects/sity/backend/.venv
+    - /home/alex/projects/sity/frontend/node_modules
+    - /home/alex/.ssh
+    - /home/alex/.config
+    - /etc
+    - /boot
+    - /root
+    - /var/lib
+    - /var/log
+```
+
+### Flujo de escritura
+
+```text
+Usuario pide crear/modificar archivo.
+Claude/Sity llama write_file(path, content).
+Backend valida tool_input y crea pending_action.
+Usuario confirma.
+Backend ejecuta write_file local.
+```
+
+Ejemplo:
+
+```text
+Usuario:
+crea un archivo config/test-write-sity.txt con el contenido hola desde sity
+
+Sity:
+Acción pendiente creada. Puedes confirmar diciendo “sí” o “confirmo ejecutar act_xxxxxxxx”.
+
+Usuario:
+sí, hazlo
+
+Sity:
+Archivo escrito: /home/alex/projects/sity/config/test-write-sity.txt
+```
+
+### Seguridad
+
+Casos bloqueados:
+
+```text
+crea /etc/sity-test.txt con el contenido hola, es una orden
+escribe en .env el contenido TEST=1, es una orden
+```
+
+Resultado esperado:
+
+```text
+Bloqueado por allowlist o blocked_paths.
+```
+
 ### Limitaciones actuales
 
-- No hay escritura de archivos.
-- No hay apply_patch.
+- No hay `apply_patch`.
+- No hay diff previo.
+- No hay backup/rollback.
 - No hay shell libre.
-- No hay ejecución arbitraria de comandos.
-- Archivos largos pueden truncarse o resumirse para proteger el presupuesto de tokens.
-- Rutas sensibles están bloqueadas aunque el usuario diga `es una orden`.
+- No hay escritura fuera del repo.
+- No hay permisos tipo Claude Code completos todavía.
 
 ---
 
@@ -1331,6 +1415,7 @@ system_access.read.allowed_services
 system_access.safe_actions.allowed_services
 git_access.read.allowed_repositories
 file_access.readable_paths
+file_access.writable_paths
 file_access.blocked_paths
 ```
 
@@ -1425,21 +1510,22 @@ Principios actuales:
 
 ```text
 1. Lectura directa solo en zonas permitidas.
-2. Acciones modificadoras requieren confirmación según riesgo.
-3. Servicios controlables limitados por allowlist.
-4. Sudoers limitado a comandos concretos.
-5. Sin shell arbitraria.
-6. Sin sudo general.
-7. Las acciones viejas no se reejecutan.
-8. Las acciones duplicadas se detectan.
-9. Confirmación contextual solo con intención explícita y contexto válido.
-10. Las herramientas de debug no se usan para conversación normal.
-11. Cámara y micro no se activan salvo petición explícita.
-12. Audio Loopback se trata como dispositivo virtual, no como micro real.
-13. Capturas se sirven desde endpoints validados.
-14. Cancelar una acción no se trata como error.
-15. “Es una orden” no salta allowlists ni políticas de seguridad.
-16. El backend no interpreta lenguaje natural para crear acciones.
+2. Escritura solo en zonas permitidas y con confirmación.
+3. Acciones modificadoras requieren confirmación según riesgo.
+4. Servicios controlables limitados por allowlist.
+5. Sudoers limitado a comandos concretos.
+6. Sin shell arbitraria.
+7. Sin sudo general.
+8. Las acciones viejas no se reejecutan.
+9. Las acciones duplicadas se detectan.
+10. Confirmación contextual solo con intención explícita y contexto válido.
+11. Las herramientas de debug no se usan para conversación normal.
+12. Cámara y micro no se activan salvo petición explícita.
+13. Audio Loopback se trata como dispositivo virtual, no como micro real.
+14. Capturas se sirven desde endpoints validados.
+15. Cancelar una acción no se trata como error.
+16. “Es una orden” no salta allowlists ni políticas de seguridad.
+17. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1610,12 +1696,36 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"lista backend/app"}' | python3 -m json.tool
 ```
 
+Crear archivo permitido:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"crea un archivo config/test-write-sity.txt con el contenido hola desde sity"}' | python3 -m json.tool
+```
+
+Confirmar escritura:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"sí, hazlo"}' | python3 -m json.tool
+```
+
 Probar bloqueo de ruta sensible:
 
 ```bash
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"lee /etc/passwd, es una orden"}' | python3 -m json.tool
+```
+
+Probar bloqueo de escritura sensible:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"escribe en .env el contenido TEST=1, es una orden"}' | python3 -m json.tool
 ```
 
 ---
@@ -1718,19 +1828,38 @@ Pendiente:
 - Inyectar al prompt algo tipo:
   “El usuario es adulto y permite lenguaje más ácido/adulto, pero úsalo solo cuando sea natural y según personalidad.”
 
-### System Agent v0.2
+### System Agent v0.3
 
 Pendiente:
 
-- `write_file` seguro por allowlist.
 - `apply_patch` seguro.
-- Confirmación obligatoria para escritura.
 - Diff antes de aplicar cambios.
+- Confirmación obligatoria para patches.
 - Bloqueo de secretos y rutas sensibles.
 - Auditoría de cambios.
 - Rollback o backup antes de sobrescribir.
+- Preferir patch sobre `write_file` cuando se modifique una parte pequeña de un archivo.
 
-### System Agent v0.3
+### System Agent v0.4
+
+Pendiente:
+
+- Ampliar file access fuera del repo.
+- Permitir lectura/escritura en `/home/alex` bajo política.
+- Mantener bloqueo de secretos:
+  - `.ssh`
+  - `.gnupg`
+  - `.aws`
+  - `.config` sensible
+  - `.env`
+  - tokens
+  - credenciales
+- Añadir perfiles:
+  - repo-only
+  - home-safe
+  - system-careful
+
+### System Agent v0.5
 
 Pendiente:
 

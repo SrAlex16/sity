@@ -11,6 +11,7 @@ CONFIG_PATH = PROJECT_ROOT / "config" / "system_access.yaml"
 
 MAX_READ_BYTES = 120_000
 MAX_READ_CHARS_FOR_MODEL = 12_000
+MAX_WRITE_BYTES = 250_000
 MAX_DIRECTORY_ITEMS = 200
 
 
@@ -79,6 +80,11 @@ def assert_read_allowed(path: Path) -> None:
         raise FileAccessError(f"Ruta no permitida para lectura: {path}")
 
 
+def assert_write_allowed(path: Path) -> None:
+    if not _is_allowed(path, "writable_paths"):
+        raise FileAccessError(f"Ruta no permitida para escritura: {path}")
+
+
 def read_file(path_value: str) -> dict[str, Any]:
     try:
         path = _resolve_path(path_value)
@@ -118,6 +124,55 @@ def read_file(path_value: str) -> dict[str, Any]:
 
     except Exception as exc:
         return {"ok": False, "error": f"Error leyendo archivo: {exc}"}
+
+
+def write_file(
+    path_value: str,
+    content: str,
+    *,
+    create_parent_dirs: bool = False,
+) -> dict[str, Any]:
+    try:
+        path = _resolve_path(path_value)
+        assert_write_allowed(path)
+
+        if path.exists() and not path.is_file():
+            return {"ok": False, "error": f"La ruta existe pero no es un archivo: {path}"}
+
+        content_bytes = content.encode("utf-8")
+        if len(content_bytes) > MAX_WRITE_BYTES:
+            return {
+                "ok": False,
+                "error": f"Contenido demasiado grande: {len(content_bytes)} bytes (máx {MAX_WRITE_BYTES}).",
+            }
+
+        if create_parent_dirs:
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not path.parent.exists():
+            return {
+                "ok": False,
+                "error": f"El directorio padre no existe: {path.parent}. Usa create_parent_dirs=true para crearlo.",
+            }
+
+        previous_exists = path.exists()
+        previous_size = path.stat().st_size if previous_exists else None
+
+        path.write_text(content, encoding="utf-8")
+
+        return {
+            "ok": True,
+            "path": str(path),
+            "created": not previous_exists,
+            "previous_size_bytes": previous_size,
+            "bytes_written": len(content_bytes),
+        }
+
+    except FileAccessError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    except Exception as exc:
+        return {"ok": False, "error": f"Error escribiendo archivo: {exc}"}
 
 
 def list_directory(path_value: str) -> dict[str, Any]:

@@ -675,9 +675,43 @@ LIST_DIRECTORY_TOOL = {
     },
 }
 
+WRITE_FILE_TOOL = {
+    "name": "write_file",
+    "description": (
+        "Escribe o sobreescribe un archivo dentro de las rutas permitidas por la allowlist de Sity. "
+        "NUNCA se ejecuta directamente: siempre crea una acción pendiente que requiere confirmación explícita. "
+        "Úsala cuando el usuario pida crear, escribir o modificar un archivo concreto."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Ruta del archivo a escribir. Puede ser absoluta o relativa al proyecto.",
+            },
+            "content": {
+                "type": "string",
+                "description": "Contenido completo a escribir en el archivo.",
+            },
+            "create_parent_dirs": {
+                "type": "boolean",
+                "description": "Si true, crea los directorios padre si no existen. Por defecto false.",
+            },
+        },
+        "required": ["path", "content"],
+    },
+}
+
 FILE_READ_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
+]
+
+FILE_AGENT_TOOLSET = [
+    READ_FILE_TOOL,
+    LIST_DIRECTORY_TOOL,
+    WRITE_FILE_TOOL,
 ]
 
 
@@ -686,7 +720,11 @@ PERSONALITY_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
-BASE_TOOLSET: list[dict] = []
+BASE_TOOLSET: list[dict] = [
+    READ_FILE_TOOL,
+    LIST_DIRECTORY_TOOL,
+    WRITE_FILE_TOOL,
+]
 
 DEBUG_TOOLSET = [
     READ_RECENT_DEBUG_EVENTS_TOOL,
@@ -773,6 +811,7 @@ ALL_TOOLS = [
     CLEAN_OLD_CAPTURES_TOOL,
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
+    WRITE_FILE_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
