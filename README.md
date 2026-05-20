@@ -4,7 +4,7 @@ Sity es una IA doméstica de ocio pensada para ejecutarse en una Raspberry Pi/Ra
 
 El objetivo del proyecto no es solo tener un chatbot, sino una asistente con personalidad configurable, memoria conversacional, acceso controlado al sistema, integración progresiva con hardware y capacidad de ejecutar acciones reales con confirmación explícita cuando corresponde.
 
-Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura preparada para añadir fallback a otros modelos y más capacidades locales en el futuro.
+Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura preparada para añadir fallback a otros modelos, más capacidades locales y mejor portabilidad entre entornos en el futuro.
 
 ---
 
@@ -30,6 +30,8 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Servicios systemd versionados en el repo.
 - Servicio de prueba `sity-test`.
 - Presupuesto diario local de tokens y avisos de uso.
+- Hard cap opcional para evitar llamadas a Claude al superar presupuesto.
+- Modo `local-only` opcional.
 - Prompt/tool routing corregido para no usar debug en conversación normal.
 - Respuestas finales locales para acciones deterministas.
 - Reducción de segunda llamada a Claude tras tool calls de archivos.
@@ -61,7 +63,9 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Rollback de archivos desde backup explícito.
 - Rollback natural del último cambio reversible de archivo.
 - Script de regresión repo-only para System Agent.
-- Confirmación genérica contextual restaurada.
+- Test local puro de file access sin llamadas a `/chat/message`.
+- Test local puro de Confirmation Manager sin llamadas a `/chat/message`.
+- Confirmación genérica contextual restaurada y protegida.
 - System Agent read-only v0.1.
 - System Agent write-file v0.2 repo-only.
 - System Agent patch v0.3 repo-only.
@@ -72,9 +76,8 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - System Agent unified diff v0.7.
 - System Agent multi-file unified diff plan v0.8.
 - Local final responses/token saving v0.8.1.
-- Hard cap diario de tokens configurable por variable de entorno (`SITY_DAILY_TOKEN_HARD_CAP`).
-- Modo local-only configurable por variable de entorno (`SITY_LOCAL_ONLY`).
-- Script de tests locales de file_access sin llamadas a la API.
+- Budget guard/local-only/test local v0.8.2.
+- Confirmation Manager local tests v0.8.3.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -83,7 +86,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 
 ### Limitaciones conocidas
 
-- La primera llamada a Claude sigue siendo necesaria para interpretar intención en muchas acciones.
+- La primera llamada a Claude sigue siendo necesaria para interpretar intención en muchas acciones normales.
 - Las respuestas finales de tools ahora pueden ser locales, pero la interpretación inicial puede seguir consumiendo tokens.
 - `list_file_changes` todavía puede acabar usando Claude para redactar el resumen y gastar bastante contexto.
 - El acceso de archivos sigue siendo principalmente repo-only.
@@ -92,7 +95,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Multiarchivo no es transaccional: cada archivo se confirma y aplica por separado.
 - No hay confirmación múltiple real tipo “aplica todas”.
 - No hay aún perfiles `home-safe` o `system-careful`.
-- El hard cap diario corta llamadas a Claude pero no resetea el contador: el contador se reinicia automáticamente al día siguiente.
+- La arquitectura todavía contiene partes específicas de Raspberry/RasPad que deberán moverse a adaptadores de plataforma.
 
 ---
 
@@ -243,6 +246,90 @@ El backend se encarga de:
 - Validación de rutas y dispositivos.
 - Auditoría y backups de cambios de archivos.
 - Respuestas locales cuando el resultado ya es determinista.
+- Bloqueo por presupuesto cuando el hard cap está activo.
+
+---
+
+## Control de presupuesto
+
+Sity tiene presupuesto diario local de tokens. El backend registra uso y devuelve avisos cuando el consumo se acerca o supera el límite configurado.
+
+### Hard cap
+
+Puede activarse con:
+
+```env
+SITY_DAILY_TOKEN_HARD_CAP=true
+```
+
+Cuando está activo y el uso diario supera el presupuesto configurado:
+
+```text
+daily_used_tokens >= daily_budget_tokens
+```
+
+el backend no llama a Claude para nuevas peticiones que requieran IA. En su lugar devuelve una respuesta local:
+
+```text
+provider=local
+model=budget-guard
+total_tokens=0
+```
+
+Mensaje esperado:
+
+```text
+Presupuesto diario de IA agotado. No voy a llamar a Claude ahora.
+Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA.
+```
+
+### Orden correcto del flujo
+
+```text
+1. Recibir mensaje.
+2. Resolver confirmaciones locales si aplica.
+3. Si SITY_LOCAL_ONLY=true, bloquear llamada a IA.
+4. Si hard cap activo y presupuesto agotado, bloquear llamada a IA.
+5. Si no, continuar flujo normal con Claude.
+```
+
+Esto permite que una confirmación pendiente siga funcionando aunque el presupuesto esté agotado.
+
+---
+
+## Modo local-only
+
+Puede activarse con:
+
+```env
+SITY_LOCAL_ONLY=true
+```
+
+Cuando está activo:
+
+```text
+- no se llama a Claude
+- se aceptan confirmaciones exactas/locales
+- se ejecutan acciones pendientes existentes si no requieren IA
+- se devuelven respuestas locales para bloqueos/estado
+- no se interpretan nuevas peticiones con IA
+```
+
+Respuesta esperada:
+
+```text
+provider=local
+model=local-only-guard
+total_tokens=0
+```
+
+Uso recomendado:
+
+```text
+- cuando el presupuesto diario esté agotado
+- cuando quieras usar Sity solo para confirmaciones/local tools
+- cuando quieras evitar cualquier gasto de API
+```
 
 ---
 
@@ -259,6 +346,8 @@ pending-action-manager
 confirmation-manager
 tool-policy
 multi-file-plan-manager
+budget-guard
+local-only-guard
 ```
 
 Casos cubiertos:
@@ -280,6 +369,8 @@ Casos cubiertos:
 - patch aplicado
 - unified diff aplicado
 - rollback aplicado
+- presupuesto diario agotado
+- modo local-only activo
 ```
 
 ### Qué ahorra
@@ -439,6 +530,8 @@ No salta:
 - políticas de riesgo
 - bloqueos de rutas sensibles
 - acciones críticas
+- presupuesto hard cap
+- modo local-only
 
 Ejemplo:
 
@@ -793,6 +886,8 @@ Se ha reducido el coste de tokens evitando enviar tools innecesarias y evitando 
 - Bloqueos por allowlist pueden responderse localmente.
 - Planes multiarchivo bloqueados responden localmente.
 - Confirmaciones se resuelven localmente.
+- Hard cap evita nuevas llamadas a Claude al superar presupuesto.
+- Local-only evita llamadas a Claude manualmente.
 
 ### Objetivo
 
@@ -801,6 +896,7 @@ Conversación normal: pocos miles de tokens.
 Acciones con tools: solo el toolset necesario.
 Sensores locales: respuesta local/micro-reaction cuando sea posible.
 Bloqueos y confirmaciones: respuesta local.
+Presupuesto agotado: respuesta local.
 ```
 
 ---
@@ -874,6 +970,8 @@ Reglas importantes:
 - Las acciones duplicadas se detectan.
 - La confirmación contextual exige intención explícita y contexto válido.
 - En planes multiarchivo, cada acción se confirma por separado.
+- El hard cap no debe impedir ejecutar una confirmación local válida.
+- Si hay varias acciones pendientes, el bloqueo de ambigüedad debe evaluarse antes de la confirmación por contexto.
 
 ---
 
@@ -1402,6 +1500,90 @@ Esto no elimina por completo el coste de la primera llamada a Claude cuando hace
 
 ---
 
+## System Agent v0.8.2
+
+Sity tiene protección de presupuesto y tests locales sin API.
+
+### Funciona
+
+- `SITY_DAILY_TOKEN_HARD_CAP=true` bloquea llamadas a Claude si se supera el presupuesto diario.
+- `SITY_LOCAL_ONLY=true` bloquea llamadas a Claude manualmente.
+- Las confirmaciones locales siguen funcionando antes del bloqueo.
+- El backend devuelve `budget-guard` cuando el presupuesto está agotado.
+- El backend devuelve `local-only-guard` cuando el modo local-only está activo.
+- `scripts/test_file_access_local.py` prueba la lógica de file access directamente sin `/chat/message`.
+- El test local no consume tokens.
+- El test local valida allowlists, bloqueos, escritura, patch, unified diff y multiarchivo.
+
+### Test local
+
+```bash
+python3 scripts/test_file_access_local.py
+```
+
+Este script prueba:
+
+```text
+- list_directory permitido
+- list_directory bloqueado fuera del repo
+- read_file bloqueado en /etc
+- write_file permitido
+- write_file bloqueado fuera del repo
+- write_file bloqueado en .env
+- preview_text_patch
+- apply_text_patch
+- preview_text_patch bloqueado en .env
+- preview_unified_diff
+- apply_unified_diff
+- preview_unified_diff bloqueado en .env
+- split_unified_diff_by_file
+- rechazo completo de multiarchivo con .env
+- find_latest_reversible_file_change
+```
+
+---
+
+## System Agent v0.8.3
+
+Sity tiene tests locales para el Confirmation Manager.
+
+### Funciona
+
+- `scripts/test_confirmation_manager_local.py`.
+- Prueba confirmación exacta.
+- Prueba extracción de ID `act_xxxxxxxx`.
+- Prueba acción equivalente pendiente.
+- Prueba confirmaciones genéricas claras.
+- Prueba que frases vagas no confirmen acciones.
+- Prueba confirmación contextual con último mensaje de Sity.
+- Prueba que acciones ejecutadas no se encuentren como pendientes.
+- Prueba que acciones expiradas se marquen como `expired`.
+- Prueba múltiples acciones pendientes.
+- Documenta el invariante de rutas: varias acciones pendientes + confirmación genérica no debe adivinar.
+
+### Test local
+
+```bash
+python3 scripts/test_confirmation_manager_local.py
+```
+
+Este script no llama a `/chat/message`, no llama a Claude y no consume tokens.
+
+### Invariante importante
+
+En `routes_chat.py`, el orden correcto es:
+
+```text
+1. Confirmación exacta por ID.
+2. Si hay varias acciones pendientes y el mensaje es genérico, rechazar ambigüedad.
+3. Si no hay ambigüedad, permitir confirmación contextual.
+4. Si no hay contexto suficiente, pedir frase exacta.
+```
+
+Esto evita que una confirmación genérica ejecute la última acción pendiente por accidente cuando hay varias pendientes.
+
+---
+
 ## Script de regresión repo-only
 
 El proyecto incluye un script para comprobar que el System Agent repo-only sigue funcionando tras cambios futuros:
@@ -1469,6 +1651,21 @@ respuestas locales de tools
 ```
 
 Debe ejecutarse antes de tocar partes delicadas del System Agent.
+
+---
+
+## Tests locales sin API
+
+Para avanzar sin gastar tokens ni llamar a Claude:
+
+```bash
+python3 scripts/test_file_access_local.py
+python3 scripts/test_confirmation_manager_local.py
+```
+
+Estos tests importan módulos internos directamente y no pasan por `/chat/message`.
+
+Sirven para validar lógica crítica aunque el presupuesto diario esté agotado.
 
 ---
 
@@ -1793,10 +1990,6 @@ SITY_DAILY_TOKEN_HARD_CAP
 SITY_LOCAL_ONLY
 ```
 
-`SITY_DAILY_TOKEN_HARD_CAP=true` bloquea llamadas a Claude cuando se supera el presupuesto diario configurado. Responde localmente con `model: budget-guard`.
-
-`SITY_LOCAL_ONLY=true` bloquea todas las llamadas a Claude independientemente del presupuesto. Responde localmente con `model: local-only-guard`. Las confirmaciones de acciones pendientes siguen funcionando en ambos modos.
-
 No debe subirse a Git.
 
 Frontend local:
@@ -1809,6 +2002,19 @@ Ejemplo:
 
 ```env
 VITE_SITY_API_BASE=http://192.168.1.133:8000
+```
+
+### Variables de presupuesto/local mode
+
+```env
+SITY_DAILY_TOKEN_HARD_CAP=true
+SITY_LOCAL_ONLY=false
+```
+
+Para modo sin IA:
+
+```env
+SITY_LOCAL_ONLY=true
 ```
 
 ---
@@ -1868,6 +2074,8 @@ También deben quedar fuera de Git:
 ```gitignore
 data/file_audit.jsonl
 data/file_backups/
+config/local-file-access-*.txt
+config/no-deberia.txt
 ```
 
 ---
@@ -1906,6 +2114,10 @@ Principios actuales:
 27. El backend no interpreta lenguaje natural para crear acciones.
 28. Sity no debe afirmar que tiene acceso global a toda la Raspberry.
 29. Bloqueos y confirmaciones deben responder localmente cuando sea posible.
+30. El hard cap debe impedir llamadas a Claude cuando el presupuesto esté agotado.
+31. El modo local-only debe impedir llamadas a Claude manualmente.
+32. Confirmaciones locales válidas deben seguir funcionando antes del hard cap.
+33. Si hay varias acciones pendientes, una confirmación genérica no debe ejecutar ninguna.
 ```
 
 Regla base:
@@ -1967,6 +2179,52 @@ sqlite3 data/app.db "update pendingaction set status='expired' where status='pen
 curl -X POST http://localhost:8000/chat/message \
   -H "Content-Type: application/json" \
   -d '{"message":"qué servicios puedes controlar?"}' | python3 -m json.tool
+```
+
+### Probar hard cap
+
+Con:
+
+```env
+SITY_DAILY_TOKEN_HARD_CAP=true
+```
+
+y presupuesto agotado:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"hola, dime algo"}' | python3 -m json.tool
+```
+
+Esperado:
+
+```text
+provider=local
+model=budget-guard
+total_tokens=0
+```
+
+### Probar local-only
+
+Con:
+
+```env
+SITY_LOCAL_ONLY=true
+```
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"crea un archivo config/no-deberia.txt con hola"}' | python3 -m json.tool
+```
+
+Esperado:
+
+```text
+provider=local
+model=local-only-guard
+total_tokens=0
 ```
 
 ### System Agent
@@ -2049,10 +2307,11 @@ Ejecutar regresión repo-only:
 ./scripts/test_system_agent_repo.sh
 ```
 
-Ejecutar tests locales de file_access (sin API):
+Ejecutar tests locales sin API:
 
 ```bash
-./scripts/test_file_access_local.py
+python3 scripts/test_file_access_local.py
+python3 scripts/test_confirmation_manager_local.py
 ```
 
 Ver últimos eventos de audit manualmente:
@@ -2126,7 +2385,7 @@ curl -X POST http://localhost:8000/chat/message \
 - Permitir cancelar acciones pendientes desde chat.
 - Deduplicar también acciones Git.
 - Mejorar mensajes de confirmación para usar nombres humanos en vez de nombres systemd.
-- Añadir tests automatizados para confirmation manager.
+- Añadir tests automatizados para confirmation manager a nivel API cuando haya presupuesto.
 - Añadir migraciones de base de datos si el esquema crece.
 - Mejorar compactación de historial largo.
 - Evitar que `/chat/current` devuelva mensajes antiguos cuando debería devolver los últimos.
@@ -2134,6 +2393,118 @@ curl -X POST http://localhost:8000/chat/message \
 - Añadir tool `search_chat_history`.
 - Reducir más tokens en consultas de audit log.
 - Hacer más respuestas de debug locales.
+
+### Arquitectura modular / portability layer
+
+Objetivo futuro:
+
+Hacer que Sity pueda moverse de Raspberry Pi a otro entorno con el menor número de cambios posible, y que pueda cambiar de proveedor/modelo de IA sin reescribir la aplicación.
+
+Objetivos:
+
+```text
+- Poder mover Sity de Raspberry Pi a un servidor Linux.
+- Poder ejecutar Sity en otro hardware sin tocar el core.
+- Poder cambiar Anthropic por OpenAI, modelo local u otro proveedor.
+- Poder activar/desactivar capacidades según hardware disponible.
+- Poder usar mocks para tests sin API.
+```
+
+División deseada:
+
+```text
+1. Core
+   - conversación
+   - memoria
+   - personalidad
+   - confirmation manager
+   - políticas de riesgo
+   - token budget
+   - routing de tools
+
+2. AI providers
+   - anthropic
+   - openai
+   - local model
+   - mock provider para tests
+   - fallback provider
+
+3. Platform adapters
+   - raspberrypi
+   - linux-server
+   - desktop-linux
+   - windows futuro si interesa
+   - mac futuro si interesa
+
+4. Capability modules
+   - file_access
+   - git
+   - systemd
+   - camera
+   - audio
+   - captures
+   - services
+   - gaming
+   - domotics
+   - cloud integrations
+
+5. Config profiles
+   - raspi-local
+   - server
+   - dev
+   - travel
+   - local-only
+```
+
+Regla arquitectónica:
+
+```text
+El core no ejecuta comandos del sistema directamente.
+El core pide capacidades.
+Las capacidades las implementa el adaptador de plataforma activo.
+```
+
+Ejemplo conceptual:
+
+```python
+camera.capture_snapshot()
+```
+
+En Raspberry podría usar `fswebcam`. En un servidor sin cámara debería devolver:
+
+```text
+capability_not_available
+```
+
+Variables objetivo:
+
+```env
+SITY_PLATFORM=raspberrypi
+SITY_AI_PROVIDER=anthropic
+SITY_PROFILE=repo-only
+```
+
+Cambiar de entorno debería parecerse a:
+
+```env
+SITY_PLATFORM=linux-server
+SITY_AI_PROVIDER=openai
+SITY_PROFILE=server-safe
+```
+
+No a reescribir rutas y comandos por todo el backend.
+
+Elementos que deberían salir del core hacia adaptadores/config:
+
+```text
+/dev/video0
+systemctl
+fswebcam
+arecord
+vc4hdmi0
+RasPad
+/home/alex/projects/sity
+```
 
 ### System Agent v0.9
 
@@ -2331,4 +2702,14 @@ Para lenguaje natural:
 Sity interpreta.
 Backend valida.
 Backend no inventa acciones por literales.
+```
+
+Para arquitectura:
+
+```text
+Core estable.
+Providers intercambiables.
+Adaptadores por plataforma.
+Capacidades activables.
+Configuración por perfil.
 ```
