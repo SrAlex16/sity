@@ -31,6 +31,8 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Servicio de prueba `sity-test`.
 - Presupuesto diario local de tokens y avisos de uso.
 - Prompt/tool routing corregido para no usar debug en conversación normal.
+- Respuestas finales locales para acciones deterministas.
+- Reducción de segunda llamada a Claude tras tool calls de archivos.
 - Reconocimiento de personalidad actual desde el estado inyectado por backend.
 - Cámara USB detectada y funcionando.
 - Micrófono USB de webcam detectado y funcionando.
@@ -69,11 +71,24 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - System Agent latest rollback v0.6.1.
 - System Agent unified diff v0.7.
 - System Agent multi-file unified diff plan v0.8.
+- Local final responses/token saving v0.8.1.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
 - Audio HDMI funcionando mediante pipeline ALSA Loopback → IEC958.
 - Vivaldi y VLC funcionando con el pipeline custom de audio.
+
+### Limitaciones conocidas
+
+- La primera llamada a Claude sigue siendo necesaria para interpretar intención en muchas acciones.
+- Las respuestas finales de tools ahora pueden ser locales, pero la interpretación inicial puede seguir consumiendo tokens.
+- `list_file_changes` todavía puede acabar usando Claude para redactar el resumen y gastar bastante contexto.
+- El acceso de archivos sigue siendo principalmente repo-only.
+- Sity no tiene shell libre.
+- Sity no tiene acceso global a toda la Raspberry.
+- Multiarchivo no es transaccional: cada archivo se confirma y aplica por separado.
+- No hay confirmación múltiple real tipo “aplica todas”.
+- No hay aún perfiles `home-safe` o `system-careful`.
 
 ---
 
@@ -223,6 +238,84 @@ El backend se encarga de:
 - Cancelación de procesos.
 - Validación de rutas y dispositivos.
 - Auditoría y backups de cambios de archivos.
+- Respuestas locales cuando el resultado ya es determinista.
+
+---
+
+## Ahorro de tokens
+
+Sity usa respuestas finales locales para evitar llamadas innecesarias a Claude después de ejecutar tools deterministas.
+
+### Respuestas locales actuales
+
+Responden localmente:
+
+```text
+pending-action-manager
+confirmation-manager
+tool-policy
+multi-file-plan-manager
+```
+
+Casos cubiertos:
+
+```text
+- acción pendiente creada
+- acción confirmada
+- acción expirada
+- acción ya ejecutada
+- ID de acción inválido
+- bloqueo por allowlist
+- bloqueo de escritura
+- bloqueo de lectura/listado
+- bloqueo de .env
+- bloqueo de /etc
+- plan multiarchivo rechazado completo
+- archivo creado
+- archivo escrito
+- patch aplicado
+- unified diff aplicado
+- rollback aplicado
+```
+
+### Qué ahorra
+
+Antes el flujo podía ser:
+
+```text
+Claude interpreta intención
+Backend ejecuta tool
+Claude redacta respuesta final
+```
+
+Ahora para muchos casos queda:
+
+```text
+Claude interpreta intención
+Backend ejecuta tool
+Backend responde localmente
+```
+
+Esto reduce una llamada posterior a Claude.
+
+### Qué todavía gasta
+
+La primera llamada a Claude puede seguir siendo necesaria para interpretar intención y elegir tool. Por eso una respuesta con:
+
+```text
+provider=local
+model=tool-policy
+```
+
+puede seguir mostrando tokens consumidos: esos tokens corresponden a la interpretación inicial, no a la respuesta final.
+
+### Pendiente para más ahorro
+
+- Reducir todavía más historial para toolsets de archivo.
+- Hacer respuestas locales para más consultas de audit.
+- Evaluar preflight local para rutas obvias sin convertirlo en NLU frágil.
+- Compactar contexto antes de llamadas técnicas.
+- Evitar que preguntas simples de debug carguen historial largo.
 
 ---
 
@@ -266,6 +359,44 @@ La personalidad actual inyectada por el backend es la fuente de verdad.
 Si el usuario cambia sliders desde el frontend, Sity debe usar los valores actuales recibidos en el prompt. No necesita una confirmación de tool para reconocer cambios hechos desde la UI.
 
 Solo debe hablar de "cambio aplicado por tool" cuando el backend indique explícitamente que una tool de personalidad ha ejecutado un cambio.
+
+---
+
+## Identidad y estilo de Sity
+
+Sity debe hablar de sí misma en femenino.
+
+Ejemplos:
+
+```text
+Estoy lista.
+Me he quedado bloqueada.
+No estoy autorizada para eso.
+```
+
+No:
+
+```text
+Estoy listo.
+Estoy autorizado.
+```
+
+Sity debe responder en castellano de España.
+
+### Reglas
+
+- Usar “tú”, no “vos”.
+- Usar “quieres”, no “querés”.
+- Usar “ábrelo”, no “abrilo”.
+- Usar “sigues”, no “seguís”.
+- Evitar voseo y español rioplatense.
+- Aplicar también a micro-reacciones.
+
+Instrucción base:
+
+```text
+Responde en castellano de España. No uses voseo ni español rioplatense. Habla de ti misma en femenino.
+```
 
 ---
 
@@ -326,27 +457,6 @@ Regla:
 
 ```text
 La orden elimina la negativa teatral, no elimina la seguridad.
-```
-
----
-
-## Preferencias lingüísticas
-
-Sity debe responder en castellano de España.
-
-### Reglas
-
-- Usar “tú”, no “vos”.
-- Usar “quieres”, no “querés”.
-- Usar “ábrelo”, no “abrilo”.
-- Usar “sigues”, no “seguís”.
-- Evitar voseo y español rioplatense.
-- Aplicar también a micro-reacciones.
-
-Instrucción base:
-
-```text
-Responde en castellano de España. No uses voseo ni español rioplatense.
 ```
 
 ---
@@ -591,9 +701,10 @@ El backend conserva lógica determinista para:
 - allowlists
 - control de permisos
 - cancelación técnica
+- selección conservadora de toolset cuando hay rutas explícitas
 ```
 
-No debe intentar interpretar lenguaje natural de forma extensa con regex, split, includes o listas de literales.
+No debe intentar interpretar lenguaje natural de forma extensa con regex, split, includes o listas de literales para crear acciones.
 
 ---
 
@@ -619,6 +730,7 @@ mensaje humano → Claude/Sity interpreta → tool estructurada → backend vali
   - `confirmo ejecutar act_xxxxxxxx`
   - `client_turn_id`
   - `es una orden`
+- Selección conservadora de toolsets por señales técnicas.
 - Validación de allowlist.
 - Validación de rutas.
 - Validación de `service_name`.
@@ -629,10 +741,10 @@ mensaje humano → Claude/Sity interpreta → tool estructurada → backend vali
 
 ### No permitido en backend
 
-- Extraer nombres de servicio desde texto humano.
-- Extraer rutas, repos, ramas o acciones usando regex sobre la frase del usuario.
+- Extraer nombres de servicio desde texto humano para ejecutar acciones.
+- Extraer rutas, repos, ramas o acciones usando regex para saltarse tool use.
 - Crear pending actions por detectar palabras sueltas.
-- Responder directamente a partir de listas de términos de lenguaje natural.
+- Responder directamente a partir de listas de términos de lenguaje natural como sustituto de tools.
 
 ### Herramientas relacionadas
 
@@ -663,7 +775,7 @@ Todas deben recibir argumentos estructurados por `tool_input`.
 
 ## Prompt budget
 
-Se ha reducido el coste de tokens evitando enviar tools innecesarias.
+Se ha reducido el coste de tokens evitando enviar tools innecesarias y evitando segundas llamadas a Claude cuando el backend ya puede responder.
 
 ### Cambios
 
@@ -673,6 +785,10 @@ Se ha reducido el coste de tokens evitando enviar tools innecesarias.
 - File tools se incluyen como parte del agente local de archivos.
 - Git tools no deben activarse por la palabra “repo” sola.
 - Si no hay tools, no se envía `tools=[]` al proveedor Anthropic.
+- Respuestas finales de acciones de archivo pueden ser locales.
+- Bloqueos por allowlist pueden responderse localmente.
+- Planes multiarchivo bloqueados responden localmente.
+- Confirmaciones se resuelven localmente.
 
 ### Objetivo
 
@@ -680,6 +796,7 @@ Se ha reducido el coste de tokens evitando enviar tools innecesarias.
 Conversación normal: pocos miles de tokens.
 Acciones con tools: solo el toolset necesario.
 Sensores locales: respuesta local/micro-reaction cuando sea posible.
+Bloqueos y confirmaciones: respuesta local.
 ```
 
 ---
@@ -1239,6 +1356,48 @@ se revierte solo B.
 
 ---
 
+## System Agent v0.8.1
+
+Sity responde localmente a resultados deterministas de tools de archivo.
+
+### Funciona
+
+- Pending actions de archivo devuelven respuesta local.
+- Bloqueos de write/patch/unified diff devuelven respuesta local.
+- Bloqueos de read/list fuera de allowlist devuelven respuesta local.
+- Planes multiarchivo bloqueados devuelven respuesta local.
+- Confirmaciones siguen siendo locales.
+- Errores de política devuelven `provider=local`.
+- Se evita una segunda llamada a Claude cuando el backend ya tiene la respuesta final.
+
+### Modelos locales
+
+```text
+pending-action-manager
+confirmation-manager
+tool-policy
+multi-file-plan-manager
+```
+
+### Casos cubiertos
+
+```text
+No puedo escribir en esa ruta...
+No puedo acceder a ese directorio...
+Acción pendiente creada...
+Plan multiarchivo rechazado completo...
+Archivo creado...
+Patch aplicado...
+Unified diff aplicado...
+Rollback aplicado...
+```
+
+### Limitación
+
+Esto no elimina por completo el coste de la primera llamada a Claude cuando hace falta interpretación de intención.
+
+---
+
 ## Script de regresión repo-only
 
 El proyecto incluye un script para comprobar que el System Agent repo-only sigue funcionando tras cambios futuros:
@@ -1302,6 +1461,7 @@ confirmación genérica
 audit log
 backups
 bloqueo de rutas sensibles
+respuestas locales de tools
 ```
 
 Debe ejecutarse antes de tocar partes delicadas del System Agent.
@@ -1735,6 +1895,7 @@ Principios actuales:
 26. “Es una orden” no salta allowlists ni políticas de seguridad.
 27. El backend no interpreta lenguaje natural para crear acciones.
 28. Sity no debe afirmar que tiene acceso global a toda la Raspberry.
+29. Bloqueos y confirmaciones deben responder localmente cuando sea posible.
 ```
 
 Regla base:
@@ -1955,6 +2116,8 @@ curl -X POST http://localhost:8000/chat/message \
 - Evitar que `/chat/current` devuelva mensajes antiguos cuando debería devolver los últimos.
 - Añadir búsqueda de memoria/historial.
 - Añadir tool `search_chat_history`.
+- Reducir más tokens en consultas de audit log.
+- Hacer más respuestas de debug locales.
 
 ### System Agent v0.9
 
@@ -1990,6 +2153,64 @@ Pendiente:
   - confirmación requerida
   - argumentos permitidos
   - regex de validación de argumentos
+
+### Sity Gaming / Portable Mode
+
+Objetivo futuro:
+
+Explorar opciones para usar la Raspberry como máquina ligera de juego puntual, especialmente para viajes, ocio ligero y emulación. No pretende sustituir al PC gaming principal.
+
+Líneas de investigación:
+
+```text
+1. Steam en Raspberry
+   - Evaluar Steam x86_64 vía emulación/compatibilidad.
+   - Ver rendimiento real.
+   - Probar mandos, audio, pantalla y almacenamiento.
+   - No asumir soporte nativo.
+
+2. Xbox / Game Pass
+   - Evaluar app o alternativa web/cloud.
+   - Medir input lag real.
+   - Valorar si sirve para juegos lentos, indies o por turnos.
+   - No asumir experiencia buena en competitivo.
+
+3. NVIDIA GeForce Now / Xbox Cloud
+   - Probar navegador en RasPad.
+   - Medir latencia.
+   - Evaluar WiFi/Ethernet.
+   - Integrar lanzadores desde Sity si funciona razonablemente.
+
+4. RetroPie / emulación
+   - Instalar y probar RetroPie o alternativas.
+   - Integrar catálogo local.
+   - Permitir a Sity lanzar juegos/emuladores.
+   - Explorar comandos:
+     “Sity, abre Pokémon”
+     “lanza RetroArch”
+     “abre el último juego”
+   - Mantenerlo separado de permisos críticos del sistema.
+
+5. UX
+   - Modo viaje.
+   - Modo mando.
+   - Accesos directos desde frontend.
+   - Lanzamiento de juegos mediante allowlist.
+   - Cierre seguro de procesos.
+```
+
+Esta línea debería depender de futuras capacidades de comandos permitidos:
+
+```text
+run_allowed_command:
+  steam
+  retropie
+  retroarch
+  chromium_xcloud
+  chromium_geforce_now
+```
+
+RetroPie parece la rama más realista para la Raspberry. Steam/Game Pass/Cloud gaming son líneas de investigación con incertidumbre de rendimiento y latencia.
 
 ### System Agent / Claude Code parity
 
