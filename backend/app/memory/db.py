@@ -1,5 +1,6 @@
 from pathlib import Path
-from sqlmodel import SQLModel, create_engine, Session
+from sqlalchemy import text
+from sqlmodel import SQLModel, Session, create_engine
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -15,7 +16,15 @@ engine = create_engine(
 )
 
 
+def _configure_sqlite() -> None:
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.execute(text("PRAGMA busy_timeout=5000"))
+        conn.commit()
+
+
 def init_db() -> None:
+    _configure_sqlite()
     SQLModel.metadata.create_all(engine)
 
 

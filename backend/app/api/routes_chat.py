@@ -1,27 +1,18 @@
 import json
 import os
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-SITY_DAILY_TOKEN_HARD_CAP = _env_bool("SITY_DAILY_TOKEN_HARD_CAP", False)
-SITY_LOCAL_ONLY = _env_bool("SITY_LOCAL_ONLY", False)
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
+from app.core.runtime_config import get_runtime_config
 from app.core.realtime_events import publish_event_sync
 from app.actions.git_actions import execute_git_action
 from app.actions.git_actions import parse_payload as parse_git_payload
@@ -204,15 +195,17 @@ class ChatMessageResponse(BaseModel):
 
 
 def get_today_token_usage(session: Session) -> int:
-    today = date.today().isoformat()
-    rows = session.query(AIUsage).all()
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).replace(tzinfo=None)
 
-    total = 0
-    for row in rows:
-        if row.created_at.date().isoformat() == today:
-            total += row.input_tokens + row.output_tokens
+    result = session.exec(
+        select(func.sum(AIUsage.input_tokens + AIUsage.output_tokens)).where(
+            AIUsage.created_at >= today_start
+        )
+    ).one()
 
-    return total
+    return int(result or 0)
 
 
 def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int) -> int:
@@ -225,6 +218,9 @@ def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int)
     return min(configured_max_tokens, 1200)
 
 
+# Esto no debe crear acciones ni interpretar intención de negocio.
+# Solo selecciona un toolset/contexto más pequeño usando señales técnicas conservadoras.
+# La acción real debe venir siempre de una tool estructurada interpretada por Claude.
 def history_limit_for_message(message: str) -> int:
     normalized = message.lower()
 
@@ -929,8 +925,9 @@ def _chat_message_inner(
         )
 
     _daily_used_pre = get_today_token_usage(session)
+    _runtime = get_runtime_config()
 
-    if SITY_LOCAL_ONLY:
+    if _runtime.local_only:
         save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
         _local_only_text = (
             "Modo local-only activo. No voy a llamar a Claude. "
@@ -947,7 +944,7 @@ def _chat_message_inner(
         )
 
     if (
-        SITY_DAILY_TOKEN_HARD_CAP
+        _runtime.daily_token_hard_cap
         and daily_budget > 0
         and _daily_used_pre >= daily_budget
     ):
