@@ -266,6 +266,79 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
+        if tool_name == "apply_unified_diff":
+            diff_text = str(tool_input.get("diff", ""))
+
+            preview = execute_file_action({
+                "action": "preview_unified_diff",
+                "diff": diff_text,
+            })
+
+            if not preview.get("ok"):
+                msg = preview.get("error", "Error generando preview de unified diff")
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                )
+
+            path = str(preview.get("path", "archivo desconocido"))
+            diff_preview = str(preview.get("diff", ""))
+            diff_truncated = bool(preview.get("diff_truncated", False))
+            diff_display = diff_preview[:2000] + ("\n... diff truncado ..." if len(diff_preview) > 2000 else "")
+
+            unified_payload = {
+                "action": "apply_unified_diff",
+                "diff": diff_text,
+            }
+            manager = ConfirmationManager(self.session)
+            existing = manager.find_equivalent_pending_action(
+                action_type="file",
+                payload=unified_payload,
+            )
+            if existing:
+                result = {
+                    "success": True,
+                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "action_id": existing.id,
+                    "confirmation_phrase": existing.confirmation_phrase,
+                    "summary": existing.summary,
+                    "diff": diff_display,
+                    "diff_truncated": diff_truncated,
+                    "already_existed": True,
+                }
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=True, message=result["message"],
+                    updated_parameters=[], raw_result=result,
+                )
+
+            created = manager.create_pending_action(
+                action_type="file",
+                risk_level="critical",
+                summary=f"Aplicar unified diff en {path}",
+                payload=unified_payload,
+                trace_id=trace_id,
+            )
+
+            display_message = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                f"Diff propuesto:\n```diff\n{diff_display}```\n\n"
+                f"Confirma con: `{created.confirmation_phrase}`"
+            )
+
+            result = {
+                "success": True,
+                "message": display_message,
+                "action_id": created.id,
+                "confirmation_phrase": created.confirmation_phrase,
+                "summary": created.summary,
+                "diff": diff_display,
+                "diff_truncated": diff_truncated,
+            }
+            return ToolExecutionResult(
+                tool_name=tool_name, ok=True, message=display_message,
+                updated_parameters=[], raw_result=result,
+            )
+
         if tool_name == "find_latest_reversible_file_change":
             return self._simple_read_tool(
                 tool_name=tool_name,

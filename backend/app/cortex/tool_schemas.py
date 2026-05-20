@@ -785,6 +785,30 @@ ROLLBACK_FILE_CHANGE_TOOL = {
     },
 }
 
+APPLY_UNIFIED_DIFF_TOOL = {
+    "name": "apply_unified_diff",
+    "description": (
+        "Propone modificar un único archivo permitido aplicando un unified diff. "
+        "Esta acción siempre requiere confirmación antes de ejecutarse. "
+        "Úsala cuando el usuario pida cambios de código o modificaciones multilinea que se expresen mejor como diff. "
+        "El diff debe incluir cabeceras --- y +++ y hunks @@. "
+        "No uses esta tool para múltiples archivos a la vez."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "diff": {
+                "type": "string",
+                "description": (
+                    "Unified diff para un único archivo. Debe incluir líneas --- path, +++ path y hunks @@."
+                ),
+            },
+        },
+        "required": ["diff"],
+        "additionalProperties": False,
+    },
+}
+
 FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL = {
     "name": "find_latest_reversible_file_change",
     "description": (
@@ -839,6 +863,7 @@ FILE_AGENT_TOOLSET = [
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
+    APPLY_UNIFIED_DIFF_TOOL,
     LIST_FILE_CHANGES_TOOL,
     FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
     ROLLBACK_LATEST_FILE_CHANGE_TOOL,
@@ -856,6 +881,7 @@ BASE_TOOLSET: list[dict] = [
     LIST_DIRECTORY_TOOL,
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
+    APPLY_UNIFIED_DIFF_TOOL,
     LIST_FILE_CHANGES_TOOL,
     FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
     ROLLBACK_LATEST_FILE_CHANGE_TOOL,
@@ -950,6 +976,7 @@ ALL_TOOLS = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
+    APPLY_UNIFIED_DIFF_TOOL,
     FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
     ROLLBACK_LATEST_FILE_CHANGE_TOOL,
     ROLLBACK_FILE_CHANGE_TOOL,

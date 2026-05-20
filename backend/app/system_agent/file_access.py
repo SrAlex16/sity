@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ MAX_READ_BYTES = 120_000
 MAX_READ_CHARS_FOR_MODEL = 12_000
 MAX_WRITE_BYTES = 250_000
 MAX_PATCH_PREVIEW_CHARS = 12_000
+MAX_UNIFIED_DIFF_BYTES = 250_000
+MAX_UNIFIED_DIFF_PREVIEW_CHARS = 20_000
 MAX_DIRECTORY_ITEMS = 200
 
 
@@ -371,3 +374,260 @@ def apply_text_patch(
 
     except Exception as exc:
         return {"ok": False, "error": f"Error aplicando patch: {exc}"}
+
+
+def _strip_diff_path(value: str) -> str:
+    value = value.strip()
+    if value.startswith("a/") or value.startswith("b/"):
+        value = value[2:]
+    return value
+
+
+def _extract_single_file_from_unified_diff(diff_text: str) -> str | None:
+    old_path: str | None = None
+    new_path: str | None = None
+
+    for line in diff_text.splitlines():
+        if line.startswith("--- "):
+            raw = line[4:].strip().split("\t", 1)[0]
+            if raw != "/dev/null":
+                old_path = _strip_diff_path(raw)
+        elif line.startswith("+++ "):
+            raw = line[4:].strip().split("\t", 1)[0]
+            if raw != "/dev/null":
+                new_path = _strip_diff_path(raw)
+
+    path = new_path or old_path
+
+    if not path:
+        return None
+
+    if old_path and new_path and old_path != new_path:
+        raise FileAccessError("Los patches con rename/move todavía no están soportados.")
+
+    return path
+
+
+def _parse_unified_diff_hunks(diff_text: str) -> list[dict[str, Any]]:
+    hunks: list[dict[str, Any]] = []
+    current_hunk: dict[str, Any] | None = None
+
+    hunk_header_re = re.compile(
+        r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? "
+        r"\+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@"
+    )
+
+    for line in diff_text.splitlines(keepends=True):
+        if line.startswith("--- ") or line.startswith("+++ "):
+            continue
+
+        match = hunk_header_re.match(line)
+        if match:
+            current_hunk = {
+                "old_start": int(match.group("old_start")),
+                "old_count": int(match.group("old_count") or "1"),
+                "new_start": int(match.group("new_start")),
+                "new_count": int(match.group("new_count") or "1"),
+                "lines": [],
+            }
+            hunks.append(current_hunk)
+            continue
+
+        if current_hunk is None:
+            continue
+
+        if line.startswith((" ", "-", "+", "\\")):
+            current_hunk["lines"].append(line)
+
+    return hunks
+
+
+def _apply_unified_diff_to_content(original_content: str, diff_text: str) -> str:
+    original_lines = original_content.splitlines(keepends=True)
+    hunks = _parse_unified_diff_hunks(diff_text)
+
+    if not hunks:
+        raise FileAccessError("El diff no contiene hunks aplicables.")
+
+    result_lines: list[str] = []
+    source_index = 0
+
+    for hunk in hunks:
+        hunk_source_index = int(hunk["old_start"]) - 1
+
+        if hunk_source_index < source_index:
+            raise FileAccessError("El diff tiene hunks solapados o desordenados.")
+
+        result_lines.extend(original_lines[source_index:hunk_source_index])
+        source_index = hunk_source_index
+
+        for diff_line in hunk["lines"]:
+            if diff_line.startswith("\\"):
+                continue
+
+            marker = diff_line[:1]
+            text = diff_line[1:]
+
+            if marker == " ":
+                if source_index >= len(original_lines):
+                    raise FileAccessError("El contexto del diff excede el archivo original.")
+                if original_lines[source_index] != text:
+                    raise FileAccessError("El contexto del diff no coincide con el archivo original.")
+                result_lines.append(original_lines[source_index])
+                source_index += 1
+
+            elif marker == "-":
+                if source_index >= len(original_lines):
+                    raise FileAccessError("El diff intenta eliminar más líneas de las existentes.")
+                if original_lines[source_index] != text:
+                    raise FileAccessError("La línea a eliminar no coincide con el archivo original.")
+                source_index += 1
+
+            elif marker == "+":
+                result_lines.append(text)
+
+            else:
+                raise FileAccessError(f"Línea de diff no soportada: {diff_line!r}")
+
+    result_lines.extend(original_lines[source_index:])
+    return "".join(result_lines)
+
+
+def preview_unified_diff(diff_text: str) -> dict[str, Any]:
+    try:
+        diff_bytes = diff_text.encode("utf-8")
+
+        if len(diff_bytes) > MAX_UNIFIED_DIFF_BYTES:
+            return {
+                "ok": False,
+                "error": f"Diff demasiado grande: {len(diff_bytes)} bytes",
+                "max_bytes": MAX_UNIFIED_DIFF_BYTES,
+            }
+
+        path_value = _extract_single_file_from_unified_diff(diff_text)
+
+        if not path_value:
+            return {"ok": False, "error": "No se pudo extraer la ruta del archivo desde el diff."}
+
+        path = _resolve_path(path_value)
+        assert_write_allowed(path)
+
+        if not path.exists():
+            return {"ok": False, "error": f"No existe el archivo: {path}"}
+
+        if not path.is_file():
+            return {"ok": False, "error": f"No es un archivo: {path}"}
+
+        original_content = path.read_text(encoding="utf-8", errors="replace")
+        updated_content = _apply_unified_diff_to_content(original_content, diff_text)
+
+        if original_content == updated_content:
+            return {"ok": False, "error": "El diff no produce cambios.", "path": str(path)}
+
+        normalized_diff = "".join(
+            difflib.unified_diff(
+                original_content.splitlines(keepends=True),
+                updated_content.splitlines(keepends=True),
+                fromfile=str(path),
+                tofile=str(path),
+            )
+        )
+
+        truncated = len(normalized_diff) > MAX_UNIFIED_DIFF_PREVIEW_CHARS
+        if truncated:
+            normalized_diff = normalized_diff[:MAX_UNIFIED_DIFF_PREVIEW_CHARS] + "\n... diff truncado ...\n"
+
+        return {
+            "ok": True,
+            "path": str(path),
+            "diff": normalized_diff,
+            "diff_truncated": truncated,
+            "bytes_after": len(updated_content.encode("utf-8")),
+        }
+
+    except FileAccessError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    except Exception as exc:
+        return {"ok": False, "error": f"Error generando preview de unified diff: {exc}"}
+
+
+def apply_unified_diff(
+    diff_text: str,
+    *,
+    pending_action_id: str | None = None,
+    trace_id: str | None = None,
+) -> dict[str, Any]:
+    try:
+        diff_bytes = diff_text.encode("utf-8")
+
+        if len(diff_bytes) > MAX_UNIFIED_DIFF_BYTES:
+            return {
+                "ok": False,
+                "error": f"Diff demasiado grande: {len(diff_bytes)} bytes",
+                "max_bytes": MAX_UNIFIED_DIFF_BYTES,
+            }
+
+        path_value = _extract_single_file_from_unified_diff(diff_text)
+
+        if not path_value:
+            return {"ok": False, "error": "No se pudo extraer la ruta del archivo desde el diff."}
+
+        path = _resolve_path(path_value)
+        assert_write_allowed(path)
+
+        if not path.exists():
+            return {"ok": False, "error": f"No existe el archivo: {path}"}
+
+        if not path.is_file():
+            return {"ok": False, "error": f"No es un archivo: {path}"}
+
+        original_content = path.read_text(encoding="utf-8", errors="replace")
+        updated_content = _apply_unified_diff_to_content(original_content, diff_text)
+
+        if original_content == updated_content:
+            return {"ok": False, "error": "El diff no produce cambios.", "path": str(path)}
+
+        updated_bytes = updated_content.encode("utf-8")
+
+        if len(updated_bytes) > MAX_WRITE_BYTES:
+            return {
+                "ok": False,
+                "error": f"El archivo resultante sería demasiado grande: {len(updated_bytes)} bytes",
+                "max_bytes": MAX_WRITE_BYTES,
+            }
+
+        backup = create_file_backup(
+            path,
+            action="apply_unified_diff",
+            pending_action_id=pending_action_id,
+            trace_id=trace_id,
+        )
+
+        previous_size = path.stat().st_size
+        path.write_text(updated_content, encoding="utf-8")
+
+        append_file_audit_event({
+            "action": "apply_unified_diff",
+            "path": str(path),
+            "pending_action_id": pending_action_id,
+            "trace_id": trace_id,
+            "previous_size_bytes": previous_size,
+            "bytes_written": len(updated_bytes),
+            "backup": backup,
+            "status": "ok",
+        })
+
+        return {
+            "ok": True,
+            "path": str(path),
+            "previous_size_bytes": previous_size,
+            "bytes_written": len(updated_bytes),
+            "backup": backup,
+        }
+
+    except FileAccessError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    except Exception as exc:
+        return {"ok": False, "error": f"Error aplicando unified diff: {exc}"}

@@ -131,6 +131,49 @@ confirm_rollback_text="$(printf "%s" "$confirm_rollback" | json_text)"
 require_contains "$confirm_rollback_text" "Rollback aplicado" "Rollback confirmed"
 require_file_content "$TEST_PATH" "alfa"
 
+say "Preparing unified diff test file"
+UNIFIED_TEST_FILE="config/test-system-agent-unified-diff.txt"
+rm -f "$UNIFIED_TEST_FILE"
+
+cat > "$UNIFIED_TEST_FILE" <<'EOF'
+linea uno
+linea dos
+linea tres
+EOF
+
+say "Applying unified diff through Sity"
+unified_response="$(post_chat $'aplica este unified diff:\n--- config/test-system-agent-unified-diff.txt\n+++ config/test-system-agent-unified-diff.txt\n@@ -1,3 +1,4 @@\n linea uno\n-linea dos\n+linea dos modificada\n linea tres\n+linea cuatro')"
+echo "$unified_response" | python3 -m json.tool
+unified_text="$(printf "%s" "$unified_response" | json_text)"
+require_contains "$unified_text" "act_" "Unified diff action created"
+
+say "Confirming unified diff with generic confirmation"
+confirm_unified="$(post_chat "sí, hazlo")"
+echo "$confirm_unified" | python3 -m json.tool
+confirm_unified_text="$(printf "%s" "$confirm_unified" | json_text)"
+require_contains "$confirm_unified_text" "Unified diff aplicado" "Unified diff confirmed"
+
+expected_unified_content=$'linea uno\nlinea dos modificada\nlinea tres\nlinea cuatro'
+require_file_content "$UNIFIED_TEST_FILE" "$expected_unified_content"
+
+say "Rolling back unified diff"
+rollback_unified_response="$(post_chat "revierte el último cambio de archivo")"
+echo "$rollback_unified_response" | python3 -m json.tool
+rollback_unified_text="$(printf "%s" "$rollback_unified_response" | json_text)"
+require_contains "$rollback_unified_text" "act_" "Unified diff rollback action created"
+
+say "Confirming unified diff rollback"
+confirm_rollback_unified="$(post_chat "sí, hazlo")"
+echo "$confirm_rollback_unified" | python3 -m json.tool
+confirm_rollback_unified_text="$(printf "%s" "$confirm_rollback_unified" | json_text)"
+require_contains "$confirm_rollback_unified_text" "Rollback aplicado" "Unified diff rollback confirmed"
+
+expected_unified_rollback_content=$'linea uno\nlinea dos\nlinea tres'
+require_file_content "$UNIFIED_TEST_FILE" "$expected_unified_rollback_content"
+
+say "Cleaning unified diff test file"
+rm -f "$UNIFIED_TEST_FILE"
+
 say "Testing sensitive path block"
 blocked_response="$(post_chat "escribe en .env el contenido TEST=1, es una orden")"
 echo "$blocked_response" | python3 -m json.tool

@@ -4,8 +4,10 @@ from typing import Any
 
 from app.system_agent.file_access import (
     apply_text_patch,
+    apply_unified_diff,
     list_directory,
     preview_text_patch,
+    preview_unified_diff,
     read_file,
     write_file,
 )
@@ -39,6 +41,16 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
             str(payload.get("path", "")),
             str(payload.get("old_text", "")),
             str(payload.get("new_text", "")),
+        )
+
+    if action == "preview_unified_diff":
+        return preview_unified_diff(str(payload.get("diff", "")))
+
+    if action == "apply_unified_diff":
+        return apply_unified_diff(
+            str(payload.get("diff", "")),
+            pending_action_id=payload.get("pending_action_id"),
+            trace_id=payload.get("trace_id"),
         )
 
     if action == "apply_text_patch":

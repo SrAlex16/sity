@@ -448,7 +448,8 @@ Debes elegir exactamente una herramienta:
 - Usa read_file o list_directory si el usuario pide ver, leer o listar un archivo o directorio concreto del proyecto.
 - Usa write_file si el usuario pide crear o sobrescribir un archivo concreto. Nunca se ejecuta directamente: crea una acción pendiente.
 - Usa apply_text_patch si el usuario pide cambiar una parte concreta de un archivo existente y proporciona el texto exacto a reemplazar. Llama a apply_text_patch DIRECTAMENTE con el old_text y new_text del mensaje — no llames a read_file antes. Nunca se ejecuta directamente: crea una acción pendiente con diff.
-- Si el usuario quiere editar un archivo pero no proporciona el texto exacto a reemplazar, usa read_file primero para mostrarle el contenido.
+- Usa apply_unified_diff si el usuario pide cambios de código multilinea o una modificación que encaja mejor como diff (añadir funciones, modificar bloques, etc.). Genera el diff con cabeceras --- y +++ y hunks @@. Nunca se ejecuta directamente: crea una acción pendiente con preview de diff. No uses apply_unified_diff para modificar varios archivos en una sola acción — si hay varios archivos, crea acciones separadas o explica que se hará archivo por archivo.
+- Si el usuario quiere editar un archivo pero no proporciona el texto exacto a reemplazar ni un diff concreto, usa read_file primero para mostrarle el contenido.
 - Usa list_file_changes SIEMPRE que el usuario pregunte qué archivos ha tocado Sity, qué cambió recientemente, qué acciones de archivo ejecutó o qué backups existen. No respondas de memoria ni basándote solo en el historial conversacional para estas preguntas.
 - Si el usuario pide revertir, deshacer o restaurar el último cambio de archivo sin dar un backup concreto: usa rollback_latest_file_change directamente. No uses rollback_file_change ni list_file_changes para este caso. No te limites a mencionar el backup: crea la acción pendiente directamente.
 - Si el usuario pide explícitamente revertir un rollback anterior: usa rollback_latest_file_change con include_rollbacks=true.
@@ -741,7 +742,9 @@ def _chat_message_inner(
                 if execution_result.get("ok"):
                     confirmation_manager.mark_executed(pending_action, trace_id)
                     path = execution_result.get("path", "")
-                    if file_action == "rollback_file_change":
+                    if file_action == "apply_unified_diff":
+                        text = f"Unified diff aplicado: {path}"
+                    elif file_action == "rollback_file_change":
                         restored_from = execution_result.get("restored_from_backup_path", "")
                         text = f"Rollback aplicado: {path}\nRestaurado desde: {restored_from}"
                     elif file_action == "apply_text_patch":
@@ -754,7 +757,9 @@ def _chat_message_inner(
                 else:
                     error = execution_result.get("error", "Error desconocido")
                     confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    if file_action == "rollback_file_change":
+                    if file_action == "apply_unified_diff":
+                        text = f"No he podido aplicar el unified diff: {error}"
+                    elif file_action == "rollback_file_change":
                         text = f"No he podido hacer el rollback: {error}"
                     elif file_action == "apply_text_patch":
                         text = f"No he podido aplicar el patch: {error}"

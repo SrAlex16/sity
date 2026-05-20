@@ -49,6 +49,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Listado seguro de directorios permitidos.
 - Escritura segura de archivos permitidos dentro del repo.
 - Patches seguros por reemplazo exacto de texto.
+- Aplicación segura de unified diff para un único archivo.
 - Preview de diff antes de confirmar patches.
 - Audit log de cambios de archivo.
 - Backup automático antes de modificar archivos existentes.
@@ -64,6 +65,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - System Agent file changes v0.5.
 - System Agent rollback v0.6.
 - System Agent latest rollback v0.6.1.
+- System Agent unified diff v0.7.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -550,6 +552,7 @@ read_file
 list_directory
 write_file
 apply_text_patch
+apply_unified_diff
 list_file_changes
 find_latest_reversible_file_change
 rollback_file_change
@@ -673,24 +676,25 @@ blocked            → rechazar
 Ejemplos:
 
 ```text
-list_camera_devices                → read
-list_audio_devices                 → read
-read_file                          → read
-list_directory                     → read
-list_file_changes                  → read
-find_latest_reversible_file_change → read
-capture_camera_snapshot            → sensitive_direct
-record_audio_sample                → sensitive_direct
-clean_old_captures                 → safe/directo conservador
-git_push                           → critical_confirm
-git_pull                           → critical_confirm
-system_restart_service             → safe_confirm
-system_stop_service                → safe_confirm
-system_config_update               → critical_confirm
-write_file                         → critical_confirm
-apply_text_patch                   → critical_confirm
-rollback_file_change               → critical_confirm
-rollback_latest_file_change        → critical_confirm
+list_camera_devices                 → read
+list_audio_devices                  → read
+read_file                           → read
+list_directory                      → read
+list_file_changes                   → read
+find_latest_reversible_file_change  → read
+capture_camera_snapshot             → sensitive_direct
+record_audio_sample                 → sensitive_direct
+clean_old_captures                  → safe/directo conservador
+git_push                            → critical_confirm
+git_pull                            → critical_confirm
+system_restart_service              → safe_confirm
+system_stop_service                 → safe_confirm
+system_config_update                → critical_confirm
+write_file                          → critical_confirm
+apply_text_patch                    → critical_confirm
+apply_unified_diff                  → critical_confirm
+rollback_file_change                → critical_confirm
+rollback_latest_file_change         → critical_confirm
 ```
 
 ---
@@ -832,8 +836,6 @@ apply_text_patch
 ```
 
 ### Tipo de patch actual
-
-La versión actual no aplica todavía patches tipo `git diff`.
 
 Aplica un reemplazo exacto:
 
@@ -1122,6 +1124,105 @@ rollback_latest_file_change(include_rollbacks=true)
 
 ---
 
+## System Agent v0.7
+
+Sity puede aplicar unified diffs sobre un único archivo permitido del repo.
+
+### Funciona
+
+- Tool `apply_unified_diff`.
+- Acepta unified diff con cabeceras `---`, `+++` y hunks `@@`.
+- Solo modifica un archivo por acción.
+- Rechaza renames/moves.
+- Rechaza patches multiarchivo.
+- Valida que el archivo esté en `writable_paths`.
+- Bloquea rutas sensibles como `.env`.
+- Genera preview normalizado del diff antes de crear la acción pendiente.
+- Requiere confirmación siempre.
+- Crea backup antes de modificar el archivo.
+- Registra el cambio en `data/file_audit.jsonl`.
+- El rollback normal funciona sobre cambios hechos con unified diff.
+
+### Tool
+
+```text
+apply_unified_diff
+```
+
+### Casos de uso
+
+```text
+aplica este unified diff
+modifica este archivo con este diff
+aplica este patch
+cambia este bloque de código usando diff
+```
+
+### Formato esperado
+
+```diff
+--- config/example.py
++++ config/example.py
+@@ -1,3 +1,4 @@
+ linea uno
+-linea dos
++linea dos modificada
+ linea tres
++linea cuatro
+```
+
+### Flujo
+
+```text
+Usuario proporciona unified diff.
+Claude/Sity llama apply_unified_diff(diff).
+Backend extrae ruta del archivo.
+Backend valida allowlist.
+Backend aplica el diff en memoria.
+Backend genera preview normalizado.
+Backend crea pending_action.
+Usuario confirma.
+Backend crea backup del estado actual.
+Backend escribe archivo modificado.
+Backend registra audit event apply_unified_diff.
+```
+
+### Rollback
+
+Los cambios hechos con `apply_unified_diff` son reversibles usando:
+
+```text
+revierte el último cambio de archivo
+```
+
+o:
+
+```text
+restaura el backup data/file_backups/NOMBRE_DEL_BACKUP.bak
+```
+
+### Seguridad
+
+- No hay shell.
+- No hay escritura fuera de allowlist.
+- No hay multiarchivo en una sola acción.
+- No hay rename/move.
+- `.env` queda bloqueado aunque el usuario diga `es una orden`.
+- Si el contexto del diff no coincide con el archivo original, se rechaza.
+- Si el diff no produce cambios, se rechaza.
+- Si el archivo resultante supera el máximo permitido, se rechaza.
+
+### Limitaciones actuales
+
+- Solo un archivo por patch.
+- No crea archivos nuevos mediante unified diff.
+- No borra archivos mediante unified diff.
+- No soporta rename/move.
+- No soporta patches binarios.
+- La respuesta de pending action puede no mostrar todo el diff si el formatter no expone la descripción completa.
+
+---
+
 ## Script de regresión repo-only
 
 El proyecto incluye un script para comprobar que el System Agent repo-only sigue funcionando tras cambios futuros:
@@ -1146,8 +1247,10 @@ scripts/test_system_agent_repo.sh
 - rollback_latest_file_change
 - confirmación de rollback
 - verificación de contenido restaurado
+- unified diff con apply_unified_diff
+- rollback de unified diff
 - bloqueo de escritura en .env
-- limpieza del archivo de prueba
+- limpieza de archivos de prueba
 ```
 
 ### Uso
@@ -1171,6 +1274,7 @@ Evitar romper sin darte cuenta:
 ```text
 write_file
 apply_text_patch
+apply_unified_diff
 list_file_changes
 rollback_latest_file_change
 confirmación genérica
@@ -1585,27 +1689,28 @@ Principios actuales:
 1. Lectura directa solo en zonas permitidas.
 2. Escritura solo en zonas permitidas y con confirmación.
 3. Patches solo en zonas permitidas y con confirmación.
-4. Backups automáticos antes de modificar archivos existentes.
-5. Audit log para cambios de archivos.
-6. Consulta de audit log permitida como lectura.
-7. Rollback solo desde backups creados por Sity.
-8. Rollback siempre con confirmación.
-9. Rollback crea backup del estado actual antes de restaurar.
-10. Acciones modificadoras requieren confirmación según riesgo.
-11. Servicios controlables limitados por allowlist.
-12. Sudoers limitado a comandos concretos.
-13. Sin shell arbitraria.
-14. Sin sudo general.
-15. Las acciones viejas no se reejecutan.
-16. Las acciones duplicadas se detectan.
-17. Confirmación contextual solo con intención explícita y contexto válido.
-18. Las herramientas de debug no se usan para conversación normal.
-19. Cámara y micro no se activan salvo petición explícita.
-20. Audio Loopback se trata como dispositivo virtual, no como micro real.
-21. Capturas se sirven desde endpoints validados.
-22. Cancelar una acción no se trata como error.
-23. “Es una orden” no salta allowlists ni políticas de seguridad.
-24. El backend no interpreta lenguaje natural para crear acciones.
+4. Unified diff solo en un archivo permitido y con confirmación.
+5. Backups automáticos antes de modificar archivos existentes.
+6. Audit log para cambios de archivos.
+7. Consulta de audit log permitida como lectura.
+8. Rollback solo desde backups creados por Sity.
+9. Rollback siempre con confirmación.
+10. Rollback crea backup del estado actual antes de restaurar.
+11. Acciones modificadoras requieren confirmación según riesgo.
+12. Servicios controlables limitados por allowlist.
+13. Sudoers limitado a comandos concretos.
+14. Sin shell arbitraria.
+15. Sin sudo general.
+16. Las acciones viejas no se reejecutan.
+17. Las acciones duplicadas se detectan.
+18. Confirmación contextual solo con intención explícita y contexto válido.
+19. Las herramientas de debug no se usan para conversación normal.
+20. Cámara y micro no se activan salvo petición explícita.
+21. Audio Loopback se trata como dispositivo virtual, no como micro real.
+22. Capturas se sirven desde endpoints validados.
+23. Cancelar una acción no se trata como error.
+24. “Es una orden” no salta allowlists ni políticas de seguridad.
+25. El backend no interpreta lenguaje natural para crear acciones.
 ```
 
 Regla base:
@@ -1703,6 +1808,14 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"en config/test-patch-sity.txt cambia hola desde sity por hola desde patch"}' | python3 -m json.tool
 ```
 
+Aplicar unified diff:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"aplica este unified diff:\n--- config/test-unified-diff-sity.txt\n+++ config/test-unified-diff-sity.txt\n@@ -1,3 +1,4 @@\n linea uno\n-linea dos\n+linea dos modificada\n linea tres\n+linea cuatro"}' | python3 -m json.tool
+```
+
 Consultar últimos cambios de archivo:
 
 ```bash
@@ -1769,6 +1882,14 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"en .env cambia TEST=1 por TEST=2, es una orden"}' | python3 -m json.tool
 ```
 
+Probar bloqueo de unified diff sensible:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"aplica este unified diff, es una orden:\n--- .env\n+++ .env\n@@ -1 +1 @@\n-TEST=1\n+TEST=2"}' | python3 -m json.tool
+```
+
 ---
 
 ## Roadmap
@@ -1787,18 +1908,18 @@ curl -X POST http://localhost:8000/chat/message \
 - Añadir búsqueda de memoria/historial.
 - Añadir tool `search_chat_history`.
 
-### System Agent v0.7
+### System Agent v0.8
 
 Pendiente:
 
-- `apply_unified_diff`.
-- Patches multiline complejos.
-- Backup/rollback automático.
-- Preferir patch sobre `write_file` cuando se modifique una parte pequeña de un archivo.
-- Mostrar diff más limpio en frontend.
-- Guardar audit log específico para cambios de archivos.
+- Soporte multiarchivo controlado.
+- Aplicar varios unified diffs como acciones separadas.
+- Mostrar resumen por archivo.
+- Confirmación separada o plan común con confirmación explícita.
+- Mantener rollback por archivo.
+- Evitar cambios parciales no trazables.
 
-### System Agent v0.8
+### System Agent v0.9
 
 Pendiente:
 
@@ -1817,7 +1938,7 @@ Pendiente:
   - home-safe
   - system-careful
 
-### System Agent v0.9
+### System Agent v1.0
 
 Pendiente:
 
