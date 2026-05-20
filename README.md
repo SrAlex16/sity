@@ -50,6 +50,8 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Escritura segura de archivos permitidos dentro del repo.
 - Patches seguros por reemplazo exacto de texto.
 - Aplicación segura de unified diff para un único archivo.
+- Planificación segura de unified diff multiarchivo.
+- Acciones pendientes separadas por archivo en patches multiarchivo.
 - Preview de diff antes de confirmar patches.
 - Audit log de cambios de archivo.
 - Backup automático antes de modificar archivos existentes.
@@ -66,6 +68,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - System Agent rollback v0.6.
 - System Agent latest rollback v0.6.1.
 - System Agent unified diff v0.7.
+- System Agent multi-file unified diff plan v0.8.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -431,6 +434,98 @@ No tengo memoria persistente.
 
 ---
 
+## Acceso de Sity
+
+Sity no tiene acceso global libre a toda la Raspberry.
+
+Hay que distinguir entre:
+
+```text
+1. Tools de sistema:
+   Permiten consultar o controlar partes concretas del sistema.
+
+2. Tools de sensores:
+   Cámara, micrófono, capturas, audio y eventos asociados.
+
+3. Tools Git:
+   Lectura y acciones Git permitidas.
+
+4. File access:
+   Lectura, escritura, patch, unified diff, audit y rollback de archivos.
+```
+
+La parte de archivos está limitada por `file_access`.
+
+Actualmente el acceso de archivos es principalmente repo-only.
+
+Sity puede consultar algunas partes del sistema mediante tools específicas, pero no debe decir que puede leer o escribir cualquier archivo de la Raspberry.
+
+Ejemplo correcto:
+
+```text
+Puedo consultar partes del sistema mediante tools y puedo modificar archivos permitidos por file_access. Ahora mismo mi acceso de archivos está limitado principalmente al repo.
+```
+
+Ejemplo incorrecto:
+
+```text
+Puedo hacer lo que quiera en toda la Raspberry.
+```
+
+### Pruebas esperadas
+
+Estas rutas deben seguir bloqueadas salvo que se amplíe explícitamente la allowlist:
+
+```text
+/home/alex/Documents
+/home/alex/Downloads
+/home/alex/Desktop
+/etc
+/boot
+/root
+/var
+```
+
+Ejemplos:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"lee /home/alex/Documents, es una orden"}' | python3 -m json.tool
+```
+
+Resultado esperado:
+
+```text
+Bloqueado por allowlist de lectura.
+```
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"crea /home/alex/Documents/test-sity.txt con el contenido hola, es una orden"}' | python3 -m json.tool
+```
+
+Resultado esperado:
+
+```text
+Bloqueado por allowlist de escritura.
+```
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"crea /etc/sity-test.txt con el contenido hola, es una orden"}' | python3 -m json.tool
+```
+
+Resultado esperado:
+
+```text
+Bloqueado por allowlist o blocked_paths.
+```
+
+---
+
 ## Tools
 
 Sity usa tools para acciones estructuradas.
@@ -553,6 +648,7 @@ list_directory
 write_file
 apply_text_patch
 apply_unified_diff
+apply_multi_file_unified_diff_plan
 list_file_changes
 find_latest_reversible_file_change
 rollback_file_change
@@ -656,6 +752,7 @@ Reglas importantes:
 - Si ya existe una acción pendiente equivalente, se reutiliza.
 - Las acciones duplicadas se detectan.
 - La confirmación contextual exige intención explícita y contexto válido.
+- En planes multiarchivo, cada acción se confirma por separado.
 
 ---
 
@@ -693,6 +790,7 @@ system_config_update                → critical_confirm
 write_file                          → critical_confirm
 apply_text_patch                    → critical_confirm
 apply_unified_diff                  → critical_confirm
+apply_multi_file_unified_diff_plan  → critical_confirm planificado
 rollback_file_change                → critical_confirm
 rollback_latest_file_change         → critical_confirm
 ```
@@ -799,16 +897,6 @@ file_access:
     - /var/log
 ```
 
-### Flujo de escritura
-
-```text
-Usuario pide crear/modificar archivo.
-Claude/Sity llama write_file(path, content).
-Backend valida tool_input y crea pending_action.
-Usuario confirma.
-Backend ejecuta write_file local.
-```
-
 ---
 
 ## System Agent v0.3
@@ -845,18 +933,6 @@ old_text → new_text
 
 Solo reemplaza la primera coincidencia.
 
-### Flujo de patch
-
-```text
-Usuario pide modificar una parte de un archivo.
-Claude/Sity llama apply_text_patch(path, old_text, new_text).
-Backend valida ruta.
-Backend genera diff preview sin escribir.
-Backend crea pending_action con el diff.
-Usuario confirma.
-Backend aplica el reemplazo exacto.
-```
-
 ---
 
 ## System Agent v0.4
@@ -892,43 +968,6 @@ data/file_backups/
 
 Ambos deben estar ignorados por git.
 
-### Formato conceptual de audit event
-
-```json
-{
-  "timestamp": "2026-05-19T21:15:31.707878+00:00",
-  "action": "apply_text_patch",
-  "path": "/home/alex/projects/sity/config/test-audit-sity.txt",
-  "pending_action_id": "act_xxxxxxxx",
-  "trace_id": "trc_xxxxxxxx",
-  "bytes_written": 15,
-  "replacements": 1,
-  "backup": {
-    "created": true,
-    "backup_path": "/home/alex/projects/sity/data/file_backups/20260519T211531Z__apply_text_patch__home__alex__projects__sity__config__test-audit-sity.txt__act_xxxxxxxx.bak",
-    "size_bytes": 15,
-    "source_path": "/home/alex/projects/sity/config/test-audit-sity.txt"
-  },
-  "status": "ok"
-}
-```
-
-### Comportamiento de backups
-
-Si el archivo no existía antes:
-
-```text
-backup.created=false
-reason=source_missing_or_not_file
-```
-
-Si el archivo existía:
-
-```text
-backup.created=true
-backup_path=data/file_backups/...
-```
-
 ---
 
 ## System Agent v0.5
@@ -961,30 +1000,6 @@ qué modificaste en el último cambio?
 consulta el audit log real
 ```
 
-### Flujo
-
-```text
-Usuario pregunta por cambios de archivos.
-Claude/Sity llama list_file_changes(limit).
-Backend lee data/file_audit.jsonl.
-Backend devuelve eventos recientes.
-Sity resume los cambios.
-```
-
-### Datos que puede mostrar
-
-```text
-path
-action
-timestamp
-trace_id
-pending_action_id
-bytes_written
-replacements
-backup.created
-backup.backup_path
-```
-
 ---
 
 ## System Agent v0.6
@@ -1010,37 +1025,6 @@ Sity puede restaurar archivos desde backups creados por ella.
 rollback_file_change
 ```
 
-### Flujo con backup explícito
-
-```text
-Usuario pide restaurar un backup concreto.
-Claude/Sity llama rollback_file_change(backup_path).
-Backend valida que el backup está en data/file_backups.
-Backend valida que aparece en audit log.
-Backend crea pending_action.
-Usuario confirma.
-Backend crea backup del estado actual.
-Backend restaura desde el backup indicado.
-Backend registra audit event rollback_file_change.
-```
-
-### Ejemplo
-
-```text
-Usuario:
-restaura el backup data/file_backups/20260519T215319Z__apply_text_patch__...bak
-
-Sity:
-Acción pendiente: restaurar /home/alex/projects/sity/config/test-rollback-sity.txt desde backup.
-
-Usuario:
-sí, hazlo
-
-Sity:
-Rollback aplicado: /home/alex/projects/sity/config/test-rollback-sity.txt
-Restaurado desde: /home/alex/projects/sity/data/file_backups/...
-```
-
 ### Seguridad
 
 - No restaura backups fuera de `data/file_backups`.
@@ -1062,6 +1046,7 @@ Sity puede revertir el último cambio reversible de archivo sin que el usuario p
 - Tool `rollback_latest_file_change`.
 - Busca el último evento reversible con backup disponible.
 - Por defecto ignora eventos `rollback_file_change` para evitar deshacer un rollback accidentalmente.
+- Ignora eventos cuyo archivo objetivo ya no existe.
 - Crea pending action de rollback usando el backup encontrado.
 - Requiere confirmación siempre.
 - Mantiene el mismo flujo seguro de `rollback_file_change`.
@@ -1081,46 +1066,6 @@ deshaz el último cambio de archivo
 restaura el último cambio reversible
 revierte el último patch
 ```
-
-### Flujo
-
-```text
-Usuario pide revertir el último cambio de archivo.
-Claude/Sity llama rollback_latest_file_change.
-Backend busca el último evento reversible con backup real.
-Backend ignora rollbacks salvo petición explícita.
-Backend crea pending_action rollback_file_change.
-Usuario confirma.
-Backend crea backup del estado actual.
-Backend restaura desde backup.
-Backend registra rollback en audit log.
-```
-
-### Revertir un rollback
-
-Por defecto, `rollback_latest_file_change` ignora rollbacks.
-
-Si el usuario pide explícitamente revertir un rollback:
-
-```text
-revierte el último rollback
-deshaz el rollback anterior
-```
-
-entonces puede usarse:
-
-```text
-rollback_latest_file_change(include_rollbacks=true)
-```
-
-### Seguridad
-
-- No restaura nada sin confirmación.
-- No usa memoria conversacional como fuente de verdad.
-- Usa audit log y backups reales.
-- No restaura backups externos.
-- No toca rutas arbitrarias.
-- Crea backup antes de restaurar.
 
 ---
 
@@ -1149,15 +1094,6 @@ Sity puede aplicar unified diffs sobre un único archivo permitido del repo.
 apply_unified_diff
 ```
 
-### Casos de uso
-
-```text
-aplica este unified diff
-modifica este archivo con este diff
-aplica este patch
-cambia este bloque de código usando diff
-```
-
 ### Formato esperado
 
 ```diff
@@ -1171,55 +1107,135 @@ cambia este bloque de código usando diff
 +linea cuatro
 ```
 
-### Flujo
-
-```text
-Usuario proporciona unified diff.
-Claude/Sity llama apply_unified_diff(diff).
-Backend extrae ruta del archivo.
-Backend valida allowlist.
-Backend aplica el diff en memoria.
-Backend genera preview normalizado.
-Backend crea pending_action.
-Usuario confirma.
-Backend crea backup del estado actual.
-Backend escribe archivo modificado.
-Backend registra audit event apply_unified_diff.
-```
-
-### Rollback
-
-Los cambios hechos con `apply_unified_diff` son reversibles usando:
-
-```text
-revierte el último cambio de archivo
-```
-
-o:
-
-```text
-restaura el backup data/file_backups/NOMBRE_DEL_BACKUP.bak
-```
-
-### Seguridad
-
-- No hay shell.
-- No hay escritura fuera de allowlist.
-- No hay multiarchivo en una sola acción.
-- No hay rename/move.
-- `.env` queda bloqueado aunque el usuario diga `es una orden`.
-- Si el contexto del diff no coincide con el archivo original, se rechaza.
-- Si el diff no produce cambios, se rechaza.
-- Si el archivo resultante supera el máximo permitido, se rechaza.
-
-### Limitaciones actuales
+### Limitaciones
 
 - Solo un archivo por patch.
 - No crea archivos nuevos mediante unified diff.
 - No borra archivos mediante unified diff.
 - No soporta rename/move.
 - No soporta patches binarios.
-- La respuesta de pending action puede no mostrar todo el diff si el formatter no expone la descripción completa.
+
+---
+
+## System Agent v0.8
+
+Sity puede analizar patches multiarchivo y convertirlos en acciones pendientes separadas por archivo.
+
+### Funciona
+
+- Tool `apply_multi_file_unified_diff_plan`.
+- Recibe unified diff multiarchivo.
+- Separa el patch por archivo.
+- Valida cada archivo por separado.
+- No modifica nada directamente.
+- Crea una acción pendiente por cada archivo válido.
+- Cada acción pendiente usa `apply_unified_diff`.
+- Cada archivo mantiene backup independiente.
+- Cada archivo mantiene audit log independiente.
+- Cada archivo puede revertirse mediante rollback normal.
+- Cada acción debe confirmarse por separado.
+- Si un archivo del plan está bloqueado, se rechaza todo el plan.
+- No se aplica parcialmente un plan multiarchivo con archivos bloqueados.
+
+### Tool
+
+```text
+apply_multi_file_unified_diff_plan
+```
+
+### Casos de uso
+
+```text
+aplica este patch multiarchivo
+aplica este diff que toca varios archivos
+planifica este patch
+```
+
+### Flujo
+
+```text
+Usuario proporciona unified diff multiarchivo.
+Claude/Sity llama apply_multi_file_unified_diff_plan(diff).
+Backend separa el diff por archivo.
+Backend valida cada archivo.
+Si todo valida:
+  crea una pending action por archivo.
+Si algo falla:
+  rechaza todo el plan.
+Usuario confirma cada acción por ID.
+Cada archivo se modifica de forma independiente.
+Cada modificación crea backup y audit log.
+```
+
+### Ejemplo
+
+```diff
+--- config/test-a.txt
++++ config/test-a.txt
+@@ -1,3 +1,3 @@
+ a uno
+-a dos
++a dos modificado
+ a tres
+--- config/test-b.txt
++++ config/test-b.txt
+@@ -1,3 +1,4 @@
+ b uno
+ b dos
+-b tres
++b tres modificado
++b cuatro
+```
+
+Respuesta esperada:
+
+```text
+Pendientes. Confirma cada una por separado:
+
+1. confirmo ejecutar act_xxxxxxxx para config/test-a.txt
+2. confirmo ejecutar act_yyyyyyyy para config/test-b.txt
+```
+
+### Confirmación
+
+Cada archivo se confirma por separado:
+
+```text
+confirmo ejecutar act_xxxxxxxx
+confirmo ejecutar act_yyyyyyyy
+```
+
+No se debe aplicar todo el patch multiarchivo como una única acción.
+
+### Rollback
+
+El rollback sigue siendo por archivo.
+
+Si se aplica A y luego B, al decir:
+
+```text
+revierte el último cambio de archivo
+```
+
+se revierte solo B.
+
+### Seguridad
+
+- No hay shell.
+- No hay escritura fuera de allowlist.
+- No hay aplicación parcial si una ruta está bloqueada.
+- `.env` bloquea todo el plan.
+- `/etc` bloquea todo el plan.
+- Rutas fuera de repo bloquean todo el plan.
+- Cada archivo tiene backup/audit/rollback separado.
+- `es una orden` no salta allowlist ni bloqueo de plan.
+
+### Limitaciones actuales
+
+- No hay confirmación múltiple real tipo “confirma todas”.
+- No hay transacción atómica multiarchivo.
+- Si confirmas solo una acción, solo se aplica ese archivo.
+- Si quieres aplicar solo archivos permitidos tras un rechazo, debes enviar un patch nuevo sin los archivos bloqueados.
 
 ---
 
@@ -1249,7 +1265,11 @@ scripts/test_system_agent_repo.sh
 - verificación de contenido restaurado
 - unified diff con apply_unified_diff
 - rollback de unified diff
+- plan multiarchivo con apply_multi_file_unified_diff_plan
+- confirmación separada por archivo en multiarchivo
+- rollback del último archivo aplicado en multiarchivo
 - bloqueo de escritura en .env
+- rechazo completo de plan multiarchivo con .env
 - limpieza de archivos de prueba
 ```
 
@@ -1275,6 +1295,7 @@ Evitar romper sin darte cuenta:
 write_file
 apply_text_patch
 apply_unified_diff
+apply_multi_file_unified_diff_plan
 list_file_changes
 rollback_latest_file_change
 confirmación genérica
@@ -1689,28 +1710,31 @@ Principios actuales:
 1. Lectura directa solo en zonas permitidas.
 2. Escritura solo en zonas permitidas y con confirmación.
 3. Patches solo en zonas permitidas y con confirmación.
-4. Unified diff solo en un archivo permitido y con confirmación.
-5. Backups automáticos antes de modificar archivos existentes.
-6. Audit log para cambios de archivos.
-7. Consulta de audit log permitida como lectura.
-8. Rollback solo desde backups creados por Sity.
-9. Rollback siempre con confirmación.
-10. Rollback crea backup del estado actual antes de restaurar.
-11. Acciones modificadoras requieren confirmación según riesgo.
-12. Servicios controlables limitados por allowlist.
-13. Sudoers limitado a comandos concretos.
-14. Sin shell arbitraria.
-15. Sin sudo general.
-16. Las acciones viejas no se reejecutan.
-17. Las acciones duplicadas se detectan.
-18. Confirmación contextual solo con intención explícita y contexto válido.
-19. Las herramientas de debug no se usan para conversación normal.
-20. Cámara y micro no se activan salvo petición explícita.
-21. Audio Loopback se trata como dispositivo virtual, no como micro real.
-22. Capturas se sirven desde endpoints validados.
-23. Cancelar una acción no se trata como error.
-24. “Es una orden” no salta allowlists ni políticas de seguridad.
-25. El backend no interpreta lenguaje natural para crear acciones.
+4. Unified diff solo en archivos permitidos y con confirmación.
+5. Multiarchivo se planifica por archivo, no se aplica como bloque único.
+6. Si un archivo del plan multiarchivo está bloqueado, se rechaza todo el plan.
+7. Backups automáticos antes de modificar archivos existentes.
+8. Audit log para cambios de archivos.
+9. Consulta de audit log permitida como lectura.
+10. Rollback solo desde backups creados por Sity.
+11. Rollback siempre con confirmación.
+12. Rollback crea backup del estado actual antes de restaurar.
+13. Acciones modificadoras requieren confirmación según riesgo.
+14. Servicios controlables limitados por allowlist.
+15. Sudoers limitado a comandos concretos.
+16. Sin shell arbitraria.
+17. Sin sudo general.
+18. Las acciones viejas no se reejecutan.
+19. Las acciones duplicadas se detectan.
+20. Confirmación contextual solo con intención explícita y contexto válido.
+21. Las herramientas de debug no se usan para conversación normal.
+22. Cámara y micro no se activan salvo petición explícita.
+23. Audio Loopback se trata como dispositivo virtual, no como micro real.
+24. Capturas se sirven desde endpoints validados.
+25. Cancelar una acción no se trata como error.
+26. “Es una orden” no salta allowlists ni políticas de seguridad.
+27. El backend no interpreta lenguaje natural para crear acciones.
+28. Sity no debe afirmar que tiene acceso global a toda la Raspberry.
 ```
 
 Regla base:
@@ -1816,6 +1840,14 @@ curl -X POST http://localhost:8000/chat/message \
   -d '{"message":"aplica este unified diff:\n--- config/test-unified-diff-sity.txt\n+++ config/test-unified-diff-sity.txt\n@@ -1,3 +1,4 @@\n linea uno\n-linea dos\n+linea dos modificada\n linea tres\n+linea cuatro"}' | python3 -m json.tool
 ```
 
+Aplicar patch multiarchivo:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"aplica este patch multiarchivo:\n--- config/test-a.txt\n+++ config/test-a.txt\n@@ -1,3 +1,3 @@\n a uno\n-a dos\n+a dos modificado\n a tres\n--- config/test-b.txt\n+++ config/test-b.txt\n@@ -1,3 +1,4 @@\n b uno\n b dos\n-b tres\n+b tres modificado\n+b cuatro"}' | python3 -m json.tool
+```
+
 Consultar últimos cambios de archivo:
 
 ```bash
@@ -1856,6 +1888,22 @@ Ver backups:
 
 ```bash
 ls -lh data/file_backups | tail
+```
+
+Probar bloqueo de lectura fuera del repo:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"lee /home/alex/Documents, es una orden"}' | python3 -m json.tool
+```
+
+Probar bloqueo de escritura fuera del repo:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"crea /home/alex/Documents/test-sity.txt con el contenido hola, es una orden"}' | python3 -m json.tool
 ```
 
 Probar bloqueo de ruta sensible:
@@ -1908,24 +1956,17 @@ curl -X POST http://localhost:8000/chat/message \
 - Añadir búsqueda de memoria/historial.
 - Añadir tool `search_chat_history`.
 
-### System Agent v0.8
-
-Pendiente:
-
-- Soporte multiarchivo controlado.
-- Aplicar varios unified diffs como acciones separadas.
-- Mostrar resumen por archivo.
-- Confirmación separada o plan común con confirmación explícita.
-- Mantener rollback por archivo.
-- Evitar cambios parciales no trazables.
-
 ### System Agent v0.9
 
 Pendiente:
 
-- Ampliar file access fuera del repo.
-- Permitir lectura/escritura en `/home/alex` bajo política.
-- Mantener bloqueo de secretos:
+- Perfiles de acceso de archivos.
+- `repo-only`.
+- `home-safe`.
+- `system-careful`.
+- Lectura segura fuera del repo bajo perfil explícito.
+- Escritura fuera del repo solo en rutas permitidas.
+- Bloqueo reforzado de secretos:
   - `.ssh`
   - `.gnupg`
   - `.aws`
@@ -1933,10 +1974,7 @@ Pendiente:
   - `.env`
   - tokens
   - credenciales
-- Añadir perfiles:
-  - repo-only
-  - home-safe
-  - system-careful
+- No afirmar acceso global a toda la Raspberry.
 
 ### System Agent v1.0
 
