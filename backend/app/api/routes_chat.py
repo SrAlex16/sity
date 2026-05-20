@@ -997,6 +997,74 @@ def _chat_message_inner(
                     client_turn_id=request.client_turn_id,
                 )
 
+                _raw = result.raw_result
+                if _raw.get("local_final") and _raw.get("text"):
+                    _local_text = str(_raw["text"]).strip()
+                    _local_model = str(_raw.get("local_model", "tool-result"))
+                    _planner_tokens = planner_response.usage.input_tokens + planner_response.usage.output_tokens
+
+                    _usage_row = AIUsage(
+                        trace_id=trace_id,
+                        session_id=None,
+                        provider=planner_response.provider,
+                        model=planner_response.model,
+                        task_type="action_planner",
+                        input_tokens=planner_response.usage.input_tokens,
+                        output_tokens=planner_response.usage.output_tokens,
+                        estimated_cost=0.0,
+                        latency_ms=planner_response.latency_ms,
+                        fallback_used=planner_response.fallback_used,
+                        success=planner_response.ok,
+                        error_type=planner_response.error_type,
+                    )
+                    session.add(_usage_row)
+                    session.commit()
+
+                    _daily_used = get_today_token_usage(session)
+                    _daily_ratio = _daily_used / daily_budget if daily_budget > 0 else 0.0
+
+                    _local_warnings: list[str] = []
+                    if _daily_ratio >= critical_threshold:
+                        _local_warnings.append(
+                            f"Uso crítico: has consumido aproximadamente el {round(_daily_ratio * 100)}% del presupuesto diario configurado."
+                        )
+                    elif _daily_ratio >= warning_threshold:
+                        _local_warnings.append(
+                            f"Aviso: has consumido aproximadamente el {round(_daily_ratio * 100)}% del presupuesto diario configurado."
+                        )
+
+                    write_log(
+                        level="INFO",
+                        module="cortex",
+                        event="local_tool_response",
+                        trace_id=trace_id,
+                        payload={"tool": tool_call.name, "model": _local_model},
+                    )
+
+                    save_chat_message(session, role="sity", text=_local_text, trace_id=trace_id)
+
+                    return ChatMessageResponse(
+                        ok=True,
+                        trace_id=trace_id,
+                        text=_local_text,
+                        provider="local",
+                        model=_local_model,
+                        fallback_used=False,
+                        error_type=None,
+                        usage=UsageSummary(
+                            input_tokens=planner_response.usage.input_tokens,
+                            output_tokens=planner_response.usage.output_tokens,
+                            total_tokens=_planner_tokens,
+                            daily_used_tokens=_daily_used,
+                            daily_budget_tokens=daily_budget,
+                            daily_ratio=round(_daily_ratio, 4),
+                        ),
+                        warnings=_local_warnings,
+                        personality_updated=False,
+                        updated_parameter=None,
+                        updated_parameters=[],
+                    )
+
                 _inner = result.raw_result.get("result", {})
                 _tool_name = tool_call.name
                 _is_sensor = _tool_name in {"record_audio_sample", "capture_camera_snapshot"}

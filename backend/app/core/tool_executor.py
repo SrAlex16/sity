@@ -123,7 +123,10 @@ class ToolExecutor:
                 err = str(exc)
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=err,
-                    updated_parameters=[], raw_result={"success": False, "message": err},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": err,
+                        "local_final": True, "text": f"No puedo escribir en esa ruta: {err}", "local_model": "tool-policy",
+                    },
                 )
 
             write_payload = {
@@ -138,16 +141,23 @@ class ToolExecutor:
                 payload=write_payload,
             )
             if existing:
+                local_text = (
+                    f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+                    f"Confirma con: `{existing.confirmation_phrase}`"
+                )
                 result = {
                     "success": True,
-                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "message": local_text,
                     "action_id": existing.id,
                     "confirmation_phrase": existing.confirmation_phrase,
                     "summary": existing.summary,
                     "already_existed": True,
+                    "local_final": True,
+                    "text": local_text,
+                    "local_model": "pending-action-manager",
                 }
                 return ToolExecutionResult(
-                    tool_name=tool_name, ok=True, message=result["message"],
+                    tool_name=tool_name, ok=True, message=local_text,
                     updated_parameters=[], raw_result=result,
                 )
 
@@ -158,17 +168,24 @@ class ToolExecutor:
                 payload=write_payload,
                 trace_id=trace_id,
             )
+            local_text = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                f"Confirma con: `{created.confirmation_phrase}`"
+            )
             result = {
                 "success": True,
-                "message": "Acción pendiente creada. Requiere confirmación explícita.",
+                "message": local_text,
                 "action_id": created.id,
                 "confirmation_phrase": created.confirmation_phrase,
                 "summary": created.summary,
+                "local_final": True,
+                "text": local_text,
+                "local_model": "pending-action-manager",
             }
             return ToolExecutionResult(
                 tool_name=tool_name,
                 ok=True,
-                message=result["message"],
+                message=local_text,
                 updated_parameters=[],
                 raw_result=result,
             )
@@ -185,7 +202,10 @@ class ToolExecutor:
                 err = str(exc)
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=err,
-                    updated_parameters=[], raw_result={"success": False, "message": err},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": err,
+                        "local_final": True, "text": f"No puedo modificar esa ruta: {err}", "local_model": "tool-policy",
+                    },
                 )
 
             preview = execute_file_action({
@@ -199,7 +219,10 @@ class ToolExecutor:
                 msg = preview.get("error", "Error generando preview")
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=msg,
-                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": msg,
+                        "local_final": True, "text": f"Error al generar el preview del patch: {msg}", "local_model": "tool-policy",
+                    },
                 )
 
             diff = preview.get("diff", "")
@@ -218,18 +241,26 @@ class ToolExecutor:
                 payload=patch_payload,
             )
             if existing:
+                local_text = (
+                    f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+                    f"Diff propuesto:\n```diff\n{diff_display}```\n\n"
+                    f"Confirma con: `{existing.confirmation_phrase}`"
+                )
                 result = {
                     "success": True,
-                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "message": local_text,
                     "action_id": existing.id,
                     "confirmation_phrase": existing.confirmation_phrase,
                     "summary": existing.summary,
                     "diff": diff_display,
                     "diff_truncated": diff_truncated,
                     "already_existed": True,
+                    "local_final": True,
+                    "text": local_text,
+                    "local_model": "pending-action-manager",
                 }
                 return ToolExecutionResult(
-                    tool_name=tool_name, ok=True, message=result["message"],
+                    tool_name=tool_name, ok=True, message=local_text,
                     updated_parameters=[], raw_result=result,
                 )
 
@@ -260,6 +291,9 @@ class ToolExecutor:
                 "summary": created.summary,
                 "diff": diff_display,
                 "diff_truncated": diff_truncated,
+                "local_final": True,
+                "text": display_message,
+                "local_model": "pending-action-manager",
             }
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=display_message,
@@ -278,7 +312,10 @@ class ToolExecutor:
                 msg = preview.get("error", "Error generando preview de unified diff")
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=msg,
-                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": msg,
+                        "local_final": True, "text": f"Error al validar el unified diff: {msg}", "local_model": "tool-policy",
+                    },
                 )
 
             path = str(preview.get("path", "archivo desconocido"))
@@ -296,18 +333,26 @@ class ToolExecutor:
                 payload=unified_payload,
             )
             if existing:
+                local_text = (
+                    f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+                    f"Diff propuesto:\n```diff\n{diff_display}```\n\n"
+                    f"Confirma con: `{existing.confirmation_phrase}`"
+                )
                 result = {
                     "success": True,
-                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "message": local_text,
                     "action_id": existing.id,
                     "confirmation_phrase": existing.confirmation_phrase,
                     "summary": existing.summary,
                     "diff": diff_display,
                     "diff_truncated": diff_truncated,
                     "already_existed": True,
+                    "local_final": True,
+                    "text": local_text,
+                    "local_model": "pending-action-manager",
                 }
                 return ToolExecutionResult(
-                    tool_name=tool_name, ok=True, message=result["message"],
+                    tool_name=tool_name, ok=True, message=local_text,
                     updated_parameters=[], raw_result=result,
                 )
 
@@ -333,6 +378,9 @@ class ToolExecutor:
                 "summary": created.summary,
                 "diff": diff_display,
                 "diff_truncated": diff_truncated,
+                "local_final": True,
+                "text": display_message,
+                "local_model": "pending-action-manager",
             }
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=display_message,
@@ -361,13 +409,19 @@ class ToolExecutor:
                             "message": closed_text,
                             "error": split_result.get("error"),
                             "rejected_entire_plan": True,
+                            "local_final": True,
+                            "text": closed_text,
+                            "local_model": "multi-file-plan-manager",
                         },
                     )
 
                 msg = split_result.get("error", "Error separando diff multiarchivo")
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=msg,
-                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": msg,
+                        "local_final": True, "text": msg, "local_model": "multi-file-plan-manager",
+                    },
                 )
 
             items = split_result.get("items") or []
@@ -376,7 +430,10 @@ class ToolExecutor:
                 msg = "No hay cambios aplicables en el diff multiarchivo."
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=msg,
-                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": msg,
+                        "local_final": True, "text": msg, "local_model": "multi-file-plan-manager",
+                    },
                 )
 
             manager = ConfirmationManager(self.session)
@@ -443,6 +500,9 @@ class ToolExecutor:
                 "success": True,
                 "message": display_message,
                 "pending_actions": created_actions,
+                "local_final": True,
+                "text": display_message,
+                "local_model": "multi-file-plan-manager",
             }
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=display_message,
@@ -469,7 +529,10 @@ class ToolExecutor:
                 msg = lookup.get("error", "No se encontró ningún cambio reversible.")
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=msg,
-                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": msg,
+                        "local_final": True, "text": f"No encontré ningún cambio reversible: {msg}", "local_model": "tool-policy",
+                    },
                 )
 
             event = lookup.get("event") or {}
@@ -486,7 +549,10 @@ class ToolExecutor:
                 err = str(exc)
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=err,
-                    updated_parameters=[], raw_result={"success": False, "message": err},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": err,
+                        "local_final": True, "text": f"No puedo revertir ese archivo: {err}", "local_model": "tool-policy",
+                    },
                 )
 
             rollback_payload = {
@@ -499,16 +565,23 @@ class ToolExecutor:
                 payload=rollback_payload,
             )
             if existing:
+                local_text = (
+                    f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+                    f"Confirma con: `{existing.confirmation_phrase}`"
+                )
                 result = {
                     "success": True,
-                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "message": local_text,
                     "action_id": existing.id,
                     "confirmation_phrase": existing.confirmation_phrase,
                     "summary": existing.summary,
                     "already_existed": True,
+                    "local_final": True,
+                    "text": local_text,
+                    "local_model": "pending-action-manager",
                 }
                 return ToolExecutionResult(
-                    tool_name=tool_name, ok=True, message=result["message"],
+                    tool_name=tool_name, ok=True, message=local_text,
                     updated_parameters=[], raw_result=result,
                 )
 
@@ -535,6 +608,9 @@ class ToolExecutor:
                 "action_id": created.id,
                 "confirmation_phrase": created.confirmation_phrase,
                 "summary": created.summary,
+                "local_final": True,
+                "text": display_message,
+                "local_model": "pending-action-manager",
             }
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=display_message,
@@ -562,7 +638,10 @@ class ToolExecutor:
                     msg = "No se encontró ningún evento de auditoría asociado a ese backup."
                     return ToolExecutionResult(
                         tool_name=tool_name, ok=False, message=msg,
-                        updated_parameters=[], raw_result={"success": False, "message": msg},
+                        updated_parameters=[], raw_result={
+                            "success": False, "message": msg,
+                            "local_final": True, "text": msg, "local_model": "tool-policy",
+                        },
                     )
                 target_path = str(source_event.get("path", ""))
                 assert_write_allowed(_resolve_path(target_path))
@@ -570,13 +649,19 @@ class ToolExecutor:
                 err = str(exc)
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=err,
-                    updated_parameters=[], raw_result={"success": False, "message": err},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": err,
+                        "local_final": True, "text": err, "local_model": "tool-policy",
+                    },
                 )
             except Exception as exc:
                 err = str(exc)
                 return ToolExecutionResult(
                     tool_name=tool_name, ok=False, message=err,
-                    updated_parameters=[], raw_result={"success": False, "message": err},
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": err,
+                        "local_final": True, "text": err, "local_model": "tool-policy",
+                    },
                 )
 
             rollback_payload = {
@@ -589,16 +674,23 @@ class ToolExecutor:
                 payload=rollback_payload,
             )
             if existing:
+                local_text = (
+                    f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+                    f"Confirma con: `{existing.confirmation_phrase}`"
+                )
                 result = {
                     "success": True,
-                    "message": f"Ya existe una acción pendiente equivalente: {existing.id}. Confirma con: {existing.confirmation_phrase}",
+                    "message": local_text,
                     "action_id": existing.id,
                     "confirmation_phrase": existing.confirmation_phrase,
                     "summary": existing.summary,
                     "already_existed": True,
+                    "local_final": True,
+                    "text": local_text,
+                    "local_model": "pending-action-manager",
                 }
                 return ToolExecutionResult(
-                    tool_name=tool_name, ok=True, message=result["message"],
+                    tool_name=tool_name, ok=True, message=local_text,
                     updated_parameters=[], raw_result=result,
                 )
 
@@ -609,15 +701,22 @@ class ToolExecutor:
                 payload=rollback_payload,
                 trace_id=trace_id,
             )
+            local_text = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                f"Confirma con: `{created.confirmation_phrase}`"
+            )
             result = {
                 "success": True,
-                "message": "Acción pendiente creada. Requiere confirmación explícita.",
+                "message": local_text,
                 "action_id": created.id,
                 "confirmation_phrase": created.confirmation_phrase,
                 "summary": created.summary,
+                "local_final": True,
+                "text": local_text,
+                "local_model": "pending-action-manager",
             }
             return ToolExecutionResult(
-                tool_name=tool_name, ok=True, message=result["message"],
+                tool_name=tool_name, ok=True, message=local_text,
                 updated_parameters=[], raw_result=result,
             )
 
@@ -784,10 +883,13 @@ class ToolExecutor:
         if tool_name in {"add_allowed_service", "remove_allowed_service"}:
             service_name = str(tool_input.get("service_name", "")).strip()
             if not service_name or not all(c.isalnum() or c in "@_.-" for c in service_name):
-                result = {"success": False, "message": f"Nombre de servicio inválido: {service_name!r}"}
+                msg = f"Nombre de servicio inválido: {service_name!r}"
                 return ToolExecutionResult(
-                    tool_name=tool_name, ok=False, message=result["message"],
-                    updated_parameters=[], raw_result=result,
+                    tool_name=tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={
+                        "success": False, "message": msg,
+                        "local_final": True, "text": msg, "local_model": "tool-policy",
+                    },
                 )
             verb = "Añadir" if tool_name == "add_allowed_service" else "Quitar"
             action_key = tool_name
@@ -798,15 +900,22 @@ class ToolExecutor:
                 payload={"action": action_key, "service_name": service_name},
                 trace_id=trace_id,
             )
+            local_text = (
+                f"Acción pendiente creada: {created.summary}\n\n"
+                f"Confirma con: `{created.confirmation_phrase}`"
+            )
             result = {
                 "success": True,
-                "message": "Acción pendiente creada. Requiere confirmación explícita.",
+                "message": local_text,
                 "action_id": created.id,
                 "confirmation_phrase": created.confirmation_phrase,
                 "summary": created.summary,
+                "local_final": True,
+                "text": local_text,
+                "local_model": "pending-action-manager",
             }
             return ToolExecutionResult(
-                tool_name=tool_name, ok=True, message=result["message"],
+                tool_name=tool_name, ok=True, message=local_text,
                 updated_parameters=[], raw_result=result,
             )
 
@@ -827,18 +936,20 @@ class ToolExecutor:
                 trace_id=trace_id,
             )
 
-        result = {
-            "success": False,
-            "message": f"Herramienta no soportada: {tool_name}",
-            "updated_parameters": [],
-        }
-
+        msg = f"Herramienta no soportada: {tool_name}"
         return ToolExecutionResult(
             tool_name=tool_name,
             ok=False,
-            message=result["message"],
+            message=msg,
             updated_parameters=[],
-            raw_result=result,
+            raw_result={
+                "success": False,
+                "message": msg,
+                "updated_parameters": [],
+                "local_final": True,
+                "text": msg,
+                "local_model": "tool-policy",
+            },
         )
 
     def _update_personality_settings(
@@ -857,6 +968,9 @@ class ToolExecutor:
                 "message": "updates must be a non-empty list.",
                 "allowed_parameters": PERSONALITY_PARAMETERS,
                 "allowed_operations": list(ALLOWED_OPERATIONS),
+                "local_final": True,
+                "text": "No se pudo actualizar la personalidad: falta el campo updates.",
+                "local_model": "tool-policy",
             }
             return ToolExecutionResult(
                 tool_name="update_personality_settings",
@@ -935,6 +1049,9 @@ class ToolExecutor:
                 "message": "Claude pidió cambios, pero ninguno era válido.",
                 "updated_parameters": [],
                 "errors": errors,
+                "local_final": True,
+                "text": "No se pudo actualizar la personalidad: ningún cambio era válido.",
+                "local_model": "tool-policy",
             }
 
             return ToolExecutionResult(
@@ -1121,16 +1238,16 @@ class ToolExecutor:
 
         ALLOWED_GIT_ACTIONS = {"fetch", "pull_ff_only", "push", "create_branch", "checkout_branch", "commit"}
         if action not in ALLOWED_GIT_ACTIONS:
-            result = {
-                "success": False,
-                "message": f"Acción Git no soportada: {action}",
-            }
+            msg = f"Acción Git no soportada: {action}"
             return ToolExecutionResult(
                 tool_name="git_propose_action",
                 ok=False,
-                message=result["message"],
+                message=msg,
                 updated_parameters=[],
-                raw_result=result,
+                raw_result={
+                    "success": False, "message": msg,
+                    "local_final": True, "text": msg, "local_model": "tool-policy",
+                },
             )
 
         risk_level = "safe" if action == "fetch" else "critical"
@@ -1156,21 +1273,31 @@ class ToolExecutor:
             trace_id=trace_id,
         )
 
+        confirmation_hint = self._build_confirmation_hint(payload)
+        display_message = (
+            f"Acción pendiente creada: {created.summary}\n\n"
+            f"Confirma con: `{created.confirmation_phrase}`\n"
+            f"{confirmation_hint}"
+        )
+
         result = {
             "success": True,
-            "message": "Acción pendiente creada. Requiere confirmación explícita antes de ejecutarse.",
+            "message": display_message,
             "action_id": created.id,
             "risk_level": created.risk_level,
             "summary": created.summary,
             "confirmation_phrase": created.confirmation_phrase,
-            "confirmation_hint": self._build_confirmation_hint(payload),
+            "confirmation_hint": confirmation_hint,
             "payload": payload,
+            "local_final": True,
+            "text": display_message,
+            "local_model": "pending-action-manager",
         }
 
         return ToolExecutionResult(
             tool_name="git_propose_action",
             ok=True,
-            message=result["message"],
+            message=display_message,
             updated_parameters=[],
             raw_result=result,
         )
@@ -1220,29 +1347,29 @@ class ToolExecutor:
         allowed_services = {"sity-backend", "sity-frontend"}
 
         if action not in allowed_actions:
-            result = {
-                "success": False,
-                "message": f"Acción de sistema no soportada: {action}",
-            }
+            msg = f"Acción de sistema no soportada: {action}"
             return ToolExecutionResult(
                 tool_name="system_propose_action",
                 ok=False,
-                message=result["message"],
+                message=msg,
                 updated_parameters=[],
-                raw_result=result,
+                raw_result={
+                    "success": False, "message": msg,
+                    "local_final": True, "text": msg, "local_model": "tool-policy",
+                },
             )
 
         if service_name not in allowed_services:
-            result = {
-                "success": False,
-                "message": f"Servicio no permitido: {service_name}",
-            }
+            msg = f"Servicio no permitido: {service_name}"
             return ToolExecutionResult(
                 tool_name="system_propose_action",
                 ok=False,
-                message=result["message"],
+                message=msg,
                 updated_parameters=[],
-                raw_result=result,
+                raw_result={
+                    "success": False, "message": msg,
+                    "local_final": True, "text": msg, "local_model": "tool-policy",
+                },
             )
 
         if risk_level not in {"safe", "critical"}:
@@ -1261,20 +1388,28 @@ class ToolExecutor:
             trace_id=trace_id,
         )
 
+        local_text = (
+            f"Acción pendiente creada: {created.summary}\n\n"
+            f"Confirma con: `{created.confirmation_phrase}`"
+        )
+
         result = {
             "success": True,
-            "message": "Acción pendiente creada. Requiere confirmación explícita antes de ejecutarse.",
+            "message": local_text,
             "action_id": created.id,
             "risk_level": created.risk_level,
             "summary": created.summary,
             "confirmation_phrase": created.confirmation_phrase,
             "payload": payload,
+            "local_final": True,
+            "text": local_text,
+            "local_model": "pending-action-manager",
         }
 
         return ToolExecutionResult(
             tool_name="system_propose_action",
             ok=True,
-            message=result["message"],
+            message=local_text,
             updated_parameters=[],
             raw_result=result,
         )
@@ -1318,14 +1453,15 @@ class ToolExecutor:
             action = active[-1] if active else None
 
         if not action or action.status != "pending":
+            msg = "No encontré ninguna acción pendiente activa para cancelar."
             result = {
-                "ok": False,
-                "message": "No encontré ninguna acción pendiente activa para cancelar.",
+                "ok": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
             }
             return ToolExecutionResult(
                 tool_name="cancel_pending_action",
                 ok=False,
-                message=result["message"],
+                message=msg,
                 updated_parameters=[],
                 raw_result=result,
             )
@@ -1347,16 +1483,20 @@ class ToolExecutor:
             audit=True,
         )
 
+        cancel_text = f"Acción {action.id} cancelada."
         result = {
             "ok": True,
-            "message": f"Acción {action.id} cancelada.",
+            "message": cancel_text,
             "action_id": action.id,
             "summary": action.summary,
+            "local_final": True,
+            "text": cancel_text,
+            "local_model": "pending-action-manager",
         }
         return ToolExecutionResult(
             tool_name="cancel_pending_action",
             ok=True,
-            message=result["message"],
+            message=cancel_text,
             updated_parameters=[],
             raw_result=result,
         )
