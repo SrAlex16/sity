@@ -1,8 +1,20 @@
 import json
+import os
 import re
 from datetime import date
 from pathlib import Path
 from typing import Literal, Optional
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+SITY_DAILY_TOKEN_HARD_CAP = _env_bool("SITY_DAILY_TOKEN_HARD_CAP", False)
+SITY_LOCAL_ONLY = _env_bool("SITY_LOCAL_ONLY", False)
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -255,6 +267,44 @@ def _dedupe_tools(tools: list[dict]) -> list[dict]:
             seen.add(name)
             result.append(tool)
     return result
+
+
+def _local_budget_block_response(
+    *,
+    trace_id: str,
+    daily_used_tokens: int,
+    daily_budget_tokens: int,
+    warnings: list[str] | None = None,
+    model: str = "budget-guard",
+    text: str = (
+        "Presupuesto diario de IA agotado. No voy a llamar a Claude ahora. "
+        "Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA."
+    ),
+) -> "ChatMessageResponse":
+    daily_ratio = (
+        daily_used_tokens / daily_budget_tokens if daily_budget_tokens > 0 else 0.0
+    )
+    return ChatMessageResponse(
+        ok=True,
+        trace_id=trace_id,
+        text=text,
+        provider="local",
+        model=model,
+        fallback_used=False,
+        error_type=None,
+        usage=UsageSummary(
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            daily_used_tokens=daily_used_tokens,
+            daily_budget_tokens=daily_budget_tokens,
+            daily_ratio=round(daily_ratio, 4),
+        ),
+        warnings=warnings or [],
+        personality_updated=False,
+        updated_parameter=None,
+        updated_parameters=[],
+    )
 
 
 def _message_mentions_file_path(message: str) -> bool:
@@ -876,6 +926,41 @@ def _chat_message_inner(
             personality_updated=False,
             updated_parameter=None,
             updated_parameters=[],
+        )
+
+    _daily_used_pre = get_today_token_usage(session)
+
+    if SITY_LOCAL_ONLY:
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        _local_only_text = (
+            "Modo local-only activo. No voy a llamar a Claude. "
+            "Puedo ejecutar confirmaciones pendientes y respuestas locales, "
+            "pero no interpretar nuevas peticiones con IA."
+        )
+        save_chat_message(session, role="sity", text=_local_only_text, trace_id=trace_id)
+        return _local_budget_block_response(
+            trace_id=trace_id,
+            daily_used_tokens=_daily_used_pre,
+            daily_budget_tokens=daily_budget,
+            model="local-only-guard",
+            text=_local_only_text,
+        )
+
+    if (
+        SITY_DAILY_TOKEN_HARD_CAP
+        and daily_budget > 0
+        and _daily_used_pre >= daily_budget
+    ):
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        _cap_text = (
+            "Presupuesto diario de IA agotado. No voy a llamar a Claude ahora. "
+            "Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA."
+        )
+        save_chat_message(session, role="sity", text=_cap_text, trace_id=trace_id)
+        return _local_budget_block_response(
+            trace_id=trace_id,
+            daily_used_tokens=_daily_used_pre,
+            daily_budget_tokens=daily_budget,
         )
 
     history_limit = history_limit_for_message(request.message)

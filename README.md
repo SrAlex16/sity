@@ -72,6 +72,9 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - System Agent unified diff v0.7.
 - System Agent multi-file unified diff plan v0.8.
 - Local final responses/token saving v0.8.1.
+- Hard cap diario de tokens configurable por variable de entorno (`SITY_DAILY_TOKEN_HARD_CAP`).
+- Modo local-only configurable por variable de entorno (`SITY_LOCAL_ONLY`).
+- Script de tests locales de file_access sin llamadas a la API.
 - Override explícito `es una orden` para saltar negativas de personalidad.
 - Preferencia de castellano de España.
 - Workaround de audio RasPad 3 documentado.
@@ -89,6 +92,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Multiarchivo no es transaccional: cada archivo se confirma y aplica por separado.
 - No hay confirmación múltiple real tipo “aplica todas”.
 - No hay aún perfiles `home-safe` o `system-careful`.
+- El hard cap diario corta llamadas a Claude pero no resetea el contador: el contador se reinicia automáticamente al día siguiente.
 
 ---
 
@@ -1785,7 +1789,13 @@ ANTHROPIC_API_KEY
 OPENAI_API_KEY
 PC_AGENT_TOKEN
 SITY_ENV
+SITY_DAILY_TOKEN_HARD_CAP
+SITY_LOCAL_ONLY
 ```
+
+`SITY_DAILY_TOKEN_HARD_CAP=true` bloquea llamadas a Claude cuando se supera el presupuesto diario configurado. Responde localmente con `model: budget-guard`.
+
+`SITY_LOCAL_ONLY=true` bloquea todas las llamadas a Claude independientemente del presupuesto. Responde localmente con `model: local-only-guard`. Las confirmaciones de acciones pendientes siguen funcionando en ambos modos.
 
 No debe subirse a Git.
 
@@ -2037,6 +2047,12 @@ Ejecutar regresión repo-only:
 
 ```bash
 ./scripts/test_system_agent_repo.sh
+```
+
+Ejecutar tests locales de file_access (sin API):
+
+```bash
+./scripts/test_file_access_local.py
 ```
 
 Ver últimos eventos de audit manualmente:

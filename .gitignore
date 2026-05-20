@@ -22,3 +22,6 @@ coverage/
 captures/camera/*
 captures/audio/*
 !captures/.gitkeep
+
+config/local-file-access-*.txt
+config/no-deberia.txt
