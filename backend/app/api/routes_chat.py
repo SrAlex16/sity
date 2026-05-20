@@ -35,6 +35,7 @@ from app.cortex.tool_schemas import (
     ALL_TOOLS,
     BASE_TOOLSET,
     DEBUG_TOOLSET,
+    FILE_AGENT_TOOLSET,
     GIT_TOOLSET,
     PERSONALITY_TOOLSET,
     SENSES_TOOLSET,
@@ -256,6 +257,21 @@ def _dedupe_tools(tools: list[dict]) -> list[dict]:
     return result
 
 
+def _message_mentions_file_path(message: str) -> bool:
+    text = message.strip()
+    return (
+        "/" in text
+        or "./" in text
+        or "../" in text
+        or "config/" in text
+        or "backend/" in text
+        or "frontend/" in text
+        or "scripts/" in text
+        or "README.md" in text
+        or ".env" in text
+    )
+
+
 def _looks_like_conversation_only(message: str) -> bool:
     normalized = message.lower()
     action_terms = [
@@ -274,6 +290,9 @@ def _looks_like_conversation_only(message: str) -> bool:
 
 
 def select_toolset_for_message(message: str) -> list[dict]:
+    if _message_mentions_file_path(message):
+        return list(FILE_AGENT_TOOLSET)
+
     if _looks_like_conversation_only(message):
         return list(BASE_TOOLSET)
 
@@ -860,6 +879,8 @@ def _chat_message_inner(
         )
 
     history_limit = history_limit_for_message(request.message)
+    if _message_mentions_file_path(request.message):
+        history_limit = 2
 
     recent_history = [
         ChatHistoryItem(role=row.role, text=row.text)
