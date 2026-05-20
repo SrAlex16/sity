@@ -682,6 +682,41 @@ def _chat_message_inner(
 
     pending_action = confirmation_manager.find_pending_action_by_confirmation(request.message)
 
+    if (
+        not pending_action
+        and confirmation_manager.has_multiple_active_pending_actions()
+        and confirmation_manager.is_generic_confirmation_message(request.message)
+    ):
+        text = (
+            "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
+            "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
+        )
+
+        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
+
+        return ChatMessageResponse(
+            ok=True,
+            trace_id=trace_id,
+            text=text,
+            provider="local",
+            model="confirmation-manager",
+            fallback_used=False,
+            error_type=None,
+            usage=UsageSummary(
+                input_tokens=0,
+                output_tokens=0,
+                total_tokens=0,
+                daily_used_tokens=get_today_token_usage(session),
+                daily_budget_tokens=daily_budget,
+                daily_ratio=0.0,
+            ),
+            warnings=[],
+            personality_updated=False,
+            updated_parameter=None,
+            updated_parameters=[],
+        )
+
     if not pending_action:
         pending_action = confirmation_manager.find_pending_action_by_context(request.message)
 
@@ -891,41 +926,6 @@ def _chat_message_inner(
             updated_parameter=None,
             updated_parameters=[],
             artifacts=[_pending_artifact] if _pending_artifact else [],
-        )
-
-    if (
-        not pending_action
-        and confirmation_manager.has_multiple_active_pending_actions()
-        and confirmation_manager.is_generic_confirmation_message(request.message)
-    ):
-        text = (
-            "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
-            "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
-        )
-
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-        return ChatMessageResponse(
-            ok=True,
-            trace_id=trace_id,
-            text=text,
-            provider="local",
-            model="confirmation-manager",
-            fallback_used=False,
-            error_type=None,
-            usage=UsageSummary(
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                daily_used_tokens=get_today_token_usage(session),
-                daily_budget_tokens=daily_budget,
-                daily_ratio=0.0,
-            ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
         )
 
     _daily_used_pre = get_today_token_usage(session)
