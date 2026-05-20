@@ -809,6 +809,33 @@ APPLY_UNIFIED_DIFF_TOOL = {
     },
 }
 
+APPLY_MULTI_FILE_UNIFIED_DIFF_PLAN_TOOL = {
+    "name": "apply_multi_file_unified_diff_plan",
+    "description": (
+        "Analiza un unified diff que puede afectar a varios archivos permitidos y propone aplicarlo "
+        "como acciones separadas por archivo. No aplica cambios directamente. "
+        "Úsala SIEMPRE que el usuario proporcione un patch/unified diff multiarchivo. "
+        "Si cualquiera de los archivos del patch está fuera de allowlist, bloqueado, es sensible "
+        "o no valida correctamente, debes rechazar TODO el plan. "
+        "No propongas aplicar solo la parte permitida. "
+        "Cada archivo válido se convertirá en una acción pendiente independiente de apply_unified_diff."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "diff": {
+                "type": "string",
+                "description": (
+                    "Unified diff que puede contener cambios para varios archivos. "
+                    "Debe incluir cabeceras --- y +++ y hunks @@ para cada archivo."
+                ),
+            },
+        },
+        "required": ["diff"],
+        "additionalProperties": False,
+    },
+}
+
 FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL = {
     "name": "find_latest_reversible_file_change",
     "description": (
@@ -864,6 +891,7 @@ FILE_AGENT_TOOLSET = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     APPLY_UNIFIED_DIFF_TOOL,
+    APPLY_MULTI_FILE_UNIFIED_DIFF_PLAN_TOOL,
     LIST_FILE_CHANGES_TOOL,
     FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
     ROLLBACK_LATEST_FILE_CHANGE_TOOL,
@@ -882,6 +910,7 @@ BASE_TOOLSET: list[dict] = [
     WRITE_FILE_TOOL,
     APPLY_TEXT_PATCH_TOOL,
     APPLY_UNIFIED_DIFF_TOOL,
+    APPLY_MULTI_FILE_UNIFIED_DIFF_PLAN_TOOL,
     LIST_FILE_CHANGES_TOOL,
     FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
     ROLLBACK_LATEST_FILE_CHANGE_TOOL,
@@ -977,6 +1006,7 @@ ALL_TOOLS = [
     APPLY_TEXT_PATCH_TOOL,
     LIST_FILE_CHANGES_TOOL,
     APPLY_UNIFIED_DIFF_TOOL,
+    APPLY_MULTI_FILE_UNIFIED_DIFF_PLAN_TOOL,
     FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
     ROLLBACK_LATEST_FILE_CHANGE_TOOL,
     ROLLBACK_FILE_CHANGE_TOOL,

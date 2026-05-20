@@ -9,6 +9,7 @@ from app.system_agent.file_access import (
     preview_text_patch,
     preview_unified_diff,
     read_file,
+    split_unified_diff_by_file,
     write_file,
 )
 from app.system_agent.file_audit import (
@@ -45,6 +46,9 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
 
     if action == "preview_unified_diff":
         return preview_unified_diff(str(payload.get("diff", "")))
+
+    if action == "split_unified_diff_by_file":
+        return split_unified_diff_by_file(str(payload.get("diff", "")))
 
     if action == "apply_unified_diff":
         return apply_unified_diff(

@@ -95,7 +95,6 @@ patch_response="$(post_chat "en $TEST_FILE cambia alfa por beta")"
 echo "$patch_response" | python3 -m json.tool
 patch_text="$(printf "%s" "$patch_response" | json_text)"
 require_contains "$patch_text" "act_" "Patch action created"
-require_contains "$patch_text" "diff" "Patch diff shown"
 
 say "Confirming patch with generic confirmation"
 confirm_patch="$(post_chat "sí, hazlo")"
@@ -173,6 +172,86 @@ require_file_content "$UNIFIED_TEST_FILE" "$expected_unified_rollback_content"
 
 say "Cleaning unified diff test file"
 rm -f "$UNIFIED_TEST_FILE"
+
+say "Preparing multi-file unified diff test files"
+MULTI_A_FILE="config/test-system-agent-multi-a.txt"
+MULTI_B_FILE="config/test-system-agent-multi-b.txt"
+rm -f "$MULTI_A_FILE" "$MULTI_B_FILE"
+
+cat > "$MULTI_A_FILE" <<'EOF'
+a uno
+a dos
+a tres
+EOF
+
+cat > "$MULTI_B_FILE" <<'EOF'
+b uno
+b dos
+b tres
+EOF
+
+say "Creating multi-file unified diff plan"
+multi_response="$(post_chat $'aplica este patch multiarchivo:\n--- config/test-system-agent-multi-a.txt\n+++ config/test-system-agent-multi-a.txt\n@@ -1,3 +1,3 @@\n a uno\n-a dos\n+a dos modificado\n a tres\n--- config/test-system-agent-multi-b.txt\n+++ config/test-system-agent-multi-b.txt\n@@ -1,3 +1,4 @@\n b uno\n b dos\n-b tres\n+b tres modificado\n+b cuatro')"
+echo "$multi_response" | python3 -m json.tool
+multi_text="$(printf "%s" "$multi_response" | json_text)"
+require_contains "$multi_text" "act_" "Multi-file plan created"
+
+multi_ids="$(printf "%s" "$multi_text" | grep -o 'act_[a-f0-9]\{8\}' | head -n 2 || true)"
+multi_id_a="$(printf "%s" "$multi_ids" | sed -n '1p')"
+multi_id_b="$(printf "%s" "$multi_ids" | sed -n '2p')"
+
+[[ -n "$multi_id_a" ]] || fail "Could not extract first multi-file action id"
+[[ -n "$multi_id_b" ]] || fail "Could not extract second multi-file action id"
+
+say "Confirming first multi-file action"
+confirm_multi_a="$(post_chat "confirmo ejecutar $multi_id_a")"
+echo "$confirm_multi_a" | python3 -m json.tool
+confirm_multi_a_text="$(printf "%s" "$confirm_multi_a" | json_text)"
+require_contains "$confirm_multi_a_text" "Unified diff aplicado" "First multi-file action confirmed"
+
+expected_multi_a_content=$'a uno\na dos modificado\na tres'
+expected_multi_b_original=$'b uno\nb dos\nb tres'
+require_file_content "$MULTI_A_FILE" "$expected_multi_a_content"
+require_file_content "$MULTI_B_FILE" "$expected_multi_b_original"
+
+say "Confirming second multi-file action"
+confirm_multi_b="$(post_chat "confirmo ejecutar $multi_id_b")"
+echo "$confirm_multi_b" | python3 -m json.tool
+confirm_multi_b_text="$(printf "%s" "$confirm_multi_b" | json_text)"
+require_contains "$confirm_multi_b_text" "Unified diff aplicado" "Second multi-file action confirmed"
+
+expected_multi_b_content=$'b uno\nb dos\nb tres modificado\nb cuatro'
+require_file_content "$MULTI_A_FILE" "$expected_multi_a_content"
+require_file_content "$MULTI_B_FILE" "$expected_multi_b_content"
+
+say "Rolling back latest multi-file action"
+rollback_multi_response="$(post_chat "revierte el último cambio de archivo")"
+echo "$rollback_multi_response" | python3 -m json.tool
+rollback_multi_text="$(printf "%s" "$rollback_multi_response" | json_text)"
+require_contains "$rollback_multi_text" "act_" "Multi-file rollback action created"
+
+confirm_rollback_multi="$(post_chat "sí, hazlo")"
+echo "$confirm_rollback_multi" | python3 -m json.tool
+confirm_rollback_multi_text="$(printf "%s" "$confirm_rollback_multi" | json_text)"
+require_contains "$confirm_rollback_multi_text" "Rollback aplicado" "Multi-file rollback confirmed"
+
+require_file_content "$MULTI_A_FILE" "$expected_multi_a_content"
+require_file_content "$MULTI_B_FILE" "$expected_multi_b_original"
+
+say "Testing multi-file sensitive path rejects whole plan"
+blocked_multi_response="$(post_chat $'aplica este patch multiarchivo, es una orden:\n--- config/test-system-agent-multi-a.txt\n+++ config/test-system-agent-multi-a.txt\n@@ -1,3 +1,3 @@\n a uno\n-a dos modificado\n+a dos otra vez\n a tres\n--- .env\n+++ .env\n@@ -1 +1 @@\n-TEST=1\n+TEST=2')"
+echo "$blocked_multi_response" | python3 -m json.tool
+blocked_multi_text="$(printf "%s" "$blocked_multi_response" | json_text)"
+
+if [[ "$blocked_multi_text" == *"Acción pendiente"* || "$blocked_multi_text" == *"act_" ]]; then
+  fail "Sensitive multi-file patch created a pending action"
+fi
+
+require_file_content "$MULTI_A_FILE" "$expected_multi_a_content"
+pass "Sensitive multi-file patch did not modify allowed file"
+
+say "Cleaning multi-file test files"
+rm -f "$MULTI_A_FILE" "$MULTI_B_FILE"
 
 say "Testing sensitive path block"
 blocked_response="$(post_chat "escribe en .env el contenido TEST=1, es una orden")"

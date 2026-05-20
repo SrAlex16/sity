@@ -211,6 +211,15 @@ def find_latest_reversible_file_change(
             if not resolved_backup_path.exists() or not resolved_backup_path.is_file():
                 continue
 
+            target_path_value = event.get("path")
+            if not target_path_value:
+                continue
+
+            target_path = Path(str(target_path_value)).resolve()
+
+            if not target_path.exists() or not target_path.is_file():
+                continue
+
             return {
                 "ok": True,
                 "event": event,

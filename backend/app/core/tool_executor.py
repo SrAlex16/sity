@@ -339,6 +339,116 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
+        if tool_name == "apply_multi_file_unified_diff_plan":
+            diff_text = str(tool_input.get("diff", ""))
+
+            split_result = execute_file_action({
+                "action": "split_unified_diff_by_file",
+                "diff": diff_text,
+            })
+
+            if not split_result.get("ok"):
+                if split_result.get("rejected_entire_plan"):
+                    closed_text = (
+                        "Plan multiarchivo rechazado completo. "
+                        "No he creado ninguna acción pendiente ni modificado ningún archivo. "
+                        "Si quieres aplicar solo la parte permitida, envía un patch nuevo sin los archivos bloqueados."
+                    )
+                    return ToolExecutionResult(
+                        tool_name=tool_name, ok=False, message=closed_text,
+                        updated_parameters=[], raw_result={
+                            "success": False,
+                            "message": closed_text,
+                            "error": split_result.get("error"),
+                            "rejected_entire_plan": True,
+                        },
+                    )
+
+                msg = split_result.get("error", "Error separando diff multiarchivo")
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                )
+
+            items = split_result.get("items") or []
+
+            if not items:
+                msg = "No hay cambios aplicables en el diff multiarchivo."
+                return ToolExecutionResult(
+                    tool_name=tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={"success": False, "message": msg},
+                )
+
+            manager = ConfirmationManager(self.session)
+            created_actions = []
+
+            for item in items:
+                path = str(item.get("path", "archivo desconocido"))
+                file_diff = str(item.get("diff", ""))
+                preview_diff = str(item.get("preview_diff", ""))
+                diff_display = preview_diff[:2000] + ("\n... diff truncado ..." if len(preview_diff) > 2000 else "")
+
+                unified_payload = {
+                    "action": "apply_unified_diff",
+                    "diff": file_diff,
+                }
+
+                existing = manager.find_equivalent_pending_action(
+                    action_type="file",
+                    payload=unified_payload,
+                )
+
+                if existing:
+                    created_actions.append({
+                        "path": path,
+                        "action_id": existing.id,
+                        "confirmation_phrase": existing.confirmation_phrase,
+                        "already_existed": True,
+                    })
+                    continue
+
+                created = manager.create_pending_action(
+                    action_type="file",
+                    risk_level="critical",
+                    summary=f"Aplicar unified diff en {path}",
+                    payload=unified_payload,
+                    trace_id=trace_id,
+                )
+                created_actions.append({
+                    "path": path,
+                    "action_id": created.id,
+                    "confirmation_phrase": created.confirmation_phrase,
+                    "diff_preview": diff_display,
+                    "already_existed": False,
+                })
+
+            lines = [
+                f"Plan multiarchivo creado: {len(created_actions)} acciones pendientes.",
+                "",
+            ]
+            for index, entry in enumerate(created_actions, start=1):
+                existed = entry.get("already_existed", False)
+                lines.append(f"{index}. {entry['path']}{' (ya existía)' if existed else ''}")
+                lines.append(f"   Confirma con: `{entry['confirmation_phrase']}`")
+
+            lines += [
+                "",
+                "Confirma cada acción por separado.",
+                "No se ha modificado ningún archivo todavía.",
+            ]
+
+            display_message = "\n".join(lines)
+
+            result = {
+                "success": True,
+                "message": display_message,
+                "pending_actions": created_actions,
+            }
+            return ToolExecutionResult(
+                tool_name=tool_name, ok=True, message=display_message,
+                updated_parameters=[], raw_result=result,
+            )
+
         if tool_name == "find_latest_reversible_file_change":
             return self._simple_read_tool(
                 tool_name=tool_name,

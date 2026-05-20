@@ -631,3 +631,90 @@ def apply_unified_diff(
 
     except Exception as exc:
         return {"ok": False, "error": f"Error aplicando unified diff: {exc}"}
+
+
+def split_unified_diff_by_file(diff_text: str) -> dict[str, Any]:
+    try:
+        diff_bytes = diff_text.encode("utf-8")
+
+        if len(diff_bytes) > MAX_UNIFIED_DIFF_BYTES:
+            return {
+                "ok": False,
+                "error": f"Diff demasiado grande: {len(diff_bytes)} bytes",
+                "max_bytes": MAX_UNIFIED_DIFF_BYTES,
+            }
+
+        file_diffs: list[str] = []
+        current_lines: list[str] = []
+        seen_file_header = False
+
+        for line in diff_text.splitlines(keepends=True):
+            if line.startswith("--- ") and seen_file_header and current_lines:
+                file_diffs.append("".join(current_lines))
+                current_lines = [line]
+                continue
+
+            if line.startswith("--- "):
+                seen_file_header = True
+
+            if seen_file_header:
+                current_lines.append(line)
+
+        if current_lines:
+            file_diffs.append("".join(current_lines))
+
+        if not file_diffs:
+            return {
+                "ok": False,
+                "error": "No se encontraron diffs de archivo en el unified diff.",
+            }
+
+        items: list[dict[str, Any]] = []
+
+        for file_diff in file_diffs:
+            path_value = _extract_single_file_from_unified_diff(file_diff)
+
+            if not path_value:
+                return {
+                    "ok": False,
+                    "error": "No se pudo extraer una ruta de uno de los diffs.",
+                }
+
+            preview = preview_unified_diff(file_diff)
+
+            if not preview.get("ok"):
+                return {
+                    "ok": False,
+                    "error": (
+                        "Plan multiarchivo rechazado completo. "
+                        f"El archivo {path_value!r} no pasó validación: "
+                        f"{preview.get('error', 'Diff inválido')}. "
+                        "No se ha creado ninguna acción pendiente. "
+                        "No se debe aplicar parcialmente este patch. "
+                        "Si el usuario quiere aplicar solo los archivos permitidos, debe enviar un patch nuevo "
+                        "que excluya explícitamente los archivos bloqueados."
+                    ),
+                    "path": path_value,
+                    "rejected_entire_plan": True,
+                    "allow_partial_apply": False,
+                }
+
+            items.append({
+                "path": preview.get("path"),
+                "diff": file_diff,
+                "preview_diff": preview.get("diff", ""),
+                "bytes_after": preview.get("bytes_after"),
+                "diff_truncated": preview.get("diff_truncated", False),
+            })
+
+        return {
+            "ok": True,
+            "count": len(items),
+            "items": items,
+        }
+
+    except FileAccessError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    except Exception as exc:
+        return {"ok": False, "error": f"Error separando unified diff multiarchivo: {exc}"}
