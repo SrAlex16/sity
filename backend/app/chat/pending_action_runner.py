@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.actions.file_actions import execute_file_action
@@ -17,6 +16,7 @@ from app.actions.system_config_actions import (
     parse_payload as parse_system_config_payload,
 )
 from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
+from app.chat.artifacts import capture_artifact_from_path
 from app.chat.local_flow import LocalFlowContext
 from app.memory.models import PendingAction
 
@@ -25,29 +25,6 @@ from app.memory.models import PendingAction
 class _ActionResult:
     text: str
     artifact: ChatArtifact | None = None
-
-
-def _capture_artifact(path_value: str) -> ChatArtifact | None:
-    if not path_value:
-        return None
-    path = Path(path_value)
-    filename = path.name
-    suffix = path.suffix.lower()
-    if suffix in {".jpg", ".jpeg", ".png"}:
-        return ChatArtifact(
-            type="image",
-            url=f"/captures/camera/{filename}",
-            filename=filename,
-            mime_type="image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png",
-        )
-    if suffix in {".wav", ".mp3", ".ogg", ".m4a"}:
-        return ChatArtifact(
-            type="audio",
-            url=f"/captures/audio/{filename}",
-            filename=filename,
-            mime_type="audio/wav" if suffix == ".wav" else None,
-        )
-    return None
 
 
 class PendingActionRunner:
@@ -219,7 +196,7 @@ class PendingActionRunner:
             result = execute_sense_action(payload)
             if result.get("ok"):
                 self.cm.mark_executed(action, trace_id)
-                artifact = _capture_artifact(str(result.get("path", "")))
+                artifact = capture_artifact_from_path(str(result.get("path", "")))
                 return _ActionResult(text=f"Listo. {action.summary}.", artifact=artifact)
             else:
                 error = result.get("stderr") or result.get("stdout") or "Error desconocido"

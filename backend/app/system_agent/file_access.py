@@ -1,25 +1,17 @@
 from __future__ import annotations
 
 import difflib
-import os
 import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from app.core.runtime_config import get_runtime_config
 from app.system_agent.file_audit import append_file_audit_event, create_file_backup
 
 
-def _find_project_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "config").is_dir() and (parent / "backend").is_dir():
-            return parent
-    return current.parents[3]
-
-
-PROJECT_ROOT = Path(os.getenv("SITY_PROJECT_ROOT", "")).expanduser().resolve() if os.getenv("SITY_PROJECT_ROOT") else _find_project_root()
+PROJECT_ROOT = get_runtime_config().project_root
 CONFIG_PATH = PROJECT_ROOT / "config" / "system_access.yaml"
 
 MAX_READ_BYTES = 120_000

@@ -1,9 +1,7 @@
 import json
-import os
-import re
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 
 from fastapi import APIRouter, Depends
@@ -14,6 +12,7 @@ from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse, 
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
+from app.chat.artifacts import capture_artifact_from_path
 from app.chat.claude_request_builder import ClaudeRequestBuilder, max_tokens_for_verbosity
 from app.chat.response_guard import ResponseGuard
 from app.chat.toolset_selector import (
@@ -27,18 +26,7 @@ from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
 from app.core.runtime_config import get_runtime_config
 from app.core.realtime_events import publish_event_sync
-from app.actions.git_actions import execute_git_action
-from app.actions.git_actions import parse_payload as parse_git_payload
-from app.actions.sense_actions import execute_sense_action
-from app.actions.sense_actions import parse_payload as parse_sense_payload
-from app.actions.system_actions import execute_system_action
-from app.actions.system_actions import parse_payload as parse_system_payload
 from app.system.system_reader import load_system_access_config
-from app.actions.system_config_actions import (
-    execute_system_config_action,
-    list_allowed_services,
-    parse_payload as parse_system_config_payload,
-)
 from app.core.micro_reactions import generate_micro_reaction
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
@@ -46,7 +34,7 @@ from app.core.refusal_tracker import get_last_refusal, set_last_refusal
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.schemas import AIRequest
-from app.actions.file_actions import execute_file_action
+
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
 from app.settings.config_loader import load_default_config
@@ -226,31 +214,6 @@ def is_service_action_allowed(service_name: str) -> bool:
 
 
 
-def capture_artifact_from_path(path_value: str) -> ChatArtifact | None:
-    if not path_value:
-        return None
-
-    path = Path(path_value)
-    filename = path.name
-    suffix = path.suffix.lower()
-
-    if suffix in {".jpg", ".jpeg", ".png"}:
-        return ChatArtifact(
-            type="image",
-            url=f"/captures/camera/{filename}",
-            filename=filename,
-            mime_type="image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png",
-        )
-
-    if suffix in {".wav", ".mp3", ".ogg", ".m4a"}:
-        return ChatArtifact(
-            type="audio",
-            url=f"/captures/audio/{filename}",
-            filename=filename,
-            mime_type="audio/wav" if suffix == ".wav" else None,
-        )
-
-    return None
 
 
 COMPACT_RESPONSE_PROMPT = (
@@ -420,6 +383,7 @@ def _chat_message_inner(
     tool_results_for_claude: list[dict] = []
     updated_parameters: list[str] = []
     response_artifacts: list[ChatArtifact] = []
+    planner_response = None
 
     _builder = ClaudeRequestBuilder()
 
@@ -475,7 +439,7 @@ def _chat_message_inner(
 
         response = planner_response
 
-    if selected_tools and planner_response.ok and planner_response.tool_calls:
+    if planner_response is not None and planner_response.ok and planner_response.tool_calls:
         first_tool = planner_response.tool_calls[0]
 
         if first_tool.name == "no_action_required":

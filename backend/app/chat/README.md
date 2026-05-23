@@ -59,6 +59,8 @@ Debe responder localmente pidiendo confirmación exacta, no caer a Claude.
 
 No debe ejecutar acciones, llamar a Claude, crear acciones nuevas ni hacer tool selection.
 
+Limitación conocida: si el usuario responde solo `sí`, `vale`, `ok` o similar y no hay pending actions activas, Sity responde localmente que no hay nada que confirmar. Esto ahorra tokens y evita confirmaciones ambiguas, pero puede sentirse raro en conversación normal.
+
 ---
 
 ### `pending_action_runner.py`
@@ -177,6 +179,16 @@ Confirma con: confirmo ejecutar git_fetch_checkout_readme
 Si el modelo genera una frase `confirmo ejecutar ...` sin un ID real `act_[0-9a-f]{8}`, la respuesta se bloquea y se sustituye por un mensaje local seguro.
 
 No debe ejecutar acciones, crear pending actions ni decidir si una tool es válida. Solo valida texto final.
+
+---
+
+### `artifacts.py`
+
+Helper compartido para construir `ChatArtifact` desde una ruta de archivo.
+
+Usado por `routes_chat.py` y `pending_action_runner.py`.
+
+No debe ejecutar acciones, guardar mensajes ni llamar a Claude.
 
 ---
 
@@ -340,6 +352,7 @@ toolset_selector.py
 prompt_context.py
 claude_request_builder.py
 response_guard.py
+artifacts.py
 ```
 
 Pendiente de extraer, pero no todavía:

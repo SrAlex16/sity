@@ -1,22 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
-def _find_project_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "config").is_dir() and (parent / "backend").is_dir():
-            return parent
-    return current.parents[3]
+from app.core.runtime_config import get_runtime_config
 
 
-PROJECT_ROOT = Path(os.getenv("SITY_PROJECT_ROOT", "")).expanduser().resolve() if os.getenv("SITY_PROJECT_ROOT") else _find_project_root()
+PROJECT_ROOT = get_runtime_config().project_root
 DATA_DIR = PROJECT_ROOT / "data"
 BACKUP_DIR = DATA_DIR / "file_backups"
 AUDIT_LOG_PATH = DATA_DIR / "file_audit.jsonl"
