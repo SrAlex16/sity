@@ -12,6 +12,7 @@ from sqlmodel import Session, func, select
 
 from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
+from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.pending_action_runner import PendingActionRunner
 
 from app.actions.confirmation_manager import ConfirmationManager
@@ -237,43 +238,6 @@ def _dedupe_tools(tools: list[dict]) -> list[dict]:
             result.append(tool)
     return result
 
-
-def _local_budget_block_response(
-    *,
-    trace_id: str,
-    daily_used_tokens: int,
-    daily_budget_tokens: int,
-    warnings: list[str] | None = None,
-    model: str = "budget-guard",
-    text: str = (
-        "Presupuesto diario de IA agotado. No voy a llamar a Claude ahora. "
-        "Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA."
-    ),
-) -> "ChatMessageResponse":
-    daily_ratio = (
-        daily_used_tokens / daily_budget_tokens if daily_budget_tokens > 0 else 0.0
-    )
-    return ChatMessageResponse(
-        ok=True,
-        trace_id=trace_id,
-        text=text,
-        provider="local",
-        model=model,
-        fallback_used=False,
-        error_type=None,
-        usage=UsageSummary(
-            input_tokens=0,
-            output_tokens=0,
-            total_tokens=0,
-            daily_used_tokens=daily_used_tokens,
-            daily_budget_tokens=daily_budget_tokens,
-            daily_ratio=round(daily_ratio, 4),
-        ),
-        warnings=warnings or [],
-        personality_updated=False,
-        updated_parameter=None,
-        updated_parameters=[],
-    )
 
 
 def _message_mentions_file_path(message: str) -> bool:
@@ -610,49 +574,39 @@ def _chat_message_inner(
             ),
         )
 
-    _daily_used_pre = get_today_token_usage(session)
-    _runtime = get_runtime_config()
+    runtime_config = get_runtime_config()
 
-    if _runtime.local_only:
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        _local_only_text = (
-            "Modo local-only activo. No voy a llamar a Claude. "
-            "Puedo ejecutar confirmaciones pendientes y respuestas locales, "
-            "pero no interpretar nuevas peticiones con IA."
-        )
-        save_chat_message(session, role="sity", text=_local_only_text, trace_id=trace_id)
-        return _local_budget_block_response(
+    budget_response = ChatBudgetGuard().try_handle(
+        BudgetGuardContext(
+            session=session,
             trace_id=trace_id,
-            daily_used_tokens=_daily_used_pre,
-            daily_budget_tokens=daily_budget,
-            model="local-only-guard",
-            text=_local_only_text,
+            message=request.message,
+            daily_budget=daily_budget,
+            runtime_config=runtime_config,
+            save_message=save_chat_message,
+            get_usage=get_today_token_usage,
         )
-
-    if (
-        _runtime.daily_token_hard_cap
-        and daily_budget > 0
-        and _daily_used_pre >= daily_budget
-    ):
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        _cap_text = (
-            "Presupuesto diario de IA agotado. No voy a llamar a Claude ahora. "
-            "Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA."
-        )
-        save_chat_message(session, role="sity", text=_cap_text, trace_id=trace_id)
-        return _local_budget_block_response(
-            trace_id=trace_id,
-            daily_used_tokens=_daily_used_pre,
-            daily_budget_tokens=daily_budget,
-        )
+    )
+    if budget_response:
+        return budget_response
 
     history_limit = history_limit_for_message(request.message)
     if _message_mentions_file_path(request.message):
         history_limit = 2
 
+    def _is_operational_guard(text: str) -> bool:
+        normalized = (text or "").strip().lower()
+        return (
+            normalized.startswith("modo local-only activo.")
+            or normalized.startswith("presupuesto diario de ia agotado.")
+            or normalized.startswith("presupuesto diario de ia agotado")
+            or normalized.startswith('no hay ninguna acción pendiente activa. el "sí')
+        )
+
     recent_history = [
         ChatHistoryItem(role=row.role, text=row.text)
         for row in get_recent_db_messages(session, limit=history_limit)
+        if not (row.role == "sity" and _is_operational_guard(row.text))
     ]
 
     def render_history(items: list[ChatHistoryItem]) -> str:
@@ -674,6 +628,7 @@ def _chat_message_inner(
     planner_history = [
         ChatHistoryItem(role=row.role, text=row.text)
         for row in get_recent_db_messages(session, limit=4)
+        if not (row.role == "sity" and _is_operational_guard(row.text))
     ]
     planner_user_message = with_history(render_history(planner_history))
 
