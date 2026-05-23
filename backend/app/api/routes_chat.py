@@ -1,6 +1,5 @@
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 
@@ -26,7 +25,6 @@ from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
 from app.core.runtime_config import get_runtime_config
 from app.core.realtime_events import publish_event_sync
-from app.system.system_reader import load_system_access_config
 from app.core.micro_reactions import generate_micro_reaction
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
@@ -168,58 +166,12 @@ def get_today_token_usage(session: Session) -> int:
 
 
 
-def build_pending_action_response(created, payload: dict) -> str:
-    action = payload.get("action")
-    branch = payload.get("branch")
-
-    lines = [
-        f"Acción pendiente creada: {created.summary}",
-        "",
-        "Para ejecutarla, confirma con:",
-        f"`{created.confirmation_phrase}`",
-    ]
-
-    if action == "checkout_branch" and branch:
-        lines.extend(["", f'También puedes decir: "sí, vuelve a {branch}".'])
-
-    elif action == "create_branch" and branch:
-        lines.extend(["", f'También puedes decir: "sí, crea la rama {branch}".'])
-
-    elif action == "pull_ff_only":
-        lines.extend(["", 'También puedes decir: "sí, haz pull".'])
-
-    elif action == "push":
-        lines.extend(["", 'También puedes decir: "sí, haz push".'])
-
-    elif action == "fetch":
-        lines.extend(["", 'También puedes decir: "sí, haz fetch".'])
-
-    elif action == "commit":
-        lines.extend(["", 'También puedes decir: "sí, haz commit".'])
-
-    lines.extend(["", f"Riesgo: {created.risk_level}."])
-
-    return "\n".join(lines)
-
-
-def is_service_action_allowed(service_name: str) -> bool:
-    config = load_system_access_config()
-    allowed = (
-        config.get("system_access", {})
-        .get("safe_actions", {})
-        .get("allowed_services", [])
-    )
-    return service_name in allowed
 
 
 
 
 
 
-COMPACT_RESPONSE_PROMPT = (
-    "Eres Sity. Responde directamente a la pregunta del usuario usando el resultado de la herramienta. "
-    "Sé breve y clara. No inventes datos. No menciones detalles internos salvo que el usuario los pida."
-)
 
 
 
