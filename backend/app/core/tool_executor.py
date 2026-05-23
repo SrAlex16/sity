@@ -15,7 +15,6 @@ from app.actions.sense_actions import execute_sense_action
 from app.core.realtime_events import publish_event_sync
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
-from app.system.git_reader import git_branches, git_log, git_remotes, git_status
 from app.system.system_reader import (
     list_allowed_directory,
     read_disk_usage,
@@ -802,37 +801,6 @@ class ToolExecutor:
             return self._cancel_pending_action(
                 tool_input=tool_input,
                 trace_id=trace_id,
-            )
-
-        if tool_name == "git_read_status":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=git_status(str(tool_input.get("repo_path", ""))),
-            )
-
-        if tool_name == "git_read_log":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=git_log(
-                    str(tool_input.get("repo_path", "")),
-                    int(tool_input.get("limit", 10)),
-                ),
-            )
-
-        if tool_name == "git_read_branches":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=git_branches(str(tool_input.get("repo_path", ""))),
-            )
-
-        if tool_name == "git_read_remotes":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=git_remotes(str(tool_input.get("repo_path", ""))),
             )
 
         if tool_name == "git_propose_action":
