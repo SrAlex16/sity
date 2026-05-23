@@ -1,0 +1,358 @@
+# backend/app/chat
+
+Este paquete contiene piezas del flujo de chat extraídas desde `routes_chat.py`.
+
+El objetivo es reducir responsabilidades del router HTTP sin cambiar comportamiento. Cada módulo debe tener límites claros y evitar efectos secundarios innecesarios.
+
+## Regla general
+
+`routes_chat.py` debe tender a ser una capa fina:
+
+```text
+HTTP request
+  -> orchestration
+  -> response
+```
+
+La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
+
+## Módulos actuales
+
+### `budget_guard.py`
+
+Gestiona guards locales antes de llamar al proveedor IA:
+
+```text
+SITY_LOCAL_ONLY
+SITY_DAILY_TOKEN_HARD_CAP
+respuesta local-only-guard
+respuesta budget-guard
+```
+
+Debe ejecutarse después de `local_flow` y `pending_action_runner`, porque las confirmaciones locales y acciones pendientes ya confirmadas deben seguir funcionando aunque local-only esté activo o el presupuesto esté agotado.
+
+No debe llamar a Claude, ejecutar tools, crear pending actions ni interpretar lenguaje natural.
+
+---
+
+### `local_flow.py`
+
+Gestiona respuestas locales previas a cualquier llamada IA:
+
+```text
+IDs de acción inexistentes
+acciones ya ejecutadas
+acciones expiradas
+acciones fallidas
+confirmación genérica sin pending actions
+ambigüedad con varias pending actions
+confirmaciones mal formateadas con ID válido
+```
+
+Ejemplo protegido:
+
+```text
+confirmo ejecutar act_12345678`
+```
+
+Debe responder localmente pidiendo confirmación exacta, no caer a Claude.
+
+No debe ejecutar acciones, llamar a Claude, crear acciones nuevas ni hacer tool selection.
+
+---
+
+### `pending_action_runner.py`
+
+Ejecuta acciones pendientes ya confirmadas:
+
+```text
+ejecución de pending actions
+mark_executed
+mark_failed
+respuesta local tras ejecución
+artifacts asociados si aplica
+```
+
+Solo debe recibir acciones ya resueltas por `ConfirmationManager`.
+
+No debe interpretar lenguaje natural, elegir qué acción confirmar desde texto ambiguo, crear nuevas acciones ni llamar a Claude.
+
+---
+
+### `toolset_selector.py`
+
+Hace routing técnico de toolsets y ajustes de contexto:
+
+```text
+selección de toolset
+history_limit
+detección conservadora de señales técnicas
+```
+
+Esto no es NLU de acciones.
+
+Permitido:
+
+```text
+detectar rutas explícitas
+detectar señales Git
+detectar señales de debug
+detectar señales de archivos
+ajustar history_limit
+mostrar menos tools al modelo
+```
+
+No permitido:
+
+```text
+crear acciones desde regex
+ejecutar acciones desde texto libre
+sustituir tool calling por lógica backend
+extraer intención de negocio para modificar el sistema
+```
+
+Principio:
+
+```text
+Heurísticas técnicas sí.
+NLU de acciones en backend no.
+```
+
+---
+
+### `prompt_context.py`
+
+Construye contexto textual para el proveedor IA:
+
+```text
+recent_history
+planner_history
+renderizado de historial
+user_message_with_history
+planner_user_message
+filtrado de mensajes operativos
+```
+
+Debe filtrar mensajes operativos como:
+
+```text
+Modo local-only activo...
+Presupuesto diario de IA agotado...
+```
+
+Esos mensajes describen estados runtime antiguos. Si se mandan a Claude como historial normal, el modelo puede creer que siguen vigentes.
+
+No debe llamar a Claude, ejecutar tools, guardar mensajes ni decidir seguridad.
+
+---
+
+### `claude_request_builder.py`
+
+Construye requests al provider:
+
+```text
+AIRequest
+system prompt
+user message final
+tools seleccionadas
+max_tokens
+```
+
+Debe ser side-effect-free.
+
+No debe llamar al proveedor, ejecutar tools, guardar mensajes, crear `ChatMessageResponse` ni hacer validación de seguridad.
+
+---
+
+### `response_guard.py`
+
+Valida texto final generado por el modelo antes de guardarlo o devolverlo.
+
+Protege contra respuestas engañosas como:
+
+```text
+Confirma con: confirmo ejecutar git_fetch_checkout_readme
+```
+
+Si el modelo genera una frase `confirmo ejecutar ...` sin un ID real `act_[0-9a-f]{8}`, la respuesta se bloquea y se sustituye por un mensaje local seguro.
+
+No debe ejecutar acciones, crear pending actions ni decidir si una tool es válida. Solo valida texto final.
+
+---
+
+## Orden actual del flujo local
+
+El orden recomendado en `routes_chat.py` es:
+
+```text
+1. Crear ConfirmationManager.
+2. ChatLocalFlow.
+3. Resolver pending_action exacta/contextual.
+4. PendingActionRunner si hay acción confirmada.
+5. ChatBudgetGuard.
+6. ToolsetSelector.
+7. PromptContextBuilder.
+8. ClaudeRequestBuilder.
+9. Provider/tool loop.
+10. ResponseGuard sobre texto final.
+11. Guardar y devolver respuesta final.
+```
+
+Este orden es importante.
+
+Especialmente:
+
+```text
+ChatLocalFlow y PendingActionRunner deben ir antes de ChatBudgetGuard.
+```
+
+Así Sity puede ejecutar confirmaciones locales aunque no pueda llamar a Claude.
+
+---
+
+## Zona delicada: provider/tool loop
+
+El tool loop todavía vive en `routes_chat.py`.
+
+No extraerlo de forma mecánica.
+
+Motivos:
+
+```text
+tiene varios early returns
+acumula tokens del planner y segunda llamada
+recarga personalidad dentro del loop
+maneja local_final
+maneja micro-reactions de sense
+acumula artifacts
+mezcla respuesta final y tool results
+```
+
+Extraerlo requiere diseño de interfaz, no solo mover código.
+
+Antes de refactorizarlo, crear tests de integración que cubran:
+
+```text
+tool call normal
+tool call con local_final
+write_file pending action
+apply_text_patch pending action
+sense tool con artifact
+micro-reaction
+tool error
+segunda llamada a Claude
+uso de tokens acumulado
+respuesta final con artifacts
+response_guard bloqueando confirmaciones falsas
+```
+
+Hasta entonces:
+
+```text
+No tocar tool loop salvo cambios pequeños y muy controlados.
+```
+
+---
+
+## Próximos módulos probables
+
+### `provider_call_runner.py`
+
+Futuro módulo para encapsular llamadas al proveedor IA.
+
+Debe esperar a tener tests de integración.
+
+### `tool_loop_runner.py`
+
+Futuro módulo para el bucle de tools.
+
+Debe esperar a tener tests de integración.
+
+### `chat_orchestrator.py`
+
+Objetivo final:
+
+```python
+orchestrator = ChatOrchestrator(session=session)
+return await orchestrator.handle(request)
+```
+
+---
+
+## Principio de seguridad
+
+Ningún módulo de chat debe saltarse estas reglas:
+
+```text
+El modelo interpreta.
+El backend valida.
+El usuario confirma.
+El backend ejecuta.
+```
+
+La personalidad puede cambiar el tono, pero no la política.
+
+La frase `es una orden` puede eliminar negativa teatral, pero no puede saltarse:
+
+```text
+allowlists
+confirmaciones
+rutas bloqueadas
+hard cap
+local-only
+políticas de riesgo
+```
+
+---
+
+## Checklist antes de tocar este paquete
+
+Antes de modificar módulos de `backend/app/chat/`:
+
+```text
+1. Confirmar qué responsabilidad tiene el cambio.
+2. Evitar efectos secundarios nuevos.
+3. Mantener confirmaciones locales antes de budget guards.
+4. No mover tool loop sin tests de integración.
+5. Ejecutar compileall.
+6. Ejecutar tests locales.
+```
+
+Comandos mínimos:
+
+```bash
+backend/.venv/bin/python -m compileall backend/app
+backend/.venv/bin/python scripts/test_confirmation_manager_local.py
+backend/.venv/bin/python scripts/test_file_access_local.py
+```
+
+---
+
+## Estado del refactor
+
+Extraído desde `routes_chat.py`:
+
+```text
+budget_guard.py
+local_flow.py
+pending_action_runner.py
+toolset_selector.py
+prompt_context.py
+claude_request_builder.py
+response_guard.py
+```
+
+Pendiente de extraer, pero no todavía:
+
+```text
+provider/tool loop
+final response assembly completo
+provider abstraction
+ChatOrchestrator
+```
+
+Motivo:
+
+```text
+El tool loop necesita tests de integración antes de moverlo.
+```
