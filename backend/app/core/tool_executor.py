@@ -15,13 +15,6 @@ from app.actions.sense_actions import execute_sense_action
 from app.core.realtime_events import publish_event_sync
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
-from app.system.system_reader import (
-    list_allowed_directory,
-    read_disk_usage,
-    read_service_status,
-    read_system_status,
-    read_top_processes,
-)
 from app.senses.audio import list_audio_devices
 from app.senses.camera import list_camera_devices
 
@@ -689,53 +682,6 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=local_text,
                 updated_parameters=[], raw_result=result,
-            )
-
-        if tool_name == "read_recent_debug_events":
-            return self._read_recent_debug_events(
-                tool_input=tool_input,
-                trace_id=trace_id,
-            )
-
-        if tool_name == "read_trace_events":
-            return self._read_trace_events(
-                tool_input=tool_input,
-                trace_id=trace_id,
-            )
-
-        if tool_name == "read_system_status":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=read_system_status(),
-            )
-
-        if tool_name == "read_disk_usage":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=read_disk_usage(str(tool_input.get("path", "/"))),
-            )
-
-        if tool_name == "read_processes":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=read_top_processes(int(tool_input.get("limit", 10))),
-            )
-
-        if tool_name == "read_service_status":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=read_service_status(str(tool_input.get("service_name", ""))),
-            )
-
-        if tool_name == "list_allowed_directory":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=list_allowed_directory(str(tool_input.get("path", ""))),
             )
 
         if tool_name == "list_camera_devices":
