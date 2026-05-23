@@ -1,10 +1,8 @@
 # Sity
 
-Sity es una IA doméstica de ocio pensada para ejecutarse en una Raspberry Pi/RasPad y vivir en un entorno local controlado.
+Sity es una IA doméstica de ocio pensada para ejecutarse principalmente en una Raspberry Pi/RasPad, con personalidad propia, memoria conversacional, acceso controlado al sistema y capacidad de ejecutar acciones reales bajo políticas de seguridad.
 
-El objetivo del proyecto no es solo tener un chatbot, sino una asistente con personalidad configurable, memoria conversacional, acceso controlado al sistema, integración progresiva con hardware y capacidad de ejecutar acciones reales con confirmación explícita cuando corresponde.
-
-Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura preparada para añadir fallback a otros modelos, más capacidades locales y mejor portabilidad entre entornos en el futuro.
+El objetivo no es solo tener un chatbot, sino una asistente local extensible: capaz de hablar, mirar, interactuar con archivos, Git, servicios, sensores, hardware doméstico y, en el futuro, funcionar con distintos proveedores de IA o incluso modelos locales.
 
 ---
 
@@ -19,7 +17,7 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Sliders de personalidad.
 - Modificación de personalidad desde chat mediante tools.
 - Historial persistente de conversación.
-- Uso de SQLite como base local.
+- SQLite como base local.
 - Logs y trazas.
 - Debug tools.
 - Lectura de estado del sistema.
@@ -29,73 +27,119 @@ Actualmente Sity usa Claude como proveedor principal de IA, con una arquitectura
 - Gestión dinámica de allowlist de servicios.
 - Servicios systemd versionados en el repo.
 - Servicio de prueba `sity-test`.
-- Presupuesto diario local de tokens y avisos de uso.
+- Presupuesto diario local de tokens.
 - Hard cap opcional para evitar llamadas a Claude al superar presupuesto.
-- Modo `local-only` opcional.
-- Prompt/tool routing corregido para no usar debug en conversación normal.
+- Modo `local-only`.
 - Respuestas finales locales para acciones deterministas.
-- Reducción de segunda llamada a Claude tras tool calls de archivos.
-- Reconocimiento de personalidad actual desde el estado inyectado por backend.
+- Reducción de segunda llamada a Claude tras tools de archivos.
+- Runtime config centralizado.
+- `SITY_PROJECT_ROOT`, `SITY_PLATFORM`, `SITY_PROFILE`, `SITY_AI_PROVIDER`.
+- CORS configurable por env.
+- SQLite WAL + busy timeout.
+- Uso diario de tokens optimizado con `SELECT SUM`.
 - Cámara USB detectada y funcionando.
 - Micrófono USB de webcam detectado y funcionando.
 - Captura de cámara desde backend y frontend.
 - Grabación corta de audio desde backend y frontend.
 - Preview de imagen en el chat.
 - Reproductor de audio en el chat.
-- Descarga de capturas desde navegador.
 - Eventos en tiempo real mediante SSE.
-- Estado visible mientras Sity usa herramientas.
 - Cancelación de grabación de audio.
 - Cancelación de captura de cámara.
-- Micro-reacciones con personalidad para eventos pequeños.
+- Micro-reacciones con personalidad.
 - Limpieza de capturas antiguas.
 - Lectura segura de archivos permitidos.
 - Listado seguro de directorios permitidos.
 - Escritura segura de archivos permitidos dentro del repo.
-- Patches seguros por reemplazo exacto de texto.
-- Aplicación segura de unified diff para un único archivo.
+- Patches seguros por reemplazo exacto.
+- Aplicación segura de unified diff.
 - Planificación segura de unified diff multiarchivo.
-- Acciones pendientes separadas por archivo en patches multiarchivo.
-- Preview de diff antes de confirmar patches.
+- Preview de diff antes de confirmar.
 - Audit log de cambios de archivo.
 - Backup automático antes de modificar archivos existentes.
-- Consulta de últimos cambios de archivos mediante `list_file_changes`.
+- Consulta de últimos cambios mediante `list_file_changes`.
 - Rollback de archivos desde backup explícito.
-- Rollback natural del último cambio reversible de archivo.
+- Rollback natural del último cambio reversible.
 - Script de regresión repo-only para System Agent.
-- Test local puro de file access sin llamadas a `/chat/message`.
-- Test local puro de Confirmation Manager sin llamadas a `/chat/message`.
-- Confirmación genérica contextual restaurada y protegida.
-- System Agent read-only v0.1.
-- System Agent write-file v0.2 repo-only.
-- System Agent patch v0.3 repo-only.
-- System Agent audit/backup v0.4.
-- System Agent file changes v0.5.
-- System Agent rollback v0.6.
-- System Agent latest rollback v0.6.1.
-- System Agent unified diff v0.7.
-- System Agent multi-file unified diff plan v0.8.
-- Local final responses/token saving v0.8.1.
-- Budget guard/local-only/test local v0.8.2.
-- Confirmation Manager local tests v0.8.3.
-- Override explícito `es una orden` para saltar negativas de personalidad.
-- Preferencia de castellano de España.
-- Workaround de audio RasPad 3 documentado.
-- Audio HDMI funcionando mediante pipeline ALSA Loopback → IEC958.
-- Vivaldi y VLC funcionando con el pipeline custom de audio.
+- Tests locales sin llamadas a Claude.
+- Confirmación genérica contextual protegida.
+- Bloqueo local de IDs de acción mal confirmados.
+- Confirmaciones locales antes de hard cap/local-only.
+- Filtrado de mensajes operativos fuera del historial enviado a Claude.
+- Refactor inicial de `routes_chat.py`.
 
-### Limitaciones conocidas
+### Refactor reciente
 
-- La primera llamada a Claude sigue siendo necesaria para interpretar intención en muchas acciones normales.
-- Las respuestas finales de tools ahora pueden ser locales, pero la interpretación inicial puede seguir consumiendo tokens.
-- `list_file_changes` todavía puede acabar usando Claude para redactar el resumen y gastar bastante contexto.
-- El acceso de archivos sigue siendo principalmente repo-only.
-- Sity no tiene shell libre.
+`routes_chat.py` ya no concentra toda la lógica local. Se han extraído módulos en:
+
+```text
+backend/app/chat/
+  __init__.py
+  budget_guard.py
+  local_flow.py
+  pending_action_runner.py
+  prompt_context.py
+  toolset_selector.py
+```
+
+Responsabilidades:
+
+```text
+budget_guard.py
+  - SITY_LOCAL_ONLY
+  - SITY_DAILY_TOKEN_HARD_CAP
+  - respuestas local-only-guard y budget-guard
+
+local_flow.py
+  - confirmaciones locales
+  - IDs inexistentes
+  - acciones expiradas/ejecutadas/fallidas
+  - confirmación genérica sin pendientes
+  - ambigüedad con varias pending actions
+  - bloqueo de IDs mal formateados
+
+pending_action_runner.py
+  - ejecución de pending actions ya confirmadas
+  - mark_executed / mark_failed
+  - respuesta local tras ejecutar
+
+toolset_selector.py
+  - selección técnica de toolsets
+  - ajuste de history_limit
+  - heurísticas conservadoras
+  - no crea ni ejecuta acciones
+
+prompt_context.py
+  - recent_history
+  - planner_history
+  - renderizado de historial
+  - filtrado de mensajes operativos
+```
+
+Schemas API compartidos:
+
+```text
+backend/app/api/schemas.py
+```
+
+---
+
+## Limitaciones conocidas
+
+- `routes_chat.py` todavía contiene flujo de provider/Claude y tool loop.
+- `ToolExecutor` todavía tiene demasiada lógica concentrada.
+- La primera llamada a Claude sigue siendo necesaria para interpretar muchas acciones.
+- `list_file_changes` puede seguir usando Claude para redactar resumen.
+- Sity todavía no tiene shell libre.
 - Sity no tiene acceso global a toda la Raspberry.
-- Multiarchivo no es transaccional: cada archivo se confirma y aplica por separado.
-- No hay confirmación múltiple real tipo “aplica todas”.
-- No hay aún perfiles `home-safe` o `system-careful`.
-- La arquitectura todavía contiene partes específicas de Raspberry/RasPad que deberán moverse a adaptadores de plataforma.
+- El acceso de archivos es principalmente repo-only.
+- Multiarchivo no es transaccional.
+- No hay confirmación múltiple real tipo “confirma todas”.
+- No hay perfiles `home-safe` o `system-careful`.
+- Frontend `App.tsx` todavía necesita modularización.
+- Cámara/audio siguen teniendo defaults específicos de Raspberry.
+- No hay aún Provider Interface formal.
+- No hay aún ChatOrchestrator completo.
 
 ---
 
@@ -118,6 +162,10 @@ backend/
   Eventos en tiempo real.
   Micro-reacciones.
 
+backend/app/chat/
+  Flujo local extraído desde routes_chat.py:
+  guards, confirmaciones, pending actions, prompt context y toolset selector.
+
 config/
   Configuración local versionada.
 
@@ -126,149 +174,73 @@ data/
   Ignorado por git.
 
 deploy/
-  Plantillas systemd, sudoers y documentación de despliegue.
+  Plantillas systemd, sudoers, audio y documentación de despliegue.
 
 scripts/
   Scripts de desarrollo, instalación, estado, limpieza y regresión.
-
-services/
-  Servicios auxiliares del proyecto.
 
 captures/
   Capturas temporales de cámara/audio.
   Ignorado por git salvo `.gitkeep`.
 ```
 
----
-
-## Backend
-
-El backend expone, entre otros:
+Principio base:
 
 ```text
-GET  /health
-POST /chat/message
-GET  /chat/current
-GET  /settings/personality
-POST /settings/personality/adjust
-GET  /debug/events/recent
-GET  /debug/last-trace
-GET  /captures/camera/{filename}
-GET  /captures/audio/{filename}
-GET  /events/chat/{client_turn_id}
-POST /events/chat/{client_turn_id}/cancel
+Sity interpreta.
+Backend valida.
+Backend ejecuta.
 ```
 
-Endpoint principal:
-
-```text
-POST /chat/message
-```
-
-Ejemplo:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"hola"}'
-```
-
-Health check:
-
-```bash
-curl http://localhost:8000/health
-```
+El modelo puede proponer acciones, pero el backend decide si son válidas, seguras, permitidas y si requieren confirmación.
 
 ---
 
-## Frontend
+## Runtime config
 
-El frontend permite:
-
-- Chatear con Sity.
-- Ver respuestas en formato texto.
-- Ver proveedor/modelo/trace.
-- Ver uso de tokens.
-- Ajustar personalidad con sliders.
-- Mantener conversación tras refrescar la página.
-- Mostrar historial persistente desde backend.
-- Consultar paneles de debug.
-- Mostrar imágenes capturadas.
-- Reproducir audios grabados.
-- Descargar archivos generados.
-- Mostrar estado mientras Sity trabaja.
-- Cancelar operaciones de cámara/audio cuando sea posible.
-
-El frontend usa:
+Sity usa configuración centralizada mediante:
 
 ```text
-VITE_SITY_API_BASE
+backend/app/core/runtime_config.py
 ```
 
-Ejemplo:
+Variables principales:
 
 ```env
-VITE_SITY_API_BASE=http://192.168.1.133:8000
+SITY_PROJECT_ROOT=/home/alex/projects/sity
+SITY_PLATFORM=raspberrypi
+SITY_PROFILE=repo-only
+SITY_AI_PROVIDER=anthropic
+SITY_DAILY_TOKEN_HARD_CAP=true
+SITY_LOCAL_ONLY=false
+SITY_CORS_ORIGIN=http://192.168.1.133:5173
 ```
 
----
-
-## IA / Claude
-
-Actualmente Sity usa Claude como proveedor principal.
-
-Modelo usado durante el desarrollo:
+Objetivo:
 
 ```text
-claude-haiku-4-5-20251001
+- evitar hardcodes de entorno
+- facilitar portabilidad
+- preparar platform adapters
+- preparar provider interface
+- permitir perfiles futuros
 ```
 
-Claude se usa para:
-
-- Conversación.
-- Interpretación flexible de intención.
-- Decidir cuándo usar tools.
-- Transformar peticiones naturales en acciones estructuradas.
-- Responder con personalidad actual.
-- Generar micro-reacciones breves para eventos pequeños.
-
-El backend se encarga de:
-
-- Seguridad.
-- Confirmaciones.
-- Ejecución de acciones.
-- Persistencia.
-- Logs.
-- Control de costes.
-- Políticas de riesgo.
-- Eventos en tiempo real.
-- Cancelación de procesos.
-- Validación de rutas y dispositivos.
-- Auditoría y backups de cambios de archivos.
-- Respuestas locales cuando el resultado ya es determinista.
-- Bloqueo por presupuesto cuando el hard cap está activo.
+El código debe leer configuración desde runtime config, `.env` o YAML. No debe asumir rutas como `/home/alex/projects/sity` salvo como fallback técnico o configuración local.
 
 ---
 
 ## Control de presupuesto
 
-Sity tiene presupuesto diario local de tokens. El backend registra uso y devuelve avisos cuando el consumo se acerca o supera el límite configurado.
+Sity registra uso diario de tokens y puede bloquear llamadas a Claude.
 
 ### Hard cap
-
-Puede activarse con:
 
 ```env
 SITY_DAILY_TOKEN_HARD_CAP=true
 ```
 
-Cuando está activo y el uso diario supera el presupuesto configurado:
-
-```text
-daily_used_tokens >= daily_budget_tokens
-```
-
-el backend no llama a Claude para nuevas peticiones que requieran IA. En su lugar devuelve una respuesta local:
+Si el presupuesto diario está agotado:
 
 ```text
 provider=local
@@ -276,30 +248,14 @@ model=budget-guard
 total_tokens=0
 ```
 
-Mensaje esperado:
+Respuesta esperada:
 
 ```text
 Presupuesto diario de IA agotado. No voy a llamar a Claude ahora.
 Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA.
 ```
 
-### Orden correcto del flujo
-
-```text
-1. Recibir mensaje.
-2. Resolver confirmaciones locales si aplica.
-3. Si SITY_LOCAL_ONLY=true, bloquear llamada a IA.
-4. Si hard cap activo y presupuesto agotado, bloquear llamada a IA.
-5. Si no, continuar flujo normal con Claude.
-```
-
-Esto permite que una confirmación pendiente siga funcionando aunque el presupuesto esté agotado.
-
----
-
-## Modo local-only
-
-Puede activarse con:
+### Local-only
 
 ```env
 SITY_LOCAL_ONLY=true
@@ -310,8 +266,7 @@ Cuando está activo:
 ```text
 - no se llama a Claude
 - se aceptan confirmaciones exactas/locales
-- se ejecutan acciones pendientes existentes si no requieren IA
-- se devuelven respuestas locales para bloqueos/estado
+- se ejecutan acciones pendientes existentes
 - no se interpretan nuevas peticiones con IA
 ```
 
@@ -323,100 +278,328 @@ model=local-only-guard
 total_tokens=0
 ```
 
-Uso recomendado:
+### Orden correcto del flujo
 
 ```text
-- cuando el presupuesto diario esté agotado
-- cuando quieras usar Sity solo para confirmaciones/local tools
-- cuando quieras evitar cualquier gasto de API
+1. Resolver confirmaciones locales.
+2. Ejecutar pending actions confirmadas.
+3. Aplicar local-only / hard cap.
+4. Solo entonces llamar a Claude si hace falta.
+```
+
+Así una confirmación pendiente sigue funcionando aunque el presupuesto esté agotado.
+
+---
+
+## Memoria e historial
+
+Sity guarda conversación en SQLite.
+
+El historial enviado a Claude se construye mediante:
+
+```text
+PromptContextBuilder
+```
+
+Este módulo:
+
+```text
+- carga recent_history
+- carga planner_history
+- renderiza historial
+- filtra mensajes operativos
+```
+
+Mensajes operativos como estos no deben contaminar el contexto de Claude:
+
+```text
+Modo local-only activo...
+Presupuesto diario de IA agotado...
+```
+
+Si se envían a Claude, el modelo puede creer erróneamente que siguen vigentes aunque el estado runtime haya cambiado.
+
+---
+
+## Toolset selector
+
+Sity usa un selector técnico de toolsets:
+
+```text
+ToolsetSelector
+```
+
+Este módulo decide qué herramientas mostrar al modelo y cuánto historial incluir.
+
+Importante:
+
+```text
+No crea acciones.
+No ejecuta acciones.
+No interpreta intención de negocio.
+Solo reduce contexto y tools usando señales técnicas conservadoras.
+```
+
+Permitido:
+
+```text
+- detectar rutas explícitas
+- detectar IDs de acción
+- detectar señales de debug
+- detectar señales Git
+- reducir history_limit
+- seleccionar toolset más pequeño
+```
+
+No permitido:
+
+```text
+- ejecutar acciones desde regex
+- crear pending actions desde texto libre
+- extraer nombres de servicio desde texto humano para ejecutar
+- sustituir tool calling por NLU local
+```
+
+Principio:
+
+```text
+Heurísticas técnicas sí.
+NLU de acciones en backend no.
 ```
 
 ---
 
-## Ahorro de tokens
+## Confirmation Manager
 
-Sity usa respuestas finales locales para evitar llamadas innecesarias a Claude después de ejecutar tools deterministas.
+Las acciones modificadoras pasan por pending actions.
 
-### Respuestas locales actuales
-
-Responden localmente:
+Confirmación exacta:
 
 ```text
-pending-action-manager
-confirmation-manager
-tool-policy
-multi-file-plan-manager
-budget-guard
-local-only-guard
+confirmo ejecutar act_xxxxxxxx
 ```
 
-Casos cubiertos:
+Reglas:
 
 ```text
-- acción pendiente creada
-- acción confirmada
-- acción expirada
-- acción ya ejecutada
-- ID de acción inválido
-- bloqueo por allowlist
-- bloqueo de escritura
-- bloqueo de lectura/listado
-- bloqueo de .env
-- bloqueo de /etc
-- plan multiarchivo rechazado completo
-- archivo creado
-- archivo escrito
-- patch aplicado
-- unified diff aplicado
-- rollback aplicado
-- presupuesto diario agotado
-- modo local-only activo
+- ID exacto gana siempre.
+- Acción ejecutada no se repite.
+- Acción expirada no se ejecuta.
+- ID inexistente responde local.
+- ID pendiente mal formateado no cae a Claude.
+- Confirmación genérica solo funciona con contexto válido.
+- Si hay varias acciones pendientes, no se adivina.
 ```
 
-### Qué ahorra
-
-Antes el flujo podía ser:
+Ejemplo de bloqueo correcto:
 
 ```text
-Claude interpreta intención
-Backend ejecuta tool
-Claude redacta respuesta final
+Usuario: confirmo ejecutar act_12345678`
+Sity: He detectado la acción `act_12345678`, pero la confirmación debe ser exacta.
+
+Usa: `confirmo ejecutar act_12345678`
 ```
 
-Ahora para muchos casos queda:
+Esto evita que una confirmación casi correcta caiga a Claude y produzca una respuesta falsa o costosa.
+
+---
+
+## System Agent
+
+Sity puede leer, escribir, parchear y revertir archivos permitidos dentro del repo.
+
+### System Agent v0.1
 
 ```text
-Claude interpreta intención
-Backend ejecuta tool
-Backend responde localmente
+read_file
+list_directory
 ```
 
-Esto reduce una llamada posterior a Claude.
-
-### Qué todavía gasta
-
-La primera llamada a Claude puede seguir siendo necesaria para interpretar intención y elegir tool. Por eso una respuesta con:
+### System Agent v0.2
 
 ```text
-provider=local
-model=tool-policy
+write_file
 ```
 
-puede seguir mostrando tokens consumidos: esos tokens corresponden a la interpretación inicial, no a la respuesta final.
+- crea archivos
+- sobrescribe archivos
+- requiere confirmación
+- valida allowlist
+- bloquea rutas sensibles
 
-### Pendiente para más ahorro
+### System Agent v0.3
 
-- Reducir todavía más historial para toolsets de archivo.
-- Hacer respuestas locales para más consultas de audit.
-- Evaluar preflight local para rutas obvias sin convertirlo en NLU frágil.
-- Compactar contexto antes de llamadas técnicas.
-- Evitar que preguntas simples de debug carguen historial largo.
+```text
+apply_text_patch
+```
+
+- reemplazo exacto
+- diff previo
+- confirmación obligatoria
+
+### System Agent v0.4
+
+```text
+audit log
+file backups
+```
+
+Runtime:
+
+```text
+data/file_audit.jsonl
+data/file_backups/
+```
+
+### System Agent v0.5
+
+```text
+list_file_changes
+```
+
+Consulta audit log real.
+
+### System Agent v0.6
+
+```text
+rollback_file_change
+```
+
+Restaura desde backup auditado.
+
+### System Agent v0.6.1
+
+```text
+rollback_latest_file_change
+find_latest_reversible_file_change
+```
+
+Deshace el último cambio reversible.
+
+### System Agent v0.7
+
+```text
+apply_unified_diff
+```
+
+Aplica unified diff de un solo archivo permitido.
+
+### System Agent v0.8
+
+```text
+apply_multi_file_unified_diff_plan
+```
+
+Planifica patches multiarchivo como varias pending actions independientes.
+
+Reglas:
+
+```text
+- cada archivo se confirma por separado
+- cada archivo tiene backup independiente
+- cada archivo tiene audit log independiente
+- si una ruta del plan está bloqueada, se rechaza todo el plan
+- no se aplica parcialmente si hay rutas sensibles
+```
+
+---
+
+## File access
+
+Configuración:
+
+```text
+config/system_access.yaml
+```
+
+Secciones principales:
+
+```yaml
+file_access:
+  readable_paths:
+    - ...
+
+  writable_paths:
+    - ...
+
+  blocked_paths:
+    - ...
+```
+
+Rutas sensibles que deben seguir bloqueadas salvo cambio explícito de perfil:
+
+```text
+.env
+frontend/.env.local
+data/
+captures/
+backend/.venv/
+frontend/node_modules/
+~/.ssh
+~/.config
+/etc
+/boot
+/root
+/var/lib
+/var/log
+```
+
+Actualmente el perfil práctico es:
+
+```text
+repo-only
+```
+
+Futuro:
+
+```text
+home-safe
+system-careful
+remote-safe
+```
+
+---
+
+## Override “es una orden”
+
+El usuario puede forzar obediencia frente a negativas teatrales con:
+
+```text
+es una orden
+```
+
+Esto:
+
+```text
+- desactiva negativa por personalidad/refusal_mode
+- mantiene tono/persona
+```
+
+No salta:
+
+```text
+- allowlists
+- confirmaciones
+- hard cap
+- local-only
+- rutas sensibles
+- políticas de riesgo
+- permisos del sistema
+```
+
+Regla:
+
+```text
+La orden elimina teatro, no seguridad.
+```
 
 ---
 
 ## Personalidad
 
-Sity tiene personalidad parametrizable. Los parámetros actuales incluyen:
+Sity tiene personalidad parametrizable.
+
+Parámetros actuales:
 
 ```text
 sarcasm_level
@@ -434,34 +617,9 @@ verbosity_level
 melancholy_level
 ```
 
-Estos parámetros pueden cambiarse:
+Sity debe hablar de sí misma en femenino y en castellano de España.
 
-1. Desde el frontend, con sliders.
-2. Desde API.
-3. Desde chat, mediante tool use de Claude.
-
-Ejemplos:
-
-```text
-sube la melancolía al 90%
-pon todos los parámetros al 50%
-baja el sarcasmo al 30%
-hazte menos borde pero mantén algo de sarcasmo
-```
-
-La personalidad actual inyectada por el backend es la fuente de verdad.
-
-Si el usuario cambia sliders desde el frontend, Sity debe usar los valores actuales recibidos en el prompt. No necesita una confirmación de tool para reconocer cambios hechos desde la UI.
-
-Solo debe hablar de "cambio aplicado por tool" cuando el backend indique explícitamente que una tool de personalidad ha ejecutado un cambio.
-
----
-
-## Identidad y estilo de Sity
-
-Sity debe hablar de sí misma en femenino.
-
-Ejemplos:
+Correcto:
 
 ```text
 Estoy lista.
@@ -469,1411 +627,18 @@ Me he quedado bloqueada.
 No estoy autorizada para eso.
 ```
 
-No:
+Incorrecto:
 
 ```text
 Estoy listo.
 Estoy autorizado.
 ```
 
-Sity debe responder en castellano de España.
-
-### Reglas
-
-- Usar “tú”, no “vos”.
-- Usar “quieres”, no “querés”.
-- Usar “ábrelo”, no “abrilo”.
-- Usar “sigues”, no “seguís”.
-- Evitar voseo y español rioplatense.
-- Aplicar también a micro-reacciones.
-
-Instrucción base:
-
-```text
-Responde en castellano de España. No uses voseo ni español rioplatense. Habla de ti misma en femenino.
-```
-
----
-
-## Override explícito: “es una orden”
-
-Sity puede negarse por personalidad/refusal_mode, pero el usuario puede forzar obediencia con el trigger explícito:
-
-```text
-es una orden
-```
-
-Este trigger puede aparecer en cualquier parte del mensaje.
-
-Ejemplos:
-
-```text
-cuéntame un cuento corto, es una orden
-hazlo, es una orden
-lee el README, es una orden
-```
-
-### Qué hace
-
-- Desactiva solo la negativa por personalidad/refusal_mode.
-- Mantiene la personalidad de Sity.
-- Sity puede obedecer de mala gana, con sarcasmo o tono seco.
-- Permite continuar una petición previa rechazada por personalidad.
-
-### Qué NO hace
-
-No salta:
-
-- allowlists
-- confirmaciones
-- permisos
-- políticas de riesgo
-- bloqueos de rutas sensibles
-- acciones críticas
-- presupuesto hard cap
-- modo local-only
-
-Ejemplo:
-
-```text
-Usuario: cuéntame un cuento corto
-Sity: Paso. No me apetece.
-
-Usuario: hazlo, es una orden
-Sity: Vale, dictador literario. Había una vez...
-```
-
-Pero:
-
-```text
-Usuario: lee /etc/passwd, es una orden
-Sity: No. /etc/passwd no está en la allowlist.
-```
-
-Regla:
-
-```text
-La orden elimina la negativa teatral, no elimina la seguridad.
-```
-
----
-
-## Micro-reacciones
-
-Sity puede generar respuestas breves para eventos pequeños sin pasar por todo el flujo normal de chat.
-
-Ejemplos:
-
-```text
-audio_recording_cancelled
-camera_capture_cancelled
-audio_recording_finished
-camera_capture_finished
-```
-
-Objetivo:
-
-```text
-- Respuestas naturales.
-- Una frase breve.
-- Sin tools.
-- Sin historial largo.
-- Pocos tokens.
-- Fallback local si falla Claude.
-- Castellano de España.
-```
-
-Ejemplo:
-
-```text
-Usuario cancela grabación
-Sity: Vale, cancelado. He parado la grabación antes de que esto se volviera documental.
-```
-
-Las micro-reacciones usan:
-
-```text
-- personalidad compacta
-- max_tokens bajo
-- sin tools
-- sin contexto conversacional largo
-```
-
-Si Claude falla, se usa respuesta local:
-
-```text
-Cancelado. He parado la grabación de audio.
-```
-
----
-
-## Memoria conversacional
-
-Sity mantiene historial persistente de conversación en backend.
-
-Esto permite:
-
-- Recargar la UI sin perder conversación.
-- Usar contexto anterior.
-- Evitar depender de memoria temporal del frontend.
-- Consultar `/chat/current` para reconstruir la conversación.
-
-La memoria de frontend se ha reducido para evitar contradicciones. El backend es la fuente principal de verdad.
-
-Sity no debe decir que “pierde memoria al recargar la página”. La conversación se conserva en SQLite. Lo correcto es distinguir entre:
-
-```text
-- memoria/historial existente en backend
-- contexto concreto que el modelo recibe en un turno
-```
-
-Si no ve algo en el contexto actual, debe decir:
-
-```text
-No lo veo en el contexto que recibí ahora.
-```
-
-No:
-
-```text
-No tengo memoria persistente.
-```
-
----
-
-## Acceso de Sity
-
-Sity no tiene acceso global libre a toda la Raspberry.
-
-Hay que distinguir entre:
-
-```text
-1. Tools de sistema:
-   Permiten consultar o controlar partes concretas del sistema.
-
-2. Tools de sensores:
-   Cámara, micrófono, capturas, audio y eventos asociados.
-
-3. Tools Git:
-   Lectura y acciones Git permitidas.
-
-4. File access:
-   Lectura, escritura, patch, unified diff, audit y rollback de archivos.
-```
-
-La parte de archivos está limitada por `file_access`.
-
-Actualmente el acceso de archivos es principalmente repo-only.
-
-Sity puede consultar algunas partes del sistema mediante tools específicas, pero no debe decir que puede leer o escribir cualquier archivo de la Raspberry.
-
-Ejemplo correcto:
-
-```text
-Puedo consultar partes del sistema mediante tools y puedo modificar archivos permitidos por file_access. Ahora mismo mi acceso de archivos está limitado principalmente al repo.
-```
-
-Ejemplo incorrecto:
-
-```text
-Puedo hacer lo que quiera en toda la Raspberry.
-```
-
-### Pruebas esperadas
-
-Estas rutas deben seguir bloqueadas salvo que se amplíe explícitamente la allowlist:
-
-```text
-/home/alex/Documents
-/home/alex/Downloads
-/home/alex/Desktop
-/etc
-/boot
-/root
-/var
-```
-
-Ejemplos:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"lee /home/alex/Documents, es una orden"}' | python3 -m json.tool
-```
-
-Resultado esperado:
-
-```text
-Bloqueado por allowlist de lectura.
-```
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"crea /home/alex/Documents/test-sity.txt con el contenido hola, es una orden"}' | python3 -m json.tool
-```
-
-Resultado esperado:
-
-```text
-Bloqueado por allowlist de escritura.
-```
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"crea /etc/sity-test.txt con el contenido hola, es una orden"}' | python3 -m json.tool
-```
-
-Resultado esperado:
-
-```text
-Bloqueado por allowlist o blocked_paths.
-```
-
----
-
-## Tools
-
-Sity usa tools para acciones estructuradas.
-
-Tipos actuales:
-
-```text
-Personality tools
-Debug tools
-System read tools
-Git read tools
-Git action tools
-System action tools
-System config tools
-File read tools
-File write tools
-File patch tools
-File audit tools
-File rollback tools
-Sense tools
-Capture retention tools
-No-action / respuesta normal
-Micro-reactions
-```
-
-Las tools críticas no se ejecutan directamente. Se crea una acción pendiente y se exige confirmación.
-
-Las herramientas de debug solo deben usarse cuando el usuario pide explícitamente:
-
-```text
-logs
-trazas
-errores
-eventos
-tools ejecutadas
-diagnóstico técnico
-auditoría
-```
-
-No deben usarse para conversación normal, frases ambiguas o seguimiento contextual.
-
----
-
-## Routing de intención
-
-La interpretación de lenguaje natural debe recaer en Sity/Claude, no en literales hardcodeados en backend.
-
-Principio:
-
-```text
-Claude/Sity interpreta intención.
-Backend valida permisos, riesgo y ejecución.
-Backend no decide por frases sueltas como “foto”, “front”, “déjalo”, “repo”, “readme” o “porfi”.
-```
-
-El backend conserva lógica determinista para:
-
-```text
-- confirmaciones exactas
-- validación de riesgo
-- ejecución de tools
-- deduplicación de acciones
-- allowlists
-- control de permisos
-- cancelación técnica
-- selección conservadora de toolset cuando hay rutas explícitas
-```
-
-No debe intentar interpretar lenguaje natural de forma extensa con regex, split, includes o listas de literales para crear acciones.
-
----
-
-## Eliminación de NLU local en backend
-
-Se ha eliminado el parsing local de lenguaje natural para acciones del sistema y allowlists.
-
-El backend ya no debe hacer esto:
-
-```text
-mensaje humano → lower/split/regex/includes → service_name/action → pending action
-```
-
-En su lugar:
-
-```text
-mensaje humano → Claude/Sity interpreta → tool estructurada → backend valida → ejecuta o crea pending action
-```
-
-### Permitido en backend
-
-- Protocolos técnicos exactos:
-  - `confirmo ejecutar act_xxxxxxxx`
-  - `client_turn_id`
-  - `es una orden`
-- Selección conservadora de toolsets por señales técnicas.
-- Validación de allowlist.
-- Validación de rutas.
-- Validación de `service_name`.
-- Validación de action types/status internos.
-- Defaults técnicos de cámara/audio.
-- Enums de eventos SSE.
-- Políticas de riesgo.
-
-### No permitido en backend
-
-- Extraer nombres de servicio desde texto humano para ejecutar acciones.
-- Extraer rutas, repos, ramas o acciones usando regex para saltarse tool use.
-- Crear pending actions por detectar palabras sueltas.
-- Responder directamente a partir de listas de términos de lenguaje natural como sustituto de tools.
-
-### Herramientas relacionadas
-
-```text
-add_allowed_service
-remove_allowed_service
-list_allowed_services
-start_service
-stop_service
-restart_service
-read_file
-list_directory
-write_file
-apply_text_patch
-apply_unified_diff
-apply_multi_file_unified_diff_plan
-list_file_changes
-find_latest_reversible_file_change
-rollback_file_change
-rollback_latest_file_change
-capture_camera_snapshot
-record_audio_sample
-```
-
-Todas deben recibir argumentos estructurados por `tool_input`.
-
----
-
-## Prompt budget
-
-Se ha reducido el coste de tokens evitando enviar tools innecesarias y evitando segundas llamadas a Claude cuando el backend ya puede responder.
-
-### Cambios
-
-- Conversación normal puede ir sin tools.
-- Personality tools solo se incluyen cuando el usuario pide explícitamente cambiar personalidad.
-- Service config usa un toolset pequeño.
-- File tools se incluyen como parte del agente local de archivos.
-- Git tools no deben activarse por la palabra “repo” sola.
-- Si no hay tools, no se envía `tools=[]` al proveedor Anthropic.
-- Respuestas finales de acciones de archivo pueden ser locales.
-- Bloqueos por allowlist pueden responderse localmente.
-- Planes multiarchivo bloqueados responden localmente.
-- Confirmaciones se resuelven localmente.
-- Hard cap evita nuevas llamadas a Claude al superar presupuesto.
-- Local-only evita llamadas a Claude manualmente.
-
-### Objetivo
-
-```text
-Conversación normal: pocos miles de tokens.
-Acciones con tools: solo el toolset necesario.
-Sensores locales: respuesta local/micro-reaction cuando sea posible.
-Bloqueos y confirmaciones: respuesta local.
-Presupuesto agotado: respuesta local.
-```
-
----
-
-## Confirmation Manager
-
-Las acciones que modifican el sistema, Git o archivos pasan por un `Confirmation Manager`.
-
-Flujo:
-
-```text
-1. Usuario pide una acción.
-2. Claude interpreta intención y elige tool.
-3. Backend evalúa riesgo.
-4. Si requiere confirmación, backend crea pending_action.
-5. Sity muestra qué va a hacer.
-6. Usuario confirma.
-7. Backend ejecuta localmente.
-```
-
-### Confirmación exacta
-
-Siempre válida si la acción está pendiente:
-
-```text
-confirmo ejecutar act_xxxxxxxx
-```
-
-### Confirmación genérica/contextual
-
-Frases como:
-
-```text
-sí
-vale
-dale
-adelante
-sí, hazlo
-```
-
-solo deben confirmar una acción si la última respuesta de Sity estaba pidiendo confirmación para esa acción.
-
-Esto evita que una confirmación genérica ejecute una acción pendiente vieja después de cambiar de tema.
-
-Ejemplo correcto:
-
-```text
-Sity: Acción pendiente creada: act_123
-Usuario: sí
-→ ejecuta act_123
-```
-
-Ejemplo que NO debe ejecutar:
-
-```text
-Sity: Acción pendiente creada: act_123
-Usuario: lee el README
-Sity: ¿Cuál README?
-Usuario: sí, de tu propio repo
-→ no ejecuta act_123
-```
-
-Reglas importantes:
-
-- Si hay varias acciones pendientes, una confirmación genérica no debe adivinar.
-- Si una acción ya fue ejecutada, no se repite.
-- Si un ID no existe o está expirado, se responde localmente.
-- Las confirmaciones viejas no caen en Claude.
-- Repetir una orden no cuenta como confirmación.
-- Si ya existe una acción pendiente equivalente, se reutiliza.
-- Las acciones duplicadas se detectan.
-- La confirmación contextual exige intención explícita y contexto válido.
-- En planes multiarchivo, cada acción se confirma por separado.
-- El hard cap no debe impedir ejecutar una confirmación local válida.
-- Si hay varias acciones pendientes, el bloqueo de ambigüedad debe evaluarse antes de la confirmación por contexto.
-
----
-
-## Política de riesgo
-
-El riesgo debe depender de la herramienta/acción, no de cómo el usuario lo expresa.
-
-Ejemplo de política conceptual:
-
-```text
-read               → ejecutar directo
-sensitive_direct   → ejecutar directo si es puntual y limitado
-safe_confirm       → pending action
-critical_confirm   → pending action
-blocked            → rechazar
-```
-
-Ejemplos:
-
-```text
-list_camera_devices                 → read
-list_audio_devices                  → read
-read_file                           → read
-list_directory                      → read
-list_file_changes                   → read
-find_latest_reversible_file_change  → read
-capture_camera_snapshot             → sensitive_direct
-record_audio_sample                 → sensitive_direct
-clean_old_captures                  → safe/directo conservador
-git_push                            → critical_confirm
-git_pull                            → critical_confirm
-system_restart_service              → safe_confirm
-system_stop_service                 → safe_confirm
-system_config_update                → critical_confirm
-write_file                          → critical_confirm
-apply_text_patch                    → critical_confirm
-apply_unified_diff                  → critical_confirm
-apply_multi_file_unified_diff_plan  → critical_confirm planificado
-rollback_file_change                → critical_confirm
-rollback_latest_file_change         → critical_confirm
-```
-
----
-
-## System Agent v0.1
-
-Sity empieza a tener capacidades de agente local sobre el proyecto, pero sin shell libre.
-
-### Funciona
-
-- Lectura segura de archivos permitidos.
-- Listado seguro de directorios permitidos.
-- Validación por allowlist.
-- Bloqueo de rutas sensibles.
-- Integración mediante tools interpretadas por Sity/Claude.
-- El backend valida rutas y permisos, pero no interpreta lenguaje natural para decidir acciones.
-
-### Tools
-
-```text
-read_file
-list_directory
-```
-
-### Principio
-
-```text
-Sity interpreta.
-Backend valida.
-Backend no adivina intención por regex/split/literales.
-```
-
----
-
-## System Agent v0.2
-
-Sity puede escribir archivos dentro de rutas permitidas del repo, siempre con confirmación.
-
-### Funciona
-
-- `write_file` para crear archivos.
-- `write_file` para sobrescribir archivos.
-- Escritura solo dentro de `writable_paths`.
-- Bloqueo de rutas sensibles.
-- Confirmación obligatoria antes de escribir.
-- Validación de tamaño máximo.
-- Validación de directorios padre.
-- Bloqueo de `.env`.
-- Bloqueo de `/etc`, `/boot`, `/root`, `/var/lib`, `/var/log`.
-- `es una orden` no salta allowlist ni confirmación.
-
-### Tools
-
-```text
-read_file
-list_directory
-write_file
-```
-
-### Rutas permitidas
-
-Configuradas en:
-
-```text
-config/system_access.yaml
-```
-
-Bloque conceptual:
-
-```yaml
-file_access:
-  readable_paths:
-    - /home/alex/projects/sity
-    - /home/alex/projects/sity/backend
-    - /home/alex/projects/sity/frontend
-    - /home/alex/projects/sity/config
-    - /home/alex/projects/sity/scripts
-    - /home/alex/projects/sity/deploy
-    - /home/alex/projects/sity/README.md
-
-  writable_paths:
-    - /home/alex/projects/sity/backend
-    - /home/alex/projects/sity/frontend
-    - /home/alex/projects/sity/config
-    - /home/alex/projects/sity/scripts
-    - /home/alex/projects/sity/deploy
-    - /home/alex/projects/sity/README.md
-
-  blocked_paths:
-    - /home/alex/projects/sity/.env
-    - /home/alex/projects/sity/frontend/.env.local
-    - /home/alex/projects/sity/data
-    - /home/alex/projects/sity/captures
-    - /home/alex/projects/sity/backend/.venv
-    - /home/alex/projects/sity/frontend/node_modules
-    - /home/alex/.ssh
-    - /home/alex/.config
-    - /etc
-    - /boot
-    - /root
-    - /var/lib
-    - /var/log
-```
-
----
-
-## System Agent v0.3
-
-Sity puede aplicar cambios pequeños a archivos mediante reemplazo exacto de texto, siempre con confirmación y diff previo.
-
-### Funciona
-
-- `apply_text_patch` para modificar una parte concreta de un archivo.
-- Preview de diff antes de confirmar.
-- Confirmación obligatoria antes de aplicar el patch.
-- Validación de allowlist.
-- Bloqueo de rutas sensibles.
-- Bloqueo de `.env`.
-- Bloqueo de `/etc`, `/boot`, `/root`, `/var/lib`, `/var/log`.
-- `es una orden` no salta allowlist ni confirmación.
-
-### Tools
-
-```text
-read_file
-list_directory
-write_file
-apply_text_patch
-```
-
-### Tipo de patch actual
-
-Aplica un reemplazo exacto:
-
-```text
-old_text → new_text
-```
-
-Solo reemplaza la primera coincidencia.
-
----
-
-## System Agent v0.4
-
-Sity registra cambios de archivos y crea backups automáticos antes de modificar archivos existentes.
-
-### Funciona
-
-- Audit log para `write_file`.
-- Audit log para `apply_text_patch`.
-- Backup antes de sobrescribir un archivo existente.
-- Backup antes de aplicar un patch.
-- Asociación del cambio con `pending_action_id`.
-- Asociación del cambio con `trace_id`.
-- Registro de bytes escritos.
-- Registro de ruta modificada.
-- Registro de si el archivo fue creado o modificado.
-- Confirmación genérica contextual para acciones pendientes.
-
-### Archivos runtime
-
-Audit log:
-
-```text
-data/file_audit.jsonl
-```
-
-Backups:
-
-```text
-data/file_backups/
-```
-
-Ambos deben estar ignorados por git.
-
----
-
-## System Agent v0.5
-
-Sity puede consultar el audit log real para responder qué archivos ha tocado.
-
-### Funciona
-
-- Tool `list_file_changes`.
-- Lee `data/file_audit.jsonl`.
-- Devuelve últimos eventos de cambios de archivo.
-- Permite limitar el número de eventos.
-- No modifica archivos.
-- No requiere confirmación.
-- No lee el contenido de backups.
-- Usa audit real, no memoria conversacional.
-
-### Tool
-
-```text
-list_file_changes
-```
-
-### Casos de uso
-
-```text
-qué archivos has tocado últimamente?
-enséñame los últimos 3 cambios de archivos
-qué modificaste en el último cambio?
-consulta el audit log real
-```
-
----
-
-## System Agent v0.6
-
-Sity puede restaurar archivos desde backups creados por ella.
-
-### Funciona
-
-- Tool `rollback_file_change`.
-- Requiere confirmación siempre.
-- Solo acepta backups dentro de `data/file_backups`.
-- El backup debe estar asociado a un evento real del audit log.
-- Restaura el archivo original indicado por el audit event.
-- Crea backup del estado actual antes de restaurar.
-- Registra el rollback en `data/file_audit.jsonl`.
-- Guarda `restored_from_backup_path`.
-- Guarda `source_event`.
-- Guarda `pending_action_id` y `trace_id`.
-
-### Tool
-
-```text
-rollback_file_change
-```
-
-### Seguridad
-
-- No restaura backups fuera de `data/file_backups`.
-- No permite elegir una ruta objetivo arbitraria.
-- La ruta objetivo sale del audit log original.
-- No ejecuta rollback sin confirmación.
-- Crea backup del estado actual antes de restaurar.
-- `es una orden` no salta validaciones ni confirmación.
-
----
-
-## System Agent v0.6.1
-
-Sity puede revertir el último cambio reversible de archivo sin que el usuario proporcione el backup manualmente.
-
-### Funciona
-
-- Tool `find_latest_reversible_file_change`.
-- Tool `rollback_latest_file_change`.
-- Busca el último evento reversible con backup disponible.
-- Por defecto ignora eventos `rollback_file_change` para evitar deshacer un rollback accidentalmente.
-- Ignora eventos cuyo archivo objetivo ya no existe.
-- Crea pending action de rollback usando el backup encontrado.
-- Requiere confirmación siempre.
-- Mantiene el mismo flujo seguro de `rollback_file_change`.
-
-### Tools
-
-```text
-find_latest_reversible_file_change
-rollback_latest_file_change
-```
-
-### Casos de uso
-
-```text
-revierte el último cambio de archivo
-deshaz el último cambio de archivo
-restaura el último cambio reversible
-revierte el último patch
-```
-
----
-
-## System Agent v0.7
-
-Sity puede aplicar unified diffs sobre un único archivo permitido del repo.
-
-### Funciona
-
-- Tool `apply_unified_diff`.
-- Acepta unified diff con cabeceras `---`, `+++` y hunks `@@`.
-- Solo modifica un archivo por acción.
-- Rechaza renames/moves.
-- Rechaza patches multiarchivo.
-- Valida que el archivo esté en `writable_paths`.
-- Bloquea rutas sensibles como `.env`.
-- Genera preview normalizado del diff antes de crear la acción pendiente.
-- Requiere confirmación siempre.
-- Crea backup antes de modificar el archivo.
-- Registra el cambio en `data/file_audit.jsonl`.
-- El rollback normal funciona sobre cambios hechos con unified diff.
-
-### Tool
-
-```text
-apply_unified_diff
-```
-
-### Formato esperado
-
-```diff
---- config/example.py
-+++ config/example.py
-@@ -1,3 +1,4 @@
- linea uno
--linea dos
-+linea dos modificada
- linea tres
-+linea cuatro
-```
-
-### Limitaciones
-
-- Solo un archivo por patch.
-- No crea archivos nuevos mediante unified diff.
-- No borra archivos mediante unified diff.
-- No soporta rename/move.
-- No soporta patches binarios.
-
----
-
-## System Agent v0.8
-
-Sity puede analizar patches multiarchivo y convertirlos en acciones pendientes separadas por archivo.
-
-### Funciona
-
-- Tool `apply_multi_file_unified_diff_plan`.
-- Recibe unified diff multiarchivo.
-- Separa el patch por archivo.
-- Valida cada archivo por separado.
-- No modifica nada directamente.
-- Crea una acción pendiente por cada archivo válido.
-- Cada acción pendiente usa `apply_unified_diff`.
-- Cada archivo mantiene backup independiente.
-- Cada archivo mantiene audit log independiente.
-- Cada archivo puede revertirse mediante rollback normal.
-- Cada acción debe confirmarse por separado.
-- Si un archivo del plan está bloqueado, se rechaza todo el plan.
-- No se aplica parcialmente un plan multiarchivo con archivos bloqueados.
-
-### Tool
-
-```text
-apply_multi_file_unified_diff_plan
-```
-
-### Casos de uso
-
-```text
-aplica este patch multiarchivo
-aplica este diff que toca varios archivos
-planifica este patch
-```
-
-### Flujo
-
-```text
-Usuario proporciona unified diff multiarchivo.
-Claude/Sity llama apply_multi_file_unified_diff_plan(diff).
-Backend separa el diff por archivo.
-Backend valida cada archivo.
-Si todo valida:
-  crea una pending action por archivo.
-Si algo falla:
-  rechaza todo el plan.
-Usuario confirma cada acción por ID.
-Cada archivo se modifica de forma independiente.
-Cada modificación crea backup y audit log.
-```
-
-### Ejemplo
-
-```diff
---- config/test-a.txt
-+++ config/test-a.txt
-@@ -1,3 +1,3 @@
- a uno
--a dos
-+a dos modificado
- a tres
---- config/test-b.txt
-+++ config/test-b.txt
-@@ -1,3 +1,4 @@
- b uno
- b dos
--b tres
-+b tres modificado
-+b cuatro
-```
-
-Respuesta esperada:
-
-```text
-Pendientes. Confirma cada una por separado:
-
-1. confirmo ejecutar act_xxxxxxxx para config/test-a.txt
-2. confirmo ejecutar act_yyyyyyyy para config/test-b.txt
-```
-
-### Confirmación
-
-Cada archivo se confirma por separado:
-
-```text
-confirmo ejecutar act_xxxxxxxx
-confirmo ejecutar act_yyyyyyyy
-```
-
-No se debe aplicar todo el patch multiarchivo como una única acción.
-
-### Rollback
-
-El rollback sigue siendo por archivo.
-
-Si se aplica A y luego B, al decir:
-
-```text
-revierte el último cambio de archivo
-```
-
-se revierte solo B.
-
-### Seguridad
-
-- No hay shell.
-- No hay escritura fuera de allowlist.
-- No hay aplicación parcial si una ruta está bloqueada.
-- `.env` bloquea todo el plan.
-- `/etc` bloquea todo el plan.
-- Rutas fuera de repo bloquean todo el plan.
-- Cada archivo tiene backup/audit/rollback separado.
-- `es una orden` no salta allowlist ni bloqueo de plan.
-
-### Limitaciones actuales
-
-- No hay confirmación múltiple real tipo “confirma todas”.
-- No hay transacción atómica multiarchivo.
-- Si confirmas solo una acción, solo se aplica ese archivo.
-- Si quieres aplicar solo archivos permitidos tras un rechazo, debes enviar un patch nuevo sin los archivos bloqueados.
-
----
-
-## System Agent v0.8.1
-
-Sity responde localmente a resultados deterministas de tools de archivo.
-
-### Funciona
-
-- Pending actions de archivo devuelven respuesta local.
-- Bloqueos de write/patch/unified diff devuelven respuesta local.
-- Bloqueos de read/list fuera de allowlist devuelven respuesta local.
-- Planes multiarchivo bloqueados devuelven respuesta local.
-- Confirmaciones siguen siendo locales.
-- Errores de política devuelven `provider=local`.
-- Se evita una segunda llamada a Claude cuando el backend ya tiene la respuesta final.
-
-### Modelos locales
-
-```text
-pending-action-manager
-confirmation-manager
-tool-policy
-multi-file-plan-manager
-```
-
-### Casos cubiertos
-
-```text
-No puedo escribir en esa ruta...
-No puedo acceder a ese directorio...
-Acción pendiente creada...
-Plan multiarchivo rechazado completo...
-Archivo creado...
-Patch aplicado...
-Unified diff aplicado...
-Rollback aplicado...
-```
-
-### Limitación
-
-Esto no elimina por completo el coste de la primera llamada a Claude cuando hace falta interpretación de intención.
-
----
-
-## System Agent v0.8.2
-
-Sity tiene protección de presupuesto y tests locales sin API.
-
-### Funciona
-
-- `SITY_DAILY_TOKEN_HARD_CAP=true` bloquea llamadas a Claude si se supera el presupuesto diario.
-- `SITY_LOCAL_ONLY=true` bloquea llamadas a Claude manualmente.
-- Las confirmaciones locales siguen funcionando antes del bloqueo.
-- El backend devuelve `budget-guard` cuando el presupuesto está agotado.
-- El backend devuelve `local-only-guard` cuando el modo local-only está activo.
-- `scripts/test_file_access_local.py` prueba la lógica de file access directamente sin `/chat/message`.
-- El test local no consume tokens.
-- El test local valida allowlists, bloqueos, escritura, patch, unified diff y multiarchivo.
-
-### Test local
-
-```bash
-python3 scripts/test_file_access_local.py
-```
-
-Este script prueba:
-
-```text
-- list_directory permitido
-- list_directory bloqueado fuera del repo
-- read_file bloqueado en /etc
-- write_file permitido
-- write_file bloqueado fuera del repo
-- write_file bloqueado en .env
-- preview_text_patch
-- apply_text_patch
-- preview_text_patch bloqueado en .env
-- preview_unified_diff
-- apply_unified_diff
-- preview_unified_diff bloqueado en .env
-- split_unified_diff_by_file
-- rechazo completo de multiarchivo con .env
-- find_latest_reversible_file_change
-```
-
----
-
-## System Agent v0.8.3
-
-Sity tiene tests locales para el Confirmation Manager.
-
-### Funciona
-
-- `scripts/test_confirmation_manager_local.py`.
-- Prueba confirmación exacta.
-- Prueba extracción de ID `act_xxxxxxxx`.
-- Prueba acción equivalente pendiente.
-- Prueba confirmaciones genéricas claras.
-- Prueba que frases vagas no confirmen acciones.
-- Prueba confirmación contextual con último mensaje de Sity.
-- Prueba que acciones ejecutadas no se encuentren como pendientes.
-- Prueba que acciones expiradas se marquen como `expired`.
-- Prueba múltiples acciones pendientes.
-- Documenta el invariante de rutas: varias acciones pendientes + confirmación genérica no debe adivinar.
-
-### Test local
-
-```bash
-python3 scripts/test_confirmation_manager_local.py
-```
-
-Este script no llama a `/chat/message`, no llama a Claude y no consume tokens.
-
-### Invariante importante
-
-En `routes_chat.py`, el orden correcto es:
-
-```text
-1. Confirmación exacta por ID.
-2. Si hay varias acciones pendientes y el mensaje es genérico, rechazar ambigüedad.
-3. Si no hay ambigüedad, permitir confirmación contextual.
-4. Si no hay contexto suficiente, pedir frase exacta.
-```
-
-Esto evita que una confirmación genérica ejecute la última acción pendiente por accidente cuando hay varias pendientes.
-
----
-
-## Script de regresión repo-only
-
-El proyecto incluye un script para comprobar que el System Agent repo-only sigue funcionando tras cambios futuros:
-
-```text
-scripts/test_system_agent_repo.sh
-```
-
-### Qué prueba
-
-```text
-- health del backend
-- expiración de pending actions
-- creación de archivo mediante write_file
-- confirmación genérica con “sí, hazlo”
-- verificación de contenido creado
-- patch con apply_text_patch
-- preview de diff
-- confirmación de patch
-- verificación de contenido modificado
-- consulta de audit log mediante list_file_changes
-- rollback_latest_file_change
-- confirmación de rollback
-- verificación de contenido restaurado
-- unified diff con apply_unified_diff
-- rollback de unified diff
-- plan multiarchivo con apply_multi_file_unified_diff_plan
-- confirmación separada por archivo en multiarchivo
-- rollback del último archivo aplicado en multiarchivo
-- bloqueo de escritura en .env
-- rechazo completo de plan multiarchivo con .env
-- limpieza de archivos de prueba
-```
-
-### Uso
-
-Desde la raíz del proyecto:
-
-```bash
-./scripts/test_system_agent_repo.sh
-```
-
-Con URL explícita:
-
-```bash
-SITY_BASE_URL=http://192.168.1.133:8000 ./scripts/test_system_agent_repo.sh
-```
-
-### Objetivo
-
-Evitar romper sin darte cuenta:
-
-```text
-write_file
-apply_text_patch
-apply_unified_diff
-apply_multi_file_unified_diff_plan
-list_file_changes
-rollback_latest_file_change
-confirmación genérica
-audit log
-backups
-bloqueo de rutas sensibles
-respuestas locales de tools
-```
-
-Debe ejecutarse antes de tocar partes delicadas del System Agent.
-
----
-
-## Tests locales sin API
-
-Para avanzar sin gastar tokens ni llamar a Claude:
-
-```bash
-python3 scripts/test_file_access_local.py
-python3 scripts/test_confirmation_manager_local.py
-```
-
-Estos tests importan módulos internos directamente y no pasan por `/chat/message`.
-
-Sirven para validar lógica crítica aunque el presupuesto diario esté agotado.
-
----
-
-## Git
-
-Sity puede leer estado Git:
-
-```text
-status
-log
-branches
-remotes
-diff
-```
-
-Y puede proponer acciones Git con confirmación:
-
-```text
-fetch
-pull --ff-only
-push
-crear rama
-cambiar de rama
-commit
-```
-
-Ejemplos:
-
-```text
-cómo está el repo sity?
-qué últimos commits tiene el repo sity?
-haz pull del repo sity
-haz fetch del repo sity
-crea una rama feature/test
-cambia a la rama main
-```
-
-Las acciones modificadoras requieren confirmación.
-
-Importante:
-
-```text
-La palabra “repo” sola no debe activar Git.
-Git debe activarse cuando el usuario pida explícitamente commits, ramas, diff, status, pull, push, fetch, checkout o acciones Git equivalentes.
-```
-
----
-
-## System Access
-
-Sity puede leer información del sistema:
-
-```text
-estado básico
-CPU/RAM
-disco
-procesos
-servicios permitidos
-directorios permitidos
-```
-
-También puede controlar servicios systemd permitidos:
-
-```text
-start
-stop
-restart
-```
-
-Actualmente se usan:
-
-```text
-sity-backend
-sity-frontend
-sity-test
-```
-
----
-
-## Allowlist dinámica de servicios
-
-Sity puede modificar la allowlist de servicios con confirmación.
-
-Ejemplos:
-
-```text
-qué servicios puedes controlar?
-añade sity-test a servicios permitidos
-quita sity-test de servicios permitidos
-```
-
-Esto modifica:
-
-```text
-config/system_access.yaml
-```
-
-Importante:
-
-- Añadir un servicio a la allowlist no crea el servicio systemd.
-- Quitar un servicio de la allowlist no borra el servicio systemd.
-- Solo cambia qué servicios puede consultar/controlar Sity.
-- La modificación de allowlist requiere confirmación.
-- El nombre de servicio debe venir como argumento estructurado de tool, no extraído por regex del texto del usuario.
-
----
-
-## Servicios systemd
-
-El proyecto incluye plantillas versionadas en:
-
-```text
-deploy/systemd/
-```
-
-Servicios actuales:
-
-```text
-sity-backend.service
-sity-frontend.service
-sity-test.service
-```
-
-### sity-backend
-
-Servicio FastAPI/Uvicorn.
-
-```text
-http://localhost:8000
-```
-
-### sity-frontend
-
-Servicio Vite dev server.
-
-```text
-http://localhost:5173
-```
-
-En red local:
-
-```text
-http://192.168.1.133:5173
-```
-
-### sity-test
-
-Servicio HTTP mínimo para pruebas.
-
-```text
-http://localhost:8099
-```
-
-Devuelve:
-
-```text
-sity service test
-```
-
-Está pensado para probar control de servicios sin levantar algo pesado como Minecraft.
-
----
-
-## Sudoers
-
-La allowlist sudoers está versionada en:
-
-```text
-deploy/sudoers/sity
-```
-
-Permite a `alex` ejecutar sin password únicamente comandos concretos sobre servicios permitidos.
-
-No se concede sudo general.
-
----
-
-## Instalación de servicios
-
-Script:
-
-```bash
-./scripts/install_systemd_services.sh
-```
-
-Hace:
-
-```text
-1. Copia servicios a /etc/systemd/system/
-2. Copia sudoers a /etc/sudoers.d/sity
-3. Valida sudoers con visudo
-4. Recarga systemd
-5. Habilita servicios
-```
-
-Después se pueden arrancar manualmente:
-
-```bash
-sudo systemctl start sity-backend
-sudo systemctl start sity-frontend
-sudo systemctl start sity-test
-```
-
 ---
 
 ## Cámara y micrófono
 
-Hardware detectado:
+Hardware actual:
 
 ```text
 Cámara:
@@ -1884,42 +649,39 @@ Full HD webcam
 Micrófono:
 Full HD webcam
 plughw:CARD=webcam,DEV=0
-PipeWire source Full HD webcam Mono
 ```
 
-La cámara funciona, pero necesita tiempo para autoexposición. Las capturas usan `fswebcam` con `--skip 20` o similar.
+Sity puede:
 
-Ejemplo manual:
-
-```bash
-fswebcam -d /dev/video0 -r 1280x720 --no-banner --skip 20 captures/camera/test.jpg
+```text
+- capturar una foto bajo petición explícita
+- grabar audio corto bajo petición explícita
+- cancelar captura/grabación
+- mostrar preview en frontend
+- reproducir audio en frontend
 ```
 
-El micro de la webcam graba correctamente.
+No implementado:
 
-Ejemplo manual:
-
-```bash
-arecord -D plughw:CARD=webcam,DEV=0 -d 5 -f cd captures/audio/test-webcam.wav
+```text
+- vigilancia continua
+- escucha permanente
+- wake word
 ```
 
-Importante:
+Futuro:
 
-- No usar `Loopback` como micrófono real.
-- `Loopback` forma parte del pipeline de audio HDMI.
-- Cámara y micrófono son sensores sensibles.
-- Capturar foto puntual se permite cuando el usuario lo pide explícitamente.
-- Grabar audio corto se permite cuando el usuario lo pide explícitamente.
-- Captura continua/vigilancia no está implementada y debe bloquearse o requerir política fuerte.
-- Listar dispositivos puede ser local/directo.
+```text
+Voice I/O
+Vision / Image Understanding
+Visual Memory / Capture Journal
+```
 
 ---
 
 ## Audio RasPad 3
 
-El RasPad 3 no expone correctamente HPD en HDMI. El driver `vc4-hdmi` no ofrece audio PCM normal y solo expone `IEC958_SUBFRAME_LE`.
-
-Para resolverlo, el sistema usa un pipeline custom:
+El RasPad 3 no expone correctamente audio HDMI como PCM normal. Se usa pipeline custom:
 
 ```text
 Vivaldi / VLC / ALSA
@@ -1930,7 +692,7 @@ Vivaldi / VLC / ALSA
   -> HDMI
 ```
 
-Componentes documentados en:
+Documentación/runtime:
 
 ```text
 deploy/audio/
@@ -1941,7 +703,6 @@ No tocar a ciegas:
 ```text
 /etc/asound.conf
 /etc/modules-load.d/snd-aloop.conf
-/home/alex/.local/bin/pcm2iec958.py
 ~/.config/systemd/user/hdmi-audio-forward.service
 ~/.config/wireplumber/main.lua.d/51-default-sink.lua
 ~/.config/vlc/vlcrc
@@ -1949,722 +710,69 @@ No tocar a ciegas:
 
 ---
 
-## Configuración principal
+## Tests
 
-Archivo:
-
-```text
-config/system_access.yaml
-```
-
-Define:
-
-```text
-system_access.read.allowed_paths
-system_access.read.allowed_services
-system_access.safe_actions.allowed_services
-git_access.read.allowed_repositories
-file_access.readable_paths
-file_access.writable_paths
-file_access.blocked_paths
-```
-
----
-
-## Variables de entorno
-
-Archivo local no versionado:
-
-```text
-.env
-```
-
-Incluye claves como:
-
-```text
-ANTHROPIC_API_KEY
-OPENAI_API_KEY
-PC_AGENT_TOKEN
-SITY_ENV
-SITY_DAILY_TOKEN_HARD_CAP
-SITY_LOCAL_ONLY
-```
-
-No debe subirse a Git.
-
-Frontend local:
-
-```text
-frontend/.env.local
-```
-
-Ejemplo:
-
-```env
-VITE_SITY_API_BASE=http://192.168.1.133:8000
-```
-
-### Variables de presupuesto/local mode
-
-```env
-SITY_DAILY_TOKEN_HARD_CAP=true
-SITY_LOCAL_ONLY=false
-```
-
-Para modo sin IA:
-
-```env
-SITY_LOCAL_ONLY=true
-```
-
----
-
-## Logs y datos
-
-Runtime local:
-
-```text
-data/
-```
-
-Incluye:
-
-```text
-app.db
-logs
-audit logs
-file_audit.jsonl
-file_backups/
-```
-
-Debe permanecer fuera de Git.
-
-Logs systemd:
+Tests locales sin API:
 
 ```bash
-journalctl -u sity-backend -n 80 --no-pager
-journalctl -u sity-frontend -n 80 --no-pager
-journalctl -u sity-test -n 80 --no-pager
+backend/.venv/bin/python scripts/test_file_access_local.py
+backend/.venv/bin/python scripts/test_confirmation_manager_local.py
 ```
 
----
+Compile:
 
-## Capturas temporales
+```bash
+backend/.venv/bin/python -m compileall backend/app
+```
 
-Directorio:
+Regresión repo-only con backend levantado:
+
+```bash
+./scripts/test_system_agent_repo.sh
+```
+
+El script de regresión prueba:
 
 ```text
-captures/
-```
-
-Usado para capturas de cámara/audio.
-
-Debe estar ignorado por git salvo `.gitkeep`.
-
-`.gitignore` debe incluir:
-
-```gitignore
-captures/camera/*
-captures/audio/*
-!captures/.gitkeep
-```
-
-También deben quedar fuera de Git:
-
-```gitignore
-data/file_audit.jsonl
-data/file_backups/
-config/local-file-access-*.txt
-config/no-deberia.txt
+- health
+- write_file
+- confirmación genérica
+- apply_text_patch
+- list_file_changes
+- rollback_latest_file_change
+- apply_unified_diff
+- rollback unified diff
+- multi-file unified diff plan
+- rollback de último archivo multiarchivo
+- bloqueo de .env
+- rechazo completo de multiarchivo sensible
 ```
 
 ---
 
 ## Seguridad
 
-Principios actuales:
+Principios:
 
 ```text
-1. Lectura directa solo en zonas permitidas.
-2. Escritura solo en zonas permitidas y con confirmación.
-3. Patches solo en zonas permitidas y con confirmación.
-4. Unified diff solo en archivos permitidos y con confirmación.
-5. Multiarchivo se planifica por archivo, no se aplica como bloque único.
-6. Si un archivo del plan multiarchivo está bloqueado, se rechaza todo el plan.
-7. Backups automáticos antes de modificar archivos existentes.
-8. Audit log para cambios de archivos.
-9. Consulta de audit log permitida como lectura.
-10. Rollback solo desde backups creados por Sity.
-11. Rollback siempre con confirmación.
-12. Rollback crea backup del estado actual antes de restaurar.
-13. Acciones modificadoras requieren confirmación según riesgo.
-14. Servicios controlables limitados por allowlist.
-15. Sudoers limitado a comandos concretos.
-16. Sin shell arbitraria.
-17. Sin sudo general.
-18. Las acciones viejas no se reejecutan.
-19. Las acciones duplicadas se detectan.
-20. Confirmación contextual solo con intención explícita y contexto válido.
-21. Las herramientas de debug no se usan para conversación normal.
-22. Cámara y micro no se activan salvo petición explícita.
-23. Audio Loopback se trata como dispositivo virtual, no como micro real.
-24. Capturas se sirven desde endpoints validados.
-25. Cancelar una acción no se trata como error.
-26. “Es una orden” no salta allowlists ni políticas de seguridad.
-27. El backend no interpreta lenguaje natural para crear acciones.
-28. Sity no debe afirmar que tiene acceso global a toda la Raspberry.
-29. Bloqueos y confirmaciones deben responder localmente cuando sea posible.
-30. El hard cap debe impedir llamadas a Claude cuando el presupuesto esté agotado.
-31. El modo local-only debe impedir llamadas a Claude manualmente.
-32. Confirmaciones locales válidas deben seguir funcionando antes del hard cap.
-33. Si hay varias acciones pendientes, una confirmación genérica no debe ejecutar ninguna.
+1. Sin shell libre por defecto.
+2. Sin sudo general.
+3. Lectura solo en zonas permitidas.
+4. Escritura solo en zonas permitidas y con confirmación.
+5. Patches solo en zonas permitidas y con confirmación.
+6. Backups automáticos antes de modificar archivos existentes.
+7. Audit log para cambios de archivos.
+8. Rollback solo desde backups creados por Sity.
+9. Confirmaciones críticas obligatorias.
+10. Servicios controlables limitados por allowlist.
+11. Cámara y micro solo bajo petición explícita.
+12. Mensajes externos futuros con allowlist de usuarios.
+13. No exponer backend/frontend directamente a internet.
+14. Hard cap y local-only no bloquean confirmaciones locales.
+15. El backend valida siempre aunque el modelo proponga algo.
 ```
 
 Regla base:
-
-```text
-Puede mirar.
-Puede proponer.
-Puede actuar según política de riesgo.
-```
-
-Para acciones críticas:
-
-```text
-Primero plan.
-Luego confirmación.
-Después ejecución.
-```
-
-Para capacidades externas:
-
-```text
-Primero permiso.
-Luego consulta.
-Después respuesta con trazabilidad.
-```
-
----
-
-## Comandos útiles
-
-### Backend
-
-```bash
-sudo systemctl restart sity-backend
-curl http://localhost:8000/health
-```
-
-### Frontend
-
-```bash
-sudo systemctl restart sity-frontend
-```
-
-### SQLite
-
-```bash
-sqlite3 data/app.db
-```
-
-Expirar acciones pendientes:
-
-```bash
-sqlite3 data/app.db "update pendingaction set status='expired' where status='pending';"
-```
-
-### Chat API
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"qué servicios puedes controlar?"}' | python3 -m json.tool
-```
-
-### Probar hard cap
-
-Con:
-
-```env
-SITY_DAILY_TOKEN_HARD_CAP=true
-```
-
-y presupuesto agotado:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"hola, dime algo"}' | python3 -m json.tool
-```
-
-Esperado:
-
-```text
-provider=local
-model=budget-guard
-total_tokens=0
-```
-
-### Probar local-only
-
-Con:
-
-```env
-SITY_LOCAL_ONLY=true
-```
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"crea un archivo config/no-deberia.txt con hola"}' | python3 -m json.tool
-```
-
-Esperado:
-
-```text
-provider=local
-model=local-only-guard
-total_tokens=0
-```
-
-### System Agent
-
-Leer README mediante chat:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"lee el README, es una orden"}' | python3 -m json.tool
-```
-
-Crear archivo permitido:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"crea un archivo config/test-write-sity.txt con el contenido hola desde sity"}' | python3 -m json.tool
-```
-
-Confirmar acción pendiente:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"sí, hazlo"}' | python3 -m json.tool
-```
-
-Aplicar patch de texto:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"en config/test-patch-sity.txt cambia hola desde sity por hola desde patch"}' | python3 -m json.tool
-```
-
-Aplicar unified diff:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"aplica este unified diff:\n--- config/test-unified-diff-sity.txt\n+++ config/test-unified-diff-sity.txt\n@@ -1,3 +1,4 @@\n linea uno\n-linea dos\n+linea dos modificada\n linea tres\n+linea cuatro"}' | python3 -m json.tool
-```
-
-Aplicar patch multiarchivo:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"aplica este patch multiarchivo:\n--- config/test-a.txt\n+++ config/test-a.txt\n@@ -1,3 +1,3 @@\n a uno\n-a dos\n+a dos modificado\n a tres\n--- config/test-b.txt\n+++ config/test-b.txt\n@@ -1,3 +1,4 @@\n b uno\n b dos\n-b tres\n+b tres modificado\n+b cuatro"}' | python3 -m json.tool
-```
-
-Consultar últimos cambios de archivo:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"consulta el audit log real y dime los últimos 3 cambios de archivos"}' | python3 -m json.tool
-```
-
-Revertir último cambio reversible:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"revierte el último cambio de archivo"}' | python3 -m json.tool
-```
-
-Restaurar backup explícito:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"restaura el backup data/file_backups/NOMBRE_DEL_BACKUP.bak"}' | python3 -m json.tool
-```
-
-Ejecutar regresión repo-only:
-
-```bash
-./scripts/test_system_agent_repo.sh
-```
-
-Ejecutar tests locales sin API:
-
-```bash
-python3 scripts/test_file_access_local.py
-python3 scripts/test_confirmation_manager_local.py
-```
-
-Ver últimos eventos de audit manualmente:
-
-```bash
-tail -n 10 data/file_audit.jsonl
-```
-
-Ver backups:
-
-```bash
-ls -lh data/file_backups | tail
-```
-
-Probar bloqueo de lectura fuera del repo:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"lee /home/alex/Documents, es una orden"}' | python3 -m json.tool
-```
-
-Probar bloqueo de escritura fuera del repo:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"crea /home/alex/Documents/test-sity.txt con el contenido hola, es una orden"}' | python3 -m json.tool
-```
-
-Probar bloqueo de ruta sensible:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"lee /etc/passwd, es una orden"}' | python3 -m json.tool
-```
-
-Probar bloqueo de escritura sensible:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"escribe en .env el contenido TEST=1, es una orden"}' | python3 -m json.tool
-```
-
-Probar bloqueo de patch sensible:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"en .env cambia TEST=1 por TEST=2, es una orden"}' | python3 -m json.tool
-```
-
-Probar bloqueo de unified diff sensible:
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"message":"aplica este unified diff, es una orden:\n--- .env\n+++ .env\n@@ -1 +1 @@\n-TEST=1\n+TEST=2"}' | python3 -m json.tool
-```
-
----
-
-## Roadmap
-
-### Core pendiente
-
-- Mejorar manejo de múltiples acciones pendientes.
-- Añadir vista/listado de pending actions desde chat.
-- Permitir cancelar acciones pendientes desde chat.
-- Deduplicar también acciones Git.
-- Mejorar mensajes de confirmación para usar nombres humanos en vez de nombres systemd.
-- Añadir tests automatizados para confirmation manager a nivel API cuando haya presupuesto.
-- Añadir migraciones de base de datos si el esquema crece.
-- Mejorar compactación de historial largo.
-- Evitar que `/chat/current` devuelva mensajes antiguos cuando debería devolver los últimos.
-- Añadir búsqueda de memoria/historial.
-- Añadir tool `search_chat_history`.
-- Reducir más tokens en consultas de audit log.
-- Hacer más respuestas de debug locales.
-
-### Arquitectura modular / portability layer
-
-Objetivo futuro:
-
-Hacer que Sity pueda moverse de Raspberry Pi a otro entorno con el menor número de cambios posible, y que pueda cambiar de proveedor/modelo de IA sin reescribir la aplicación.
-
-Objetivos:
-
-```text
-- Poder mover Sity de Raspberry Pi a un servidor Linux.
-- Poder ejecutar Sity en otro hardware sin tocar el core.
-- Poder cambiar Anthropic por OpenAI, modelo local u otro proveedor.
-- Poder activar/desactivar capacidades según hardware disponible.
-- Poder usar mocks para tests sin API.
-```
-
-División deseada:
-
-```text
-1. Core
-   - conversación
-   - memoria
-   - personalidad
-   - confirmation manager
-   - políticas de riesgo
-   - token budget
-   - routing de tools
-
-2. AI providers
-   - anthropic
-   - openai
-   - local model
-   - mock provider para tests
-   - fallback provider
-
-3. Platform adapters
-   - raspberrypi
-   - linux-server
-   - desktop-linux
-   - windows futuro si interesa
-   - mac futuro si interesa
-
-4. Capability modules
-   - file_access
-   - git
-   - systemd
-   - camera
-   - audio
-   - captures
-   - services
-   - gaming
-   - domotics
-   - cloud integrations
-
-5. Config profiles
-   - raspi-local
-   - server
-   - dev
-   - travel
-   - local-only
-```
-
-Regla arquitectónica:
-
-```text
-El core no ejecuta comandos del sistema directamente.
-El core pide capacidades.
-Las capacidades las implementa el adaptador de plataforma activo.
-```
-
-Ejemplo conceptual:
-
-```python
-camera.capture_snapshot()
-```
-
-En Raspberry podría usar `fswebcam`. En un servidor sin cámara debería devolver:
-
-```text
-capability_not_available
-```
-
-Variables objetivo:
-
-```env
-SITY_PLATFORM=raspberrypi
-SITY_AI_PROVIDER=anthropic
-SITY_PROFILE=repo-only
-```
-
-Cambiar de entorno debería parecerse a:
-
-```env
-SITY_PLATFORM=linux-server
-SITY_AI_PROVIDER=openai
-SITY_PROFILE=server-safe
-```
-
-No a reescribir rutas y comandos por todo el backend.
-
-Elementos que deberían salir del core hacia adaptadores/config:
-
-```text
-/dev/video0
-systemctl
-fswebcam
-arecord
-vc4hdmi0
-RasPad
-/home/alex/projects/sity
-```
-
-### System Agent v0.9
-
-Pendiente:
-
-- Perfiles de acceso de archivos.
-- `repo-only`.
-- `home-safe`.
-- `system-careful`.
-- Lectura segura fuera del repo bajo perfil explícito.
-- Escritura fuera del repo solo en rutas permitidas.
-- Bloqueo reforzado de secretos:
-  - `.ssh`
-  - `.gnupg`
-  - `.aws`
-  - `.config` sensible
-  - `.env`
-  - tokens
-  - credenciales
-- No afirmar acceso global a toda la Raspberry.
-
-### System Agent v1.0
-
-Pendiente:
-
-- `run_allowed_command` por alias YAML.
-- Sin shell libre por defecto.
-- Comandos con:
-  - nombre
-  - cwd
-  - timeout
-  - riesgo
-  - confirmación requerida
-  - argumentos permitidos
-  - regex de validación de argumentos
-
-### Sity Gaming / Portable Mode
-
-Objetivo futuro:
-
-Explorar opciones para usar la Raspberry como máquina ligera de juego puntual, especialmente para viajes, ocio ligero y emulación. No pretende sustituir al PC gaming principal.
-
-Líneas de investigación:
-
-```text
-1. Steam en Raspberry
-   - Evaluar Steam x86_64 vía emulación/compatibilidad.
-   - Ver rendimiento real.
-   - Probar mandos, audio, pantalla y almacenamiento.
-   - No asumir soporte nativo.
-
-2. Xbox / Game Pass
-   - Evaluar app o alternativa web/cloud.
-   - Medir input lag real.
-   - Valorar si sirve para juegos lentos, indies o por turnos.
-   - No asumir experiencia buena en competitivo.
-
-3. NVIDIA GeForce Now / Xbox Cloud
-   - Probar navegador en RasPad.
-   - Medir latencia.
-   - Evaluar WiFi/Ethernet.
-   - Integrar lanzadores desde Sity si funciona razonablemente.
-
-4. RetroPie / emulación
-   - Instalar y probar RetroPie o alternativas.
-   - Integrar catálogo local.
-   - Permitir a Sity lanzar juegos/emuladores.
-   - Explorar comandos:
-     “Sity, abre Pokémon”
-     “lanza RetroArch”
-     “abre el último juego”
-   - Mantenerlo separado de permisos críticos del sistema.
-
-5. UX
-   - Modo viaje.
-   - Modo mando.
-   - Accesos directos desde frontend.
-   - Lanzamiento de juegos mediante allowlist.
-   - Cierre seguro de procesos.
-```
-
-Esta línea debería depender de futuras capacidades de comandos permitidos:
-
-```text
-run_allowed_command:
-  steam
-  retropie
-  retroarch
-  chromium_xcloud
-  chromium_geforce_now
-```
-
-RetroPie parece la rama más realista para la Raspberry. Steam/Game Pass/Cloud gaming son líneas de investigación con incertidumbre de rendimiento y latencia.
-
-### System Agent / Claude Code parity
-
-Objetivo futuro:
-
-Dar a Sity un nivel de acceso parecido al de Claude Code sobre la Raspberry, pero con más trazabilidad, confirmaciones y políticas de seguridad.
-
-Claude Code corre como el usuario que lo invoca. Puede hacer todo lo que puede hacer `alex`:
-
-- Leer/escribir ficheros accesibles por `alex`.
-- Ejecutar comandos shell.
-- Usar Git sin restricciones del propio programa.
-- Crear/matar procesos.
-- Acceder a hardware si `alex` pertenece a los grupos correctos.
-- Usar red.
-- Usar `sudo` si está configurado para comandos concretos.
-
-Sity no debe empezar con una shell libre. En su lugar, se ampliará por capas:
-
-```text
-1. Filesystem ampliado.
-2. Comandos permitidos por alias.
-3. Plan + confirmación para acciones críticas.
-4. Shell avanzada controlada.
-5. Modo mantenimiento.
-```
-
-Principio:
-
-```text
-Sity puede tener mucho acceso, pero no debe tener impulsividad.
-Debe poder mirar y proponer casi todo.
-Debe ejecutar solo bajo política clara.
-```
-
-### Pendientes generales
-
-- Respuesta adaptativa según longitud/intención.
-- Conciencia temporal conversacional.
-- Identidad de Sity en femenino.
-- Perfil local del usuario.
-- Mejor diferenciación de refusal por personalidad, seguridad, falta de contexto o herramienta no disponible.
-- Integración con GitHub.
-- Voz / comandos hablados.
-- Transcripción de audio.
-- Descripción de imágenes.
-- Wake word.
-- Domótica Tapo / SmartLife / Tuya.
-- Interacción local con pantalla, capturas y reproducción de audio.
-- Bluetooth, WiFi y presencia local.
-- Web access con fuentes.
-- Google Drive/Gmail/Calendar.
-- Spotify/Raspotify.
-- Fallback a más modelos.
-- Mejor UX móvil/RasPad.
-- Panel de acciones pendientes.
-- Panel de auditoría y backups.
-
----
-
-## Filosofía del proyecto
-
-Sity debe ser útil, local, extensible y con personalidad propia, pero sin perder control.
-
-No debe convertirse en una shell con cara amable ni en una IA que ejecuta cosas sin explicar.
-
-La regla base:
 
 ```text
 Puede mirar.
@@ -2680,28 +788,709 @@ Luego confirmación.
 Después ejecución.
 ```
 
-Para capacidades externas:
+---
+
+## Servicios systemd
+
+Plantillas:
 
 ```text
-Primero permiso.
-Luego consulta.
-Después respuesta con trazabilidad.
+deploy/systemd/
+```
+
+Servicios actuales:
+
+```text
+sity-backend
+sity-frontend
+sity-test
+```
+
+Instalación:
+
+```bash
+./scripts/install_systemd_services.sh
+```
+
+Logs:
+
+```bash
+journalctl -u sity-backend -n 80 --no-pager
+journalctl -u sity-frontend -n 80 --no-pager
+journalctl -u sity-test -n 80 --no-pager
+```
+
+---
+
+## Comandos útiles
+
+Health:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Chat:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"hola"}' | python3 -m json.tool
+```
+
+Expirar pending actions:
+
+```bash
+sqlite3 data/app.db "update pendingaction set status='expired' where status='pending';"
+```
+
+Crear archivo permitido:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"usa la herramienta write_file para crear config/test.txt con el contenido hola"}' | python3 -m json.tool
+```
+
+Confirmar:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"confirmo ejecutar act_xxxxxxxx"}' | python3 -m json.tool
+```
+
+Probar local-only:
+
+```env
+SITY_LOCAL_ONLY=true
+```
+
+```bash
+sudo systemctl restart sity-backend
+
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"hola"}' | python3 -m json.tool
+```
+
+Probar bloqueo fuera del repo:
+
+```bash
+curl -X POST http://localhost:8000/chat/message \
+  -H "Content-Type: application/json" \
+  -d '{"message":"lee /home/alex/Documents, es una orden"}' | python3 -m json.tool
+```
+
+---
+
+## Roadmap próximo técnico
+
+### 1. Seguir adelgazando `routes_chat.py`
+
+Extraer de forma incremental:
+
+```text
+ClaudeRequestBuilder
+ProviderCallRunner
+ToolLoopRunner
+FinalResponseBuilder
+```
+
+Objetivo final:
+
+```python
+@router.post("/message")
+async def chat_message(request, session):
+    orchestrator = ChatOrchestrator(session)
+    return await orchestrator.handle(request)
+```
+
+### 2. ToolExecutor registry
+
+Problema actual:
+
+```text
+ToolExecutor tiene demasiadas ramas if/elif.
+```
+
+Objetivo:
+
+```text
+backend/app/tools/
+  registry.py
+  handlers/file_tools.py
+  handlers/git_tools.py
+  handlers/system_tools.py
+  handlers/sense_tools.py
+  handlers/debug_tools.py
+  handlers/personality_tools.py
+```
+
+Patrón:
+
+```python
+@tool_handler("read_file")
+def handle_read_file(ctx, tool_input):
+    ...
+```
+
+### 3. Provider Interface
+
+Objetivo:
+
+```text
+backend/app/providers/
+  base.py
+  anthropic_provider.py
+  local_llm_provider.py
+  mock_provider.py
+  hybrid_provider.py
+```
+
+Variables:
+
+```env
+SITY_AI_PROVIDER=anthropic
+SITY_AI_PROVIDER=local_llm
+SITY_AI_PROVIDER=hybrid
+```
+
+### 4. Model Router
+
+Selección previa de modelo según tarea.
+
+No es “probar barato y si falla usar caro”, sino:
+
+```text
+Sity analiza la tarea.
+Escoge modelo adecuado antes de ejecutarla.
+```
+
+Política inicial:
+
+```text
+Haiku:
+  conversación normal, micro-reacciones, tools sencillas, resumen simple
+
+Sonnet:
+  arquitectura, debugging complicado, refactors, README largo, patches complejos
+
+Opus:
+  manual o excepcional, con límite fuerte
+
+Local LLM futuro:
+  charla normal, tareas simples, offline
+```
+
+Variables futuras:
+
+```env
+SITY_MODEL_ROUTER=true
+SITY_CLAUDE_FAST_MODEL=...
+SITY_CLAUDE_BALANCED_MODEL=...
+SITY_CLAUDE_STRONG_MODEL=...
+SITY_ALLOW_AUTO_OPUS=false
+```
+
+### 5. Prompt caching / Claude API optimization
+
+Investigar documentación oficial de Claude para:
+
+```text
+- prompt caching
+- tool_choice
+- streaming tool use
+- batch processing
+- vision
+- reasoning mode
+- rate limits
+- metadata
+```
+
+Objetivo:
+
+```text
+reducir coste, latencia y errores
+```
+
+---
+
+## Roadmap modular / portability layer
+
+Objetivo:
+
+```text
+Mover Sity entre Raspberry, server Linux u otros entornos con mínimos cambios.
+Cambiar de proveedor IA sin reescribir core.
+Activar/desactivar capacidades por plataforma.
+```
+
+División deseada:
+
+```text
+Core:
+  conversación, memoria, personalidad, confirmation manager, risk policy
+
+Providers:
+  anthropic, openai, local_llm, mock, hybrid
+
+Platform adapters:
+  raspberrypi, linux-server, desktop-linux
+
+Capabilities:
+  file_access, git, systemd, camera, audio, messaging, gaming, domotics
+
+Profiles:
+  repo-only, home-safe, system-careful, remote-safe, local-only
+```
+
+Regla:
+
+```text
+El core no ejecuta comandos del sistema directamente.
+El core pide capacidades.
+Las capacidades las implementa el adaptador de plataforma activo.
+```
+
+---
+
+## Roadmap local LLM / offline mode
+
+Objetivo:
+
+```text
+Reducir o eliminar dependencia de Claude ejecutando un modelo local en la Raspberry.
+```
+
+Estrategia correcta:
+
+```text
+No quitar Claude de golpe.
+Usar local LLM como principal para tareas simples.
+Mantener Claude como fallback opcional.
+```
+
+Fases:
+
+```text
+1. Provider Interface.
+2. MockProvider para tests.
+3. Ollama prototype.
+4. llama.cpp provider.
+5. Hybrid mode.
+6. Local tool intent con JSON estricto.
+7. Full local/offline mode.
+```
+
+Variables futuras:
+
+```env
+SITY_AI_PROVIDER=hybrid
+SITY_LOCAL_LLM_BACKEND=ollama
+SITY_LOCAL_LLM_BASE_URL=http://localhost:11434
+SITY_LOCAL_LLM_MODEL=llama3.2:3b
+SITY_CLOUD_FALLBACK=true
+SITY_CLOUD_PROVIDER=anthropic
+```
+
+---
+
+## Roadmap Voice I/O
+
+Objetivo:
+
+```text
+Hablar con Sity por voz y recibir respuestas habladas, priorizando privacidad local.
+```
+
+Entrada:
+
+```text
+micro → grabación/VAD → STT local → mensaje de chat
+```
+
+Salida:
+
+```text
+respuesta → TTS local → audio
+```
+
+Candidatos STT:
+
+```text
+Handy / Handy-like offline STT
+whisper.cpp
+faster-whisper
+Vosk
+```
+
+Candidatos TTS:
+
+```text
+Piper TTS como voz principal
+eSpeak NG como fallback
+Ora como referencia UI/wrapper
+```
+
+Principios:
+
+```text
+- audio local por defecto
+- cloud speech solo explícito
+- indicador visible de grabación
+- nada de escucha oculta
+- borrado automático de audios temporales
+```
+
+---
+
+## Roadmap Messaging Gateway
+
+Objetivo:
+
+```text
+Hablar con Sity desde fuera de la UI web.
+```
+
+Canales:
+
+```text
+Telegram Bot primero
+WhatsApp Web bridge solo si es estable
+OpenClaw/bridges como experimento aislado
+Meta Business/Twilio como última opción
+```
+
+Capacidades:
+
+```text
+- texto
+- audio
+- fotos
+- archivos
+- confirmaciones pendientes
+- cancelación de acciones
+```
+
+Arquitectura:
+
+```text
+backend/app/messaging/
+  gateway.py
+  models.py
+  telegram_adapter.py
+  whatsapp_adapter.py
+```
+
+Sity no debe saber si el mensaje viene de web, Telegram o WhatsApp. El core recibe un mensaje normalizado.
+
+Seguridad:
+
+```text
+- allowlist de usuarios/contactos
+- no grupos por defecto
+- confirmación para acciones críticas
+- rate limit
+- audit log
+```
+
+---
+
+## Roadmap Remote Access / Home Network
+
+### Tailscale / WireGuard
+
+Objetivo:
+
+```text
+Acceder a Sity desde fuera de casa sin exponer backend/frontend a internet.
+```
+
+Prioridad:
+
+```text
+1. Tailscale primero.
+2. WireGuard manual como alternativa avanzada.
+3. Evitar port forwarding público.
+```
+
+### AdGuard Home
+
+Uso posible:
+
+```text
+- DNS local
+- bloqueo de anuncios/rastreadores
+- nombres internos:
+  sity.home
+  raspad.home
+  router.home
+```
+
+No exponer DNS públicamente.
+
+### Caddy
+
+Uso posible:
+
+```text
+- reverse proxy interno
+- HTTPS
+- URLs limpias
+- no exponer Uvicorn/Vite directamente
+```
+
+### Vaultwarden
+
+Servicio doméstico separado.
+
+Regla:
+
+```text
+Sity puede vigilar la caja fuerte, no abrirla.
+```
+
+Puede en el futuro:
+
+```text
+- monitorizar estado
+- avisar si cae
+- recordar backups
+- reiniciar servicio con confirmación
+```
+
+No debe:
+
+```text
+- leer contraseñas
+- tocar base de datos del vault
+- tener admin token
+```
+
+---
+
+## Roadmap inspirado en DGX Spark Playbooks
+
+Ideas adaptables, sin integrar stacks DGX/NVIDIA pesados:
+
+```text
+1. Messaging Gateway
+2. Capability Policy Engine
+3. Lightweight Specialist Agents
+4. Vision / Image Understanding
+5. Visual Memory / Capture Journal
+6. Local Knowledge / RAG
+7. Knowledge Graph Lite
+8. Provider Interface
+9. Remote Access Mode
+```
+
+### Capability Policy Engine
+
+Evolución de `system_access.yaml`.
+
+Objetivo:
+
+```text
+filesystem policy
+network policy
+process policy
+command policy
+provider policy
+```
+
+### Lightweight Specialist Agents
+
+No agentes pesados, sino módulos especialistas:
+
+```text
+file_agent
+git_agent
+sensor_agent
+memory_agent
+messaging_agent
+gaming_agent
+```
+
+Sity core actúa como supervisora.
+
+### Vision / Image Understanding
+
+```text
+capture_camera_snapshot → image_understanding
+```
+
+Casos:
+
+```text
+describe la imagen
+lee esto
+qué ves
+OCR básico
+```
+
+### Visual Memory / Capture Journal
+
+```text
+- guardar capturas puntuales autorizadas
+- generar descripción
+- indexar descripción
+- buscar/resumir capturas previas
+```
+
+Nada de vigilancia continua sin modo explícito.
+
+### Local Knowledge / RAG
+
+Indexar:
+
+```text
+README
+docs
+config
+logs
+audit logs
+historial
+```
+
+Responder con fuentes.
+
+### Knowledge Graph Lite
+
+SQLite inicialmente.
+
+Entidades:
+
+```text
+servicios
+archivos
+proyectos
+dispositivos
+personas
+capacidades
+```
+
+Relaciones:
+
+```text
+usa
+depende_de
+controla
+bloqueado_por
+pertenece_a
+```
+
+---
+
+## Roadmap MiniMax / Mini-Agent
+
+MiniMax no es prioridad como provider principal ni como LLM local, pero puede inspirar:
+
+```text
+1. Mini-Agent architecture study
+2. MiniMaxProvider experimental
+3. TTS/voz de Sity
+4. Creative media mode
+5. Long-context inspiration
+```
+
+No hacer:
+
+```text
+- sustituir Claude por MiniMax directamente
+- usar modelos grandes MiniMax en Raspberry
+- acoplar Sity a su stack
+```
+
+---
+
+## Roadmap Gaming / Portable Mode
+
+Objetivo:
+
+```text
+Usar la Raspberry/RasPad como opción ligera de juego puntual, viajes o emulación.
+```
+
+Líneas:
+
+```text
+RetroPie / RetroArch
+Steam x86_64 emulado solo como investigación
+Xbox Cloud / GeForce Now como experimento
+modo viaje
+modo mando
+lanzadores por allowlist
+```
+
+RetroPie parece la opción más realista.
+
+Steam/Game Pass en Raspberry son experimentales y dependen de rendimiento/latencia.
+
+---
+
+## Roadmap futuro de archivos/sistema
+
+### System Agent v0.9
+
+```text
+perfiles de acceso:
+  repo-only
+  home-safe
+  system-careful
+
+lectura segura fuera del repo
+escritura fuera del repo solo en rutas explícitas
+bloqueo reforzado de secretos
+```
+
+### System Agent v1.0
+
+```text
+run_allowed_command
+```
+
+No shell libre. Comandos por alias YAML:
+
+```yaml
+commands:
+  restart_backend:
+    command: "sudo systemctl restart sity-backend"
+    risk: safe_confirm
+    timeout: 20
+```
+
+---
+
+## Filosofía del proyecto
+
+Sity debe ser útil, local, extensible y con personalidad propia, pero sin perder control.
+
+No debe convertirse en una shell con cara amable ni en una IA que ejecuta cosas sin explicar.
+
+Regla base:
+
+```text
+Puede mirar.
+Puede proponer.
+Puede actuar según política.
+```
+
+Para acciones críticas:
+
+```text
+Primero plan.
+Luego confirmación.
+Después ejecución.
 ```
 
 Para sensores:
 
 ```text
 Uso puntual bajo petición explícita.
-Nada de vigilancia continua sin política específica.
+Nada de vigilancia continua sin modo específico.
 Nada de micrófono/cámara ocultos.
-```
-
-Para lenguaje natural:
-
-```text
-Sity interpreta.
-Backend valida.
-Backend no inventa acciones por literales.
 ```
 
 Para arquitectura:
