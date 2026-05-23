@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import app.tools.handlers  # noqa: F401 — registers all tool handlers
 from dataclasses import dataclass
 from typing import Any
 
@@ -91,39 +94,14 @@ class ToolExecutor:
         trace_id: str,
         client_turn_id: str | None = None,
     ) -> ToolExecutionResult:
-        if tool_name == "read_file":
-            file_result = execute_file_action({
-                "action": "read_file",
-                "path": str(tool_input.get("path", "")),
-            })
-            if not file_result.get("ok"):
-                error = str(file_result.get("error", "No puedo acceder a esa ruta."))
-                return ToolExecutionResult(
-                    tool_name=tool_name, ok=False, message=error,
-                    updated_parameters=[], raw_result={
-                        "success": False, "message": error,
-                        "tool_name": tool_name, "result": file_result,
-                        "local_final": True, "text": f"No puedo acceder a esa ruta: {error}", "local_model": "tool-policy",
-                    },
-                )
-            return self._simple_read_tool(tool_name=tool_name, trace_id=trace_id, result=file_result)
-
-        if tool_name == "list_directory":
-            dir_result = execute_file_action({
-                "action": "list_directory",
-                "path": str(tool_input.get("path", "")),
-            })
-            if not dir_result.get("ok"):
-                error = str(dir_result.get("error", "No puedo acceder a ese directorio."))
-                return ToolExecutionResult(
-                    tool_name=tool_name, ok=False, message=error,
-                    updated_parameters=[], raw_result={
-                        "success": False, "message": error,
-                        "tool_name": tool_name, "result": dir_result,
-                        "local_final": True, "text": f"No puedo acceder a ese directorio: {error}", "local_model": "tool-policy",
-                    },
-                )
-            return self._simple_read_tool(tool_name=tool_name, trace_id=trace_id, result=dir_result)
+        from app.tools.registry import ToolContext, dispatch_tool, has_handler
+        if has_handler(tool_name):
+            return dispatch_tool(ToolContext(
+                tool_name=tool_name,
+                tool_input=tool_input,
+                trace_id=trace_id,
+                executor=self,
+            ))
 
         if tool_name == "write_file":
             path = str(tool_input.get("path", ""))
