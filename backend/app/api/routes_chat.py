@@ -15,6 +15,7 @@ from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.claude_request_builder import ClaudeRequestBuilder, max_tokens_for_verbosity
+from app.chat.response_guard import ResponseGuard
 from app.chat.toolset_selector import (
     history_limit_for_message,
     message_mentions_file_path,
@@ -786,6 +787,17 @@ def _chat_message_inner(
             "daily_ratio": daily_ratio,
         },
     )
+
+    guard_result = ResponseGuard().validate_final_text(response.text)
+    if not guard_result.allowed:
+        write_log(
+            level="WARN",
+            module="chat",
+            event="model_response_blocked",
+            trace_id=trace_id,
+            payload={"reason": guard_result.reason},
+        )
+    response.text = guard_result.text
 
     save_chat_message(
         session,
