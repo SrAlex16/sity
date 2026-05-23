@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
-from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
+from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse, UsageSummary
+from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.toolset_selector import (
@@ -148,10 +149,6 @@ def current_chat(session: Session = Depends(get_session)):
     )
 
 
-
-class ChatHistoryItem(BaseModel):
-    role: str
-    text: str
 
 
 class ChatMessageRequest(BaseModel):
@@ -425,43 +422,19 @@ def _chat_message_inner(
     if message_mentions_file_path(request.message):
         history_limit = 2
 
-    def _is_operational_guard(text: str) -> bool:
-        normalized = (text or "").strip().lower()
-        return (
-            normalized.startswith("modo local-only activo.")
-            or normalized.startswith("presupuesto diario de ia agotado.")
-            or normalized.startswith("presupuesto diario de ia agotado")
-            or normalized.startswith('no hay ninguna acción pendiente activa. el "sí')
-        )
+    prompt_context = PromptContextBuilder(
+        get_recent_messages=get_recent_db_messages,
+    ).build(
+        session=session,
+        message=request.message,
+        history_limit=history_limit,
+        planner_history_limit=4,
+    )
 
-    recent_history = [
-        ChatHistoryItem(role=row.role, text=row.text)
-        for row in get_recent_db_messages(session, limit=history_limit)
-        if not (row.role == "sity" and _is_operational_guard(row.text))
-    ]
-
-    def render_history(items: list[ChatHistoryItem]) -> str:
-        return "\n".join(
-            f"{'Usuario' if item.role == 'user' else 'Sity'}: {item.text}"
-            for item in items
-        )
-
-    def with_history(history_text: str) -> str:
-        if not history_text:
-            return request.message
-        return (
-            f"Historial reciente de esta conversación:\n{history_text}\n\n"
-            f"Mensaje actual del usuario:\n{request.message}"
-        )
-
-    user_message_with_history = with_history(render_history(recent_history))
-
-    planner_history = [
-        ChatHistoryItem(role=row.role, text=row.text)
-        for row in get_recent_db_messages(session, limit=4)
-        if not (row.role == "sity" and _is_operational_guard(row.text))
-    ]
-    planner_user_message = with_history(render_history(planner_history))
+    recent_history = prompt_context.recent_history
+    planner_history = prompt_context.planner_history
+    user_message_with_history = prompt_context.user_message_with_history
+    planner_user_message = prompt_context.planner_user_message
 
     write_log(
         level="INFO",

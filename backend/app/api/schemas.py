@@ -3,6 +3,11 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class ChatHistoryItem(BaseModel):
+    role: str
+    text: str
+
+
 class ChatArtifact(BaseModel):
     type: Literal["image", "audio", "file"]
     url: str
