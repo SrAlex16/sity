@@ -501,16 +501,6 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
-        if tool_name == "find_latest_reversible_file_change":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=execute_file_action({
-                    "action": "find_latest_reversible_file_change",
-                    "include_rollbacks": bool(tool_input.get("include_rollbacks", False)),
-                }),
-            )
-
         if tool_name == "rollback_latest_file_change":
             lookup = execute_file_action({
                 "action": "find_latest_reversible_file_change",
@@ -607,16 +597,6 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=display_message,
                 updated_parameters=[], raw_result=result,
-            )
-
-        if tool_name == "list_file_changes":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=execute_file_action({
-                    "action": "list_file_changes",
-                    "limit": tool_input.get("limit", 10),
-                }),
             )
 
         if tool_name == "rollback_file_change":

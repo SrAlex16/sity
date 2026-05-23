@@ -49,3 +49,35 @@ def handle_list_directory(ctx: ToolContext) -> ToolExecutionResult:
             },
         )
     return ctx.executor._simple_read_tool(tool_name=tool_name, trace_id=trace_id, result=dir_result)
+
+
+@tool_handler("find_latest_reversible_file_change")
+def handle_find_latest_reversible_file_change(ctx: ToolContext) -> ToolExecutionResult:
+    tool_name = ctx.tool_name
+    tool_input = ctx.tool_input
+    trace_id = ctx.trace_id
+
+    return ctx.executor._simple_read_tool(
+        tool_name=tool_name,
+        trace_id=trace_id,
+        result=execute_file_action({
+            "action": "find_latest_reversible_file_change",
+            "include_rollbacks": bool(tool_input.get("include_rollbacks", False)),
+        }),
+    )
+
+
+@tool_handler("list_file_changes")
+def handle_list_file_changes(ctx: ToolContext) -> ToolExecutionResult:
+    tool_name = ctx.tool_name
+    tool_input = ctx.tool_input
+    trace_id = ctx.trace_id
+
+    return ctx.executor._simple_read_tool(
+        tool_name=tool_name,
+        trace_id=trace_id,
+        result=execute_file_action({
+            "action": "list_file_changes",
+            "limit": tool_input.get("limit", 10),
+        }),
+    )
