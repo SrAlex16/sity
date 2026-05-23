@@ -13,8 +13,6 @@ from app.actions.sense_actions import execute_sense_action
 from app.core.realtime_events import publish_event_sync
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
-from app.senses.audio import list_audio_devices
-from app.senses.camera import list_camera_devices
 from app.tools.types import ToolExecutionResult
 
 
@@ -674,20 +672,6 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
-        if tool_name == "list_camera_devices":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=list_camera_devices(),
-            )
-
-        if tool_name == "list_audio_devices":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=list_audio_devices(),
-            )
-
         if tool_name == "capture_camera_snapshot":
             return self._simple_read_tool(
                 tool_name=tool_name,
@@ -712,13 +696,6 @@ class ToolExecutor:
                     "device": str(tool_input.get("device", "plughw:CARD=webcam,DEV=0")),
                     "client_turn_id": client_turn_id,
                 }),
-            )
-
-        if tool_name == "get_capture_storage_summary":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=execute_capture_retention_action({"action": "get_capture_storage_summary"}),
             )
 
         if tool_name == "clean_old_captures":
