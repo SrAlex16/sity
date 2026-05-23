@@ -7,8 +7,12 @@ from typing import Literal, Optional
 
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlmodel import Session, func, select
+
+from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
+from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
+from app.chat.pending_action_runner import PendingActionRunner
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
@@ -161,37 +165,6 @@ class ChatMessageRequest(BaseModel):
     history: list[ChatHistoryItem] = []
     client_turn_id: str | None = None
 
-
-class ChatArtifact(BaseModel):
-    type: Literal["image", "audio", "file"]
-    url: str
-    filename: str
-    mime_type: Optional[str] = None
-
-
-class UsageSummary(BaseModel):
-    input_tokens: int
-    output_tokens: int
-    total_tokens: int
-    daily_used_tokens: int
-    daily_budget_tokens: int
-    daily_ratio: float
-
-
-class ChatMessageResponse(BaseModel):
-    ok: bool
-    trace_id: str
-    text: str
-    provider: str
-    model: str
-    fallback_used: bool
-    error_type: Optional[str] = None
-    usage: UsageSummary
-    warnings: list[str] = []
-    personality_updated: bool = False
-    updated_parameter: Optional[str] = None
-    updated_parameters: list[str] = []
-    artifacts: list[ChatArtifact] = Field(default_factory=list)
 
 
 def get_today_token_usage(session: Session) -> int:
@@ -601,327 +574,40 @@ def _chat_message_inner(
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
 
     confirmation_manager = ConfirmationManager(session)
+    local_flow = ChatLocalFlow(confirmation_manager)
 
-    referenced_action_id = confirmation_manager.extract_action_id_from_message(request.message)
-
-    if referenced_action_id:
-        referenced_action = confirmation_manager.find_action_by_id(referenced_action_id)
-
-        if referenced_action and referenced_action.status != "pending":
-            text = (
-                f"La acción `{referenced_action_id}` no está pendiente; "
-                f"su estado actual es `{referenced_action.status}`."
-            )
-
-            if referenced_action.status == "executed":
-                text += " Ya fue ejecutada, no voy a repetirla."
-            elif referenced_action.status == "expired":
-                text += " Ya expiró. Crea una acción nueva si todavía quieres hacer eso."
-            elif referenced_action.status == "failed":
-                text += " Falló anteriormente. Crea una acción nueva si quieres reintentarlo."
-
-            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-            return ChatMessageResponse(
-                ok=True,
-                trace_id=trace_id,
-                text=text,
-                provider="local",
-                model="confirmation-manager",
-                fallback_used=False,
-                error_type=None,
-                usage=UsageSummary(
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    daily_used_tokens=get_today_token_usage(session),
-                    daily_budget_tokens=daily_budget,
-                    daily_ratio=0.0,
-                ),
-                warnings=[],
-                personality_updated=False,
-                updated_parameter=None,
-                updated_parameters=[],
-            )
-
-        if not referenced_action:
-            text = (
-                f"No encuentro ninguna acción con ID `{referenced_action_id}`. "
-                "Puede que sea antigua, incorrecta o de otra base de datos."
-            )
-
-            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-            return ChatMessageResponse(
-                ok=True,
-                trace_id=trace_id,
-                text=text,
-                provider="local",
-                model="confirmation-manager",
-                fallback_used=False,
-                error_type=None,
-                usage=UsageSummary(
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    daily_used_tokens=get_today_token_usage(session),
-                    daily_budget_tokens=daily_budget,
-                    daily_ratio=0.0,
-                ),
-                warnings=[],
-                personality_updated=False,
-                updated_parameter=None,
-                updated_parameters=[],
-            )
+    local_response = local_flow.try_handle(
+        LocalFlowContext(
+            session=session,
+            trace_id=trace_id,
+            message=request.message,
+            daily_budget=daily_budget,
+            warnings=[],
+            save_message=save_chat_message,
+            get_usage=get_today_token_usage,
+        )
+    )
+    if local_response:
+        return local_response
 
     pending_action = confirmation_manager.find_pending_action_by_confirmation(request.message)
-
-    if (
-        not pending_action
-        and confirmation_manager.has_multiple_active_pending_actions()
-        and confirmation_manager.is_generic_confirmation_message(request.message)
-    ):
-        text = (
-            "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
-            "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
-        )
-
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-        return ChatMessageResponse(
-            ok=True,
-            trace_id=trace_id,
-            text=text,
-            provider="local",
-            model="confirmation-manager",
-            fallback_used=False,
-            error_type=None,
-            usage=UsageSummary(
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                daily_used_tokens=get_today_token_usage(session),
-                daily_budget_tokens=daily_budget,
-                daily_ratio=0.0,
-            ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
-        )
 
     if not pending_action:
         pending_action = confirmation_manager.find_pending_action_by_context(request.message)
 
-    if not pending_action and confirmation_manager.is_generic_confirmation_message(request.message):
-        latest = confirmation_manager.get_latest_active_pending_action()
-        if latest:
-            text = (
-                f"¿Te refieres a «{latest.summary}»? "
-                f"Usa `{latest.confirmation_phrase}` para confirmar."
-            )
-            save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-            save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-            return ChatMessageResponse(
-                ok=True,
-                trace_id=trace_id,
-                text=text,
-                provider="local",
-                model="confirmation-manager",
-                fallback_used=False,
-                error_type=None,
-                usage=UsageSummary(
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    daily_used_tokens=get_today_token_usage(session),
-                    daily_budget_tokens=daily_budget,
-                    daily_ratio=0.0,
-                ),
-                warnings=[],
-                personality_updated=False,
-                updated_parameter=None,
-                updated_parameters=[],
-            )
-
     if pending_action:
-        _pending_artifact: ChatArtifact | None = None
-
-        if pending_action.action_type == "git":
-            try:
-                payload = parse_git_payload(pending_action.payload_json)
-                execution_result = execute_git_action(payload)
-
-                if execution_result.get("ok"):
-                    confirmation_manager.mark_executed(pending_action, trace_id)
-                    lines = [f"Acción ejecutada: {pending_action.summary}"]
-                    if execution_result.get("pre_command"):
-                        lines.append(f"\nPreparación: {' '.join(str(x) for x in execution_result['pre_command'])}")
-                        pre_out = execution_result.get("pre_stdout", "").strip()
-                        if pre_out:
-                            lines.append(f"Salida: {pre_out}")
-                    lines.append(f"\nComando: {' '.join(str(x) for x in execution_result.get('command', []))}")
-                    lines.append(f"Salida:\n{execution_result.get('stdout', '') or '(sin salida)'}")
-                    text = "\n".join(lines)
-                else:
-                    error = execution_result.get("stderr", "Error desconocido")
-                    confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    text = (
-                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
-                        f"Error:\n{error}"
-                    )
-
-            except Exception as exc:
-                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
-                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
-
-        elif pending_action.action_type == "system":
-            try:
-                payload = parse_system_payload(pending_action.payload_json)
-                execution_result = execute_system_action(payload)
-
-                if execution_result.get("ok"):
-                    confirmation_manager.mark_executed(pending_action, trace_id)
-                    text = (
-                        f"Acción ejecutada: {pending_action.summary}\n\n"
-                        f"Comando: {' '.join(str(x) for x in execution_result.get('command', []))}\n"
-                        f"Salida:\n{execution_result.get('stdout', '') or '(sin salida)'}"
-                    )
-                    post_status = execution_result.get("post_status")
-                    if post_status:
-                        text += f"\nEstado posterior: {post_status}"
-                else:
-                    error = (
-                        execution_result.get("stderr")
-                        or execution_result.get("stdout")
-                        or f"El comando terminó sin confirmación de éxito. Estado posterior: {execution_result.get('post_status', 'desconocido')}"
-                    )
-                    confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    text = (
-                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
-                        f"Error:\n{error}"
-                    )
-
-            except Exception as exc:
-                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
-                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
-
-        elif pending_action.action_type == "system_config":
-            try:
-                payload = parse_system_config_payload(pending_action.payload_json)
-                execution_result = execute_system_config_action(payload)
-
-                if execution_result.get("ok"):
-                    confirmation_manager.mark_executed(pending_action, trace_id)
-                    text = (
-                        f"Acción ejecutada: {pending_action.summary}\n\n"
-                        f"{execution_result.get('message', 'Configuración actualizada.')}"
-                    )
-                else:
-                    error = execution_result.get("stderr", "Error desconocido")
-                    confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    text = (
-                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
-                        f"Error:\n{error}"
-                    )
-
-            except Exception as exc:
-                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
-                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
-
-        elif pending_action.action_type == "file":
-            try:
-                payload = json.loads(pending_action.payload_json)
-                payload["pending_action_id"] = pending_action.id
-                payload["trace_id"] = trace_id
-                file_action = payload.get("action", "")
-                execution_result = execute_file_action(payload)
-
-                if execution_result.get("ok"):
-                    confirmation_manager.mark_executed(pending_action, trace_id)
-                    path = execution_result.get("path", "")
-                    if file_action == "apply_unified_diff":
-                        text = f"Unified diff aplicado: {path}"
-                    elif file_action == "rollback_file_change":
-                        restored_from = execution_result.get("restored_from_backup_path", "")
-                        text = f"Rollback aplicado: {path}\nRestaurado desde: {restored_from}"
-                    elif file_action == "apply_text_patch":
-                        text = f"Patch aplicado: {path}"
-                    elif file_action == "write_file":
-                        created = execution_result.get("created", True)
-                        text = f"Archivo {'creado' if created else 'sobreescrito'}: {path}"
-                    else:
-                        text = f"Acción de archivo ejecutada: {path}"
-                else:
-                    error = execution_result.get("error", "Error desconocido")
-                    confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    if file_action == "apply_unified_diff":
-                        text = f"No he podido aplicar el unified diff: {error}"
-                    elif file_action == "rollback_file_change":
-                        text = f"No he podido hacer el rollback: {error}"
-                    elif file_action == "apply_text_patch":
-                        text = f"No he podido aplicar el patch: {error}"
-                    else:
-                        text = f"No he podido escribir el archivo: {error}"
-
-            except Exception as exc:
-                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
-                text = f"Falló la acción de archivo: {exc}"
-
-        elif pending_action.action_type == "sense":
-            try:
-                payload = parse_sense_payload(pending_action.payload_json)
-                execution_result = execute_sense_action(payload)
-
-                if execution_result.get("ok"):
-                    confirmation_manager.mark_executed(pending_action, trace_id)
-                    _pending_artifact = capture_artifact_from_path(str(execution_result.get("path", "")))
-                    text = f"Listo. {pending_action.summary}."
-                else:
-                    error = (
-                        execution_result.get("stderr")
-                        or execution_result.get("stdout")
-                        or "Error desconocido"
-                    )
-                    confirmation_manager.mark_failed(pending_action, trace_id, error)
-                    text = (
-                        f"No he podido ejecutar la acción pendiente {pending_action.id}.\n\n"
-                        f"Error:\n{error}"
-                    )
-
-            except Exception as exc:
-                confirmation_manager.mark_failed(pending_action, trace_id, str(exc))
-                text = f"Falló la ejecución de la acción pendiente {pending_action.id}: {exc}"
-
-        save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
-        save_chat_message(session, role="sity", text=text, trace_id=trace_id)
-
-        daily_used = get_today_token_usage(session)
-
-        return ChatMessageResponse(
-            ok=True,
-            trace_id=trace_id,
-            text=text,
-            provider="local",
-            model="confirmation-manager",
-            fallback_used=False,
-            error_type=None,
-            usage=UsageSummary(
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                daily_used_tokens=daily_used,
-                daily_budget_tokens=daily_budget,
-                daily_ratio=0.0,
+        runner = PendingActionRunner(confirmation_manager)
+        return runner.run(
+            pending_action,
+            LocalFlowContext(
+                session=session,
+                trace_id=trace_id,
+                message=request.message,
+                daily_budget=daily_budget,
+                warnings=[],
+                save_message=save_chat_message,
+                get_usage=get_today_token_usage,
             ),
-            warnings=[],
-            personality_updated=False,
-            updated_parameter=None,
-            updated_parameters=[],
-            artifacts=[_pending_artifact] if _pending_artifact else [],
         )
 
     _daily_used_pre = get_today_token_usage(session)
