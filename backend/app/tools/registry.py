@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.core.tool_executor import ToolExecutionResult
+from app.tools.types import ToolExecutionResult
 
 
 @dataclass
@@ -30,3 +30,6 @@ def has_handler(tool_name: str) -> bool:
 
 def dispatch_tool(ctx: ToolContext) -> ToolExecutionResult:
     return _HANDLERS[ctx.tool_name](ctx)
+
+
+import app.tools.handlers  # noqa: F401, E402 — loads handlers after all symbols are defined

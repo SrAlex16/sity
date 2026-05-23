@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.actions.file_actions import execute_file_action
-from app.core.tool_executor import ToolExecutionResult
+from app.tools.types import ToolExecutionResult
 from app.tools.registry import ToolContext, tool_handler
 
 

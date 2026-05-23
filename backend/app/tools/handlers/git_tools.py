@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.tool_executor import ToolExecutionResult
+from app.tools.types import ToolExecutionResult
 from app.system.git_reader import git_branches, git_log, git_remotes, git_status
 from app.tools.registry import ToolContext, tool_handler
 

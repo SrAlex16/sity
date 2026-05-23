@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.tool_executor import ToolExecutionResult
+from app.tools.types import ToolExecutionResult
 from app.system.system_reader import (
     list_allowed_directory,
     read_disk_usage,

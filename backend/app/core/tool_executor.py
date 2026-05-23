@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import app.tools.handlers  # noqa: F401 — registers all tool handlers
-from dataclasses import dataclass
 from typing import Any
 
 from sqlmodel import Session
@@ -17,6 +15,7 @@ from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 from app.senses.audio import list_audio_devices
 from app.senses.camera import list_camera_devices
+from app.tools.types import ToolExecutionResult
 
 
 ALLOWED_OPERATIONS = {
@@ -31,15 +30,6 @@ TOOL_LABELS: dict[str, str] = {
     "clean_old_captures": "Limpiando capturas antiguas…",
     "get_capture_storage_summary": "Consultando almacenamiento…",
 }
-
-
-@dataclass
-class ToolExecutionResult:
-    tool_name: str
-    ok: bool
-    message: str
-    updated_parameters: list[str]
-    raw_result: dict[str, Any]
 
 
 class ToolExecutor:
@@ -804,11 +794,6 @@ class ToolExecutor:
                 tool_name=tool_name, ok=True, message=local_text,
                 updated_parameters=[], raw_result=result,
             )
-
-        if tool_name == "list_allowed_services":
-            from app.actions.system_config_actions import execute_system_config_action
-            raw = execute_system_config_action({"action": "list_allowed_services"})
-            return self._simple_read_tool(tool_name=tool_name, trace_id=trace_id, result=raw)
 
         if tool_name == "system_propose_action":
             return self._system_propose_action(
