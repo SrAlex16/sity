@@ -710,12 +710,6 @@ class ToolExecutor:
                 }),
             )
 
-        if tool_name == "cancel_pending_action":
-            return self._cancel_pending_action(
-                tool_input=tool_input,
-                trace_id=trace_id,
-            )
-
         if tool_name == "git_propose_action":
             return self._git_propose_action(
                 tool_input=tool_input,

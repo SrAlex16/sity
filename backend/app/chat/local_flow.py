@@ -84,7 +84,10 @@ class ChatLocalFlow:
             normalized = ctx.message.strip().lower()
             expected = referenced_action.confirmation_phrase.strip().lower()
 
-            if normalized != expected:
+            if normalized == expected:
+                return None
+
+            if self.confirmation_manager.message_starts_with_confirmation_prefix(ctx.message):
                 text = (
                     f"He detectado la acción `{referenced_action_id}`, pero la confirmación debe ser exacta.\n\n"
                     f"Usa: `{referenced_action.confirmation_phrase}`"

@@ -25,9 +25,15 @@ class CreatedPendingAction:
     risk_level: str
 
 
+CONFIRMATION_PREFIX = "confirmo ejecutar"
+
+
 class ConfirmationManager:
     def __init__(self, session: Session):
         self.session = session
+
+    def message_starts_with_confirmation_prefix(self, message: str) -> bool:
+        return message.strip().lower().startswith(CONFIRMATION_PREFIX)
 
     def create_pending_action(
         self,
@@ -40,7 +46,7 @@ class ConfirmationManager:
         ttl_minutes: int = 15,
     ) -> CreatedPendingAction:
         action_id = f"act_{secrets.token_hex(4)}"
-        confirmation_phrase = f"confirmo ejecutar {action_id}"
+        confirmation_phrase = f"{CONFIRMATION_PREFIX} {action_id}"
 
         action = PendingAction(
             id=action_id,
