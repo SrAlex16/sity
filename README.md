@@ -402,6 +402,10 @@ Usa: `confirmo ejecutar act_12345678`
 
 Esto evita que una confirmación casi correcta caiga a Claude y produzca una respuesta falsa o costosa.
 
+El prefijo formal de confirmación está centralizado como `CONFIRMATION_PREFIX`.
+
+`ChatLocalFlow` solo bloquea mensajes con `act_xxxxxxxx` cuando empiezan por el protocolo formal de confirmación. Otros mensajes que mencionen una acción pueden llegar al tool loop, por ejemplo para cancelación.
+
 ---
 
 ## System Agent
@@ -772,6 +776,19 @@ Principios:
 15. El backend valida siempre aunque el modelo proponga algo.
 ```
 
+### Response guard
+
+Sity bloquea respuestas finales donde el modelo intente simular tool calls como texto, por ejemplo:
+
+```text
+<function_calls>
+<invoke name="cancel_pending_action">
+...
+</function_calls>
+```
+
+Las tools deben ejecutarse mediante el flujo real del backend, no aparecer como texto inventado por el modelo.
+
 Regla base:
 
 ```text
@@ -908,31 +925,62 @@ async def chat_message(request, session):
 
 ### 2. ToolExecutor registry
 
-Problema actual:
+`ToolExecutor` está en proceso de migración desde un bloque monolítico `if/elif` hacia un registry de handlers por dominio.
 
-```text
-ToolExecutor tiene demasiadas ramas if/elif.
-```
-
-Objetivo:
+Estructura actual:
 
 ```text
 backend/app/tools/
   registry.py
-  handlers/file_tools.py
-  handlers/git_tools.py
-  handlers/system_tools.py
-  handlers/sense_tools.py
-  handlers/debug_tools.py
-  handlers/personality_tools.py
+  types.py
+  handlers/
+    file_tools.py
+    git_tools.py
+    system_read_tools.py
+    config_tools.py
+    sense_tools.py
+    pending_action_tools.py
 ```
 
-Patrón:
+Ya migrado:
 
-```python
-@tool_handler("read_file")
-def handle_read_file(ctx, tool_input):
-    ...
+```text
+file read tools
+file audit read tools
+git read tools
+system read tools
+config read tools
+sense device read tools
+cancel_pending_action
+```
+
+Pendiente:
+
+```text
+write_file
+apply_text_patch
+apply_unified_diff
+apply_multi_file_unified_diff_plan
+rollback_latest_file_change
+rollback_file_change
+capture_camera_snapshot
+record_audio_sample
+clean_old_captures
+git_propose_action
+add_allowed_service
+remove_allowed_service
+system_propose_action
+update_personality_settings
+```
+
+Regla:
+
+```text
+Primero mover handlers read-only.
+Después handlers de estado pequeño.
+Al final writers, rollback, sensors con artifacts y propose actions.
+
+No mover tool loop hasta tener tests de integración.
 ```
 
 ### 3. Provider Interface
