@@ -260,6 +260,8 @@ system_propose_action
 update_personality_settings
 ```
 
+`update_personality_settings` queda pendiente hasta tener un test local directo del handler. La prueba por API no es fiable ahora mismo porque depende de que el modelo genere exactamente el payload complejo esperado (`updates` como array con `parameter/operation/value`).
+
 Regla de migración:
 
 ```text
@@ -851,6 +853,28 @@ El script de regresión prueba:
 - rechazo completo de multiarchivo sensible
 ```
 
+Test de integración del registry (requiere backend levantado):
+
+```bash
+./scripts/test_chat_tool_registry_integration.sh
+```
+
+Cubre:
+
+```text
+- health
+- read_file
+- list_directory
+- list_file_changes
+- git_read_status
+- read_system_status
+- list_camera_devices
+- write_file fallback (crea pending action)
+- cancel_pending_action
+- confirmación malformada bloqueada localmente
+- ResponseGuard contra pseudo tool calls XML
+```
+
 ---
 
 ## Seguridad
@@ -877,18 +901,35 @@ Principios:
 
 ### ResponseGuard
 
-Sity bloquea respuestas finales donde el modelo intente simular llamadas a tools como texto.
+Sity valida el texto final generado por el modelo antes de guardarlo o devolverlo.
 
-Ejemplo bloqueado:
+Bloquea respuestas donde el modelo intenta simular herramientas como texto en lugar de ejecutarlas realmente mediante el backend.
+
+Ejemplos bloqueados:
 
 ```text
 <function_calls>
 <invoke name="cancel_pending_action">
 ...
 </function_calls>
+
+<attempt_tool_use>
+<tool_use>
+<tool_name>update_personality_settings</tool_name>
+<tool_input>...</tool_input>
+</tool_use>
+</attempt_tool_use>
 ```
 
-Las herramientas deben ejecutarse mediante el flujo real del backend. El modelo no puede declarar en texto que una tool se ha ejecutado si el backend no la ha ejecutado.
+Las herramientas solo se consideran ejecutadas si pasan por el flujo real del backend y producen un resultado real de tool/local handler.
+
+Esto evita respuestas falsas del tipo:
+
+```text
+Acción cancelada.
+```
+
+cuando la base de datos sigue mostrando la acción como `pending`.
 
 Regla base:
 
