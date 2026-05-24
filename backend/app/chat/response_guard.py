@@ -15,7 +15,12 @@ from dataclasses import dataclass
 _VALID_ACTION_ID_RE = re.compile(r"\bact_[a-fA-F0-9]{8}\b")
 
 _PSEUDO_TOOL_CALL_RE = re.compile(
-    r"<function_calls>|<invoke\s+name=|</function_calls>|</invoke>",
+    r"<function_calls>|</function_calls>|"
+    r"<invoke\s+name=|</invoke>|"
+    r"<attempt_tool_use>|</attempt_tool_use>|"
+    r"<tool_use>|</tool_use>|"
+    r"<tool_name>|</tool_name>|"
+    r"<tool_input>|</tool_input>",
     re.IGNORECASE,
 )
 
