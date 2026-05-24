@@ -196,6 +196,105 @@ El modelo puede proponer acciones, pero el backend decide si son válidas, segur
 
 ---
 
+## Tool handler registry
+
+`ToolExecutor` está migrando desde un bloque monolítico `if/elif` hacia un registry de handlers por dominio.
+
+Estructura actual:
+
+```text
+backend/app/tools/
+  registry.py
+  types.py
+  handlers/
+    file_tools.py
+    git_tools.py
+    system_read_tools.py
+    config_tools.py
+    sense_tools.py
+    pending_action_tools.py
+```
+
+El registry permite mover herramientas de forma incremental sin romper el fallback antiguo de `ToolExecutor`.
+
+Migrado al registry:
+
+```text
+read_file
+list_directory
+list_file_changes
+find_latest_reversible_file_change
+git_read_status
+git_read_log
+git_read_branches
+git_read_remotes
+read_recent_debug_events
+read_trace_events
+read_system_status
+read_disk_usage
+read_processes
+read_service_status
+list_allowed_directory
+list_allowed_services
+list_camera_devices
+list_audio_devices
+cancel_pending_action
+```
+
+Pendiente de migrar:
+
+```text
+write_file
+apply_text_patch
+apply_unified_diff
+apply_multi_file_unified_diff_plan
+rollback_latest_file_change
+rollback_file_change
+capture_camera_snapshot
+record_audio_sample
+clean_old_captures
+git_propose_action
+add_allowed_service
+remove_allowed_service
+system_propose_action
+update_personality_settings
+```
+
+Regla de migración:
+
+```text
+1. Primero read-only.
+2. Después estado pequeño y reversible.
+3. Después sensores con artifacts.
+4. Después writers, patches, rollback y propose actions.
+
+No mover el provider/tool loop hasta tener tests de integración específicos.
+```
+
+Test de integración:
+
+```bash
+./scripts/test_chat_tool_registry_integration.sh
+```
+
+Cubre:
+
+```text
+health
+read_file
+list_directory
+list_file_changes
+git_read_status
+read_system_status
+list_camera_devices
+write_file fallback
+cancel_pending_action
+confirmación malformada local
+ResponseGuard contra pseudo tool calls
+```
+
+---
+
 ## Runtime config
 
 Sity usa configuración centralizada mediante:
@@ -776,9 +875,11 @@ Principios:
 15. El backend valida siempre aunque el modelo proponga algo.
 ```
 
-### Response guard
+### ResponseGuard
 
-Sity bloquea respuestas finales donde el modelo intente simular tool calls como texto, por ejemplo:
+Sity bloquea respuestas finales donde el modelo intente simular llamadas a tools como texto.
+
+Ejemplo bloqueado:
 
 ```text
 <function_calls>
@@ -787,7 +888,7 @@ Sity bloquea respuestas finales donde el modelo intente simular tool calls como 
 </function_calls>
 ```
 
-Las tools deben ejecutarse mediante el flujo real del backend, no aparecer como texto inventado por el modelo.
+Las herramientas deben ejecutarse mediante el flujo real del backend. El modelo no puede declarar en texto que una tool se ha ejecutado si el backend no la ha ejecutado.
 
 Regla base:
 
