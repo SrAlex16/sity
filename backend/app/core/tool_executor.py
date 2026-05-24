@@ -772,12 +772,6 @@ class ToolExecutor:
                 trace_id=trace_id,
             )
 
-        if tool_name == "update_personality_settings":
-            return self._update_personality_settings(
-                tool_input=tool_input,
-                trace_id=trace_id,
-            )
-
         msg = f"Herramienta no soportada: {tool_name}"
         return ToolExecutionResult(
             tool_name=tool_name,
