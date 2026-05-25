@@ -121,7 +121,7 @@ preferir señales estructurales o schemas
 
 Consecuencia: las regresiones conversacionales no comprueban que `BASE_TOOLSET` esté vacío. Comprueban que mensajes casuales no añadan toolsets especializados adicionales (`SENSES`, `GIT`, `SYSTEM`, `SERVICE_CONFIG`, `SERVICE_CONTROL`, `DEBUG`, `PERSONALITY`) más allá de lo que BASE ya incluye.
 
-Candidato futuro: mover `cancel_pending_action` a un `PENDING_ACTION_TOOLSET` separado, añadido solo cuando `message_mentions_action_id()` sea `True`, para reducir tokens en mensajes sin IDs de acción.
+`cancel_pending_action` no vive en `BASE_TOOLSET`; se expone mediante `PENDING_ACTION_TOOLSET` solo cuando hay señal estructural (`act_xxxxxxxx`) o nombre explícito de herramienta. Esto evita que conversaciones casuales reciban herramientas de cancelación.
 
 #### Permitido / no permitido
 
