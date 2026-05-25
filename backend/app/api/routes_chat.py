@@ -19,7 +19,7 @@ from app.chat.toolset_selector import (
 )
 from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
-from app.chat.tool_loop_step import run_tool_loop_step
+from app.chat.tool_loop_runner import run_tool_loop
 from app.chat.response_factory import (
     ai_final_response,
     local_tool_response,
@@ -414,90 +414,87 @@ def _chat_message_inner(
             response.latency_ms += planner_response.latency_ms
         else:
             executor = ToolExecutor(session)
+            _loop = run_tool_loop(
+                planner_response=planner_response,
+                executor=executor,
+                trace_id=trace_id,
+                client_turn_id=request.client_turn_id,
+            )
 
-            for tool_call in planner_response.tool_calls:
-                _step = run_tool_loop_step(
-                    tool_call=tool_call,
-                    executor=executor,
+            if _loop.early_kind == "local_final":
+                _usage_row = AIUsage(
                     trace_id=trace_id,
-                    client_turn_id=request.client_turn_id,
+                    session_id=None,
+                    provider=planner_response.provider,
+                    model=planner_response.model,
+                    task_type="action_planner",
+                    input_tokens=planner_response.usage.input_tokens,
+                    output_tokens=planner_response.usage.output_tokens,
+                    estimated_cost=0.0,
+                    latency_ms=planner_response.latency_ms,
+                    fallback_used=planner_response.fallback_used,
+                    success=planner_response.ok,
+                    error_type=planner_response.error_type,
+                )
+                session.add(_usage_row)
+                session.commit()
+
+                _snap = build_budget_snapshot(
+                    daily_used=get_today_token_usage(session),
+                    daily_budget=daily_budget,
+                    warning_threshold=warning_threshold,
+                    critical_threshold=critical_threshold,
+                )
+                write_log(
+                    level="INFO",
+                    module="cortex",
+                    event="local_tool_response",
+                    trace_id=trace_id,
+                    payload={"tool": _loop.early_tool_name, "model": _loop.local_model},
+                )
+                save_chat_message(session, role="sity", text=_loop.local_text, trace_id=trace_id)
+                return local_tool_response(
+                    trace_id=trace_id,
+                    text=_loop.local_text,
+                    model=_loop.local_model,
+                    planner_input_tokens=planner_response.usage.input_tokens,
+                    planner_output_tokens=planner_response.usage.output_tokens,
+                    daily_used=_snap.daily_used,
+                    daily_budget=_snap.daily_budget,
+                    daily_ratio=_snap.daily_ratio,
+                    warnings=_snap.warnings,
                 )
 
-                if _step.early_kind == "local_final":
-                    _usage_row = AIUsage(
-                        trace_id=trace_id,
-                        session_id=None,
-                        provider=planner_response.provider,
-                        model=planner_response.model,
-                        task_type="action_planner",
-                        input_tokens=planner_response.usage.input_tokens,
-                        output_tokens=planner_response.usage.output_tokens,
-                        estimated_cost=0.0,
-                        latency_ms=planner_response.latency_ms,
-                        fallback_used=planner_response.fallback_used,
-                        success=planner_response.ok,
-                        error_type=planner_response.error_type,
-                    )
-                    session.add(_usage_row)
-                    session.commit()
+            if _loop.early_kind in ("sensor_cancelled", "sensor_finished"):
+                _personality_dict = personality if isinstance(personality, dict) else {}
+                _react_text = generate_micro_reaction(
+                    ai_client=gateway.provider,
+                    event_type=_loop.sensor_event_type,
+                    event_description=_loop.sensor_description,
+                    personality=_personality_dict,
+                    trace_id=trace_id,
+                )
+                write_log(
+                    level="AUDIT",
+                    module="senses",
+                    event=_loop.sensor_event_type,
+                    trace_id=trace_id,
+                    payload={"tool": _loop.early_tool_name},
+                    audit=True,
+                )
+                save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
+                return micro_reaction_response(
+                    trace_id=trace_id,
+                    text=_react_text,
+                    daily_used=get_today_token_usage(session),
+                    daily_budget=daily_budget,
+                    artifacts=_loop.sensor_artifacts,
+                )
 
-                    _snap = build_budget_snapshot(
-                        daily_used=get_today_token_usage(session),
-                        daily_budget=daily_budget,
-                        warning_threshold=warning_threshold,
-                        critical_threshold=critical_threshold,
-                    )
-
-                    write_log(
-                        level="INFO",
-                        module="cortex",
-                        event="local_tool_response",
-                        trace_id=trace_id,
-                        payload={"tool": tool_call.name, "model": _step.local_model},
-                    )
-                    save_chat_message(session, role="sity", text=_step.local_text, trace_id=trace_id)
-                    return local_tool_response(
-                        trace_id=trace_id,
-                        text=_step.local_text,
-                        model=_step.local_model,
-                        planner_input_tokens=planner_response.usage.input_tokens,
-                        planner_output_tokens=planner_response.usage.output_tokens,
-                        daily_used=_snap.daily_used,
-                        daily_budget=_snap.daily_budget,
-                        daily_ratio=_snap.daily_ratio,
-                        warnings=_snap.warnings,
-                    )
-
-                if _step.early_kind in ("sensor_cancelled", "sensor_finished"):
-                    _personality_dict = personality if isinstance(personality, dict) else {}
-                    _react_text = generate_micro_reaction(
-                        ai_client=gateway.provider,
-                        event_type=_step.sensor_event_type,
-                        event_description=_step.sensor_description,
-                        personality=_personality_dict,
-                        trace_id=trace_id,
-                    )
-                    write_log(
-                        level="AUDIT",
-                        module="senses",
-                        event=_step.sensor_event_type,
-                        trace_id=trace_id,
-                        payload={"tool": tool_call.name},
-                        audit=True,
-                    )
-                    save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
-                    return micro_reaction_response(
-                        trace_id=trace_id,
-                        text=_react_text,
-                        daily_used=get_today_token_usage(session),
-                        daily_budget=daily_budget,
-                        artifacts=_step.sensor_artifacts,
-                    )
-
-                # Normal path: accumulate for AI round-trip
-                updated_parameters.extend(_step.updated_parameters)
-                response_artifacts.extend(_step.artifacts)
-                tool_results_for_claude.append(_step.tool_result_for_claude)
+            # Normal path: propagate accumulated results
+            tool_results_for_claude = _loop.tool_results_for_claude
+            updated_parameters = _loop.updated_parameters
+            response_artifacts = _loop.artifacts
 
             write_log(
                 level="INFO",
