@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 # Esto no debe crear acciones ni interpretar intención de negocio.
 # Solo selecciona un toolset/contexto más pequeño usando señales técnicas conservadoras.
 # La acción real debe venir siempre de una tool estructurada interpretada por Claude.
@@ -14,6 +16,74 @@ from app.cortex.tool_schemas import (
     SERVICE_CONFIG_TOOLSET,
     SERVICE_CONTROL_TOOLSET,
     SYSTEM_TOOLSET,
+)
+
+# ── Tool-name → toolset index ─────────────────────────────────────────────────
+# Built once at import. When a tool name appears verbatim in the message, its
+# toolset is added automatically — no parallel term list to maintain.
+_TOOL_TO_TOOLSET: dict[str, list[dict]] = {}
+for _toolset in [
+    GIT_TOOLSET, SERVICE_CONFIG_TOOLSET, SERVICE_CONTROL_TOOLSET,
+    SYSTEM_TOOLSET, SENSES_TOOLSET, DEBUG_TOOLSET, PERSONALITY_TOOLSET,
+]:
+    for _tool in _toolset:
+        _TOOL_TO_TOOLSET[_tool["name"]] = _toolset
+del _toolset, _tool
+
+# ── Compiled regex patterns (roots, not inflected forms) ──────────────────────
+_GIT_RE = re.compile(
+    r"\bgit\b|\bcommit\b|\bramas?\b|\bbranch(?:es)?\b"
+    r"|\bpull\b|\bpush\b|\bfetch\b|\bcheckout\b|\bdiff\b"
+    r"|\bestado\s+git\b|\bstatus\s+git\b",
+    re.IGNORECASE,
+)
+_SERVICE_CONFIG_RE = re.compile(
+    r"\badd_allowed\b|\bremove_allowed\b|\ballowlist\b"
+    r"|\bservicios\s+permitidos\b|\blista\s+de\s+servicios\b"
+    r"|\bservicios\s+que\s+puedes\b",
+    re.IGNORECASE,
+)
+_SERVICE_CONTROL_RE = re.compile(
+    r"\breinicia\b|\barranca\b|\bdetén\b|\bdetener\b|\bpara\s+el\b"
+    r"|\bsystemctl\b|\bsity-(?:backend|frontend|test)\b"
+    r"|\b(?:backend|frontend)\b",
+    re.IGNORECASE,
+)
+_SYSTEM_RE = re.compile(
+    r"\braspberry\b|\bsistema\b|\bcpu\b|\bram\b|\bmemoria\b"
+    r"|\bdisco\b|\bespacio\b|\bprocesos\b|\bsystemd\b",
+    re.IGNORECASE,
+)
+_SENSE_RE = re.compile(
+    r"\bfoto\b|\bcámar|\bcamar|\bwebcam\b"
+    r"|\bmicr(?:ó|o)fono\b|\bmicro\b|\baudio\b"
+    r"|\bcaptur|\bgraba",
+    re.IGNORECASE,
+)
+_DEBUG_RE = re.compile(
+    r"\bdebug\b|\btraza\b|\btrace\b|\blogs\b|\beventos\b"
+    r"|\berrores\b|\bherramientas\b",
+    re.IGNORECASE,
+)
+_PERSONALITY_FIELD_RE = re.compile(
+    r"\bsarcasmo\b|\brudeza\b|\bcalidez\b|\bhonestidad\b|\bpaciencia\b"
+    r"|\bmelancolía\b|\bmelancolia\b|\btsundere\b|\bverbosidad\b"
+    r"|\bpersonalidad\b|\bmala\s+leche\b",
+    re.IGNORECASE,
+)
+_PERSONALITY_ACTION_RE = re.compile(
+    r"\bsube\b|\bbaja\b|\bajusta\b|\bcambia\b|\bpon\b|\bponte\b|\bslider\b",
+    re.IGNORECASE,
+)
+# Union of all technical signals — used by the "is this purely conversational?" gate.
+_IS_TECHNICAL_RE = re.compile(
+    r"\bgit\b|\bcommit\b|\brama|\bbranch|\bpull\b|\bpush\b|\bfetch\b"
+    r"|\bfoto\b|\bcámar|\bcamar|\bwebcam\b|\bcaptur|\bgraba|\baudio\b"
+    r"|\bdebug\b|\btraza\b|\btrace\b|\blogs\b"
+    r"|\breinicia\b|\barranca\b|\bservicio\b|\bsystemd\b|\bbackend\b|\bfrontend\b"
+    r"|\bcpu\b|\bram\b|\bdisco\b|\braspberry\b|\bsistema\b"
+    r"|\bpersonalidad\b|\bsarcasmo\b|\bcalidez\b",
+    re.IGNORECASE,
 )
 
 
@@ -44,21 +114,11 @@ def message_mentions_file_path(message: str) -> bool:
 
 
 def _looks_like_conversation_only(message: str) -> bool:
+    # A verbatim tool name in the message is always a technical signal.
     normalized = message.lower()
-    action_terms = [
-        "reinicia", "arranca", "para el servicio", "para el backend", "para el frontend",
-        "haz pull", "haz push", "haz fetch", "haz commit",
-        "saca una foto", "graba", "graba audio",
-        "añade", "quita", "limpia capturas",
-        "git", "repo", "repositorio",
-        "foto", "cámara", "camara", "webcam", "micrófono", "microfono",
-        "captura", "capturas",
-        "debug", "traza", "trace", "logs",
-        "servicio", "systemd", "backend", "frontend",
-        "cpu", "ram", "disco", "raspberry",
-        "personalidad", "sarcasmo", "calidez",
-    ]
-    return not any(term in normalized for term in action_terms)
+    if any(name in normalized for name in _TOOL_TO_TOOLSET):
+        return False
+    return not _IS_TECHNICAL_RE.search(message)
 
 
 def history_limit_for_message(message: str) -> int:
@@ -101,77 +161,36 @@ def select_toolset_for_message(message: str) -> list[dict]:
     if _looks_like_conversation_only(message):
         return list(BASE_TOOLSET)
 
-    normalized = message.lower()
-
-    git_terms = [
-        "git", "commit", "commits",
-        "rama", "ramas", "branch", "branches",
-        "pull", "push", "fetch", "checkout",
-        "diff", "estado git", "status git",
-    ]
-
-    service_config_terms = [
-        "añade", "agrega", "quita", "elimina",
-        "servicios permitidos", "allowlist",
-        "lista de servicios", "servicios que puedes",
-        "add_allowed", "remove_allowed",
-    ]
-
-    service_control_terms = [
-        "reinicia", "arranca", "para el", "detén", "detener",
-        "estado del servicio", "systemctl",
-        "sity-backend", "sity-frontend", "sity-test",
-        "backend", "frontend",
-    ]
-
-    system_terms = [
-        "raspberry", "sistema", "cpu", "ram", "memoria",
-        "disco", "espacio", "procesos", "systemd",
-    ]
-
-    sense_terms = [
-        "foto", "cámara", "camara", "webcam",
-        "micro", "micrófono", "microfono", "audio",
-        "captura", "capturas", "graba", "grabar",
-    ]
-
-    debug_terms = [
-        "debug", "traza", "trace", "logs", "eventos",
-        "errores", "herramientas",
-    ]
-
-    personality_fields = [
-        "sarcasmo", "rudeza", "borde", "calidez", "honestidad",
-        "paciencia", "melancolía", "melancolia", "tsundere",
-        "verbosidad", "personalidad", "mala leche",
-    ]
-
-    personality_action_terms = [
-        "sube", "baja", "ajusta", "cambia", "pon", "ponte", "slider",
-    ]
-
     selected = list(BASE_TOOLSET)
 
-    if any(term in normalized for term in git_terms):
+    # Primary signal: tool name mentioned verbatim → add its toolset directly.
+    normalized = message.lower()
+    seen_toolset_ids: set[int] = set()
+    for tool_name, toolset in _TOOL_TO_TOOLSET.items():
+        if tool_name in normalized:
+            tid = id(toolset)
+            if tid not in seen_toolset_ids:
+                seen_toolset_ids.add(tid)
+                selected.extend(toolset)
+
+    # Secondary signal: natural language roots via compiled regex.
+    if _GIT_RE.search(message):
         selected.extend(GIT_TOOLSET)
 
-    if any(term in normalized for term in service_config_terms):
+    if _SERVICE_CONFIG_RE.search(message):
         selected.extend(SERVICE_CONFIG_TOOLSET)
-    elif any(term in normalized for term in service_control_terms):
+    elif _SERVICE_CONTROL_RE.search(message):
         selected.extend(SERVICE_CONTROL_TOOLSET)
-    elif any(term in normalized for term in system_terms):
+    elif _SYSTEM_RE.search(message):
         selected.extend(SYSTEM_TOOLSET)
 
-    if any(term in normalized for term in sense_terms):
+    if _SENSE_RE.search(message):
         selected.extend(SENSES_TOOLSET)
 
-    if any(term in normalized for term in debug_terms):
+    if _DEBUG_RE.search(message):
         selected.extend(DEBUG_TOOLSET)
 
-    if (
-        any(field in normalized for field in personality_fields)
-        and any(term in normalized for term in personality_action_terms)
-    ):
+    if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
         selected.extend(PERSONALITY_TOOLSET)
 
     return _dedupe_tools(selected)
