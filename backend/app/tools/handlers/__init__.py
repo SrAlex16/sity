@@ -7,3 +7,4 @@ from app.tools.handlers import pending_action_tools  # noqa: F401
 from app.tools.handlers import personality_tools  # noqa: F401
 from app.tools.handlers import propose_tools  # noqa: F401
 from app.tools.handlers import service_config_tools  # noqa: F401
+from app.tools.handlers import file_write_tools  # noqa: F401
