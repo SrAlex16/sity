@@ -770,17 +770,22 @@ No tocar a ciegas:
 ### CI (GitHub Actions)
 
 El workflow `.github/workflows/ci.yml` corre en cada push a `main` y en PRs.
-No requiere Anthropic API key ni red.
+No requiere `ANTHROPIC_API_KEY` ni consume presupuesto de Claude.
 
 ```text
-backend-local:
+backend-local (~17s):
   - python -m compileall backend/app
-  - Init test database (SQLite en memoria)
+  - Init test database (SQLite)
   - 12 scripts locales (file access, confirmation manager,
     tool registry, toolset selector, persona prompt,
     personality, service config, write, patch, diff, multi-diff, rollback)
 
-frontend:
+integration-mock (~14s):
+  - Levanta FastAPI en puerto 8010 con SITY_AI_PROVIDER=mock
+  - Prueba /chat/message end-to-end: tool flow, pending actions,
+    cancel, confirmación malformada, ResponseGuard, conversación casual
+
+frontend (~11s):
   - npm ci
   - npx tsc -b (typecheck)
   - npm run build
