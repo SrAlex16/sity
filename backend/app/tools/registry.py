@@ -33,4 +33,8 @@ def dispatch_tool(ctx: ToolContext) -> ToolExecutionResult:
     return _HANDLERS[ctx.tool_name](ctx)
 
 
+def registered_tool_names() -> set[str]:
+    return set(_HANDLERS)
+
+
 import app.tools.handlers  # noqa: F401, E402 — loads handlers after all symbols are defined
