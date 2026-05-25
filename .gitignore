@@ -1,4 +1,10 @@
 .env
+.env.local
+*.env.local
+backend/.env
+backend/.env.local
+frontend/.env
+frontend/.env.local
 .venv/
 __pycache__/
 *.pyc

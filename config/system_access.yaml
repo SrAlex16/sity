@@ -22,27 +22,26 @@ system_access:
     - sity-test
 file_access:
   readable_paths:
-    - /home/alex/projects/sity
-    - /home/alex/projects/sity/backend
-    - /home/alex/projects/sity/frontend
-    - /home/alex/projects/sity/config
-    - /home/alex/projects/sity/scripts
-    - /home/alex/projects/sity/deploy
-    - /home/alex/projects/sity/README.md
+    - .
   writable_paths:
-    - /home/alex/projects/sity/backend
-    - /home/alex/projects/sity/frontend
-    - /home/alex/projects/sity/config
-    - /home/alex/projects/sity/scripts
-    - /home/alex/projects/sity/deploy
-    - /home/alex/projects/sity/README.md
+    - backend
+    - frontend
+    - config
+    - scripts
+    - deploy
+    - README.md
   blocked_paths:
-    - /home/alex/projects/sity/.env
-    - /home/alex/projects/sity/frontend/.env.local
-    - /home/alex/projects/sity/data
-    - /home/alex/projects/sity/captures
-    - /home/alex/projects/sity/backend/.venv
-    - /home/alex/projects/sity/frontend/node_modules
+    - .git
+    - .env
+    - .env.local
+    - backend/.env
+    - backend/.env.local
+    - frontend/.env
+    - frontend/.env.local
+    - data
+    - captures
+    - backend/.venv
+    - frontend/node_modules
     - /home/alex/.ssh
     - /home/alex/.config
     - /etc
