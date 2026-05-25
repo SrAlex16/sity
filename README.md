@@ -70,51 +70,48 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 
 ### Refactor reciente
 
-`routes_chat.py` ya no concentra toda la lógica local. Se han extraído módulos en:
+`routes_chat.py` ya no concentra toda la lógica local ni el tool loop.
+Módulos extraídos hasta la fecha:
 
 ```text
 backend/app/chat/
   __init__.py
-  budget_guard.py
-  local_flow.py
-  pending_action_runner.py
-  prompt_context.py
-  toolset_selector.py
+  budget_guard.py          — guardia de presupuesto y local-only
+  budget_snapshot.py       — cálculo de ratio/warnings tras cada llamada AI
+  local_flow.py            — confirmaciones locales, IDs, ambigüedad
+  pending_action_runner.py — ejecución de pending actions confirmadas
+  prompt_context.py        — historial, renderizado, filtrado operativo
+  response_factory.py      — helpers de construcción de ChatMessageResponse
+  tool_loop_runner.py      — iteración del tool loop; devuelve ToolLoopRunOutcome
+  tool_loop_step.py        — ejecución y normalización de una sola tool call
+  toolset_selector.py      — selección técnica de toolsets y heurísticas
 ```
 
-Responsabilidades:
+Responsabilidades clave del refactor reciente:
 
 ```text
-budget_guard.py
-  - SITY_LOCAL_ONLY
-  - SITY_DAILY_TOKEN_HARD_CAP
-  - respuestas local-only-guard y budget-guard
+response_factory.py
+  - local_tool_response()      — herramienta local sin round-trip AI
+  - micro_reaction_response()  — sensor cancelado o terminado
+  - ai_final_response()        — respuesta final del modelo
 
-local_flow.py
-  - confirmaciones locales
-  - IDs inexistentes
-  - acciones expiradas/ejecutadas/fallidas
-  - confirmación genérica sin pendientes
-  - ambigüedad con varias pending actions
-  - bloqueo de IDs mal formateados
+budget_snapshot.py
+  - build_budget_snapshot()    — ratio, warnings y daily_used en un solo objeto
 
-pending_action_runner.py
-  - ejecución de pending actions ya confirmadas
-  - mark_executed / mark_failed
-  - respuesta local tras ejecutar
+tool_loop_step.py
+  - run_tool_loop_step()       — llama a ToolExecutor, parsea raw_result,
+                                 detecta local_final / sensor / normal path
+  - ToolLoopStepOutcome        — dataclass con early_kind como discriminante
 
-toolset_selector.py
-  - selección técnica de toolsets
-  - ajuste de history_limit
-  - heurísticas conservadoras
-  - no crea ni ejecuta acciones
-
-prompt_context.py
-  - recent_history
-  - planner_history
-  - renderizado de historial
-  - filtrado de mensajes operativos
+tool_loop_runner.py
+  - run_tool_loop()            — itera tool_calls, propaga acumulación o
+                                 detiene en el primer early exit
+  - ToolLoopRunOutcome         — early_kind + campos por caso + acumuladores
 ```
+
+`routes_chat.py`: 757 → 627 líneas (−130) manteniendo el control sobre
+side-effects: AIUsage row, BudgetSnapshot, write_log, save_chat_message
+y generate_micro_reaction siguen en el route handler.
 
 Schemas API compartidos:
 
@@ -126,7 +123,7 @@ backend/app/api/schemas.py
 
 ## Limitaciones conocidas
 
-- `routes_chat.py` todavía contiene flujo de provider/Claude y tool loop.
+- `routes_chat.py` todavía contiene el flujo de provider/Claude y los early returns del tool loop (AIUsage, BudgetSnapshot, micro-reaction). El for-loop se extrajo a `tool_loop_runner.py`.
 - `ToolExecutor` todavía tiene demasiada lógica concentrada.
 - La primera llamada a Claude sigue siendo necesaria para interpretar muchas acciones.
 - `list_file_changes` puede seguir usando Claude para redactar resumen.
@@ -1001,13 +998,23 @@ curl -X POST http://localhost:8000/chat/message \
 
 ### 1. Seguir adelgazando `routes_chat.py`
 
-Extraer de forma incremental:
+Extraídos (✓ completado):
 
 ```text
-ClaudeRequestBuilder
-ProviderCallRunner
-ToolLoopRunner
-FinalResponseBuilder
+response_factory.py    — construcción de ChatMessageResponse (−52 líneas)
+budget_snapshot.py     — ratio/warnings post-llamada (−12 líneas)
+tool_loop_step.py      — normalización de una tool call (−63 líneas)
+tool_loop_runner.py    — iteración del tool loop completo (fase 2)
+```
+
+`routes_chat.py`: 757 → 627 líneas (−130).
+
+Pendiente:
+
+```text
+ProviderCallRunner     — llamada al planner + generate_with_tool_results
+FinalResponseBuilder   — consolidar AIUsage row + BudgetSnapshot + write_log
+                         + ResponseGuard + save_chat_message del path AI final
 ```
 
 Objetivo final:
