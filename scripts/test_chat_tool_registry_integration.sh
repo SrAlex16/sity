@@ -206,6 +206,24 @@ ok "Malformed confirmation blocked locally"
 
 sqlite3 "$DB_PATH" "delete from pendingaction where id='act_deadbeef';"
 
+log "Testing casual conversation does not trigger pending action cancellation"
+CASUAL_OUT="$TMP_DIR/casual_no_cancel.json"
+post_chat "yo he descubierto que soy inmortal, tengo pruebas" "$CASUAL_OUT"
+assert_ok_response "$CASUAL_OUT"
+PROVIDER="$(json_field "$CASUAL_OUT" "provider")"
+MODEL="$(json_field "$CASUAL_OUT" "model")"
+
+if [[ "$PROVIDER" == "local" && "$MODEL" == "tool-policy" ]]; then
+  echo "--- response ---"
+  cat "$CASUAL_OUT"
+  echo "----------------"
+  fail "Casual message triggered local tool-policy"
+fi
+
+assert_not_contains "$CASUAL_OUT" "acción pendiente activa para cancelar"
+assert_not_contains "$CASUAL_OUT" "No encontré ninguna acción pendiente"
+ok "Casual conversation did not trigger cancel_pending_action"
+
 log "Testing pseudo tool call guard directly"
 PYTHONPATH=backend backend/.venv/bin/python - <<'PY'
 from app.chat.response_guard import ResponseGuard

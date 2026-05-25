@@ -422,21 +422,23 @@ RECORD_AUDIO_SAMPLE_TOOL = {
 CANCEL_PENDING_ACTION_TOOL = {
     "name": "cancel_pending_action",
     "description": (
-        "Cancela una acción pendiente cuando el usuario indique que quiere dejarlo, cancelar o no seguir. "
-        "Proporciona el action_id si lo conoces. Si no, el backend intentará cancelar la más reciente activa."
+        "Cancela una acción pendiente identificada de forma estructural. "
+        "Úsala solo si el usuario proporciona un action_id explícito o si el contexto estructurado del backend identifica una acción pendiente concreta. "
+        "No la uses para mensajes conversacionales ambiguos."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "action_id": {
                 "type": "string",
-                "description": "ID de la acción pendiente, por ejemplo act_abc12345. Opcional.",
+                "description": "ID de la acción pendiente, por ejemplo act_abc12345.",
             },
             "reason": {
                 "type": "string",
                 "description": "Razón de la cancelación.",
             },
         },
+        "required": ["action_id"],
         "additionalProperties": False,
     },
 }

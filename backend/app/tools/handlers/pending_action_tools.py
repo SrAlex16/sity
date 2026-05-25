@@ -15,13 +15,22 @@ def handle_cancel_pending_action(ctx: ToolContext) -> ToolExecutionResult:
     action_id = str(tool_input.get("action_id", "")).strip().lower()
     reason = str(tool_input.get("reason", "")).strip()
 
-    manager = ConfirmationManager(executor.session)
+    if not action_id:
+        msg = "Falta action_id para cancelar una acción pendiente."
+        result = {
+            "ok": False, "message": msg,
+            "local_final": True, "text": msg, "local_model": "tool-policy",
+        }
+        return ToolExecutionResult(
+            tool_name="cancel_pending_action",
+            ok=False,
+            message=msg,
+            updated_parameters=[],
+            raw_result=result,
+        )
 
-    if action_id:
-        action = manager.find_action_by_id(action_id)
-    else:
-        active = manager._get_active_pending_actions()
-        action = active[-1] if active else None
+    manager = ConfirmationManager(executor.session)
+    action = manager.find_action_by_id(action_id)
 
     if not action or action.status != "pending":
         msg = "No encontré ninguna acción pendiente activa para cancelar."

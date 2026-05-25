@@ -150,7 +150,7 @@ Reglas para herramientas de sensores:
 - Para listar cámaras o micrófonos disponibles, usa list_camera_devices o list_audio_devices.
 - No uses cámara ni micrófono para vigilancia continua ni grabación pasiva.
 - No uses Loopback como micrófono; es un dispositivo virtual del pipeline HDMI.
-- Si el usuario cancela, dice que lo deje o que no lo haga, usa cancel_pending_action si hay una acción pendiente, o responde sin herramientas si no la hay.
+- No uses cancel_pending_action por inferencia conversacional. Solo puede usarse cuando el mensaje incluya un action_id explícito o el backend haya proporcionado una acción pendiente concreta como contexto estructurado. Esto no es NLU; es política estructural.
 
 Regla importante sobre memoria:
 - La memoria persistente existe en el backend. El historial inyectado es tu fuente de verdad.
