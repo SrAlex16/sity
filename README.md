@@ -767,62 +767,61 @@ No tocar a ciegas:
 
 ## Tests
 
-Tests locales sin API:
+### CI (GitHub Actions)
 
-```bash
-backend/.venv/bin/python scripts/test_file_access_local.py
-backend/.venv/bin/python scripts/test_confirmation_manager_local.py
+El workflow `.github/workflows/ci.yml` corre en cada push a `main` y en PRs.
+No requiere Anthropic API key ni red.
+
+```text
+backend-local:
+  - python -m compileall backend/app
+  - Init test database (SQLite en memoria)
+  - 12 scripts locales (file access, confirmation manager,
+    tool registry, toolset selector, persona prompt,
+    personality, service config, write, patch, diff, multi-diff, rollback)
+
+frontend:
+  - npm ci
+  - npx tsc -b (typecheck)
+  - npm run build
 ```
 
-Compile:
+### Tests locales (sin backend levantado)
 
 ```bash
 backend/.venv/bin/python -m compileall backend/app
+backend/.venv/bin/python scripts/test_file_access_local.py
+backend/.venv/bin/python scripts/test_confirmation_manager_local.py
+backend/.venv/bin/python scripts/test_tool_registry_completeness_local.py
+backend/.venv/bin/python scripts/test_toolset_selector_local.py
 ```
 
-Regresión repo-only con backend levantado:
+### Integración con mock provider (sin Claude, sin API key)
+
+Levanta el backend con `SITY_AI_PROVIDER=mock` en puerto 8010 y ejecuta
+la suite de integración completa:
 
 ```bash
-./scripts/test_system_agent_repo.sh
+./scripts/test_chat_mock_integration.sh
 ```
 
-El script de regresión prueba:
+Cubre el flujo `/chat/message` completo incluyendo:
 
 ```text
-- health
-- write_file
-- confirmación genérica
-- apply_text_patch
-- list_file_changes
-- rollback_latest_file_change
-- apply_unified_diff
-- rollback unified diff
-- multi-file unified diff plan
-- rollback de último archivo multiarchivo
-- bloqueo de .env
-- rechazo completo de multiarchivo sensible
-```
-
-Test de integración del registry (requiere backend levantado):
-
-```bash
-./scripts/test_chat_tool_registry_integration.sh
-```
-
-Cubre:
-
-```text
-- health
-- read_file
-- list_directory
-- list_file_changes
-- git_read_status
-- read_system_status
-- list_camera_devices
-- write_file fallback (crea pending action)
+- read_file, list_directory, list_file_changes
+- git_read_status, read_system_status, list_camera_devices
+- write_file (crea pending action)
 - cancel_pending_action
 - confirmación malformada bloqueada localmente
 - ResponseGuard contra pseudo tool calls XML
+- conversación casual (no activa cancel_pending_action)
+```
+
+### Integración con Claude (requiere backend levantado y API key)
+
+```bash
+./scripts/test_chat_tool_registry_integration.sh
+./scripts/test_system_agent_repo.sh
 ```
 
 ---
