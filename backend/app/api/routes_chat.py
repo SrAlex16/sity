@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
-from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse, UsageSummary
+from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
@@ -20,6 +20,11 @@ from app.chat.toolset_selector import (
     select_toolset_for_message,
 )
 from app.chat.pending_action_runner import PendingActionRunner
+from app.chat.response_factory import (
+    ai_final_response,
+    local_tool_response,
+    micro_reaction_response,
+)
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
@@ -464,26 +469,16 @@ def _chat_message_inner(
 
                     save_chat_message(session, role="sity", text=_local_text, trace_id=trace_id)
 
-                    return ChatMessageResponse(
-                        ok=True,
+                    return local_tool_response(
                         trace_id=trace_id,
                         text=_local_text,
-                        provider="local",
                         model=_local_model,
-                        fallback_used=False,
-                        error_type=None,
-                        usage=UsageSummary(
-                            input_tokens=planner_response.usage.input_tokens,
-                            output_tokens=planner_response.usage.output_tokens,
-                            total_tokens=_planner_tokens,
-                            daily_used_tokens=_daily_used,
-                            daily_budget_tokens=daily_budget,
-                            daily_ratio=round(_daily_ratio, 4),
-                        ),
+                        planner_input_tokens=planner_response.usage.input_tokens,
+                        planner_output_tokens=planner_response.usage.output_tokens,
+                        daily_used=_daily_used,
+                        daily_budget=daily_budget,
+                        daily_ratio=_daily_ratio,
                         warnings=_local_warnings,
-                        personality_updated=False,
-                        updated_parameter=None,
-                        updated_parameters=[],
                     )
 
                 _inner = result.raw_result.get("result", {})
@@ -513,27 +508,11 @@ def _chat_message_inner(
                         audit=True,
                     )
                     save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
-                    return ChatMessageResponse(
-                        ok=True,
+                    return micro_reaction_response(
                         trace_id=trace_id,
                         text=_react_text,
-                        provider="local",
-                        model="micro_reaction",
-                        fallback_used=False,
-                        error_type=None,
-                        usage=UsageSummary(
-                            input_tokens=0,
-                            output_tokens=0,
-                            total_tokens=0,
-                            daily_used_tokens=get_today_token_usage(session),
-                            daily_budget_tokens=daily_budget,
-                            daily_ratio=0.0,
-                        ),
-                        warnings=[],
-                        personality_updated=False,
-                        updated_parameter=None,
-                        updated_parameters=[],
-                        artifacts=[],
+                        daily_used=get_today_token_usage(session),
+                        daily_budget=daily_budget,
                     )
 
                 if result.ok and _is_sensor:
@@ -564,26 +543,11 @@ def _chat_message_inner(
                         if _artifact:
                             _finished_artifacts.append(_artifact)
                     save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
-                    return ChatMessageResponse(
-                        ok=True,
+                    return micro_reaction_response(
                         trace_id=trace_id,
                         text=_react_text,
-                        provider="local",
-                        model="micro_reaction",
-                        fallback_used=False,
-                        error_type=None,
-                        usage=UsageSummary(
-                            input_tokens=0,
-                            output_tokens=0,
-                            total_tokens=0,
-                            daily_used_tokens=get_today_token_usage(session),
-                            daily_budget_tokens=daily_budget,
-                            daily_ratio=0.0,
-                        ),
-                        warnings=[],
-                        personality_updated=False,
-                        updated_parameter=None,
-                        updated_parameters=[],
+                        daily_used=get_today_token_usage(session),
+                        daily_budget=daily_budget,
                         artifacts=_finished_artifacts,
                     )
 
@@ -729,25 +693,13 @@ def _chat_message_inner(
             trace_id=trace_id,
         )
 
-    return ChatMessageResponse(
-        ok=response.ok,
+    return ai_final_response(
         trace_id=trace_id,
-        text=response.text,
-        provider=response.provider,
-        model=response.model,
-        fallback_used=response.fallback_used,
-        error_type=response.error_type,
-        usage=UsageSummary(
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-            total_tokens=total_tokens,
-            daily_used_tokens=daily_used,
-            daily_budget_tokens=daily_budget,
-            daily_ratio=round(daily_ratio, 4),
-        ),
+        response=response,
+        daily_used=daily_used,
+        daily_budget=daily_budget,
+        daily_ratio=daily_ratio,
         warnings=warnings,
-        personality_updated=bool(updated_parameters),
-        updated_parameter=updated_parameters[0] if updated_parameters else None,
         updated_parameters=updated_parameters,
         artifacts=response_artifacts,
     )
