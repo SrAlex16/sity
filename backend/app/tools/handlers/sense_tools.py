@@ -32,3 +32,17 @@ def handle_get_capture_storage_summary(ctx: ToolContext) -> ToolExecutionResult:
         trace_id=ctx.trace_id,
         result=execute_capture_retention_action({"action": "get_capture_storage_summary"}),
     )
+
+
+@tool_handler("clean_old_captures")
+def handle_clean_old_captures(ctx: ToolContext) -> ToolExecutionResult:
+    return ctx.executor._simple_read_tool(
+        tool_name=ctx.tool_name,
+        trace_id=ctx.trace_id,
+        result=execute_capture_retention_action({
+            "action": "clean_old_captures",
+            "older_than_days": int(ctx.tool_input.get("older_than_days", 7)),
+            "max_files_per_type": int(ctx.tool_input.get("max_files_per_type", 100)),
+            "dry_run": bool(ctx.tool_input.get("dry_run", False)),
+        }),
+    )

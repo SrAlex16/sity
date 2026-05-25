@@ -698,18 +698,6 @@ class ToolExecutor:
                 }),
             )
 
-        if tool_name == "clean_old_captures":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=execute_capture_retention_action({
-                    "action": "clean_old_captures",
-                    "older_than_days": int(tool_input.get("older_than_days", 7)),
-                    "max_files_per_type": int(tool_input.get("max_files_per_type", 100)),
-                    "dry_run": bool(tool_input.get("dry_run", False)),
-                }),
-            )
-
         if tool_name == "git_propose_action":
             return self._git_propose_action(
                 tool_input=tool_input,
