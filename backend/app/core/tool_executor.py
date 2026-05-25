@@ -673,45 +673,6 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
-        if tool_name in {"add_allowed_service", "remove_allowed_service"}:
-            service_name = str(tool_input.get("service_name", "")).strip()
-            if not service_name or not all(c.isalnum() or c in "@_.-" for c in service_name):
-                msg = f"Nombre de servicio inválido: {service_name!r}"
-                return ToolExecutionResult(
-                    tool_name=tool_name, ok=False, message=msg,
-                    updated_parameters=[], raw_result={
-                        "success": False, "message": msg,
-                        "local_final": True, "text": msg, "local_model": "tool-policy",
-                    },
-                )
-            verb = "Añadir" if tool_name == "add_allowed_service" else "Quitar"
-            action_key = tool_name
-            created = ConfirmationManager(self.session).create_pending_action(
-                action_type="system_config",
-                risk_level="critical",
-                summary=f"{verb} {service_name} {'a' if tool_name == 'add_allowed_service' else 'de'} servicios permitidos",
-                payload={"action": action_key, "service_name": service_name},
-                trace_id=trace_id,
-            )
-            local_text = (
-                f"Acción pendiente creada: {created.summary}\n\n"
-                f"Confirma con: `{created.confirmation_phrase}`"
-            )
-            result = {
-                "success": True,
-                "message": local_text,
-                "action_id": created.id,
-                "confirmation_phrase": created.confirmation_phrase,
-                "summary": created.summary,
-                "local_final": True,
-                "text": local_text,
-                "local_model": "pending-action-manager",
-            }
-            return ToolExecutionResult(
-                tool_name=tool_name, ok=True, message=local_text,
-                updated_parameters=[], raw_result=result,
-            )
-
         msg = f"Herramienta no soportada: {tool_name}"
         return ToolExecutionResult(
             tool_name=tool_name,
