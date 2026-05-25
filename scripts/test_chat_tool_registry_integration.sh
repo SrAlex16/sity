@@ -225,7 +225,10 @@ assert_not_contains "$CASUAL_OUT" "No encontré ninguna acción pendiente"
 ok "Casual conversation did not trigger cancel_pending_action"
 
 log "Testing pseudo tool call guard directly"
-PYTHONPATH=backend backend/.venv/bin/python - <<'PY'
+# Use venv python when available (local dev), fall back to PATH python (CI).
+_PYTHON="${BASH_SOURCE[0]%/*}/../backend/.venv/bin/python"
+[[ -x "$_PYTHON" ]] || _PYTHON="python"
+PYTHONPATH=backend "$_PYTHON" - <<'PY'
 from app.chat.response_guard import ResponseGuard
 
 text = """
