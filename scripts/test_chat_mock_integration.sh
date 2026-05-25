@@ -23,11 +23,11 @@ MOCK_PORT=8010
 MOCK_URL="http://127.0.0.1:$MOCK_PORT"
 UVICORN_LOG="$(mktemp /tmp/sity-mock-backend.XXXXXX.log)"
 
-# Prefer the project venv; fall back to whatever is in PATH (CI).
+# Prefer the project venv; fall back to python -m uvicorn (CI / global pip install).
 if [[ -x "$BACKEND/.venv/bin/uvicorn" ]]; then
-  UVICORN="$BACKEND/.venv/bin/uvicorn"
+  UVICORN_CMD=("$BACKEND/.venv/bin/uvicorn")
 else
-  UVICORN="uvicorn"
+  UVICORN_CMD=(python -m uvicorn)
 fi
 
 cleanup() {
@@ -45,7 +45,7 @@ cd "$BACKEND"
 env \
   SITY_AI_PROVIDER=mock \
   SITY_DAILY_TOKEN_HARD_CAP=false \
-  "$UVICORN" app.main:app \
+  "${UVICORN_CMD[@]}" app.main:app \
     --host 127.0.0.1 --port "$MOCK_PORT" \
     --no-access-log \
     > "$UVICORN_LOG" 2>&1 &
