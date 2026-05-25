@@ -93,10 +93,43 @@ detección conservadora de señales técnicas
 
 Esto no es NLU de acciones.
 
+#### Dos capas de selección
+
+**1. Estructural** — `select_structural_toolsets_for_message`:
+
+```text
+nombres exactos de tools presentes en el mensaje
+rutas de fichero (/, config/, backend/, etc.)
+IDs estructurales act_[0-9a-f]{8}
+```
+
+Testeable en aislamiento. No depende de lenguaje natural.
+
+**2. Legacy keyword fallback** — `_legacy_keyword_toolsets`:
+
+```text
+mantenido solo por compatibilidad
+no añadir nuevos literales de lenguaje natural
+preferir señales estructurales o schemas
+```
+
+`select_toolset_for_message` llama al estructural primero y añade el legacy encima.
+
+#### BASE_TOOLSET — mínimo operativo, no vacío
+
+`BASE_TOOLSET` no significa "sin herramientas". Incluye file tools (`read_file`, `write_file`, `apply_text_patch`, etc.) y `cancel_pending_action`. Es el toolset mínimo operativo presente en toda conversación.
+
+Consecuencia: las regresiones conversacionales no comprueban que `BASE_TOOLSET` esté vacío. Comprueban que mensajes casuales no añadan toolsets especializados adicionales (`SENSES`, `GIT`, `SYSTEM`, `SERVICE_CONFIG`, `SERVICE_CONTROL`, `DEBUG`, `PERSONALITY`) más allá de lo que BASE ya incluye.
+
+Candidato futuro: mover `cancel_pending_action` a un `PENDING_ACTION_TOOLSET` separado, añadido solo cuando `message_mentions_action_id()` sea `True`, para reducir tokens en mensajes sin IDs de acción.
+
+#### Permitido / no permitido
+
 Permitido:
 
 ```text
 detectar rutas explícitas
+detectar nombres de tools en el mensaje
 detectar señales Git
 detectar señales de debug
 detectar señales de archivos
