@@ -673,23 +673,6 @@ class ToolExecutor:
                 updated_parameters=[], raw_result=result,
             )
 
-        if tool_name == "git_propose_action":
-            return self._git_propose_action(
-                tool_input=tool_input,
-                trace_id=trace_id,
-            )
-
-        if tool_name in {"restart_service", "start_service", "stop_service"}:
-            return self._system_propose_action(
-                tool_input={
-                    "action": tool_name,
-                    "service_name": str(tool_input.get("service_name", "")).strip(),
-                    "risk_level": "safe",
-                    "summary": f"{tool_name} {tool_input.get('service_name', '')}",
-                },
-                trace_id=trace_id,
-            )
-
         if tool_name in {"add_allowed_service", "remove_allowed_service"}:
             service_name = str(tool_input.get("service_name", "")).strip()
             if not service_name or not all(c.isalnum() or c in "@_.-" for c in service_name):
@@ -727,12 +710,6 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=local_text,
                 updated_parameters=[], raw_result=result,
-            )
-
-        if tool_name == "system_propose_action":
-            return self._system_propose_action(
-                tool_input=tool_input,
-                trace_id=trace_id,
             )
 
         msg = f"Herramienta no soportada: {tool_name}"
