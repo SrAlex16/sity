@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from app.cortex.claude_provider import ClaudeProvider
@@ -9,7 +10,13 @@ class AIGateway:
         ai_config = config.get("ai", {})
         claude_config = ai_config.get("claude", {})
         model = claude_config.get("model", "claude-haiku-4-5-20251001")
-        self.provider = ClaudeProvider(model=model)
+
+        ai_provider = os.getenv("SITY_AI_PROVIDER", "anthropic").strip().lower()
+        if ai_provider == "mock":
+            from app.cortex.mock_provider import MockProvider
+            self.provider = MockProvider(model="mock")
+        else:
+            self.provider = ClaudeProvider(model=model)
 
     def generate(self, request: AIRequest) -> AIResponse:
         try:
