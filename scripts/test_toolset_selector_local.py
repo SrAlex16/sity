@@ -12,11 +12,15 @@ sys.path.insert(0, str(BACKEND))
 def main() -> None:
     from app.chat.toolset_selector import (
         message_mentions_action_id,
+        select_structural_toolsets_for_message,
         select_toolset_for_message,
     )
 
     def toolset_names(message: str) -> set[str]:
         return {t["name"] for t in select_toolset_for_message(message)}
+
+    def structural_names(message: str) -> set[str]:
+        return {t["name"] for t in select_structural_toolsets_for_message(message)}
 
     def assert_has_tool(message: str, tool: str) -> None:
         names = toolset_names(message)
@@ -83,6 +87,37 @@ def main() -> None:
     print("==> word-boundary regression")
     assert_no_tool("usa la herramienta list_directory", "read_system_status")
     print("[OK] 'herramienta' does not trigger system toolset via 'ram'")
+
+    # ── Structural selector must not break conversational messages ────────────
+    print("==> structural selector: conversational messages stay in BASE_TOOLSET")
+    conversational_cases = [
+        "qué tal estás hoy",
+        "cuéntame algo interesante",
+        "yo he descubierto que soy inmortal",
+        "gracias",
+        "tiene sentido",
+        "mejor?",
+        "ok",
+    ]
+    from app.cortex.tool_schemas import BASE_TOOLSET
+    base_names = {t["name"] for t in BASE_TOOLSET}
+    for msg in conversational_cases:
+        names = structural_names(msg)
+        extra = names - base_names
+        assert not extra, (
+            f"Structural selector added unexpected tools for {msg!r}: {sorted(extra)}"
+        )
+    print("[OK] structural selector adds nothing beyond BASE_TOOLSET for conversational messages")
+
+    # ── Structural selector handles explicit tool names and paths ─────────────
+    print("==> structural selector: explicit signals still work")
+    assert "capture_camera_snapshot" in structural_names(
+        "usa la herramienta capture_camera_snapshot"
+    ), "explicit tool name not picked up structurally"
+    assert "read_file" in structural_names(
+        "edita backend/app/core/tool_executor.py"
+    ), "file path not picked up structurally"
+    print("[OK] structural selector works for explicit tool names and file paths")
 
     print("\ntoolset selector local test ok")
 

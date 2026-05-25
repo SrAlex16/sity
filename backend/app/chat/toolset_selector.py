@@ -157,14 +157,16 @@ def _legacy_keyword_toolsets(message: str) -> list[list[dict]]:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def select_toolset_for_message(message: str) -> list[dict]:
+def select_structural_toolsets_for_message(message: str) -> list[dict]:
+    """Structural-only selection: tool names, file paths, action IDs.
+
+    No NL keyword matching. Safe to test in isolation to measure legacy coverage.
+    """
     selected = list(BASE_TOOLSET)
 
-    # Structural: tool name mentioned verbatim.
     for toolset in _toolsets_from_explicit_tool_names(message):
         selected.extend(toolset)
 
-    # Structural: file path → file agent toolset.
     if message_mentions_file_path(message):
         selected.extend(FILE_AGENT_TOOLSET)
 
@@ -172,7 +174,13 @@ def select_toolset_for_message(message: str) -> list[dict]:
     # signal preserved for future PENDING_ACTION_TOOLSET expansion.
     # if message_mentions_action_id(message): ...
 
-    # Legacy NL keyword fallback.
+    return _dedupe_tools(selected)
+
+
+def select_toolset_for_message(message: str) -> list[dict]:
+    selected = select_structural_toolsets_for_message(message)
+
+    # Legacy NL keyword fallback — see _legacy_keyword_toolsets docstring.
     for toolset in _legacy_keyword_toolsets(message):
         selected.extend(toolset)
 
