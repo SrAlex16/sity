@@ -47,6 +47,28 @@ jobs:
           python scripts/test_apply_multi_file_unified_diff_plan_tool_registry_local.py
           python scripts/test_rollback_tools_registry_local.py
 
+  integration-mock:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: backend
+      SITY_AI_PROVIDER: mock
+      SITY_DAILY_TOKEN_HARD_CAP: "false"
+      SITY_PROJECT_ROOT: ${{ github.workspace }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run mock HTTP integration test
+        run: ./scripts/test_chat_mock_integration.sh
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

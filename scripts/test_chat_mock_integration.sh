@@ -5,10 +5,14 @@
 # with SITY_AI_PROVIDER=mock and SITY_DAILY_TOKEN_HARD_CAP=false, runs the
 # integration test, then stops the backend.
 #
-# Usage:
+# Usage (local, with venv):
 #   ./scripts/test_chat_mock_integration.sh
 #
-# Prerequisites: backend .venv must exist (run `pip install -e .` inside backend/).
+# Usage (CI, pip-installed globally):
+#   ./scripts/test_chat_mock_integration.sh  (same command)
+#
+# The script uses backend/.venv/bin/uvicorn when available (local dev),
+# and falls back to uvicorn from PATH (CI / global pip install).
 
 set -euo pipefail
 
@@ -18,6 +22,13 @@ BACKEND="$ROOT/backend"
 MOCK_PORT=8010
 MOCK_URL="http://127.0.0.1:$MOCK_PORT"
 UVICORN_LOG="$(mktemp /tmp/sity-mock-backend.XXXXXX.log)"
+
+# Prefer the project venv; fall back to whatever is in PATH (CI).
+if [[ -x "$BACKEND/.venv/bin/uvicorn" ]]; then
+  UVICORN="$BACKEND/.venv/bin/uvicorn"
+else
+  UVICORN="uvicorn"
+fi
 
 cleanup() {
   if [[ -n "${MOCK_PID:-}" ]]; then
@@ -34,22 +45,22 @@ cd "$BACKEND"
 env \
   SITY_AI_PROVIDER=mock \
   SITY_DAILY_TOKEN_HARD_CAP=false \
-  .venv/bin/uvicorn app.main:app \
+  "$UVICORN" app.main:app \
     --host 127.0.0.1 --port "$MOCK_PORT" \
     --no-access-log \
     > "$UVICORN_LOG" 2>&1 &
 
 MOCK_PID=$!
 
-# Wait for backend to be ready (up to 10s)
-for i in $(seq 1 10); do
+# Wait for backend to be ready (up to 30s — CI runners can be slower).
+for i in $(seq 1 30); do
   if curl -fsS "$MOCK_URL/health" >/dev/null 2>&1; then
-    printf '[OK] Mock backend ready (%.0fs)\n' "$i"
+    printf '[OK] Mock backend ready (%ds)\n' "$i"
     break
   fi
   sleep 1
-  if [[ "$i" -eq 10 ]]; then
-    echo '[FAIL] Mock backend did not start in 10s'
+  if [[ "$i" -eq 30 ]]; then
+    echo '[FAIL] Mock backend did not start in 30s'
     cat "$UVICORN_LOG"
     exit 1
   fi
