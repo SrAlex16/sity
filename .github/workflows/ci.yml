@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-local:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: backend
+      SITY_AI_PROVIDER: mock
+      SITY_PROJECT_ROOT: ${{ github.workspace }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall -q backend/app
+
+      - name: Init test database
+        run: python -c "from app.memory.db import init_db; init_db()"
+
+      - name: Run local backend tests
+        run: |
+          set -e
+          python scripts/test_file_access_local.py
+          python scripts/test_confirmation_manager_local.py
+          python scripts/test_tool_registry_completeness_local.py
+          python scripts/test_toolset_selector_local.py
+          python scripts/test_persona_prompt_local.py
+          python scripts/test_personality_tool_registry_local.py
+          python scripts/test_service_config_tool_registry_local.py
+          python scripts/test_file_write_tool_registry_local.py
+          python scripts/test_apply_text_patch_tool_registry_local.py
+          python scripts/test_apply_unified_diff_tool_registry_local.py
+          python scripts/test_apply_multi_file_unified_diff_plan_tool_registry_local.py
+          python scripts/test_rollback_tools_registry_local.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Build
+        run: npm run build

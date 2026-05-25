@@ -1,4 +1,4 @@
-#!/home/alex/projects/sity/backend/.venv/bin/python3
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import json
@@ -80,6 +80,9 @@ def main() -> None:
     result = list_directory(str(TEST_DIR))
     require_result_ok(result, "list_directory allowed config")
 
+    result = read_file(str(PROJECT_ROOT / "README.md"))
+    require_result_ok(result, "read_file allows README.md")
+
     print("==> read/list blocked outside repo")
 
     result = list_directory("/home/alex/Documents")
@@ -87,6 +90,23 @@ def main() -> None:
 
     result = read_file("/etc/passwd")
     require_result_not_ok(result, "read_file blocks /etc/passwd")
+
+    print("==> blocked sensitive paths (secrets and VCS internals)")
+
+    blocked_read_paths = [
+        ".git/config",
+        ".env",
+        ".env.local",
+        "backend/.env",
+        "backend/.env.local",
+        "frontend/.env",
+        "frontend/.env.local",
+    ]
+
+    for rel_path in blocked_read_paths:
+        abs_path = str(PROJECT_ROOT / rel_path)
+        result = read_file(abs_path)
+        require_result_not_ok(result, f"read_file blocks {rel_path}")
 
     print("==> write_file allowed")
 
