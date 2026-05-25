@@ -388,6 +388,14 @@ response_guard.py
 artifacts.py
 ```
 
+Tool handler registry migrado (`backend/app/tools/`):
+
+```text
+Todos los handlers viven en app/tools/handlers/*.py
+_dispatch_tool_call no tiene ramas if tool_name ==
+_cancel_pending_action eliminado de ToolExecutor (código muerto tras migración)
+```
+
 Pendiente de extraer, pero no todavía:
 
 ```text
