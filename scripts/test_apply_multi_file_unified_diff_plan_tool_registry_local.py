@@ -34,6 +34,7 @@ def actions_for_trace(session: Session) -> list[PendingAction]:
         session.exec(
             select(PendingAction)
             .where(PendingAction.trace_id == TRACE_ID)
+            .where(PendingAction.status == "pending")
             .order_by(PendingAction.created_at.asc())
         )
     )
