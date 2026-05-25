@@ -52,6 +52,7 @@ def _looks_like_conversation_only(message: str) -> bool:
         "añade", "quita", "limpia capturas",
         "git", "repo", "repositorio",
         "foto", "cámara", "camara", "webcam", "micrófono", "microfono",
+        "captura", "capturas",
         "debug", "traza", "trace", "logs",
         "servicio", "systemd", "backend", "frontend",
         "cpu", "ram", "disco", "raspberry",
@@ -131,7 +132,7 @@ def select_toolset_for_message(message: str) -> list[dict]:
     sense_terms = [
         "foto", "cámara", "camara", "webcam",
         "micro", "micrófono", "microfono", "audio",
-        "capturas", "graba", "grabar",
+        "captura", "capturas", "graba", "grabar",
     ]
 
     debug_terms = [

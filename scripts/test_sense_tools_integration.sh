@@ -74,11 +74,20 @@ expire_pending_actions() {
   sqlite3 "$DB_PATH" "update pendingaction set status='expired' where status='pending';"
 }
 
+clear_recent_chat_history() {
+  sqlite3 "$DB_PATH" "delete from chatmessage where created_at >= datetime('now', '-2 hours');"
+}
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 log "Checking backend health"
 curl -fsS "$BASE_URL/health" >/dev/null
 ok "Backend health"
+
+log "Clearing recent chat history to avoid history contamination"
+expire_pending_actions
+clear_recent_chat_history
+ok "State reset"
 
 # ── list_camera_devices (already in registry) ─────────────────────────────────
 

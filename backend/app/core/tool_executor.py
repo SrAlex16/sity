@@ -81,6 +81,7 @@ class ToolExecutor:
                 tool_input=tool_input,
                 trace_id=trace_id,
                 executor=self,
+                client_turn_id=client_turn_id,
             ))
 
         if tool_name == "write_file":
@@ -670,32 +671,6 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name=tool_name, ok=True, message=local_text,
                 updated_parameters=[], raw_result=result,
-            )
-
-        if tool_name == "capture_camera_snapshot":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=execute_sense_action({
-                    "action": "capture_camera_snapshot",
-                    "device": str(tool_input.get("device", "/dev/video0")),
-                    "width": int(tool_input.get("width", 1280)),
-                    "height": int(tool_input.get("height", 720)),
-                    "skip_frames": int(tool_input.get("skip_frames", 20)),
-                    "client_turn_id": client_turn_id,
-                }),
-            )
-
-        if tool_name == "record_audio_sample":
-            return self._simple_read_tool(
-                tool_name=tool_name,
-                trace_id=trace_id,
-                result=execute_sense_action({
-                    "action": "record_audio_sample",
-                    "duration_seconds": int(tool_input.get("duration_seconds", 3)),
-                    "device": str(tool_input.get("device", "plughw:CARD=webcam,DEV=0")),
-                    "client_turn_id": client_turn_id,
-                }),
             )
 
         if tool_name == "git_propose_action":

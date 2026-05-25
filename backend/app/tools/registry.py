@@ -12,6 +12,7 @@ class ToolContext:
     tool_input: dict[str, Any]
     trace_id: str
     executor: Any  # ToolExecutor — avoid circular import
+    client_turn_id: str | None = None
 
 
 _HANDLERS: dict[str, Callable[[ToolContext], ToolExecutionResult]] = {}
