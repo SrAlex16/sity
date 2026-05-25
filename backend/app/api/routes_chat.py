@@ -20,6 +20,7 @@ from app.chat.toolset_selector import (
     select_toolset_for_message,
 )
 from app.chat.pending_action_runner import PendingActionRunner
+from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.response_factory import (
     ai_final_response,
     local_tool_response,
@@ -446,18 +447,12 @@ def _chat_message_inner(
                     session.add(_usage_row)
                     session.commit()
 
-                    _daily_used = get_today_token_usage(session)
-                    _daily_ratio = _daily_used / daily_budget if daily_budget > 0 else 0.0
-
-                    _local_warnings: list[str] = []
-                    if _daily_ratio >= critical_threshold:
-                        _local_warnings.append(
-                            f"Uso crítico: has consumido aproximadamente el {round(_daily_ratio * 100)}% del presupuesto diario configurado."
-                        )
-                    elif _daily_ratio >= warning_threshold:
-                        _local_warnings.append(
-                            f"Aviso: has consumido aproximadamente el {round(_daily_ratio * 100)}% del presupuesto diario configurado."
-                        )
+                    _snap = build_budget_snapshot(
+                        daily_used=get_today_token_usage(session),
+                        daily_budget=daily_budget,
+                        warning_threshold=warning_threshold,
+                        critical_threshold=critical_threshold,
+                    )
 
                     write_log(
                         level="INFO",
@@ -475,10 +470,10 @@ def _chat_message_inner(
                         model=_local_model,
                         planner_input_tokens=planner_response.usage.input_tokens,
                         planner_output_tokens=planner_response.usage.output_tokens,
-                        daily_used=_daily_used,
-                        daily_budget=daily_budget,
-                        daily_ratio=_daily_ratio,
-                        warnings=_local_warnings,
+                        daily_used=_snap.daily_used,
+                        daily_budget=_snap.daily_budget,
+                        daily_ratio=_snap.daily_ratio,
+                        warnings=_snap.warnings,
                     )
 
                 _inner = result.raw_result.get("result", {})
@@ -636,19 +631,12 @@ def _chat_message_inner(
     session.add(usage_row)
     session.commit()
 
-    daily_used = get_today_token_usage(session)
-    total_tokens = response.usage.input_tokens + response.usage.output_tokens
-    daily_ratio = daily_used / daily_budget if daily_budget > 0 else 0.0
-
-    warnings: list[str] = []
-    if daily_ratio >= critical_threshold:
-        warnings.append(
-            f"Uso crítico: has consumido aproximadamente el {round(daily_ratio * 100)}% del presupuesto diario configurado."
-        )
-    elif daily_ratio >= warning_threshold:
-        warnings.append(
-            f"Aviso: has consumido aproximadamente el {round(daily_ratio * 100)}% del presupuesto diario configurado."
-        )
+    snap = build_budget_snapshot(
+        daily_used=get_today_token_usage(session),
+        daily_budget=daily_budget,
+        warning_threshold=warning_threshold,
+        critical_threshold=critical_threshold,
+    )
 
     write_log(
         level="INFO" if response.ok else "ERROR",
@@ -663,8 +651,8 @@ def _chat_message_inner(
             "output_tokens": response.usage.output_tokens,
             "fallback_used": response.fallback_used,
             "error_type": response.error_type,
-            "daily_used_tokens": daily_used,
-            "daily_ratio": daily_ratio,
+            "daily_used_tokens": snap.daily_used,
+            "daily_ratio": snap.daily_ratio,
         },
     )
 
@@ -696,10 +684,10 @@ def _chat_message_inner(
     return ai_final_response(
         trace_id=trace_id,
         response=response,
-        daily_used=daily_used,
-        daily_budget=daily_budget,
-        daily_ratio=daily_ratio,
-        warnings=warnings,
+        daily_used=snap.daily_used,
+        daily_budget=snap.daily_budget,
+        daily_ratio=snap.daily_ratio,
+        warnings=snap.warnings,
         updated_parameters=updated_parameters,
         artifacts=response_artifacts,
     )
