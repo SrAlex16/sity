@@ -79,6 +79,7 @@ _PERSONALITY_ACTION_RE = re.compile(
 _IS_TECHNICAL_RE = re.compile(
     r"\bgit\b|\bcommit\b|\brama|\bbranch|\bpull\b|\bpush\b|\bfetch\b"
     r"|\bfoto\b|\bcámar|\bcamar|\bwebcam\b|\bcaptur|\bgraba|\baudio\b"
+    r"|\bmicr(?:ó|o)fono\b|\bmicro\b"
     r"|\bdebug\b|\btraza\b|\btrace\b|\blogs\b"
     r"|\breinicia\b|\barranca\b|\bservicio\b|\bsystemd\b|\bbackend\b|\bfrontend\b"
     r"|\bcpu\b|\bram\b|\bdisco\b|\braspberry\b|\bsistema\b"
