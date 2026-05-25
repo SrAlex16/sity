@@ -1595,3 +1595,21 @@ Adaptadores por plataforma.
 Capacidades activables.
 Configuración por perfil.
 ```
+
+---
+
+## Licencia
+
+Sity se publica bajo la GNU Affero General Public License v3.0 or later
+(`AGPL-3.0-or-later`).
+
+Esto significa que puedes usar, estudiar, modificar y redistribuir el código bajo los
+términos de la AGPLv3. Si ejecutas una versión modificada de Sity como servicio accesible
+por red, debes ofrecer el código fuente correspondiente a los usuarios de ese servicio,
+tal como exige la AGPLv3.
+
+### Licencia comercial
+
+Si quieres usar Sity bajo términos distintos a la AGPLv3, por ejemplo en un producto
+cerrado o con obligaciones incompatibles con AGPL, necesitas permiso explícito por escrito
+del titular del copyright. Puede existir una licencia comercial separada caso por caso.
