@@ -19,8 +19,8 @@ from app.cortex.tool_schemas import (
 )
 
 # ── Tool-name → toolset index ─────────────────────────────────────────────────
-# Built once at import. When a tool name appears verbatim in the message, its
-# toolset is added automatically — no parallel term list to maintain.
+# Built once at import from the actual schema lists.
+# No parallel term list to maintain: adding a tool to a schema is enough.
 _TOOL_TO_TOOLSET: dict[str, list[dict]] = {}
 for _toolset in [
     GIT_TOOLSET, SERVICE_CONFIG_TOOLSET, SERVICE_CONTROL_TOOLSET,
@@ -30,7 +30,8 @@ for _toolset in [
         _TOOL_TO_TOOLSET[_tool["name"]] = _toolset
 del _toolset, _tool
 
-# ── Compiled regex patterns (roots, not inflected forms) ──────────────────────
+# ── Legacy NL keyword regexes ─────────────────────────────────────────────────
+# Used only by _legacy_keyword_toolsets. Do not add new patterns here.
 _GIT_RE = re.compile(
     r"\bgit\b|\bcommit\b|\bramas?\b|\bbranch(?:es)?\b"
     r"|\bpull\b|\bpush\b|\bfetch\b|\bcheckout\b|\bdiff\b"
@@ -75,18 +76,11 @@ _PERSONALITY_ACTION_RE = re.compile(
     r"\bsube\b|\bbaja\b|\bajusta\b|\bcambia\b|\bpon\b|\bponte\b|\bslider\b",
     re.IGNORECASE,
 )
-# Union of all technical signals — used by the "is this purely conversational?" gate.
-_IS_TECHNICAL_RE = re.compile(
-    r"\bgit\b|\bcommit\b|\brama|\bbranch|\bpull\b|\bpush\b|\bfetch\b"
-    r"|\bfoto\b|\bcámar|\bcamar|\bwebcam\b|\bcaptur|\bgraba|\baudio\b"
-    r"|\bmicr(?:ó|o)fono\b|\bmicro\b"
-    r"|\bdebug\b|\btraza\b|\btrace\b|\blogs\b"
-    r"|\breinicia\b|\barranca\b|\bservicio\b|\bsystemd\b|\bbackend\b|\bfrontend\b"
-    r"|\bcpu\b|\bram\b|\bdisco\b|\braspberry\b|\bsistema\b"
-    r"|\bpersonalidad\b|\bsarcasmo\b|\bcalidez\b",
-    re.IGNORECASE,
-)
 
+_ACTION_ID_RE = re.compile(r"\bact_[a-fA-F0-9]{8}\b")
+
+
+# ── Structural signal helpers ──────────────────────────────────────────────────
 
 def _dedupe_tools(tools: list[dict]) -> list[dict]:
     seen: set[str] = set()
@@ -114,12 +108,75 @@ def message_mentions_file_path(message: str) -> bool:
     )
 
 
-def _looks_like_conversation_only(message: str) -> bool:
-    # A verbatim tool name in the message is always a technical signal.
+def message_mentions_action_id(message: str) -> bool:
+    return bool(_ACTION_ID_RE.search(message))
+
+
+def _toolsets_from_explicit_tool_names(message: str) -> list[list[dict]]:
+    """Return toolsets whose tool name appears verbatim in the message."""
     normalized = message.lower()
-    if any(name in normalized for name in _TOOL_TO_TOOLSET):
-        return False
-    return not _IS_TECHNICAL_RE.search(message)
+    seen_ids: set[int] = set()
+    result = []
+    for tool_name, toolset in _TOOL_TO_TOOLSET.items():
+        tid = id(toolset)
+        if tool_name in normalized and tid not in seen_ids:
+            seen_ids.add(tid)
+            result.append(toolset)
+    return result
+
+
+def _legacy_keyword_toolsets(message: str) -> list[list[dict]]:
+    """
+    Legacy NL keyword fallback. Intentionally temporary.
+    Do not add new keywords here — use structural signals instead.
+    Kept until a reliable fallback-planner or broader default toolset is in place.
+    """
+    result = []
+
+    if _GIT_RE.search(message):
+        result.append(GIT_TOOLSET)
+
+    if _SERVICE_CONFIG_RE.search(message):
+        result.append(SERVICE_CONFIG_TOOLSET)
+    elif _SERVICE_CONTROL_RE.search(message):
+        result.append(SERVICE_CONTROL_TOOLSET)
+    elif _SYSTEM_RE.search(message):
+        result.append(SYSTEM_TOOLSET)
+
+    if _SENSE_RE.search(message):
+        result.append(SENSES_TOOLSET)
+
+    if _DEBUG_RE.search(message):
+        result.append(DEBUG_TOOLSET)
+
+    if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
+        result.append(PERSONALITY_TOOLSET)
+
+    return result
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def select_toolset_for_message(message: str) -> list[dict]:
+    selected = list(BASE_TOOLSET)
+
+    # Structural: tool name mentioned verbatim.
+    for toolset in _toolsets_from_explicit_tool_names(message):
+        selected.extend(toolset)
+
+    # Structural: file path → file agent toolset.
+    if message_mentions_file_path(message):
+        selected.extend(FILE_AGENT_TOOLSET)
+
+    # Structural: action ID → cancel_pending_action already in BASE_TOOLSET;
+    # signal preserved for future PENDING_ACTION_TOOLSET expansion.
+    # if message_mentions_action_id(message): ...
+
+    # Legacy NL keyword fallback.
+    for toolset in _legacy_keyword_toolsets(message):
+        selected.extend(toolset)
+
+    return _dedupe_tools(selected)
 
 
 def history_limit_for_message(message: str) -> int:
@@ -153,45 +210,3 @@ def history_limit_for_message(message: str) -> int:
         return 8
 
     return 4
-
-
-def select_toolset_for_message(message: str) -> list[dict]:
-    if message_mentions_file_path(message):
-        return list(FILE_AGENT_TOOLSET)
-
-    if _looks_like_conversation_only(message):
-        return list(BASE_TOOLSET)
-
-    selected = list(BASE_TOOLSET)
-
-    # Primary signal: tool name mentioned verbatim → add its toolset directly.
-    normalized = message.lower()
-    seen_toolset_ids: set[int] = set()
-    for tool_name, toolset in _TOOL_TO_TOOLSET.items():
-        if tool_name in normalized:
-            tid = id(toolset)
-            if tid not in seen_toolset_ids:
-                seen_toolset_ids.add(tid)
-                selected.extend(toolset)
-
-    # Secondary signal: natural language roots via compiled regex.
-    if _GIT_RE.search(message):
-        selected.extend(GIT_TOOLSET)
-
-    if _SERVICE_CONFIG_RE.search(message):
-        selected.extend(SERVICE_CONFIG_TOOLSET)
-    elif _SERVICE_CONTROL_RE.search(message):
-        selected.extend(SERVICE_CONTROL_TOOLSET)
-    elif _SYSTEM_RE.search(message):
-        selected.extend(SYSTEM_TOOLSET)
-
-    if _SENSE_RE.search(message):
-        selected.extend(SENSES_TOOLSET)
-
-    if _DEBUG_RE.search(message):
-        selected.extend(DEBUG_TOOLSET)
-
-    if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
-        selected.extend(PERSONALITY_TOOLSET)
-
-    return _dedupe_tools(selected)
