@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -11,7 +10,6 @@ from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
-from app.chat.artifacts import capture_artifact_from_path
 from app.chat.claude_request_builder import ClaudeRequestBuilder, max_tokens_for_verbosity
 from app.chat.response_guard import ResponseGuard
 from app.chat.toolset_selector import (
@@ -21,6 +19,7 @@ from app.chat.toolset_selector import (
 )
 from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
+from app.chat.tool_loop_step import run_tool_loop_step
 from app.chat.response_factory import (
     ai_final_response,
     local_tool_response,
@@ -417,19 +416,14 @@ def _chat_message_inner(
             executor = ToolExecutor(session)
 
             for tool_call in planner_response.tool_calls:
-                result = executor.execute_tool_call(
-                    tool_name=tool_call.name,
-                    tool_input=tool_call.input,
+                _step = run_tool_loop_step(
+                    tool_call=tool_call,
+                    executor=executor,
                     trace_id=trace_id,
                     client_turn_id=request.client_turn_id,
                 )
 
-                _raw = result.raw_result
-                if _raw.get("local_final") and _raw.get("text"):
-                    _local_text = str(_raw["text"]).strip()
-                    _local_model = str(_raw.get("local_model", "tool-result"))
-                    _planner_tokens = planner_response.usage.input_tokens + planner_response.usage.output_tokens
-
+                if _step.early_kind == "local_final":
                     _usage_row = AIUsage(
                         trace_id=trace_id,
                         session_id=None,
@@ -459,15 +453,13 @@ def _chat_message_inner(
                         module="cortex",
                         event="local_tool_response",
                         trace_id=trace_id,
-                        payload={"tool": tool_call.name, "model": _local_model},
+                        payload={"tool": tool_call.name, "model": _step.local_model},
                     )
-
-                    save_chat_message(session, role="sity", text=_local_text, trace_id=trace_id)
-
+                    save_chat_message(session, role="sity", text=_step.local_text, trace_id=trace_id)
                     return local_tool_response(
                         trace_id=trace_id,
-                        text=_local_text,
-                        model=_local_model,
+                        text=_step.local_text,
+                        model=_step.local_model,
                         planner_input_tokens=planner_response.usage.input_tokens,
                         planner_output_tokens=planner_response.usage.output_tokens,
                         daily_used=_snap.daily_used,
@@ -476,30 +468,21 @@ def _chat_message_inner(
                         warnings=_snap.warnings,
                     )
 
-                _inner = result.raw_result.get("result", {})
-                _tool_name = tool_call.name
-                _is_sensor = _tool_name in {"record_audio_sample", "capture_camera_snapshot"}
-                _personality_dict = personality if isinstance(personality, dict) else {}
-
-                if _inner.get("cancelled"):
-                    _event_type = (
-                        "audio_recording_cancelled"
-                        if "audio" in _tool_name
-                        else "camera_capture_cancelled"
-                    )
+                if _step.early_kind in ("sensor_cancelled", "sensor_finished"):
+                    _personality_dict = personality if isinstance(personality, dict) else {}
                     _react_text = generate_micro_reaction(
                         ai_client=gateway.provider,
-                        event_type=_event_type,
-                        event_description="El usuario ha cancelado voluntariamente la operación.",
+                        event_type=_step.sensor_event_type,
+                        event_description=_step.sensor_description,
                         personality=_personality_dict,
                         trace_id=trace_id,
                     )
                     write_log(
                         level="AUDIT",
                         module="senses",
-                        event=_event_type,
+                        event=_step.sensor_event_type,
                         trace_id=trace_id,
-                        payload={"tool": _tool_name},
+                        payload={"tool": tool_call.name},
                         audit=True,
                     )
                     save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
@@ -508,59 +491,13 @@ def _chat_message_inner(
                         text=_react_text,
                         daily_used=get_today_token_usage(session),
                         daily_budget=daily_budget,
+                        artifacts=_step.sensor_artifacts,
                     )
 
-                if result.ok and _is_sensor:
-                    _event_type = (
-                        "audio_recording_finished"
-                        if "audio" in _tool_name
-                        else "camera_capture_finished"
-                    )
-                    _react_text = generate_micro_reaction(
-                        ai_client=gateway.provider,
-                        event_type=_event_type,
-                        event_description="La operación de sensor ha completado correctamente.",
-                        personality=_personality_dict,
-                        trace_id=trace_id,
-                    )
-                    write_log(
-                        level="AUDIT",
-                        module="senses",
-                        event=_event_type,
-                        trace_id=trace_id,
-                        payload={"tool": _tool_name},
-                        audit=True,
-                    )
-                    _finished_artifacts: list[ChatArtifact] = []
-                    _raw_path = _inner.get("path")
-                    if _raw_path:
-                        _artifact = capture_artifact_from_path(str(_raw_path))
-                        if _artifact:
-                            _finished_artifacts.append(_artifact)
-                    save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
-                    return micro_reaction_response(
-                        trace_id=trace_id,
-                        text=_react_text,
-                        daily_used=get_today_token_usage(session),
-                        daily_budget=daily_budget,
-                        artifacts=_finished_artifacts,
-                    )
-
-                if result.ok:
-                    updated_parameters.extend(result.updated_parameters)
-                    _raw_path = _inner.get("path")
-                    if _raw_path:
-                        _artifact = capture_artifact_from_path(str(_raw_path))
-                        if _artifact:
-                            response_artifacts.append(_artifact)
-
-                tool_results_for_claude.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_call.id,
-                        "content": json.dumps(result.raw_result, ensure_ascii=False),
-                    }
-                )
+                # Normal path: accumulate for AI round-trip
+                updated_parameters.extend(_step.updated_parameters)
+                response_artifacts.extend(_step.artifacts)
+                tool_results_for_claude.append(_step.tool_result_for_claude)
 
             write_log(
                 level="INFO",

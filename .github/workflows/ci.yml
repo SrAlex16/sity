@@ -46,6 +46,7 @@ jobs:
           python scripts/test_apply_unified_diff_tool_registry_local.py
           python scripts/test_apply_multi_file_unified_diff_plan_tool_registry_local.py
           python scripts/test_rollback_tools_registry_local.py
+          python scripts/test_tool_loop_step_local.py
 
   integration-mock:
     runs-on: ubuntu-latest
