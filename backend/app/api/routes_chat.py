@@ -10,7 +10,12 @@ from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
-from app.chat.claude_request_builder import ClaudeRequestBuilder, max_tokens_for_verbosity
+from app.chat.ai_request_builder import (
+    build_after_tools_ai_request,
+    build_chat_ai_request,
+    build_planner_ai_request,
+    max_tokens_for_verbosity,
+)
 from app.chat.response_guard import ResponseGuard
 from app.chat.toolset_selector import (
     history_limit_for_message,
@@ -36,7 +41,6 @@ from app.core.persona_engine import PersonaEngine
 from app.core.refusal_tracker import get_last_refusal, set_last_refusal
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
-from app.cortex.schemas import AIRequest
 
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
@@ -342,11 +346,9 @@ def _chat_message_inner(
     response_artifacts: list[ChatArtifact] = []
     planner_response = None
 
-    _builder = ClaudeRequestBuilder()
-
     if not selected_tools:
         response = gateway.generate(
-            _builder.chat_request(
+            build_chat_ai_request(
                 trace_id=trace_id,
                 persona_prompt=persona_prompt,
                 user_message=user_message_with_history,
@@ -354,7 +356,7 @@ def _chat_message_inner(
             )
         )
     else:
-        planner_request = _builder.planner_request(
+        planner_request = build_planner_ai_request(
             trace_id=trace_id,
             user_message=planner_user_message,
             tools=selected_tools,
@@ -401,7 +403,7 @@ def _chat_message_inner(
 
         if first_tool.name == "no_action_required":
             response = gateway.generate(
-                _builder.chat_request(
+                build_chat_ai_request(
                     trace_id=trace_id,
                     persona_prompt=persona_prompt,
                     user_message=user_message_with_history,
@@ -512,21 +514,11 @@ def _chat_message_inner(
 
     if tool_results_for_claude:
         response_after_tools = gateway.generate_with_tool_results(
-            request=AIRequest(
+            request=build_after_tools_ai_request(
                 trace_id=trace_id,
-                task_type="chat_message_tool_result",
-                system_prompt=(
-                    persona_decision.system_prompt
-                    + "\n\nLa herramienta ya se ha ejecutado. Responde ahora a la petición original del usuario. "
-                    "No digas que no ves la pregunta original: está en el historial de esta llamada. "
-                    "Si la herramienta no era necesaria o no aporta nada, ignórala y responde conversacionalmente. "
-                    "No menciones detalles internos salvo que el usuario pregunte por debug. "
-                    "IMPORTANTE: Si el resultado de la herramienta contiene un campo 'diff', muéstralo completo al usuario en un bloque de código con lenguaje diff antes de pedir confirmación. "
-                    "Si contiene 'confirmation_phrase', indícala claramente para que el usuario sepa cómo confirmar."
-                ),
+                persona_prompt=persona_decision.system_prompt,
                 user_message=user_message_with_history,
                 max_tokens=max(max_tokens, 700),
-                tools_enabled=False,
                 tools=selected_tools,
             ),
             first_response_content=[
