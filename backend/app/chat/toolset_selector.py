@@ -11,6 +11,7 @@ from app.cortex.tool_schemas import (
     DEBUG_TOOLSET,
     FILE_AGENT_TOOLSET,
     GIT_TOOLSET,
+    PENDING_ACTION_TOOLSET,
     PERSONALITY_TOOLSET,
     SENSES_TOOLSET,
     SERVICE_CONFIG_TOOLSET,
@@ -25,6 +26,7 @@ _TOOL_TO_TOOLSET: dict[str, list[dict]] = {}
 for _toolset in [
     GIT_TOOLSET, SERVICE_CONFIG_TOOLSET, SERVICE_CONTROL_TOOLSET,
     SYSTEM_TOOLSET, SENSES_TOOLSET, DEBUG_TOOLSET, PERSONALITY_TOOLSET,
+    PENDING_ACTION_TOOLSET,
 ]:
     for _tool in _toolset:
         _TOOL_TO_TOOLSET[_tool["name"]] = _toolset
@@ -170,9 +172,8 @@ def select_structural_toolsets_for_message(message: str) -> list[dict]:
     if message_mentions_file_path(message):
         selected.extend(FILE_AGENT_TOOLSET)
 
-    # Structural: action ID → cancel_pending_action already in BASE_TOOLSET;
-    # signal preserved for future PENDING_ACTION_TOOLSET expansion.
-    # if message_mentions_action_id(message): ...
+    if message_mentions_action_id(message):
+        selected.extend(PENDING_ACTION_TOOLSET)
 
     return _dedupe_tools(selected)
 

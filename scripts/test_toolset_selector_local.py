@@ -71,6 +71,20 @@ def assert_tool_name_detection_is_complete() -> None:
         raise AssertionError("\n".join(lines))
 
 
+def assert_has_tool(message: str, tool_name: str) -> None:
+    found = selected_tool_names(message)
+    assert tool_name in found, (
+        f"{tool_name!r} not selected for {message!r}. Selected: {sorted(found)}"
+    )
+
+
+def assert_not_has_tool(message: str, tool_name: str) -> None:
+    found = selected_tool_names(message)
+    assert tool_name not in found, (
+        f"{tool_name!r} unexpectedly selected for {message!r}. Selected: {sorted(found)}"
+    )
+
+
 def main() -> None:
     assert_tool_name_detection_is_complete()
     print("[OK] every schema tool name is detected structurally")
@@ -79,17 +93,31 @@ def main() -> None:
     assert not message_mentions_action_id("yo he descubierto que soy inmortal, tengo pruebas")
     print("[OK] action ID detection works")
 
-    # Regression: casual message must not trigger specialized toolsets beyond BASE.
-    # 'inmortal' contains 'ram' → original bug triggered SYSTEM_TOOLSET via substring.
-    # BASE_TOOLSET is always included; what must NOT appear are tools from GIT,
-    # SENSES, SYSTEM, SERVICE_CONTROL, etc.
+    # cancel_pending_action must NOT appear in casual conversation.
+    assert_not_has_tool(
+        "yo he descubierto que soy inmortal, tengo pruebas",
+        "cancel_pending_action",
+    )
+    print("[OK] casual message does not include cancel_pending_action")
+
+    # cancel_pending_action MUST appear when a structural action ID is present.
+    assert_has_tool("cancela act_1234abcd", "cancel_pending_action")
+    print("[OK] action ID triggers cancel_pending_action")
+
+    # cancel_pending_action MUST appear when the tool name is mentioned explicitly.
+    assert_has_tool(
+        "usa la herramienta cancel_pending_action para cancelar act_1234abcd",
+        "cancel_pending_action",
+    )
+    print("[OK] explicit tool name triggers cancel_pending_action")
+
+    # Regression: casual message must not add any toolsets beyond BASE.
     from app.cortex.tool_schemas import BASE_TOOLSET
     base_names = {t["name"] for t in BASE_TOOLSET}
-
     casual_all = selected_tool_names("yo he descubierto que soy inmortal, tengo pruebas")
     extra = casual_all - base_names
     assert not extra, (
-        f"Casual message triggered specialized tools beyond BASE_TOOLSET: {sorted(extra)}"
+        f"Casual message triggered tools beyond BASE_TOOLSET: {sorted(extra)}"
     )
     print("[OK] casual message adds no tools beyond BASE_TOOLSET")
 
