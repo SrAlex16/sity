@@ -198,9 +198,10 @@ El modelo puede proponer acciones, pero el backend decide si son válidas, segur
 
 ## Tool handler registry
 
-`ToolExecutor` está migrando desde un bloque monolítico `if/elif` hacia un registry de handlers por dominio.
+`ToolExecutor` ya no despacha herramientas con un bloque monolítico `if/elif`.
+El dispatch pasa por `backend/app/tools/registry.py` y handlers por dominio.
 
-Estructura actual:
+Módulos actuales:
 
 ```text
 backend/app/tools/
@@ -208,70 +209,19 @@ backend/app/tools/
   types.py
   handlers/
     file_tools.py
+    file_write_tools.py
+    file_rollback_tools.py
     git_tools.py
     system_read_tools.py
     config_tools.py
     sense_tools.py
     pending_action_tools.py
+    personality_tools.py
+    propose_tools.py
+    service_config_tools.py
 ```
 
-El registry permite mover herramientas de forma incremental sin romper el fallback antiguo de `ToolExecutor`.
-
-Migrado al registry:
-
-```text
-read_file
-list_directory
-list_file_changes
-find_latest_reversible_file_change
-git_read_status
-git_read_log
-git_read_branches
-git_read_remotes
-read_recent_debug_events
-read_trace_events
-read_system_status
-read_disk_usage
-read_processes
-read_service_status
-list_allowed_directory
-list_allowed_services
-list_camera_devices
-list_audio_devices
-cancel_pending_action
-```
-
-Pendiente de migrar:
-
-```text
-write_file
-apply_text_patch
-apply_unified_diff
-apply_multi_file_unified_diff_plan
-rollback_latest_file_change
-rollback_file_change
-capture_camera_snapshot
-record_audio_sample
-clean_old_captures
-git_propose_action
-add_allowed_service
-remove_allowed_service
-system_propose_action
-update_personality_settings
-```
-
-`update_personality_settings` queda pendiente hasta tener un test local directo del handler. La prueba por API no es fiable ahora mismo porque depende de que el modelo genere exactamente el payload complejo esperado (`updates` como array con `parameter/operation/value`).
-
-Regla de migración:
-
-```text
-1. Primero read-only.
-2. Después estado pequeño y reversible.
-3. Después sensores con artifacts.
-4. Después writers, patches, rollback y propose actions.
-
-No mover el provider/tool loop hasta tener tests de integración específicos.
-```
+`ToolExecutor` conserva helpers privados reutilizados por algunos handlers, pero `_dispatch_tool_call` ya no contiene ramas por nombre de herramienta.
 
 Test de integración:
 
@@ -1065,64 +1015,17 @@ async def chat_message(request, session):
     return await orchestrator.handle(request)
 ```
 
-### 2. ToolExecutor registry
+### 2. ToolExecutor registry ✓
 
-`ToolExecutor` está en proceso de migración desde un bloque monolítico `if/elif` hacia un registry de handlers por dominio.
+Completado. `_dispatch_tool_call` ya no tiene ramas `if tool_name ==`. Todos los handlers van por registry.
 
-Estructura actual:
+Ver sección [Tool handler registry](#tool-handler-registry).
 
-```text
-backend/app/tools/
-  registry.py
-  types.py
-  handlers/
-    file_tools.py
-    git_tools.py
-    system_read_tools.py
-    config_tools.py
-    sense_tools.py
-    pending_action_tools.py
-```
-
-Ya migrado:
+Pendiente técnico:
 
 ```text
-file read tools
-file audit read tools
-git read tools
-system read tools
-config read tools
-sense device read tools
-cancel_pending_action
-```
-
-Pendiente:
-
-```text
-write_file
-apply_text_patch
-apply_unified_diff
-apply_multi_file_unified_diff_plan
-rollback_latest_file_change
-rollback_file_change
-capture_camera_snapshot
-record_audio_sample
-clean_old_captures
-git_propose_action
-add_allowed_service
-remove_allowed_service
-system_propose_action
-update_personality_settings
-```
-
-Regla:
-
-```text
-Primero mover handlers read-only.
-Después handlers de estado pequeño.
-Al final writers, rollback, sensors con artifacts y propose actions.
-
-No mover tool loop hasta tener tests de integración.
+Reducir helpers privados restantes de ToolExecutor moviendo lógica por dominio,
+cuando haya tests de integración suficientes.
 ```
 
 ### 3. Provider Interface
