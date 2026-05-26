@@ -1,0 +1,212 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  getCurrentChat,
+  sendChatMessage,
+  type ChatArtifact,
+  type ChatMessageResponse,
+  API_BASE,
+} from "../api/chatApi";
+
+/** Logs only in development builds; compiled out in production. */
+const debugLog = (...args: unknown[]): void => {
+  if (import.meta.env.DEV) console.log(...args);
+};
+
+export type ChatEntry = {
+  role: "user" | "sity";
+  text: string;
+  meta?: ChatMessageResponse;
+  artifacts?: ChatArtifact[];
+};
+
+function createClientTurnId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `turn_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+export interface UseChatOptions {
+  /** Called after a successful AI response — use to refresh personality / debug. */
+  onMessageSent?: () => void;
+}
+
+export function useChat(options?: UseChatOptions) {
+  const [chatInput, setChatInput] = useState("");
+  const [chatEntries, setChatEntries] = useState<ChatEntry[]>([
+    {
+      role: "sity",
+      text: "Estoy despierta. No prometo que eso mejore tus decisiones.",
+    },
+  ]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [activeClientTurnId, setActiveClientTurnId] = useState<string | null>(null);
+  const [canCancel, setCanCancel] = useState(false);
+
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  /** Holds the active EventSource so it can be closed on unmount. */
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
+    window.setTimeout(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior });
+    }, 0);
+  }
+
+  async function loadCurrentChat() {
+    try {
+      const response = await getCurrentChat();
+      if (response.messages.length > 0) {
+        setChatEntries(
+          response.messages.map((message) => ({
+            role: message.role as "user" | "sity",
+            text: message.text,
+          })),
+        );
+        window.setTimeout(() => scrollChatToBottom("auto"), 50);
+      }
+    } catch {
+      // Keep local default greeting if loading fails.
+    }
+  }
+
+  async function cancelActiveOperation() {
+    if (!activeClientTurnId) return;
+    setCanCancel(false);
+    setPendingStatus("Cancelando…");
+    await fetch(`${API_BASE}/events/chat/${activeClientTurnId}/cancel`, { method: "POST" });
+  }
+
+  async function submitChat() {
+    debugLog("[Sity submit] called", { chatInput, chatLoading });
+
+    const trimmed = chatInput.trim();
+
+    if (!trimmed || chatLoading) {
+      debugLog("[Sity submit] blocked", { trimmed, chatLoading });
+      return;
+    }
+
+    const clientTurnId = createClientTurnId();
+    debugLog("[Sity submit] clientTurnId", clientTurnId);
+
+    setChatInput("");
+    setChatError(null);
+    setChatLoading(true);
+    setCanCancel(false);
+    setPendingStatus("Sity está trabajando…");
+    setActiveClientTurnId(clientTurnId);
+    setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
+    window.setTimeout(() => scrollChatToBottom("smooth"), 50);
+
+    const eventSource = new EventSource(`${API_BASE}/events/chat/${clientTurnId}`);
+    eventSourceRef.current = eventSource;
+    debugLog("[Sity submit] EventSource opened");
+
+    eventSource.onopen = () => {
+      debugLog("[Sity SSE] open", clientTurnId);
+    };
+
+    eventSource.onmessage = (e) => {
+      debugLog("[Sity SSE] message raw", e.data);
+      const data = JSON.parse(e.data) as {
+        type: string;
+        label?: string;
+        can_cancel?: boolean;
+      };
+      debugLog("[Sity SSE] message parsed", data);
+      if (data.type === "tool_started") {
+        setPendingStatus(data.label ?? "Trabajando…");
+        setCanCancel(Boolean(data.can_cancel));
+      }
+      if (data.type === "tool_finished") {
+        setCanCancel(false);
+        setPendingStatus("Procesando respuesta…");
+      }
+      if (data.type === "cancelled") {
+        setPendingStatus(data.label ?? "Cancelado.");
+        setCanCancel(false);
+      }
+      if (data.type === "done" || data.type === "error") {
+        setCanCancel(false);
+        setActiveClientTurnId(null);
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      if (import.meta.env.DEV) console.error("[Sity SSE] error", error);
+    };
+
+    try {
+      debugLog("[Sity submit] sending chat message");
+      const response = await sendChatMessage(trimmed, clientTurnId);
+      debugLog("[Sity submit] response", response);
+
+      setChatEntries((current) => [
+        ...current,
+        {
+          role: "sity",
+          text: response.text || "(sin respuesta)",
+          meta: response,
+          artifacts: response.artifacts ?? [],
+        },
+      ]);
+      window.setTimeout(() => scrollChatToBottom("smooth"), 50);
+
+      options?.onMessageSent?.();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Error desconocido";
+      setChatError(errorMessage);
+      setChatEntries((current) => [
+        ...current,
+        {
+          role: "sity",
+          text: `No he podido responder. ${errorMessage}`,
+        },
+      ]);
+    } finally {
+      debugLog("[Sity submit] finally cleanup");
+      eventSource.close();
+      eventSourceRef.current = null;
+      setPendingStatus(null);
+      setCanCancel(false);
+      setActiveClientTurnId(null);
+      setChatLoading(false);
+    }
+  }
+
+  // Load persisted chat on mount.
+  useEffect(() => {
+    loadCurrentChat();
+  }, []);
+
+  // Scroll to bottom whenever entries or loading state changes.
+  useEffect(() => {
+    scrollChatToBottom("smooth");
+  }, [chatEntries, chatLoading]);
+
+  // Close any active EventSource if the component unmounts mid-request.
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+    };
+  }, []);
+
+  return {
+    chatInput,
+    setChatInput,
+    chatEntries,
+    chatLoading,
+    chatError,
+    pendingStatus,
+    activeClientTurnId,
+    canCancel,
+    chatBottomRef,
+    scrollChatToBottom,
+    submitChat,
+    cancelActiveOperation,
+  };
+}

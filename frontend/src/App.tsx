@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   adjustPersonality,
   getPersonality,
   type PersonalitySettings,
 } from "./api/sityApi";
 import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
-import { getCurrentChat, sendChatMessage, type ChatArtifact, type ChatMessageResponse, API_BASE } from "./api/chatApi";
+import { API_BASE } from "./api/chatApi";
+import { useChat } from "./hooks/useChat";
 import "./App.css";
-
-/** Logs only in development builds; compiled out in production. */
-const debugLog = (...args: unknown[]): void => {
-  if (import.meta.env.DEV) console.log(...args);
-};
 
 const LABELS: Record<keyof PersonalitySettings, string> = {
   sarcasm_level: "Sarcasmo",
@@ -46,13 +42,6 @@ const ORDER: Array<keyof PersonalitySettings> = [
 ];
 
 type Tab = "chat" | "settings" | "debug";
-
-type ChatEntry = {
-  role: "user" | "sity";
-  text: string;
-  meta?: ChatMessageResponse;
-  artifacts?: ChatArtifact[];
-};
 
 function percent(value: number): number {
   return Math.round(value * 100);
@@ -92,13 +81,6 @@ function EventCard({ event }: { event: TraceEvent }) {
   );
 }
 
-function createClientTurnId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `turn_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 function App() {
   const [tab, setTab] = useState<Tab>("chat");
 
@@ -113,25 +95,25 @@ function App() {
   const [lastTraceId, setLastTraceId] = useState<string | null>(null);
   const [debugError, setDebugError] = useState<string | null>(null);
 
-  const [chatInput, setChatInput] = useState("");
-  const [chatEntries, setChatEntries] = useState<ChatEntry[]>([
-    {
-      role: "sity",
-      text: "Estoy despierta. No prometo que eso mejore tus decisiones.",
+  const {
+    chatInput,
+    setChatInput,
+    chatEntries,
+    chatLoading,
+    chatError,
+    pendingStatus,
+    activeClientTurnId,
+    canCancel,
+    chatBottomRef,
+    scrollChatToBottom,
+    submitChat,
+    cancelActiveOperation,
+  } = useChat({
+    onMessageSent: () => {
+      refreshPersonality();
+      refreshDebug();
     },
-  ]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
-  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
-  const [activeClientTurnId, setActiveClientTurnId] = useState<string | null>(null);
-  const [canCancel, setCanCancel] = useState(false);
-  const chatBottomRef = useRef<HTMLDivElement | null>(null);
-
-  function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
-    window.setTimeout(() => {
-      chatBottomRef.current?.scrollIntoView({ behavior });
-    }, 0);
-  }
+  });
 
   const averageEdge = useMemo(() => {
     if (!personality) return 0;
@@ -159,24 +141,6 @@ function App() {
       setMessage("No he podido cargar mi personalidad. Qué forma tan elegante de empezar.");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadCurrentChat() {
-    try {
-      const response = await getCurrentChat();
-
-      if (response.messages.length > 0) {
-        setChatEntries(
-          response.messages.map((message) => ({
-            role: message.role as "user" | "sity",
-            text: message.text,
-          })),
-        );
-        window.setTimeout(() => scrollChatToBottom("auto"), 50);
-      }
-    } catch {
-      // Keep local default greeting if loading fails.
     }
   }
 
@@ -221,121 +185,10 @@ function App() {
     }
   }
 
-  async function cancelActiveOperation() {
-    if (!activeClientTurnId) return;
-    setCanCancel(false);
-    setPendingStatus("Cancelando…");
-    await fetch(`${API_BASE}/events/chat/${activeClientTurnId}/cancel`, { method: "POST" });
-  }
-
-  async function submitChat() {
-    debugLog("[Sity submit] called", { chatInput, chatLoading });
-
-    const trimmed = chatInput.trim();
-
-    if (!trimmed || chatLoading) {
-      debugLog("[Sity submit] blocked", { trimmed, chatLoading });
-      return;
-    }
-
-    const clientTurnId = createClientTurnId();
-    debugLog("[Sity submit] clientTurnId", clientTurnId);
-
-    setChatInput("");
-    setChatError(null);
-    setChatLoading(true);
-    setCanCancel(false);
-    setPendingStatus("Sity está trabajando…");
-    setActiveClientTurnId(clientTurnId);
-    setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
-    window.setTimeout(() => scrollChatToBottom("smooth"), 50);
-
-    const eventSource = new EventSource(`${API_BASE}/events/chat/${clientTurnId}`);
-    debugLog("[Sity submit] EventSource opened");
-
-    eventSource.onopen = () => {
-      debugLog("[Sity SSE] open", clientTurnId);
-    };
-
-    eventSource.onmessage = (e) => {
-      debugLog("[Sity SSE] message raw", e.data);
-      const data = JSON.parse(e.data) as {
-        type: string;
-        label?: string;
-        can_cancel?: boolean;
-      };
-      debugLog("[Sity SSE] message parsed", data);
-      if (data.type === "tool_started") {
-        setPendingStatus(data.label ?? "Trabajando…");
-        setCanCancel(Boolean(data.can_cancel));
-      }
-      if (data.type === "tool_finished") {
-        setCanCancel(false);
-        setPendingStatus("Procesando respuesta…");
-      }
-      if (data.type === "cancelled") {
-        setPendingStatus(data.label ?? "Cancelado.");
-        setCanCancel(false);
-      }
-
-      if (data.type === "done" || data.type === "error") {
-        setCanCancel(false);
-        setActiveClientTurnId(null);
-        eventSource.close();
-      }
-    };
-
-    eventSource.onerror = (error) => {
-      if (import.meta.env.DEV) console.error("[Sity SSE] error", error);
-    };
-
-    try {
-      debugLog("[Sity submit] sending chat message");
-      const response = await sendChatMessage(trimmed, clientTurnId);
-      debugLog("[Sity submit] response", response);
-
-      setChatEntries((current) => [
-        ...current,
-        {
-          role: "sity",
-          text: response.text || "(sin respuesta)",
-          meta: response,
-          artifacts: response.artifacts ?? [],
-        },
-      ]);
-      window.setTimeout(() => scrollChatToBottom("smooth"), 50);
-
-      refreshPersonality();
-      refreshDebug();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error desconocido";
-      setChatError(errorMessage);
-      setChatEntries((current) => [
-        ...current,
-        {
-          role: "sity",
-          text: `No he podido responder. ${errorMessage}`,
-        },
-      ]);
-    } finally {
-      debugLog("[Sity submit] finally cleanup");
-      eventSource.close();
-      setPendingStatus(null);
-      setCanCancel(false);
-      setActiveClientTurnId(null);
-      setChatLoading(false);
-    }
-  }
-
   useEffect(() => {
     refreshPersonality();
     refreshDebug();
-    loadCurrentChat();
   }, []);
-
-  useEffect(() => {
-    scrollChatToBottom("smooth");
-  }, [chatEntries, chatLoading]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
