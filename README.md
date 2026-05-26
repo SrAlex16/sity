@@ -70,48 +70,27 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 
 ### Refactor reciente
 
-`routes_chat.py` ya no concentra toda la lógica local ni el tool loop.
-Módulos extraídos hasta la fecha:
+`routes_chat.py` ya no concentra lógica local, tool loop, construcción de requests AI,
+llamadas al provider ni el cierre de respuesta final.
+
+Módulos extraídos en `backend/app/chat/`:
 
 ```text
-backend/app/chat/
-  __init__.py
   budget_guard.py          — guardia de presupuesto y local-only
   budget_snapshot.py       — cálculo de ratio/warnings tras cada llamada AI
   local_flow.py            — confirmaciones locales, IDs, ambigüedad
   pending_action_runner.py — ejecución de pending actions confirmadas
   prompt_context.py        — historial, renderizado, filtrado operativo
   response_factory.py      — helpers de construcción de ChatMessageResponse
-  tool_loop_runner.py      — iteración del tool loop; devuelve ToolLoopRunOutcome
   tool_loop_step.py        — ejecución y normalización de una sola tool call
+  tool_loop_runner.py      — iteración del tool loop; devuelve ToolLoopRunOutcome
   toolset_selector.py      — selección técnica de toolsets y heurísticas
+  ai_request_builder.py    — construcción de AIRequest para cada fase
+  provider_call_runner.py  — wrapper semántico sobre AIGateway
+  final_response_builder.py — cierre AI: AIUsage + snapshot + log + guard + save
 ```
 
-Responsabilidades clave del refactor reciente:
-
-```text
-response_factory.py
-  - local_tool_response()      — herramienta local sin round-trip AI
-  - micro_reaction_response()  — sensor cancelado o terminado
-  - ai_final_response()        — respuesta final del modelo
-
-budget_snapshot.py
-  - build_budget_snapshot()    — ratio, warnings y daily_used en un solo objeto
-
-tool_loop_step.py
-  - run_tool_loop_step()       — llama a ToolExecutor, parsea raw_result,
-                                 detecta local_final / sensor / normal path
-  - ToolLoopStepOutcome        — dataclass con early_kind como discriminante
-
-tool_loop_runner.py
-  - run_tool_loop()            — itera tool_calls, propaga acumulación o
-                                 detiene en el primer early exit
-  - ToolLoopRunOutcome         — early_kind + campos por caso + acumuladores
-```
-
-`routes_chat.py`: 757 → 627 líneas (−130) manteniendo el control sobre
-side-effects: AIUsage row, BudgetSnapshot, write_log, save_chat_message
-y generate_micro_reaction siguen en el route handler.
+`routes_chat.py`: 757 → 543 líneas (−214).
 
 Schemas API compartidos:
 
@@ -119,11 +98,27 @@ Schemas API compartidos:
 backend/app/api/schemas.py
 ```
 
+Frontend modularizado:
+
+```text
+frontend/src/
+  App.tsx                 — shell/orquestador (215 líneas)
+  hooks/useChat.ts        — estado y ciclo de vida del chat
+  components/
+    ChatTab.tsx           — presentacional
+    SettingsTab.tsx       — presentacional
+    DebugTab.tsx          — presentacional
+  api/
+    chatApi.ts
+    sityApi.ts
+    debugApi.ts
+```
+
 ---
 
 ## Limitaciones conocidas
 
-- `routes_chat.py` todavía contiene el flujo de provider/Claude y los early returns del tool loop (AIUsage, BudgetSnapshot, micro-reaction). El for-loop se extrajo a `tool_loop_runner.py`.
+- `routes_chat.py` (543 líneas) todavía contiene la orquestación del flujo AI (planner → tool loop → after_tools) y los early returns. No hay aún `ChatOrchestrator`.
 - `ToolExecutor` todavía tiene demasiada lógica concentrada.
 - La primera llamada a Claude sigue siendo necesaria para interpretar muchas acciones.
 - `list_file_changes` puede seguir usando Claude para redactar resumen.
@@ -133,10 +128,8 @@ backend/app/api/schemas.py
 - Multiarchivo no es transaccional.
 - No hay confirmación múltiple real tipo “confirma todas”.
 - No hay perfiles `home-safe` o `system-careful`.
-- Frontend `App.tsx` todavía necesita modularización.
 - Cámara/audio siguen teniendo defaults específicos de Raspberry.
 - No hay aún Provider Interface formal.
-- No hay aún ChatOrchestrator completo.
 
 ---
 
@@ -1002,23 +995,22 @@ curl -X POST http://localhost:8000/chat/message \
 Extraídos (✓ completado):
 
 ```text
-response_factory.py    — construcción de ChatMessageResponse (−52 líneas)
-budget_snapshot.py     — ratio/warnings post-llamada (−12 líneas)
-tool_loop_step.py      — normalización de una tool call (−63 líneas)
-tool_loop_runner.py    — iteración del tool loop completo (fase 2)
+response_factory.py      — construcción de ChatMessageResponse
+budget_snapshot.py       — ratio/warnings post-llamada
+tool_loop_step.py        — normalización de una tool call
+tool_loop_runner.py      — iteración del tool loop completo
+ai_request_builder.py    — construcción de AIRequest por fase
+provider_call_runner.py  — wrapper semántico sobre AIGateway
+final_response_builder.py — cierre de respuesta AI final
 ```
 
-`routes_chat.py`: 757 → 627 líneas (−130).
+`routes_chat.py`: 757 → 543 líneas (−214).
 
-Pendiente:
+Lo que queda en `routes_chat.py`:
+orquestación del flujo AI principal (planner → tool loop → after_tools),
+early returns (local_final, sensor_*), y el flujo local/budget anterior al provider.
 
-```text
-ProviderCallRunner     — llamada al planner + generate_with_tool_results
-FinalResponseBuilder   — consolidar AIUsage row + BudgetSnapshot + write_log
-                         + ResponseGuard + save_chat_message del path AI final
-```
-
-Objetivo final:
+Objetivo final cuando la orquestación esté suficientemente clara:
 
 ```python
 @router.post("/message")
