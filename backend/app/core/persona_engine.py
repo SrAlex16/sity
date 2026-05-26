@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.order_override import has_direct_order_override
+from app.core.runtime_config import get_runtime_config
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "persona_system.md"
 
@@ -143,6 +144,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "style_directives": style_directives,
             "refusal_instruction": refusal_instruction,
             "order_override_instruction": order_override_instruction,
+            "project_root": str(get_runtime_config().project_root),
         }).strip()
 
         return PersonaDecision(system_prompt=system_prompt, refusal_mode=refusal_mode)

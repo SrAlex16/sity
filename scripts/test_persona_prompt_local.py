@@ -52,9 +52,13 @@ def main() -> None:
     found_pseudo = [m for m in pseudo_tool_markers if m in prompt]
     assert not found_pseudo, f"Prompt contains pseudo-tool-call markers: {found_pseudo}"
 
-    # TODO: el prompt no debe contener rutas absolutas personales
-    # (actualmente contiene /home/alex/projects/sity — se resolverá en fase C)
-    # assert "/home/alex/projects/sity" not in prompt
+    # La plantilla no debe contener rutas absolutas personales hardcodeadas.
+    # La ruta del proyecto se inyecta desde runtime_config.project_root.
+    from app.core.persona_engine import _TEMPLATE_PATH  # noqa: E402
+    template_source = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "/home/alex/projects/sity" not in template_source, (
+        "persona_system.md contains hardcoded personal path — use {project_root} placeholder"
+    )
 
     # TODO: los servicios permitidos deben venir de una fuente única de config
     # (actualmente hardcodeados como "sity-backend y sity-frontend" — pendiente)
