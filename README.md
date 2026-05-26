@@ -129,7 +129,7 @@ frontend/src/
 - No hay confirmación múltiple real tipo “confirma todas”.
 - No hay perfiles `home-safe` o `system-careful`.
 - Cámara/audio siguen teniendo defaults específicos de Raspberry.
-- No hay aún Provider Interface formal.
+- Provider Interface creada (`AITextProvider` Protocol) pero sin mover providers a `providers/` aún.
 
 ---
 
@@ -758,25 +758,28 @@ No tocar a ciegas:
 
 ## Tests
 
+**pytest es la fuente principal de tests locales.**
+Los scripts en `scripts/test_*_local.py` son wrappers que delegan a pytest
+y se mantienen para compatibilidad y uso manual desde consola.
+Los scripts shell de integración (`scripts/*.sh`) se mantienen para tests que
+requieren el backend levantado o acceso a hardware real.
+
 ### CI (GitHub Actions)
 
 El workflow `.github/workflows/ci.yml` corre en cada push a `main` y en PRs.
 No requiere `ANTHROPIC_API_KEY` ni consume presupuesto de Claude.
 
 ```text
-backend-local (~17s):
+backend-local:
   - python -m compileall backend/app
-  - Init test database (SQLite)
-  - 12 scripts locales (file access, confirmation manager,
-    tool registry, toolset selector, persona prompt,
-    personality, service config, write, patch, diff, multi-diff, rollback)
+  - pytest -q tests  (205 tests; DB init en conftest autouse)
 
-integration-mock (~14s):
+integration-mock:
   - Levanta FastAPI en puerto 8010 con SITY_AI_PROVIDER=mock
   - Prueba /chat/message end-to-end: tool flow, pending actions,
     cancel, confirmación malformada, ResponseGuard, conversación casual
 
-frontend (~11s):
+frontend:
   - npm ci
   - npx tsc -b (typecheck)
   - npm run build
@@ -785,11 +788,14 @@ frontend (~11s):
 ### Tests locales (sin backend levantado)
 
 ```bash
-backend/.venv/bin/python -m compileall backend/app
+# Todos los tests locales
+SITY_PROJECT_ROOT=$(pwd) backend/.venv/bin/python -m pytest -q tests/
+
+# Un módulo concreto
+SITY_PROJECT_ROOT=$(pwd) backend/.venv/bin/python -m pytest -q tests/test_file_access.py
+
+# Via wrapper de script (UX clásica — delega a pytest)
 backend/.venv/bin/python scripts/test_file_access_local.py
-backend/.venv/bin/python scripts/test_confirmation_manager_local.py
-backend/.venv/bin/python scripts/test_tool_registry_completeness_local.py
-backend/.venv/bin/python scripts/test_toolset_selector_local.py
 ```
 
 ### Integración con mock provider (sin Claude, sin API key)

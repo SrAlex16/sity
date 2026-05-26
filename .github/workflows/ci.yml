@@ -28,31 +28,8 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q backend/app
 
-      - name: Init test database
-        run: python -c "from app.memory.db import init_db; init_db()"
-
       - name: Run pytest local tests
         run: pytest -q tests
-
-      - name: Run local backend tests
-        run: |
-          set -e
-          python scripts/test_file_access_local.py
-          python scripts/test_confirmation_manager_local.py
-          python scripts/test_tool_registry_completeness_local.py
-          python scripts/test_toolset_selector_local.py
-          python scripts/test_persona_prompt_local.py
-          python scripts/test_personality_tool_registry_local.py
-          python scripts/test_service_config_tool_registry_local.py
-          python scripts/test_service_tool_schemas_local.py
-          python scripts/test_file_write_tool_registry_local.py
-          python scripts/test_apply_text_patch_tool_registry_local.py
-          python scripts/test_apply_unified_diff_tool_registry_local.py
-          python scripts/test_apply_multi_file_unified_diff_plan_tool_registry_local.py
-          python scripts/test_rollback_tools_registry_local.py
-          python scripts/test_tool_loop_step_local.py
-          python scripts/test_tool_loop_runner_local.py
-          python scripts/test_ai_request_builder_local.py
 
   integration-mock:
     runs-on: ubuntu-latest
