@@ -48,6 +48,8 @@ export function useChat(options?: UseChatOptions) {
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   /** Holds the active EventSource so it can be closed on unmount. */
   const eventSourceRef = useRef<EventSource | null>(null);
+  /** AbortController for the active sendChatMessage fetch. */
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
     window.setTimeout(() => {
@@ -76,6 +78,8 @@ export function useChat(options?: UseChatOptions) {
     if (!activeClientTurnId) return;
     setCanCancel(false);
     setPendingStatus("Cancelando…");
+    // Abort the in-flight fetch first, then notify the backend.
+    abortControllerRef.current?.abort();
     await fetch(`${API_BASE}/events/chat/${activeClientTurnId}/cancel`, { method: "POST" });
   }
 
@@ -140,9 +144,13 @@ export function useChat(options?: UseChatOptions) {
       if (import.meta.env.DEV) console.error("[Sity SSE] error", error);
     };
 
+    abortControllerRef.current = new AbortController();
+
     try {
       debugLog("[Sity submit] sending chat message");
-      const response = await sendChatMessage(trimmed, clientTurnId);
+      const response = await sendChatMessage(trimmed, clientTurnId, {
+        signal: abortControllerRef.current.signal,
+      });
       debugLog("[Sity submit] response", response);
 
       setChatEntries((current) => [
@@ -158,6 +166,11 @@ export function useChat(options?: UseChatOptions) {
 
       options?.onMessageSent?.();
     } catch (err) {
+      // User-initiated cancel: swallow silently, no error message in chat.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        debugLog("[Sity submit] aborted by user");
+        return;
+      }
       const errorMessage = err instanceof Error ? err.message : "Error desconocido";
       setChatError(errorMessage);
       setChatEntries((current) => [
@@ -171,6 +184,7 @@ export function useChat(options?: UseChatOptions) {
       debugLog("[Sity submit] finally cleanup");
       eventSource.close();
       eventSourceRef.current = null;
+      abortControllerRef.current = null;
       setPendingStatus(null);
       setCanCancel(false);
       setActiveClientTurnId(null);
@@ -188,10 +202,11 @@ export function useChat(options?: UseChatOptions) {
     scrollChatToBottom("smooth");
   }, [chatEntries, chatLoading]);
 
-  // Close any active EventSource if the component unmounts mid-request.
+  // On unmount: close any active EventSource and abort any in-flight fetch.
   useEffect(() => {
     return () => {
       eventSourceRef.current?.close();
+      abortControllerRef.current?.abort();
     };
   }, []);
 

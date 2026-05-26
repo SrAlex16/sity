@@ -40,6 +40,7 @@ export const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:
 export async function sendChatMessage(
   message: string,
   clientTurnId?: string,
+  options?: { signal?: AbortSignal },
 ): Promise<ChatMessageResponse> {
   const response = await fetch(`${API_BASE}/chat/message`, {
     method: "POST",
@@ -47,6 +48,7 @@ export async function sendChatMessage(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ message, client_turn_id: clientTurnId }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {
