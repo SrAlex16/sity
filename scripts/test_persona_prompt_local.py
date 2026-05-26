@@ -60,9 +60,11 @@ def main() -> None:
         "persona_system.md contains hardcoded personal path — use {project_root} placeholder"
     )
 
-    # TODO: los servicios permitidos deben venir de una fuente única de config
-    # (actualmente hardcodeados como "sity-backend y sity-frontend" — pendiente)
-    # assert "sity-backend" not in prompt
+    # La plantilla no debe contener nombres de servicio hardcodeados.
+    # Los servicios se inyectan desde get_allowed_systemd_services() → system_access.yaml.
+    assert "sity-backend" not in template_source, (
+        "persona_system.md contains hardcoded service name — use {allowed_systemd_services} placeholder"
+    )
 
     print("persona prompt local test ok")
 

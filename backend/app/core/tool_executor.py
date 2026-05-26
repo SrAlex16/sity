@@ -7,6 +7,7 @@ from sqlmodel import Session
 from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.actions.confirmation_manager import ConfirmationManager
+from app.system.allowed_services import get_allowed_systemd_services
 from app.actions.capture_retention_actions import execute_capture_retention_action
 from app.actions.file_actions import execute_file_action
 from app.actions.sense_actions import execute_sense_action
@@ -492,7 +493,7 @@ class ToolExecutor:
         summary = str(tool_input.get("summary", "")).strip()
 
         allowed_actions = {"start_service", "stop_service", "restart_service"}
-        allowed_services = {"sity-backend", "sity-frontend"}
+        allowed_services = set(get_allowed_systemd_services())
 
         if action not in allowed_actions:
             msg = f"Acción de sistema no soportada: {action}"

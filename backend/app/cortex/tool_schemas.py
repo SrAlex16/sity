@@ -474,7 +474,7 @@ SYSTEM_PROPOSE_ACTION_TOOL = {
     "description": (
         "Crea una acción pendiente de sistema que requiere confirmación explícita antes de ejecutarse. "
         "Úsala cuando el usuario pida arrancar, parar o reiniciar un servicio permitido. "
-        "En esta versión solo están permitidos sity-backend y sity-frontend. "
+        "Los servicios permitidos están definidos en system_access.yaml bajo safe_actions.allowed_services. "
         "No ejecuta la acción directamente."
     ),
     "input_schema": {

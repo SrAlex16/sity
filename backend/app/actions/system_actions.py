@@ -3,7 +3,8 @@ import subprocess
 import time
 from typing import Any
 
-from app.system.system_reader import load_system_access_config, run_read_command
+from app.system.allowed_services import get_allowed_systemd_services
+from app.system.system_reader import run_read_command
 
 
 def parse_payload(payload_json: str) -> dict[str, Any]:
@@ -11,14 +12,7 @@ def parse_payload(payload_json: str) -> dict[str, Any]:
 
 
 def is_allowed_service(service_name: str) -> bool:
-    config = load_system_access_config()
-    allowed = (
-        config.get("system_access", {})
-        .get("safe_actions", {})
-        .get("allowed_services", [])
-    )
-
-    return service_name in allowed
+    return service_name in get_allowed_systemd_services()
 
 
 def wait_for_service_state(

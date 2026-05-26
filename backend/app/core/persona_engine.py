@@ -6,6 +6,7 @@ from typing import Any
 
 from app.core.order_override import has_direct_order_override
 from app.core.runtime_config import get_runtime_config
+from app.system.allowed_services import get_allowed_systemd_services
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "persona_system.md"
 
@@ -18,6 +19,15 @@ def _load_persona_template() -> str:
 
 def pct(value: float) -> int:
     return round(value * 100)
+
+
+def _format_services(services: tuple[str, ...]) -> str:
+    """Format a list of service names as a human-readable string."""
+    if not services:
+        return "ninguno"
+    if len(services) == 1:
+        return services[0]
+    return ", ".join(services[:-1]) + " y " + services[-1]
 
 
 @dataclass
@@ -145,6 +155,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "refusal_instruction": refusal_instruction,
             "order_override_instruction": order_override_instruction,
             "project_root": str(get_runtime_config().project_root),
+            "allowed_systemd_services": _format_services(get_allowed_systemd_services()),
         }).strip()
 
         return PersonaDecision(system_prompt=system_prompt, refusal_mode=refusal_mode)
