@@ -1,3 +1,9 @@
+from app.system.allowed_services import get_allowed_systemd_services
+
+# Built at import time from system_access.yaml safe_actions.allowed_services.
+# Changing the YAML requires a process restart to take effect.
+_ALLOWED_SYSTEMD_SERVICES: list[str] = list(get_allowed_systemd_services())
+
 PERSONALITY_PARAMETERS = [
     "sarcasm_level",
     "rudeness_level",
@@ -491,10 +497,7 @@ SYSTEM_PROPOSE_ACTION_TOOL = {
             },
             "service_name": {
                 "type": "string",
-                "enum": [
-                    "sity-backend",
-                    "sity-frontend",
-                ],
+                "enum": _ALLOWED_SYSTEMD_SERVICES,
             },
             "summary": {
                 "type": "string",
@@ -517,7 +520,7 @@ _SERVICE_SCHEMA = {
     "properties": {
         "service_name": {
             "type": "string",
-            "enum": ["sity-backend", "sity-frontend"],
+            "enum": _ALLOWED_SYSTEMD_SERVICES,
             "description": "Nombre exacto del servicio systemd a controlar.",
         },
     },

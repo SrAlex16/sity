@@ -41,6 +41,7 @@ jobs:
           python scripts/test_persona_prompt_local.py
           python scripts/test_personality_tool_registry_local.py
           python scripts/test_service_config_tool_registry_local.py
+          python scripts/test_service_tool_schemas_local.py
           python scripts/test_file_write_tool_registry_local.py
           python scripts/test_apply_text_patch_tool_registry_local.py
           python scripts/test_apply_unified_diff_tool_registry_local.py
