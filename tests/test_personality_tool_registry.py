@@ -24,7 +24,7 @@ def test_update_personality_settings_dispatch(db_session: Session) -> None:
                 {
                     "parameter": "verbosity_level",
                     "operation": "set_absolute",
-                    "value": 0.5,
+                    "value": 0.73,  # deliberately non-default; 0.5 was causing prod-DB pollution
                 }
             ],
             "reason": "local registry test",
