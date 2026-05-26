@@ -138,6 +138,12 @@ export function SettingsTab({
                       Number((event.target as HTMLInputElement).value) / 100,
                     );
                   }}
+                  onKeyUp={(event) => {
+                    onSliderCommit(
+                      key,
+                      Number((event.target as HTMLInputElement).value) / 100,
+                    );
+                  }}
                   className="w-full"
                 />
               </div>
