@@ -50,7 +50,7 @@ if [[ -z "${SITY_DB_URL:-}" ]] || [[ "$SITY_DB_URL" == *"data/app.db"* ]]; then
 fi
 
 # Start each run with a clean slate.
-rm -f "$MOCK_DB"
+rm -f "$MOCK_DB" "$MOCK_DB-shm" "$MOCK_DB-wal"
 
 # Prefer the project venv; fall back to python -m uvicorn (CI / global pip install).
 if [[ -x "$BACKEND/.venv/bin/uvicorn" ]]; then
@@ -65,7 +65,7 @@ cleanup() {
   fi
   pkill -f "uvicorn app.main:app --host 127.0.0.1 --port $MOCK_PORT" 2>/dev/null || true
   rm -f "$UVICORN_LOG"
-  rm -f "$MOCK_DB"
+  rm -f "$MOCK_DB" "$MOCK_DB-shm" "$MOCK_DB-wal"
 }
 trap cleanup EXIT
 
