@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from app.api.schemas import ChatHistoryItem
+from app.chat.time_context import build_time_context, render_time_context
 
 
 def is_operational_guard_message(text: str) -> bool:
@@ -55,10 +56,18 @@ class PromptContextBuilder:
         recent_history = self._load_history(session=session, limit=history_limit)
         planner_history = self._load_history(session=session, limit=planner_history_limit)
 
+        # Time context uses the raw DB rows (need created_at).
+        # Separate call with a small fixed limit — cheap SQLite query.
+        raw_msgs = self.get_recent_messages(session, limit=10)
+        time_block = render_time_context(build_time_context(raw_msgs))
+
+        base_user_message = with_history(message, render_history(recent_history))
+        user_message_with_time = f"{time_block}\n\n{base_user_message}"
+
         return PromptContext(
             recent_history=recent_history,
             planner_history=planner_history,
-            user_message_with_history=with_history(message, render_history(recent_history)),
+            user_message_with_history=user_message_with_time,
             planner_user_message=with_history(message, render_history(planner_history)),
         )
 
