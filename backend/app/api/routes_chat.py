@@ -16,7 +16,6 @@ from app.chat.ai_request_builder import (
     build_planner_ai_request,
     max_tokens_for_verbosity,
 )
-from app.chat.response_guard import ResponseGuard
 from app.chat.toolset_selector import (
     history_limit_for_message,
     message_mentions_file_path,
@@ -26,8 +25,8 @@ from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.tool_loop_runner import run_tool_loop
 from app.chat.provider_call_runner import ProviderCallRunner
+from app.chat.final_response_builder import build_final_ai_response
 from app.chat.response_factory import (
-    ai_final_response,
     local_tool_response,
     micro_reaction_response,
 )
@@ -38,7 +37,7 @@ from app.core.runtime_config import get_runtime_config
 from app.core.realtime_events import publish_event_sync
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
-from app.core.refusal_tracker import get_last_refusal, set_last_refusal
+from app.core.refusal_tracker import get_last_refusal
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 
@@ -528,80 +527,17 @@ def _chat_message_inner(
         response.error_type = response_after_tools.error_type
         response.error_message = response_after_tools.error_message
 
-    usage_row = AIUsage(
+    return build_final_ai_response(
+        session=session,
         trace_id=trace_id,
-        session_id=None,
-        provider=response.provider,
-        model=response.model,
-        task_type="chat_message",
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
-        estimated_cost=0.0,
-        latency_ms=response.latency_ms,
-        fallback_used=response.fallback_used,
-        success=response.ok,
-        error_type=response.error_type,
-    )
-    session.add(usage_row)
-    session.commit()
-
-    snap = build_budget_snapshot(
-        daily_used=get_today_token_usage(session),
+        response=response,
         daily_budget=daily_budget,
         warning_threshold=warning_threshold,
         critical_threshold=critical_threshold,
-    )
-
-    write_log(
-        level="INFO" if response.ok else "ERROR",
-        module="cortex",
-        event="ai_call_completed" if response.ok else "ai_call_failed",
-        trace_id=trace_id,
-        payload={
-            "provider": response.provider,
-            "model": response.model,
-            "latency_ms": response.latency_ms,
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-            "fallback_used": response.fallback_used,
-            "error_type": response.error_type,
-            "daily_used_tokens": snap.daily_used,
-            "daily_ratio": snap.daily_ratio,
-        },
-    )
-
-    guard_result = ResponseGuard().validate_final_text(response.text)
-    if not guard_result.allowed:
-        write_log(
-            level="WARN",
-            module="chat",
-            event="model_response_blocked",
-            trace_id=trace_id,
-            payload={"reason": guard_result.reason},
-        )
-    response.text = guard_result.text
-
-    save_chat_message(
-        session,
-        role="sity",
-        text=response.text,
-        trace_id=trace_id,
-    )
-
-    if persona_decision.refusal_mode:
-        set_last_refusal(
-            user_message=request.message,
-            assistant_message=response.text,
-            trace_id=trace_id,
-        )
-
-    return ai_final_response(
-        trace_id=trace_id,
-        response=response,
-        daily_used=snap.daily_used,
-        daily_budget=snap.daily_budget,
-        daily_ratio=snap.daily_ratio,
-        warnings=snap.warnings,
+        get_today_token_usage=get_today_token_usage,
+        save_message=save_chat_message,
+        refusal_mode=persona_decision.refusal_mode,
+        user_message=request.message,
         updated_parameters=updated_parameters,
         artifacts=response_artifacts,
     )
