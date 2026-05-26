@@ -1,8 +1,13 @@
+from app.core.runtime_config import get_runtime_config
 from app.system.allowed_services import get_allowed_systemd_services
 
 # Built at import time from system_access.yaml safe_actions.allowed_services.
 # Changing the YAML requires a process restart to take effect.
 _ALLOWED_SYSTEMD_SERVICES: list[str] = list(get_allowed_systemd_services())
+
+# Built at import time from SITY_PROJECT_ROOT / runtime config.
+# Appears in git tool descriptions so the model knows which path to use.
+_PROJECT_ROOT: str = str(get_runtime_config().project_root)
 
 PERSONALITY_PARAMETERS = [
     "sarcasm_level",
@@ -227,8 +232,8 @@ LIST_ALLOWED_DIRECTORY_TOOL = {
 _GIT_REPO_PATH_FIELD = {
     "type": "string",
     "description": (
-        "Ruta local del repo permitido. Para el repo sity usa /home/alex/projects/sity. "
-        "Si el usuario dice 'sity', 'este repo' o 'el proyecto', usa /home/alex/projects/sity."
+        f"Ruta local del repo permitido. Para el repo sity usa {_PROJECT_ROOT}. "
+        f"Si el usuario dice 'sity', 'este repo' o 'el proyecto', usa {_PROJECT_ROOT}."
     ),
 }
 
@@ -315,7 +320,7 @@ GIT_PROPOSE_ACTION_TOOL = {
             },
             "repo_path": {
                 "type": "string",
-                "description": "Repo permitido. Para Sity usa sity o /home/alex/projects/sity.",
+                "description": f"Repo permitido. Para Sity usa sity o {_PROJECT_ROOT}.",
             },
             "branch": {
                 "type": "string",
