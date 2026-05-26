@@ -272,6 +272,41 @@ El código debe leer configuración desde runtime config, `.env` o YAML. No debe
 
 ---
 
+## AI providers
+
+Sity usa una interfaz `AITextProvider` para desacoplar el flujo de chat del proveedor de IA.
+
+```text
+backend/app/cortex/providers/
+  base.py          — AITextProvider Protocol (generate, generate_with_tool_results)
+  factory.py       — build_ai_provider(name, *, model) → AITextProvider
+
+backend/app/cortex/
+  claude_provider.py   — proveedor real Anthropic
+  mock_provider.py     — proveedor determinista para tests y CI
+  ollama_provider.py   — skeleton para modelo local (aún no conectado)
+```
+
+Providers actuales:
+
+| Nombre | Clase | Estado |
+|---|---|---|
+| `anthropic` | `ClaudeProvider` | Proveedor real por defecto. Requiere `ANTHROPIC_API_KEY`. |
+| `mock` | `MockProvider` | Determinista, sin red, sin API key. Usado en tests y CI. |
+| `ollama` / `local` | `OllamaProvider` | Skeleton. Devuelve `error_type=provider_not_configured` hasta que se implemente la llamada HTTP real. |
+
+Selección via variable de entorno:
+
+```env
+SITY_AI_PROVIDER=anthropic   # default
+SITY_AI_PROVIDER=mock        # tests / CI
+SITY_AI_PROVIDER=ollama      # futuro modelo local (skeleton — no ejecuta LLM todavía)
+```
+
+Un nombre desconocido lanza `ValueError` en startup para que los errores de configuración se detecten pronto.
+
+---
+
 ## Control de presupuesto
 
 Sity registra uso diario de tokens y puede bloquear llamadas a Claude.

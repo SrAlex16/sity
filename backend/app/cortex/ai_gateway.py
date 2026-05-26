@@ -20,6 +20,8 @@ class AIGateway:
     def generate(self, request: AIRequest) -> AIResponse:
         try:
             response = self.provider.generate(request)
+            if not response.ok:
+                return response  # provider returned a controlled error; propagate as-is
             if not response.text and not response.tool_calls:
                 raise RuntimeError("Empty response from Claude")
             return response
@@ -49,6 +51,8 @@ class AIGateway:
                 first_response_content=first_response_content,
                 tool_results=tool_results,
             )
+            if not response.ok:
+                return response  # provider returned a controlled error; propagate as-is
             if not response.text and not response.tool_calls:
                 raise RuntimeError("Empty response from Claude after tool results")
             return response

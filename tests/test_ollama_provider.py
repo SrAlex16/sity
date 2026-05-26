@@ -103,3 +103,46 @@ def test_generate_micro_reaction_empty_text_triggers_fallback() -> None:
 def test_unknown_provider_still_raises_value_error() -> None:
     with pytest.raises(ValueError, match="Unknown AI provider"):
         build_ai_provider("openai", model="gpt-4")
+
+
+# ---------------------------------------------------------------------------
+# AIGateway integration — error_type preserved end-to-end
+# ---------------------------------------------------------------------------
+
+def test_gateway_with_ollama_provider_returns_controlled_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SITY_AI_PROVIDER=ollama must not crash the gateway.
+
+    AIGateway reads the env at instantiation time, so monkeypatching before
+    construction is sufficient — no module reload needed.
+
+    The gateway propagates the provider's ok=False response directly
+    (the 'empty response' RuntimeError check only applies when ok=True).
+    error_type='provider_not_configured' must be visible at gateway level.
+    """
+    monkeypatch.setenv("SITY_AI_PROVIDER", "ollama")
+
+    from app.cortex.ai_gateway import AIGateway
+    gateway = AIGateway({})
+    response = gateway.generate(_minimal_request())
+
+    assert response.ok is False
+    assert response.error_type == "provider_not_configured"
+
+
+def test_gateway_generate_with_tool_results_ollama_controlled_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SITY_AI_PROVIDER", "ollama")
+
+    from app.cortex.ai_gateway import AIGateway
+    gateway = AIGateway({})
+    response = gateway.generate_with_tool_results(
+        request=_minimal_request(),
+        first_response_content=[],
+        tool_results=[],
+    )
+
+    assert response.ok is False
+    assert response.error_type == "provider_not_configured"
