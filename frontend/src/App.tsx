@@ -8,6 +8,11 @@ import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
 import { getCurrentChat, sendChatMessage, type ChatArtifact, type ChatMessageResponse, API_BASE } from "./api/chatApi";
 import "./App.css";
 
+/** Logs only in development builds; compiled out in production. */
+const debugLog = (...args: unknown[]): void => {
+  if (import.meta.env.DEV) console.log(...args);
+};
+
 const LABELS: Record<keyof PersonalitySettings, string> = {
   sarcasm_level: "Sarcasmo",
   rudeness_level: "Mala leche",
@@ -224,17 +229,17 @@ function App() {
   }
 
   async function submitChat() {
-    console.log("[Sity submit] called", { chatInput, chatLoading });
+    debugLog("[Sity submit] called", { chatInput, chatLoading });
 
     const trimmed = chatInput.trim();
 
     if (!trimmed || chatLoading) {
-      console.log("[Sity submit] blocked", { trimmed, chatLoading });
+      debugLog("[Sity submit] blocked", { trimmed, chatLoading });
       return;
     }
 
     const clientTurnId = createClientTurnId();
-    console.log("[Sity submit] clientTurnId", clientTurnId);
+    debugLog("[Sity submit] clientTurnId", clientTurnId);
 
     setChatInput("");
     setChatError(null);
@@ -246,20 +251,20 @@ function App() {
     window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
     const eventSource = new EventSource(`${API_BASE}/events/chat/${clientTurnId}`);
-    console.log("[Sity submit] EventSource opened");
+    debugLog("[Sity submit] EventSource opened");
 
     eventSource.onopen = () => {
-      console.log("[Sity SSE] open", clientTurnId);
+      debugLog("[Sity SSE] open", clientTurnId);
     };
 
     eventSource.onmessage = (e) => {
-      console.log("[Sity SSE] message raw", e.data);
+      debugLog("[Sity SSE] message raw", e.data);
       const data = JSON.parse(e.data) as {
         type: string;
         label?: string;
         can_cancel?: boolean;
       };
-      console.log("[Sity SSE] message parsed", data);
+      debugLog("[Sity SSE] message parsed", data);
       if (data.type === "tool_started") {
         setPendingStatus(data.label ?? "Trabajando…");
         setCanCancel(Boolean(data.can_cancel));
@@ -281,13 +286,13 @@ function App() {
     };
 
     eventSource.onerror = (error) => {
-      console.error("[Sity SSE] error", error);
+      if (import.meta.env.DEV) console.error("[Sity SSE] error", error);
     };
 
     try {
-      console.log("[Sity submit] sending chat message");
+      debugLog("[Sity submit] sending chat message");
       const response = await sendChatMessage(trimmed, clientTurnId);
-      console.log("[Sity submit] response", response);
+      debugLog("[Sity submit] response", response);
 
       setChatEntries((current) => [
         ...current,
@@ -313,7 +318,7 @@ function App() {
         },
       ]);
     } finally {
-      console.log("[Sity submit] finally cleanup");
+      debugLog("[Sity submit] finally cleanup");
       eventSource.close();
       setPendingStatus(null);
       setCanCancel(false);
