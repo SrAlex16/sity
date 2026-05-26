@@ -25,6 +25,7 @@ from app.chat.toolset_selector import (
 from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.tool_loop_runner import run_tool_loop
+from app.chat.provider_call_runner import ProviderCallRunner
 from app.chat.response_factory import (
     ai_final_response,
     local_tool_response,
@@ -35,7 +36,6 @@ from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
 from app.core.runtime_config import get_runtime_config
 from app.core.realtime_events import publish_event_sync
-from app.core.micro_reactions import generate_micro_reaction
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
 from app.core.refusal_tracker import get_last_refusal, set_last_refusal
@@ -336,7 +336,7 @@ def _chat_message_inner(
 
     save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
 
-    gateway = AIGateway(config=config)
+    runner = ProviderCallRunner(AIGateway(config=config))
 
     selected_tools = select_toolset_for_message(request.message)
 
@@ -347,7 +347,7 @@ def _chat_message_inner(
     planner_response = None
 
     if not selected_tools:
-        response = gateway.generate(
+        response = runner.run_chat(
             build_chat_ai_request(
                 trace_id=trace_id,
                 persona_prompt=persona_prompt,
@@ -375,7 +375,7 @@ def _chat_message_inner(
             },
         )
 
-        planner_response = gateway.generate(planner_request)
+        planner_response = runner.run_planner(planner_request)
 
         write_log(
             level="INFO",
@@ -402,7 +402,7 @@ def _chat_message_inner(
         first_tool = planner_response.tool_calls[0]
 
         if first_tool.name == "no_action_required":
-            response = gateway.generate(
+            response = runner.run_chat(
                 build_chat_ai_request(
                     trace_id=trace_id,
                     persona_prompt=persona_prompt,
@@ -469,8 +469,7 @@ def _chat_message_inner(
 
             if _loop.early_kind in ("sensor_cancelled", "sensor_finished"):
                 _personality_dict = personality if isinstance(personality, dict) else {}
-                _react_text = generate_micro_reaction(
-                    ai_client=gateway.provider,
+                _react_text = runner.run_micro_reaction(
                     event_type=_loop.sensor_event_type,
                     event_description=_loop.sensor_description,
                     personality=_personality_dict,
@@ -513,7 +512,7 @@ def _chat_message_inner(
             persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
 
     if tool_results_for_claude:
-        response_after_tools = gateway.generate_with_tool_results(
+        response_after_tools = runner.run_after_tools(
             request=build_after_tools_ai_request(
                 trace_id=trace_id,
                 persona_prompt=persona_decision.system_prompt,
