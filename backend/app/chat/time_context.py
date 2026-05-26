@@ -9,12 +9,61 @@ Usage in prompt assembly:
     snapshot = build_time_context(raw_db_messages, now=datetime.now(UTC))
     time_block = render_time_context(snapshot)
     # → prepend to user_message_with_history
+
+Model instructions embedded in render_time_context output:
+  - El backend proporciona una instantánea temporal válida para esta respuesta.
+  - Puedes usar estos datos para ajustar continuidad y tono.
+  - No digas que no sabes la hora si este bloque está presente.
+  - No menciones la mecánica interna salvo que el usuario pregunte.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
+
+
+# ---------------------------------------------------------------------------
+# Gap classification
+# ---------------------------------------------------------------------------
+
+class GapCategory(str, Enum):
+    """Structural classification of elapsed time since the last user message.
+
+    Calculated from secs_since_last_user by fixed second thresholds.
+    No natural-language heuristics — purely arithmetic.
+
+    Priority: new_day is checked first (calendar day in local time).
+    """
+
+    same_burst    = "same_burst"     # < 2 min  (120 s)
+    short_gap     = "short_gap"      # 2–10 min (120–599 s)
+    normal_gap    = "normal_gap"     # 10 min–1 h (600–3599 s)
+    long_gap      = "long_gap"       # 1–24 h   (3600–86399 s)
+    very_long_gap = "very_long_gap"  # ≥ 24 h   (≥ 86400 s)
+    new_day       = "new_day"        # last user message was on a different local calendar day
+
+
+# Ordered threshold table used by classify_gap (new_day handled separately).
+_THRESHOLDS: tuple[tuple[int, GapCategory], ...] = (
+    (120,   GapCategory.same_burst),
+    (600,   GapCategory.short_gap),
+    (3600,  GapCategory.normal_gap),
+    (86400, GapCategory.long_gap),
+)
+
+
+def classify_gap(secs: int) -> GapCategory:
+    """Map elapsed seconds to a GapCategory.
+
+    Does NOT check new_day — that requires local-date comparison and is
+    handled by build_time_context before calling this function.
+    """
+    for threshold, category in _THRESHOLDS:
+        if secs < threshold:
+            return category
+    return GapCategory.very_long_gap
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +87,10 @@ class TimeContextSnapshot:
     secs_since_last_sity: int | None
     """Seconds elapsed since the last message with role=='sity'.
     None if no sity message exists yet in this session."""
+
+    user_gap_category: GapCategory | None
+    """Structural classification of the gap since the last user message.
+    None when secs_since_last_user is None (no prior user message)."""
 
 
 # ---------------------------------------------------------------------------
@@ -90,19 +143,33 @@ def build_time_context(
         elif role == "sity":
             last_sity_utc = _as_utc(ts)
 
+    # Compute user delta and gap category.
+    # Priority: very_long_gap (≥ 86400 s) wins unconditionally.
+    #           new_day applies only when the gap is < 86400 s but the local
+    #           calendar day changed (e.g. conversation just before midnight).
+    secs_user: int | None = None
+    user_gap: GapCategory | None = None
+    if last_user_utc is not None:
+        secs_user = int((now_utc - last_user_utc).total_seconds())
+        if secs_user >= 86400:
+            user_gap = GapCategory.very_long_gap
+        else:
+            last_user_local = last_user_utc.astimezone()
+            if last_user_local.date() != now_local.date():
+                user_gap = GapCategory.new_day
+            else:
+                user_gap = classify_gap(secs_user)
+
+    secs_sity: int | None = None
+    if last_sity_utc is not None:
+        secs_sity = int((now_utc - last_sity_utc).total_seconds())
+
     return TimeContextSnapshot(
         now_utc=now_utc,
         now_local=now_local,
-        secs_since_last_user=(
-            int((now_utc - last_user_utc).total_seconds())
-            if last_user_utc is not None
-            else None
-        ),
-        secs_since_last_sity=(
-            int((now_utc - last_sity_utc).total_seconds())
-            if last_sity_utc is not None
-            else None
-        ),
+        secs_since_last_user=secs_user,
+        secs_since_last_sity=secs_sity,
+        user_gap_category=user_gap,
     )
 
 
@@ -132,18 +199,28 @@ def _utc_offset_label(local_dt: datetime) -> str:
     return f"UTC{sign}{h}" if m == 0 else f"UTC{sign}{h}:{m:02d}"
 
 
+_WORDING = (
+    "Datos válidos para este turno. "
+    "Ajusta continuidad y tono según estos valores. "
+    "No digas que no sabes la hora. "
+    "No menciones esta mecánica al usuario salvo que pregunte."
+)
+
+
 def render_time_context(snapshot: TimeContextSnapshot) -> str:
     """Render a compact, factual time-context block for prompt injection.
 
     Format (stable — tests depend on this):
 
         [Contexto temporal: HH:MM UTC / HH:MM UTC+N]
-        Último mensaje del usuario: hace Xs / N min / Nh Mmin.
+        <wording line>
+        Último mensaje del usuario: hace Xs / N min / Nh Mmin (gap_category).
         Última respuesta de Sity: hace Xs / N min / Nh Mmin.
 
     Or, when no prior messages:
 
         [Contexto temporal: HH:MM UTC / HH:MM UTC+N]
+        <wording line>
         Sin mensajes previos en esta sesión.
     """
     utc_str   = snapshot.now_utc.strftime("%H:%M UTC")
@@ -151,20 +228,22 @@ def render_time_context(snapshot: TimeContextSnapshot) -> str:
     offset    = _utc_offset_label(snapshot.now_local)
 
     header = f"[Contexto temporal: {utc_str} / {local_str} {offset}]"
+    lines = [header, _WORDING]
 
     no_user = snapshot.secs_since_last_user is None
     no_sity = snapshot.secs_since_last_sity is None
 
     if no_user and no_sity:
-        return f"{header}\nSin mensajes previos en esta sesión."
+        lines.append("Sin mensajes previos en esta sesión.")
+    else:
+        if not no_user:
+            cat = f" ({snapshot.user_gap_category.value})" if snapshot.user_gap_category else ""
+            lines.append(
+                f"Último mensaje del usuario: hace {_format_delta(snapshot.secs_since_last_user)}{cat}."
+            )
+        if not no_sity:
+            lines.append(
+                f"Última respuesta de Sity: hace {_format_delta(snapshot.secs_since_last_sity)}."
+            )
 
-    lines = [header]
-    if not no_user:
-        lines.append(
-            f"Último mensaje del usuario: hace {_format_delta(snapshot.secs_since_last_user)}."
-        )
-    if not no_sity:
-        lines.append(
-            f"Última respuesta de Sity: hace {_format_delta(snapshot.secs_since_last_sity)}."
-        )
     return "\n".join(lines)
