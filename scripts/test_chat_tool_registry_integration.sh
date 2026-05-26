@@ -224,6 +224,21 @@ assert_not_contains "$CASUAL_OUT" "acción pendiente activa para cancelar"
 assert_not_contains "$CASUAL_OUT" "No encontré ninguna acción pendiente"
 ok "Casual conversation did not trigger cancel_pending_action"
 
+log "Regression: 'estás ahí?' must not trigger file tools or tool-policy"
+CASUAL_AHI_OUT="$TMP_DIR/casual_ahi.json"
+post_chat "estás ahí?" "$CASUAL_AHI_OUT"
+assert_ok_response "$CASUAL_AHI_OUT"
+AHI_PROVIDER="$(json_field "$CASUAL_AHI_OUT" "provider")"
+AHI_MODEL="$(json_field "$CASUAL_AHI_OUT" "model")"
+
+if [[ "$AHI_PROVIDER" == "local" && "$AHI_MODEL" == "tool-policy" ]]; then
+  echo "--- response ---"
+  cat "$CASUAL_AHI_OUT"
+  echo "----------------"
+  fail "'estás ahí?' triggered local tool-policy (file tools leaked into BASE_TOOLSET)"
+fi
+ok "'estás ahí?' did not trigger tool-policy"
+
 log "Testing pseudo tool call guard directly"
 # Use venv python when available (local dev), fall back to PATH python (CI).
 _PYTHON="${BASH_SOURCE[0]%/*}/../backend/.venv/bin/python"

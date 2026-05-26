@@ -121,6 +121,30 @@ def main() -> None:
     )
     print("[OK] casual message adds no tools beyond BASE_TOOLSET")
 
+    # Regression: "estás ahí?" must NOT include file tools or cancel_pending_action.
+    # This is the concrete bug that was fixed: BASE_TOOLSET no longer contains file tools.
+    casual_esta = selected_tool_names("estás ahí?")
+    _file_tools = {"read_file", "list_directory", "write_file", "apply_text_patch",
+                   "apply_unified_diff", "apply_multi_file_unified_diff_plan",
+                   "list_file_changes", "find_latest_reversible_file_change",
+                   "rollback_latest_file_change", "rollback_file_change"}
+    unexpected = casual_esta & (_file_tools | {"cancel_pending_action"})
+    assert not unexpected, (
+        f"'estás ahí?' triggered unexpected tools: {sorted(unexpected)}"
+    )
+    print("[OK] 'estás ahí?' does not include file tools or cancel_pending_action")
+
+    # Regression: explicit tool name must still activate FILE_AGENT_TOOLSET.
+    assert_has_tool("usa la herramienta read_file para leer README.md", "read_file")
+    assert_has_tool("usa la herramienta write_file", "write_file")
+    assert_has_tool("usa la herramienta list_directory", "list_directory")
+    print("[OK] explicit file tool names trigger FILE_AGENT_TOOLSET")
+
+    # Regression: file path in message must activate FILE_AGENT_TOOLSET.
+    assert_has_tool("¿qué hay en backend/app?", "read_file")
+    assert_has_tool("lee el archivo README.md", "read_file")
+    print("[OK] file paths in message trigger FILE_AGENT_TOOLSET")
+
     print("\ntoolset selector local test ok")
 
 

@@ -22,8 +22,12 @@ from app.cortex.tool_schemas import (
 # ── Tool-name → toolset index ─────────────────────────────────────────────────
 # Built once at import from the actual schema lists.
 # No parallel term list to maintain: adding a tool to a schema is enough.
+# FILE_AGENT_TOOLSET is included so that explicit tool names like "read_file"
+# or "write_file" in the message activate the full file toolset structurally,
+# without relying on BASE_TOOLSET having them by default.
 _TOOL_TO_TOOLSET: dict[str, list[dict]] = {}
 for _toolset in [
+    FILE_AGENT_TOOLSET,
     GIT_TOOLSET, SERVICE_CONFIG_TOOLSET, SERVICE_CONTROL_TOOLSET,
     SYSTEM_TOOLSET, SENSES_TOOLSET, DEBUG_TOOLSET, PERSONALITY_TOOLSET,
     PENDING_ACTION_TOOLSET,

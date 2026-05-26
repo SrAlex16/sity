@@ -907,16 +907,11 @@ PERSONALITY_TOOLSET = [
 ]
 
 BASE_TOOLSET: list[dict] = [
-    READ_FILE_TOOL,
-    LIST_DIRECTORY_TOOL,
-    WRITE_FILE_TOOL,
-    APPLY_TEXT_PATCH_TOOL,
-    APPLY_UNIFIED_DIFF_TOOL,
-    APPLY_MULTI_FILE_UNIFIED_DIFF_PLAN_TOOL,
-    LIST_FILE_CHANGES_TOOL,
-    FIND_LATEST_REVERSIBLE_FILE_CHANGE_TOOL,
-    ROLLBACK_LATEST_FILE_CHANGE_TOOL,
-    ROLLBACK_FILE_CHANGE_TOOL,
+    # Minimal conversational toolset. No file tools here.
+    # FILE_AGENT_TOOLSET is added structurally by toolset_selector:
+    #   - explicit tool name detected from schemas/registry
+    #   - file path detected by message_mentions_file_path
+    NO_ACTION_REQUIRED_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [
