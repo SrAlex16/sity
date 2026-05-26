@@ -145,6 +145,7 @@ backend/app/api/schemas.py
 ```text
 frontend/
   Interfaz web de chat, sliders, previews y controles.
+  Ver frontend/README.md para la estructura interna.
 
 backend/
   API FastAPI.
