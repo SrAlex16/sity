@@ -255,17 +255,17 @@ def _chat_message_inner(
     confirmation_manager = ConfirmationManager(session)
     local_flow = ChatLocalFlow(confirmation_manager)
 
-    local_response = local_flow.try_handle(
-        LocalFlowContext(
-            session=session,
-            trace_id=trace_id,
-            message=request.message,
-            daily_budget=daily_budget,
-            warnings=[],
-            save_message=save_chat_message,
-            get_usage=get_today_token_usage,
-        )
+    _local_ctx = LocalFlowContext(
+        session=session,
+        trace_id=trace_id,
+        message=request.message,
+        daily_budget=daily_budget,
+        warnings=[],
+        save_message=save_chat_message,
+        get_usage=get_today_token_usage,
     )
+
+    local_response = local_flow.try_handle(_local_ctx)
     if local_response:
         return local_response
 
@@ -276,18 +276,7 @@ def _chat_message_inner(
 
     if pending_action:
         runner = PendingActionRunner(confirmation_manager)
-        return runner.run(
-            pending_action,
-            LocalFlowContext(
-                session=session,
-                trace_id=trace_id,
-                message=request.message,
-                daily_budget=daily_budget,
-                warnings=[],
-                save_message=save_chat_message,
-                get_usage=get_today_token_usage,
-            ),
-        )
+        return runner.run(pending_action, _local_ctx)
 
     runtime_config = get_runtime_config()
 
