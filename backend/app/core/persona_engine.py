@@ -65,7 +65,18 @@ class PersonaEngine:
         self,
         personality: dict[str, Any],
         user_message: str,
+        *,
+        refusal_mode_override: bool | None = None,
     ) -> PersonaDecision:
+        """
+        Build the system prompt and decide refusal_mode for this turn.
+
+        Args:
+            personality: personality dict from SettingsService.
+            user_message: the user's current message.
+            refusal_mode_override: if not None, bypasses _should_refuse() and
+                uses this value directly. Intended for deterministic testing only.
+        """
         sarcasm = float(personality.get("sarcasm_level", 0.7))
         rudeness = float(personality.get("rudeness_level", 0.45))
         warmth = float(personality.get("warmth_level", 0.35))
@@ -96,7 +107,10 @@ class PersonaEngine:
             melancholy=melancholy,
         )
 
-        refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal)
+        if refusal_mode_override is not None:
+            refusal_mode = refusal_mode_override
+        else:
+            refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal)
         order_override_active = has_direct_order_override(user_message)
 
         order_override_instruction = (
