@@ -52,7 +52,7 @@ def test_unknown_provider_raises_value_error() -> None:
     so misconfiguration is caught at startup rather than at request time.
     """
     with pytest.raises(ValueError, match="Unknown AI provider"):
-        build_ai_provider("ollama", model="llama3")
+        build_ai_provider("openai", model="gpt-4")
 
 
 def test_unknown_provider_error_lists_known_providers() -> None:
