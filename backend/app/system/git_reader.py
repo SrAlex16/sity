@@ -1,42 +1,45 @@
 from pathlib import Path
 from typing import Any
 
-from app.system.system_reader import load_system_access_config, run_read_command
+from app.system.system_reader import (
+    _resolve_config_path,
+    load_system_access_config,
+    run_read_command,
+)
 
 
-def get_allowed_repositories() -> list[str]:
+def get_allowed_repositories() -> list[Path]:
+    """Return allowed repository paths resolved to absolute Paths."""
     config = load_system_access_config()
-    return (
+    raw = (
         config.get("git_access", {})
         .get("read", {})
         .get("allowed_repositories", [])
     )
+    return [_resolve_config_path(str(p)) for p in raw]
 
 
 def is_allowed_repository(repo_path: str) -> bool:
     resolved = Path(repo_path).expanduser().resolve()
-
-    for allowed in get_allowed_repositories():
-        allowed_resolved = Path(allowed).expanduser().resolve()
-        if resolved == allowed_resolved:
-            return True
-
-    return False
+    return resolved in get_allowed_repositories()
 
 
 def resolve_repository_path(repo_path: str | None) -> str:
+    """Resolve an alias / empty string to an absolute repository path."""
     config = load_system_access_config()
     read_config = config.get("git_access", {}).get("read", {})
 
     if not repo_path:
-        return str(read_config.get("default_repository", ""))
+        default = str(read_config.get("default_repository", ""))
+        return str(_resolve_config_path(default))
 
     aliases = read_config.get("repository_aliases", {})
     if repo_path in aliases:
-        return str(aliases[repo_path])
+        return str(_resolve_config_path(str(aliases[repo_path])))
 
     if repo_path.lower() == "sity":
-        return str(read_config.get("default_repository", ""))
+        default = str(read_config.get("default_repository", ""))
+        return str(_resolve_config_path(default))
 
     return repo_path
 

@@ -11,6 +11,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SYSTEM_ACCESS_CONFIG = PROJECT_ROOT / "config" / "system_access.yaml"
 
 
+def _resolve_config_path(path_str: str) -> Path:
+    """Resolve a path from the YAML config.
+
+    Absolute paths are returned as-is (after expanduser + resolve).
+    Relative paths are resolved relative to the runtime project_root so the
+    config remains portable across checkout locations.
+    """
+    p = Path(path_str)
+    if p.is_absolute():
+        return p.expanduser().resolve()
+    from app.core.runtime_config import get_runtime_config  # lazy to avoid circular import
+    return (get_runtime_config().project_root / p).resolve()
+
+
 def load_system_access_config() -> dict[str, Any]:
     if not SYSTEM_ACCESS_CONFIG.exists():
         return {}
@@ -136,7 +150,7 @@ def is_allowed_path(path: Path) -> bool:
     resolved = path.expanduser().resolve()
 
     for allowed in allowed_paths:
-        allowed_resolved = Path(allowed).expanduser().resolve()
+        allowed_resolved = _resolve_config_path(str(allowed))
         try:
             resolved.relative_to(allowed_resolved)
             return True

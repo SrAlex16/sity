@@ -3,9 +3,9 @@ system_access:
   read:
     enabled: true
     allowed_paths:
-    - /home/alex/projects/sity
-    - /home/alex/projects
-    - /home/alex
+    - .       # project root (resolved from SITY_PROJECT_ROOT at runtime)
+    - ..      # parent directory
+    - ../..   # grandparent directory
     allowed_services:
     - ssh
     - sity-backend
@@ -53,8 +53,8 @@ git_access:
   enabled: true
   read:
     enabled: true
-    default_repository: /home/alex/projects/sity
+    default_repository: .   # resolved from SITY_PROJECT_ROOT at runtime
     repository_aliases:
-      sity: /home/alex/projects/sity
+      sity: .               # alias → project root
     allowed_repositories:
-    - /home/alex/projects/sity
+    - .                     # project root (resolved from SITY_PROJECT_ROOT at runtime)
