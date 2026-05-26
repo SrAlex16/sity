@@ -2,10 +2,13 @@ import os
 from typing import Any
 
 from app.cortex.claude_provider import ClaudeProvider
+from app.cortex.providers.base import AITextProvider
 from app.cortex.schemas import AIRequest, AIResponse, AIUsageData
 
 
 class AIGateway:
+    provider: AITextProvider
+
     def __init__(self, config: dict[str, Any]):
         ai_config = config.get("ai", {})
         claude_config = ai_config.get("claude", {})
@@ -27,8 +30,8 @@ class AIGateway:
         except Exception as exc:
             return AIResponse(
                 ok=False,
-                provider="anthropic",
-                model=getattr(self.provider, "model", "unknown"),
+                provider=self.provider.name,
+                model=self.provider.model,
                 text="No he podido contactar con Claude. Qué maravilla depender de una nube para tener personalidad.",
                 usage=AIUsageData(),
                 latency_ms=0,
@@ -56,8 +59,8 @@ class AIGateway:
         except Exception as exc:
             return AIResponse(
                 ok=False,
-                provider="anthropic",
-                model=getattr(self.provider, "model", "unknown"),
+                provider=self.provider.name,
+                model=self.provider.model,
                 text="He ejecutado la herramienta, pero no he podido generar una respuesta final. Muy elegante todo.",
                 usage=AIUsageData(),
                 latency_ms=0,

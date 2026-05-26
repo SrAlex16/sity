@@ -15,6 +15,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 
 class ClaudeProvider:
+    name = "anthropic"
+
     def __init__(self, model: str):
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:

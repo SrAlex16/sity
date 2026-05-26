@@ -73,6 +73,8 @@ def _build_tool_input(tool_name: str, current: str) -> dict[str, Any]:
 class MockProvider:
     """Deterministic AI provider for tests. No network calls, no API key required."""
 
+    name = "mock"
+
     def __init__(self, model: str = "mock"):
         self.model = model
 
