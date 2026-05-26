@@ -842,6 +842,10 @@ la suite de integración completa:
 ./scripts/test_chat_mock_integration.sh
 ```
 
+**Aislamiento de DB:** el script exporta `SITY_DB_URL` y `SITY_TEST_DB_PATH`
+apuntando a `tests/.mock_integration.db` antes de arrancar uvicorn.
+`data/app.db` **no se toca** durante la integración.
+
 Cubre el flujo `/chat/message` completo incluyendo:
 
 ```text
