@@ -367,13 +367,17 @@ def _chat_message_inner(
 
     if routing_decision.provider_mode == ProviderMode.local_chat_candidate:
         # Local LLM (Ollama): chat-only path — no planner, no tools sent.
+        # Uses a compact, label-free persona prompt suited to smaller models.
         # Uses the separately configured local_provider, NOT the cloud gateway.
         # provider_unavailable / provider_error errors flow through
         # build_final_ai_response as controlled (ok=False) responses.
+        local_persona_prompt = PersonaEngine().build_local_persona_prompt(
+            personality, request.message
+        )
         response = runner.run_local_chat(
             build_chat_ai_request(
                 trace_id=trace_id,
-                persona_prompt=persona_prompt,
+                persona_prompt=local_persona_prompt,
                 user_message=user_message_with_history,
                 max_tokens=max_tokens,
             )
