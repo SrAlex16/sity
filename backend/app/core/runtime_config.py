@@ -35,6 +35,12 @@ class RuntimeConfig:
     ai_provider: str
     daily_token_hard_cap: bool
     local_only: bool
+    # Hybrid local AI settings — independent from the cloud ai_provider.
+    # SITY_AI_PROVIDER stays as the cloud/default provider (normally "anthropic").
+    # SITY_LOCAL_AI_ENABLED=true enables local LLM routing for conversational turns.
+    # SITY_LOCAL_AI_PROVIDER selects which local backend to use (default: "ollama").
+    local_ai_enabled: bool
+    local_ai_provider: str
 
     @property
     def config_dir(self) -> Path:
@@ -57,4 +63,6 @@ def get_runtime_config() -> RuntimeConfig:
         ai_provider=env_str("SITY_AI_PROVIDER", "anthropic"),
         daily_token_hard_cap=env_bool("SITY_DAILY_TOKEN_HARD_CAP", False),
         local_only=env_bool("SITY_LOCAL_ONLY", False),
+        local_ai_enabled=env_bool("SITY_LOCAL_AI_ENABLED", False),
+        local_ai_provider=env_str("SITY_LOCAL_AI_PROVIDER", "ollama"),
     )

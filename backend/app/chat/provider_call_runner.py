@@ -19,20 +19,62 @@ from typing import Any
 
 from app.core.micro_reactions import generate_micro_reaction
 from app.cortex.ai_gateway import AIGateway
-from app.cortex.schemas import AIRequest, AIResponse
+from app.cortex.providers.base import AITextProvider
+from app.cortex.schemas import AIRequest, AIResponse, AIUsageData
 
 
 class ProviderCallRunner:
-    def __init__(self, gateway: AIGateway) -> None:
+    def __init__(
+        self,
+        gateway: AIGateway,
+        *,
+        local_provider: AITextProvider | None = None,
+    ) -> None:
         self._gateway = gateway
+        self._local_provider = local_provider
 
     # ------------------------------------------------------------------
     # Chat calls
     # ------------------------------------------------------------------
 
     def run_chat(self, request: AIRequest) -> AIResponse:
-        """Single-turn conversational response — no tools involved."""
+        """Single-turn conversational response via the cloud provider."""
         return self._gateway.generate(request)
+
+    def run_local_chat(self, request: AIRequest) -> AIResponse:
+        """Single-turn conversational response via the local provider (Ollama).
+
+        Falls back to a controlled error response if no local provider is
+        configured.  The caller (routes_chat) should only call this when
+        routing_decision.provider_mode == local_chat_candidate.
+        """
+        if self._local_provider is None:
+            return AIResponse(
+                ok=False,
+                provider="local",
+                model="unknown",
+                text="Local AI provider not configured.",
+                usage=AIUsageData(),
+                latency_ms=0,
+                fallback_used=False,
+                error_type="provider_not_configured",
+                error_message="run_local_chat called but no local_provider was supplied.",
+            )
+        try:
+            response = self._local_provider.generate(request)
+            return response
+        except Exception as exc:
+            return AIResponse(
+                ok=False,
+                provider=self._local_provider.name,
+                model=self._local_provider.model,
+                text="El proveedor local no ha podido responder.",
+                usage=AIUsageData(),
+                latency_ms=0,
+                fallback_used=False,
+                error_type=exc.__class__.__name__,
+                error_message=str(exc),
+            )
 
     # ------------------------------------------------------------------
     # Planner calls

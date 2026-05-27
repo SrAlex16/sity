@@ -1,13 +1,18 @@
 """Integration tests for ChatRoutingDecision in the chat route.
 
-Tests verify that:
-- SITY_AI_PROVIDER=ollama + conversational → chat-only path (no planner, no tools)
-- SITY_AI_PROVIDER=ollama + action message → cloud_tools path → tools_not_supported
-- cloud_tools path correctly reaches OllamaProvider with tools_enabled=True
-- httpx.post payload has no 'tools' key when chat path is taken
+Architecture: hybrid provider model.
+  - SITY_AI_PROVIDER       = cloud provider (anthropic / mock).  Tools + planner always use this.
+  - SITY_LOCAL_AI_ENABLED  = true → enables local routing for conversational turns.
+  - SITY_LOCAL_AI_PROVIDER = ollama → which local backend to use (default).
 
-Uses FastAPI TestClient (synchronous).  httpx.post is patched at module level
-to avoid real Ollama network calls.  The test DB is already isolated by conftest.
+Tests verify:
+  - SITY_LOCAL_AI_ENABLED=true + conversational → local_chat_candidate → chat-only (Ollama) path.
+  - SITY_LOCAL_AI_ENABLED=true + action message → cloud_tools path (planner/mock, NOT Ollama).
+  - Ollama httpx.post payload has no 'tools' key when chat path is taken.
+  - Default (SITY_LOCAL_AI_ENABLED not set) routes through cloud planner (mock).
+
+Uses FastAPI TestClient (synchronous). httpx.post is patched at module level to avoid real
+Ollama network calls. The test DB is already isolated by conftest.
 """
 from __future__ import annotations
 
@@ -46,9 +51,14 @@ def _mock_ollama_response(body: dict | None = None) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def ollama_client(monkeypatch: pytest.MonkeyPatch):
-    """TestClient with SITY_AI_PROVIDER=ollama and a mocked httpx.post."""
-    monkeypatch.setenv("SITY_AI_PROVIDER", "ollama")
+def local_ai_client(monkeypatch: pytest.MonkeyPatch):
+    """TestClient with local AI enabled (Ollama) and a mocked httpx.post.
+
+    Cloud provider stays as 'mock' (set by conftest).
+    Local provider is 'ollama', backed by patched httpx.post.
+    """
+    monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
+    monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
     captured: list[dict] = []
 
     def _fake_post(url: str, *, json: Any = None, **kwargs: Any) -> Any:
@@ -62,36 +72,36 @@ def ollama_client(monkeypatch: pytest.MonkeyPatch):
 
 
 # ---------------------------------------------------------------------------
-# Conversational message → local_chat_candidate → chat-only path
+# Conversational message → local_chat_candidate → Ollama chat path
 # ---------------------------------------------------------------------------
 
-def test_ollama_conversational_returns_ok(ollama_client):
-    """Conversational message with ollama provider returns ok=True."""
-    client, _ = ollama_client
+def test_local_ai_conversational_returns_ok(local_ai_client):
+    """Conversational message with local AI enabled returns ok=True."""
+    client, _ = local_ai_client
     resp = client.post("/chat/message", json={"message": "hola"})
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
 
 
-def test_ollama_conversational_no_tools_not_supported_error(ollama_client):
+def test_local_ai_conversational_no_tools_not_supported(local_ai_client):
     """Conversational message must not return tools_not_supported."""
-    client, _ = ollama_client
+    client, _ = local_ai_client
     resp = client.post("/chat/message", json={"message": "hola"})
     assert resp.json().get("error_type") != "tools_not_supported"
 
 
-def test_ollama_conversational_httpx_called_once(ollama_client):
-    """Exactly one httpx.post call: the chat call, not a planner call."""
-    client, captured = ollama_client
+def test_local_ai_conversational_httpx_called_once(local_ai_client):
+    """Exactly one httpx.post call: the Ollama chat call, not a planner call."""
+    client, captured = local_ai_client
     client.post("/chat/message", json={"message": "hola"})
     assert len(captured) == 1, (
-        f"Expected 1 httpx.post call (chat), got {len(captured)}"
+        f"Expected 1 httpx.post call (local chat), got {len(captured)}"
     )
 
 
-def test_ollama_conversational_no_tools_in_httpx_payload(ollama_client):
+def test_local_ai_conversational_no_tools_in_httpx_payload(local_ai_client):
     """The payload sent to Ollama must NOT contain a 'tools' key."""
-    client, captured = ollama_client
+    client, captured = local_ai_client
     client.post("/chat/message", json={"message": "hola"})
     assert len(captured) == 1
     assert "tools" not in captured[0], (
@@ -99,36 +109,37 @@ def test_ollama_conversational_no_tools_in_httpx_payload(ollama_client):
     )
 
 
-def test_ollama_conversational_payload_has_stream_false(ollama_client):
+def test_local_ai_conversational_payload_has_stream_false(local_ai_client):
     """Ollama payload must have stream=False (chat-only protocol)."""
-    client, captured = ollama_client
+    client, captured = local_ai_client
     client.post("/chat/message", json={"message": "hola"})
     assert captured[0].get("stream") is False
 
 
-def test_ollama_conversational_response_text_from_ollama(ollama_client):
+def test_local_ai_conversational_response_text_from_ollama(local_ai_client):
     """Response text comes from the mocked Ollama body."""
-    client, _ = ollama_client
+    client, _ = local_ai_client
     resp = client.post("/chat/message", json={"message": "hola"})
     assert resp.json()["text"] == "Hola, soy Sity."
 
 
 # ---------------------------------------------------------------------------
-# Action message → cloud_tools → OllamaProvider rejects with tools_not_supported
+# Action message → cloud_tools → cloud (mock) provider, NOT Ollama
 # ---------------------------------------------------------------------------
 
-def test_ollama_action_message_returns_tools_not_supported(monkeypatch):
-    """Action domain activated → cloud_tools path → tools_not_supported.
+def test_local_ai_action_message_ollama_not_called(monkeypatch):
+    """Action domain activated → cloud_tools → Ollama httpx.post is NOT called.
 
-    Message 'lee backend/app/main.py' has a file path, activating the 'file'
-    domain → cloud_tools → planner called with tools_enabled=True → OllamaProvider
-    rejects early with tools_not_supported (before any httpx.post call).
+    'lee backend/app/main.py' has a file path → file domain activated → cloud_tools.
+    Cloud provider is mock (conftest default) — it handles the planner turn.
+    Ollama is configured but must stay idle.
     """
-    monkeypatch.setenv("SITY_AI_PROVIDER", "ollama")
-    http_called = []
+    monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
+    monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
+    ollama_called = []
 
     def _should_not_be_called(*a: Any, **kw: Any) -> Any:
-        http_called.append(True)
+        ollama_called.append(True)
         return _mock_ollama_response()
 
     monkeypatch.setattr(httpx, "post", _should_not_be_called)
@@ -139,78 +150,138 @@ def test_ollama_action_message_returns_tools_not_supported(monkeypatch):
         )
 
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["error_type"] == "tools_not_supported", (
-        f"Expected tools_not_supported, got: {data.get('error_type')}"
+    assert not ollama_called, (
+        "Ollama httpx.post was called for an action message — should use cloud path"
     )
 
 
-def test_ollama_action_message_httpx_not_called(monkeypatch):
-    """OllamaProvider rejects before making the HTTP call when tools_enabled=True."""
-    monkeypatch.setenv("SITY_AI_PROVIDER", "ollama")
-    http_called = []
+def test_local_ai_action_message_no_tools_not_supported(monkeypatch):
+    """Action domain + local AI enabled must NOT return tools_not_supported.
 
+    cloud_tools path uses mock provider (cloud), which supports tools.
+    Ollama is never called, so tools_not_supported never fires.
+    """
+    monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
+    monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
     monkeypatch.setattr(
         httpx, "post",
-        lambda *a, **kw: http_called.append(True) or _mock_ollama_response()
+        lambda *a, **kw: _mock_ollama_response()  # guard — should not be reached
     )
 
     with TestClient(app, raise_server_exceptions=True) as client:
-        client.post("/chat/message", json={"message": "lee backend/app/main.py"})
+        resp = client.post(
+            "/chat/message", json={"message": "lee backend/app/main.py"}
+        )
 
-    assert not http_called, (
-        "httpx.post was called but should not be (tools rejected before HTTP)"
+    assert resp.status_code == 200
+    assert resp.json().get("error_type") != "tools_not_supported", (
+        f"Got tools_not_supported — action message was routed to Ollama: {resp.json()}"
     )
 
 
 # ---------------------------------------------------------------------------
-# SITY_AI_PROVIDER=anthropic (default) keeps planner path
-# (mock provider is used — SITY_AI_PROVIDER=mock set in conftest)
+# SITY_LOCAL_AI_ENABLED not set (default) → cloud planner path (mock provider)
 # ---------------------------------------------------------------------------
 
-def test_mock_provider_conversational_returns_ok():
-    """Default mock provider (conversational) returns ok=True via planner path."""
+def test_default_cloud_provider_conversational_returns_ok():
+    """Default (no local AI) conversational → cloud (mock) → ok=True."""
     with TestClient(app, raise_server_exceptions=True) as client:
         resp = client.post("/chat/message", json={"message": "hola"})
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
 
 
-def test_mock_provider_no_tools_not_supported():
-    """Default mock provider must not return tools_not_supported."""
+def test_default_cloud_provider_no_tools_not_supported():
+    """Default (no local AI) conversational must not return tools_not_supported."""
     with TestClient(app, raise_server_exceptions=True) as client:
         resp = client.post("/chat/message", json={"message": "hola"})
     assert resp.json().get("error_type") != "tools_not_supported"
 
 
+def test_default_cloud_provider_ollama_not_called(monkeypatch):
+    """SITY_LOCAL_AI_ENABLED not set → Ollama httpx.post is never called."""
+    # Ensure local AI is disabled
+    monkeypatch.delenv("SITY_LOCAL_AI_ENABLED", raising=False)
+    ollama_called = []
+
+    monkeypatch.setattr(
+        httpx, "post",
+        lambda *a, **kw: ollama_called.append(True) or _mock_ollama_response()
+    )
+
+    with TestClient(app, raise_server_exceptions=True) as client:
+        client.post("/chat/message", json={"message": "hola"})
+
+    assert not ollama_called, (
+        "Ollama was called but SITY_LOCAL_AI_ENABLED is not set"
+    )
+
+
 # ---------------------------------------------------------------------------
-# Unit: local_ai_enabled derivation from ai_provider
+# Unit: RuntimeConfig fields for local AI
 # ---------------------------------------------------------------------------
 
-def test_local_ai_enabled_true_for_ollama(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("SITY_AI_PROVIDER", "ollama")
+def test_local_ai_enabled_true_when_env_set(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     from app.core.runtime_config import get_runtime_config
     cfg = get_runtime_config()
-    assert cfg.ai_provider in {"ollama", "local"}
-    assert cfg.ai_provider in {"ollama", "local"}  # readable assertion
+    assert cfg.local_ai_enabled is True
 
 
-def test_local_ai_enabled_true_for_local(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("SITY_AI_PROVIDER", "local")
+def test_local_ai_enabled_false_by_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SITY_LOCAL_AI_ENABLED", raising=False)
     from app.core.runtime_config import get_runtime_config
     cfg = get_runtime_config()
-    assert cfg.ai_provider in {"ollama", "local"}
+    assert cfg.local_ai_enabled is False
 
 
-def test_local_ai_enabled_false_for_anthropic(monkeypatch: pytest.MonkeyPatch):
+def test_local_ai_provider_default_is_ollama(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("SITY_LOCAL_AI_PROVIDER", raising=False)
+    from app.core.runtime_config import get_runtime_config
+    cfg = get_runtime_config()
+    assert cfg.local_ai_provider == "ollama"
+
+
+def test_local_ai_provider_reads_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "local")
+    from app.core.runtime_config import get_runtime_config
+    cfg = get_runtime_config()
+    assert cfg.local_ai_provider == "local"
+
+
+def test_cloud_ai_provider_unaffected_by_local_flag(monkeypatch: pytest.MonkeyPatch):
+    """SITY_LOCAL_AI_ENABLED does not change SITY_AI_PROVIDER."""
+    monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_AI_PROVIDER", "anthropic")
     from app.core.runtime_config import get_runtime_config
     cfg = get_runtime_config()
-    assert cfg.ai_provider not in {"ollama", "local"}
+    assert cfg.ai_provider == "anthropic"
+    assert cfg.local_ai_enabled is True
 
 
-def test_local_ai_enabled_false_for_mock(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("SITY_AI_PROVIDER", "mock")
-    from app.core.runtime_config import get_runtime_config
-    cfg = get_runtime_config()
-    assert cfg.ai_provider not in {"ollama", "local"}
+# ---------------------------------------------------------------------------
+# Unit: ProviderCallRunner.run_local_chat with no local_provider
+# ---------------------------------------------------------------------------
+
+def test_run_local_chat_no_provider_returns_error():
+    """run_local_chat with local_provider=None returns a controlled error."""
+    from app.chat.provider_call_runner import ProviderCallRunner
+    from app.cortex.ai_gateway import AIGateway
+    from app.settings.config_loader import load_default_config
+
+    config = load_default_config()
+    runner = ProviderCallRunner(AIGateway(config=config), local_provider=None)
+
+    from app.cortex.schemas import AIRequest
+    req = AIRequest(
+        trace_id="test",
+        task_type="chat",
+        system_prompt="sys",
+        user_message="hello",
+        tools=[],
+        tools_enabled=False,
+        max_tokens=100,
+    )
+    resp = runner.run_local_chat(req)
+    assert resp.ok is False
+    assert resp.error_type == "provider_not_configured"

@@ -41,6 +41,7 @@ from app.core.persona_engine import PersonaEngine
 from app.core.refusal_tracker import get_last_refusal
 from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
+from app.cortex.providers.factory import build_ai_provider
 
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
@@ -325,7 +326,16 @@ def _chat_message_inner(
 
     save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
 
-    runner = ProviderCallRunner(AIGateway(config=config))
+    # Build local provider when SITY_LOCAL_AI_ENABLED=true.
+    # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
+    _local_provider = None
+    if runtime_config.local_ai_enabled:
+        _local_provider = build_ai_provider(
+            runtime_config.local_ai_provider,
+            model=config.get("ai", {}).get("claude", {}).get("model", ""),
+        )
+
+    runner = ProviderCallRunner(AIGateway(config=config), local_provider=_local_provider)
 
     toolset_selection = select_toolset_with_metadata(request.message)
     selected_tools = toolset_selection.tools
@@ -333,7 +343,7 @@ def _chat_message_inner(
     routing_decision = build_chat_routing_decision(
         message=request.message,
         selection=toolset_selection,
-        local_ai_enabled=runtime_config.ai_provider in {"ollama", "local"},
+        local_ai_enabled=runtime_config.local_ai_enabled,
     )
 
     write_log(
@@ -356,10 +366,11 @@ def _chat_message_inner(
     planner_response = None
 
     if routing_decision.provider_mode == ProviderMode.local_chat_candidate:
-        # Local LLM (Ollama, local): chat-only path — no planner, no tools sent.
+        # Local LLM (Ollama): chat-only path — no planner, no tools sent.
+        # Uses the separately configured local_provider, NOT the cloud gateway.
         # provider_unavailable / provider_error errors flow through
         # build_final_ai_response as controlled (ok=False) responses.
-        response = runner.run_chat(
+        response = runner.run_local_chat(
             build_chat_ai_request(
                 trace_id=trace_id,
                 persona_prompt=persona_prompt,
