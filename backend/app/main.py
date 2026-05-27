@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,6 +12,7 @@ from app.api.routes_chat import router as chat_router
 from app.api.routes_debug import router as debug_router
 from app.api.routes_events import router as events_router
 from app.api.routes_settings import router as settings_router
+from app.core.cors_config import get_cors_origins
 from app.core.realtime_events import set_event_loop
 from app.memory.db import init_db
 from app.trace.logger import write_log
@@ -22,17 +22,9 @@ app = FastAPI(
     version="0.1.0",
 )
 
-_base_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-_extra = os.getenv("SITY_CORS_ORIGIN", "").strip()
-if _extra:
-    _base_origins.append(_extra)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_base_origins,
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
