@@ -67,6 +67,9 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Confirmaciones locales antes de hard cap/local-only.
 - Filtrado de mensajes operativos fuera del historial enviado a Claude.
 - Refactor inicial de `routes_chat.py`.
+- OllamaProvider v1 implementado y testeado (chat-only, httpx, sin tools).
+- Módulo de contexto temporal (`time_context.py`) inyectado en prompts.
+- Aislamiento completo de DB en pytest y en tests de integración mock.
 
 ### Refactor reciente
 
@@ -284,7 +287,7 @@ backend/app/cortex/providers/
 backend/app/cortex/
   claude_provider.py   — proveedor real Anthropic
   mock_provider.py     — proveedor determinista para tests y CI
-  ollama_provider.py   — skeleton para modelo local (aún no conectado)
+  ollama_provider.py   — chat-only, httpx POST /api/chat, sin tools
 ```
 
 Providers actuales:
@@ -293,14 +296,22 @@ Providers actuales:
 |---|---|---|
 | `anthropic` | `ClaudeProvider` | Proveedor real por defecto. Requiere `ANTHROPIC_API_KEY`. |
 | `mock` | `MockProvider` | Determinista, sin red, sin API key. Usado en tests y CI. |
-| `ollama` / `local` | `OllamaProvider` | Skeleton. Devuelve `error_type=provider_not_configured` hasta que se implemente la llamada HTTP real. |
+| `ollama` / `local` | `OllamaProvider` | Implementado. Chat-only, sin tools. Conecta a `SITY_OLLAMA_BASE_URL`. Modo manual/experimental para workers externos. |
 
 Selección via variable de entorno:
 
 ```env
 SITY_AI_PROVIDER=anthropic   # default
 SITY_AI_PROVIDER=mock        # tests / CI
-SITY_AI_PROVIDER=ollama      # futuro modelo local (skeleton — no ejecuta LLM todavía)
+SITY_AI_PROVIDER=ollama      # worker local externo (manual/experimental)
+```
+
+Variables de configuración para `OllamaProvider`:
+
+```env
+SITY_OLLAMA_BASE_URL=http://127.0.0.1:11434     # default
+SITY_OLLAMA_MODEL=llama3.2:3b                   # sobreescribe el model del factory
+SITY_OLLAMA_TIMEOUT_SECONDS=60                  # default
 ```
 
 Un nombre desconocido lanza `ValueError` en startup para que los errores de configuración se detecten pronto.
@@ -1202,7 +1213,7 @@ Las capacidades las implementa el adaptador de plataforma activo.
 Objetivo:
 
 ```text
-Reducir o eliminar dependencia de Claude ejecutando un modelo local en la Raspberry.
+Reducir o eliminar dependencia de Claude ejecutando un modelo local.
 ```
 
 Estrategia correcta:
@@ -1213,25 +1224,68 @@ Usar local LLM como principal para tareas simples.
 Mantener Claude como fallback opcional.
 ```
 
-Fases:
+### Aprendizajes con Ollama en Pi (2026-05)
 
 ```text
-1. Provider Interface.
-2. MockProvider para tests.
-3. Ollama prototype.
-4. llama.cpp provider.
-5. Hybrid mode.
+- llama3.2:1b y llama3.2:3b se ejecutaron en la Raspberry Pi 4B.
+- Funcionan: OllamaProvider conecta, genera y mapea métricas correctamente.
+- No aptos para uso diario: latencia y calidad insuficientes para conversación fluida.
+- Ollama se desinstalará de la Pi tras las pruebas.
+- No activar routing híbrido automático en Pi.
+```
+
+### Dirección futura: Local AI Worker en LAN
+
+```text
+En lugar de ejecutar el LLM en la Pi, el plan es usar un PC de escritorio
+en la misma red local como worker de inferencia.
+
+La Pi sigue siendo el host de Sity (backend + frontend).
+El worker solo expone la API Ollama (o compatible) en la LAN.
+SITY_OLLAMA_BASE_URL apunta al worker externo.
+```
+
+Ejemplo de configuración en Pi:
+
+```env
+SITY_AI_PROVIDER=ollama
+SITY_OLLAMA_BASE_URL=http://192.168.1.XX:11434
+SITY_OLLAMA_MODEL=llama3.2:3b
+```
+
+```text
+Ventajas:
+- Sin cambios en OllamaProvider ni en el core.
+- El worker puede ser cualquier máquina con Ollama (Linux, Windows con WSL, Mac).
+- Fácil de activar/desactivar cambiando SITY_AI_PROVIDER.
+- La Pi no se sobrecarga.
+```
+
+### Fases
+
+```text
+1. Provider Interface.                     ✓ completado
+2. MockProvider para tests.                ✓ completado
+3. OllamaProvider chat-only.               ✓ completado
+4. Local AI Worker en LAN (PC externo).    pendiente — requiere hardware disponible
+5. Hybrid mode (local primero, Claude fallback).
 6. Local tool intent con JSON estricto.
 7. Full local/offline mode.
 ```
 
-Variables futuras:
+Variables actuales (ya funcionales):
+
+```env
+SITY_AI_PROVIDER=ollama
+SITY_OLLAMA_BASE_URL=http://192.168.1.XX:11434
+SITY_OLLAMA_MODEL=llama3.2:3b
+SITY_OLLAMA_TIMEOUT_SECONDS=60
+```
+
+Variables futuras (hybrid mode):
 
 ```env
 SITY_AI_PROVIDER=hybrid
-SITY_LOCAL_LLM_BACKEND=ollama
-SITY_LOCAL_LLM_BASE_URL=http://localhost:11434
-SITY_LOCAL_LLM_MODEL=llama3.2:3b
 SITY_CLOUD_FALLBACK=true
 SITY_CLOUD_PROVIDER=anthropic
 ```
