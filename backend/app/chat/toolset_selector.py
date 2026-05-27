@@ -52,9 +52,13 @@ _SERVICE_CONFIG_RE = re.compile(
     re.IGNORECASE,
 )
 _SERVICE_CONTROL_RE = re.compile(
+    # Action verbs that delegate service control to Sity.
     r"\breinicia\b|\barranca\b|\bdetén\b|\bdetener\b|\bpara\s+el\b"
-    r"|\bsystemctl\b|\bsity-(?:backend|frontend|test)\b"
-    r"|\b(?:backend|frontend)\b",
+    # Explicit tool reference or specific systemd service names.
+    r"|\bsystemctl\b|\bsity-(?:backend|frontend|test)\b",
+    # NOTE: bare \b(?:backend|frontend)\b intentionally removed.
+    # Those words appear in casual speech ("el backend está raro") and must not
+    # trigger cloud routing without an accompanying operational verb or service name.
     re.IGNORECASE,
 )
 _SYSTEM_RE = re.compile(

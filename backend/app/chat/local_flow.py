@@ -150,7 +150,8 @@ class ChatLocalFlow:
                 )
                 return self._response(ctx=ctx, text=text)
 
-            text = 'No hay ninguna acción pendiente activa. El "sí, hazlo" no tiene nada que confirmar.'
-            return self._response(ctx=ctx, text=text)
+            # No pending action exists → this is just casual conversation ("ok", "vale", "si").
+            # Do NOT intercept. Fall through to normal chat so the message reaches the AI.
+            return None
 
         return None

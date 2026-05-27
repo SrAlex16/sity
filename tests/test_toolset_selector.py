@@ -113,3 +113,87 @@ def test_explicit_file_tool_names_activate_file_agent() -> None:
 def test_file_path_in_message_activates_file_agent() -> None:
     assert "read_file" in selected_tool_names("¿qué hay en backend/app?")
     assert "read_file" in selected_tool_names("lee el archivo README.md")
+
+
+# ---------------------------------------------------------------------------
+# service_control — operational intent required (bug regression guard)
+#
+# Rule: bare technical nouns (backend, frontend, sistema, servicio, código)
+# must NOT activate service_control domain without an operational verb or
+# explicit service name.  Only action verbs (reinicia, arranca, detén, para)
+# or explicit service names (sity-backend, systemctl, …) should trigger it.
+# ---------------------------------------------------------------------------
+
+_SERVICE_CONTROL_TOOLS: set[str] = {
+    "start_service",
+    "stop_service",
+    "restart_service",
+    "read_service_status",
+}
+
+
+def _has_service_control_tools(message: str) -> bool:
+    return bool(selected_tool_names(message) & _SERVICE_CONTROL_TOOLS)
+
+
+# Should NOT activate ─────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("message", [
+    "voy a toquetear el backend",
+    "el backend está raro",
+    "mira que te follen, voy a toquetear el backend",
+    "el frontend no carga",
+    "tengo que mirar el frontend",
+    "el backend está caído",
+    "algo pasa con el servicio",
+    "hay código raro en el backend",
+    # NOTE: "el sistema va lento hoy" is NOT here because \bsistema\b in _SYSTEM_RE
+    # activates SYSTEM_TOOLSET which also contains service control tools — that is a
+    # separate pre-existing issue with toolset composition, not the _SERVICE_CONTROL_RE bug.
+])
+def test_bare_technical_nouns_do_not_activate_service_control(message: str) -> None:
+    """Mentioning backend/frontend/servicio as nouns must not activate service_control.
+
+    This guards specifically against \b(?:backend|frontend)\b having been in
+    _SERVICE_CONTROL_RE (confirmed bug trc_019930f83cc1, 2026-05-27).
+    """
+    assert not _has_service_control_tools(message), (
+        f"service_control tools activated for {message!r} — bare noun triggered cloud routing"
+    )
+
+
+# Should activate ─────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("message", [
+    "reinicia sity-backend",
+    "reinicia el servicio",
+    "arranca sity-frontend",
+    "detén el servicio",
+    "detener el backend",
+    "para el servidor",
+    "systemctl restart sity-backend",
+    "para el sity-test",
+])
+def test_operational_verb_activates_service_control(message: str) -> None:
+    """Operational verbs or explicit service names must activate service_control."""
+    assert _has_service_control_tools(message), (
+        f"service_control tools NOT activated for {message!r} — operational verb missed"
+    )
+
+
+# Domain metadata ─────────────────────────────────────────────────────────────
+
+def test_bare_backend_does_not_activate_service_control_domain() -> None:
+    """select_toolset_with_metadata must not activate service_control domain for bare 'backend'."""
+    from app.chat.toolset_selector import select_toolset_with_metadata
+    sel = select_toolset_with_metadata("el backend está raro")
+    assert "service_control" not in sel.activated_domains, (
+        f"service_control domain activated for bare 'backend': reasons={sel.reasons}"
+    )
+
+
+def test_reinicia_activates_service_control_domain() -> None:
+    """'reinicia' must activate service_control domain."""
+    from app.chat.toolset_selector import select_toolset_with_metadata
+    sel = select_toolset_with_metadata("reinicia sity-backend")
+    assert "service_control" in sel.activated_domains
