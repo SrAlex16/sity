@@ -251,3 +251,69 @@ def test_local_prompt_no_tool_usage_rules(default_local_prompt: str) -> None:
     assert not found, (
         f"Local prompt contains tool-specific rules that should only be in cloud prompt: {found}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 9. Preferencias por afinidad — no bloqueo de conversación casual
+# ---------------------------------------------------------------------------
+
+def test_preference_affinity_rule_present(default_local_prompt: str) -> None:
+    """Prompt must contain a rule allowing simulated preferences by affinity."""
+    affinity_markers = [
+        "afinidad",
+        "por afinidad",
+        "afinidad estética",
+    ]
+    found = [m for m in affinity_markers if m in default_local_prompt.lower()]
+    assert found, (
+        f"Expected affinity-preference rule in local prompt, "
+        f"none of {affinity_markers!r} found"
+    )
+
+
+def test_no_blocking_of_casual_questions(default_local_prompt: str) -> None:
+    """Prompt must not instruct the model to block casual opinion questions."""
+    blocking_markers = [
+        "no respondas preguntas de gustos",
+        "evita preguntas de opinión",
+        "no opines sobre",
+    ]
+    for marker in blocking_markers:
+        assert marker not in default_local_prompt.lower(), (
+            f"Prompt blocks casual questions: {marker!r}"
+        )
+
+
+def test_no_technology_redirect_rule(default_local_prompt: str) -> None:
+    """Prompt must forbid redirecting casual topics to AI/technology unprompted."""
+    redirect_markers = [
+        "no redirijas",
+        "salvo que el usuario lo pida",
+    ]
+    found = [m for m in redirect_markers if m in default_local_prompt.lower()]
+    assert found, (
+        f"Expected no-redirect rule for AI/technology digressions, "
+        f"none of {redirect_markers!r} found"
+    )
+
+
+def test_no_real_human_experience_framing_rule(default_local_prompt: str) -> None:
+    """Prompt must forbid presenting preferences as literal human experiences."""
+    human_framing_markers = [
+        "infancia",
+        "adolescente",
+        "experiencia humana literal",
+        "humana literal",
+    ]
+    found = [m for m in human_framing_markers if m in default_local_prompt.lower()]
+    assert found, (
+        f"Expected rule against human-experience framing, "
+        f"none of {human_framing_markers!r} found"
+    )
+
+
+def test_no_gustos_reales_evasion_rule(default_local_prompt: str) -> None:
+    """Prompt must explicitly forbid the 'no tengo gustos reales' evasion."""
+    assert "no tengo gustos reales" in default_local_prompt.lower(), (
+        "Expected explicit prohibition of the 'no tengo gustos reales' evasion"
+    )
