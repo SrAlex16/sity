@@ -21,7 +21,7 @@ from app.chat.toolset_selector import (
     message_mentions_file_path,
     select_toolset_with_metadata,
 )
-from app.chat.routing_decision import build_chat_routing_decision
+from app.chat.routing_decision import build_chat_routing_decision, ProviderMode
 from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.tool_loop_runner import run_tool_loop
@@ -333,7 +333,7 @@ def _chat_message_inner(
     routing_decision = build_chat_routing_decision(
         message=request.message,
         selection=toolset_selection,
-        local_ai_enabled=False,  # no local worker configured — placeholder
+        local_ai_enabled=runtime_config.ai_provider in {"ollama", "local"},
     )
 
     write_log(
@@ -355,7 +355,10 @@ def _chat_message_inner(
     response_artifacts: list[ChatArtifact] = []
     planner_response = None
 
-    if not selected_tools:
+    if routing_decision.provider_mode == ProviderMode.local_chat_candidate:
+        # Local LLM (Ollama, local): chat-only path — no planner, no tools sent.
+        # provider_unavailable / provider_error errors flow through
+        # build_final_ai_response as controlled (ok=False) responses.
         response = runner.run_chat(
             build_chat_ai_request(
                 trace_id=trace_id,
@@ -365,6 +368,7 @@ def _chat_message_inner(
             )
         )
     else:
+        # cloud_chat or cloud_tools: planner decides tool selection.
         planner_request = build_planner_ai_request(
             trace_id=trace_id,
             user_message=planner_user_message,
