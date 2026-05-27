@@ -19,7 +19,7 @@ from app.chat.ai_request_builder import (
 from app.chat.toolset_selector import (
     history_limit_for_message,
     message_mentions_file_path,
-    select_toolset_for_message,
+    select_toolset_with_metadata,
 )
 from app.chat.routing_decision import build_chat_routing_decision
 from app.chat.pending_action_runner import PendingActionRunner
@@ -327,11 +327,12 @@ def _chat_message_inner(
 
     runner = ProviderCallRunner(AIGateway(config=config))
 
-    selected_tools = select_toolset_for_message(request.message)
+    toolset_selection = select_toolset_with_metadata(request.message)
+    selected_tools = toolset_selection.tools
 
     routing_decision = build_chat_routing_decision(
         message=request.message,
-        selected_tools=selected_tools,
+        selection=toolset_selection,
         local_ai_enabled=False,  # no local worker configured — placeholder
     )
 
@@ -341,8 +342,9 @@ def _chat_message_inner(
         event="routing_decision",
         trace_id=trace_id,
         payload={
-            "mode": routing_decision.mode.value,
-            "has_action_tools": routing_decision.has_action_tools,
+            "provider_mode": routing_decision.provider_mode.value,
+            "activated_domains": sorted(toolset_selection.activated_domains),
+            "reasons": toolset_selection.reasons,
             "local_ai_enabled": routing_decision.local_ai_enabled,
             "reason": routing_decision.reason,
         },

@@ -197,7 +197,19 @@ def select_toolset_for_message(message: str) -> list[dict]:
 # Metadata wrapper
 # ---------------------------------------------------------------------------
 
-_CONVERSATIONAL_TOOL_NAMES: frozenset[str] = frozenset({"no_action_required"})
+# Maps toolset object identity → domain label for metadata.
+# Defined after the toolset constants are imported.
+_TOOLSET_DOMAIN: dict[int, str] = {
+    id(FILE_AGENT_TOOLSET):      "file",
+    id(GIT_TOOLSET):             "git",
+    id(SERVICE_CONFIG_TOOLSET):  "service_config",
+    id(SERVICE_CONTROL_TOOLSET): "service_control",
+    id(SYSTEM_TOOLSET):          "system",
+    id(SENSES_TOOLSET):          "senses",
+    id(DEBUG_TOOLSET):           "debug",
+    id(PERSONALITY_TOOLSET):     "personality",
+    id(PENDING_ACTION_TOOLSET):  "pending_action",
+}
 
 
 @dataclass(frozen=True)
@@ -205,24 +217,82 @@ class ToolsetSelection:
     """Result of toolset selection with structural metadata."""
 
     tools: list[dict]
-    """The selected tool list (same as select_toolset_for_message output)."""
+    """The selected tool list — identical to select_toolset_for_message output."""
 
-    has_action_tools: bool
-    """True if *tools* contains any tool beyond the conversational base."""
+    activated_domains: frozenset[str]
+    """Non-base domains that were activated (e.g. 'file', 'git', 'system').
+    Empty set means purely conversational (only BASE_TOOLSET selected)."""
+
+    reasons: list[str]
+    """Why each domain was activated.
+    Format: 'explicit_tool_name:<name>', 'file_path_detected',
+    'action_id_detected', 'keyword:<domain>'."""
 
 
 def select_toolset_with_metadata(message: str) -> ToolsetSelection:
-    """Select tools for a message and annotate with structural metadata.
+    """Select tools for a message and return structured metadata.
 
-    Thin wrapper over select_toolset_for_message. Use this when the caller
-    also needs has_action_tools without a second pass over the list.
-    select_toolset_for_message remains the primary API and a no-op wrapper.
+    *tools* is identical to select_toolset_for_message(message) — callers that
+    only need the list should use that function instead.
+
+    *activated_domains* is the set of non-base domains selected.  Use this
+    (not len(tools)) to decide whether the turn requires cloud tool-calling.
+
+    *reasons* lists why each domain was added, in activation order.
     """
+    # Delegate tool list to the existing implementation for exact compatibility.
     tools = select_toolset_for_message(message)
-    has_action = any(
-        t.get("name") not in _CONVERSATIONAL_TOOL_NAMES for t in tools
+
+    # Compute metadata independently (same logic, domain/reason tracking).
+    activated_domains: set[str] = set()
+    reasons: list[str] = []
+    seen_ids: set[int] = set()
+
+    def _record(toolset: list[dict], reason: str) -> None:
+        tid = id(toolset)
+        if tid in seen_ids:
+            return
+        seen_ids.add(tid)
+        domain = _TOOLSET_DOMAIN.get(tid)
+        if domain:
+            activated_domains.add(domain)
+            reasons.append(reason)
+
+    # Structural: explicit tool names
+    normalized = message.lower()
+    for tool_name, toolset in _TOOL_TO_TOOLSET.items():
+        if tool_name in normalized:
+            _record(toolset, f"explicit_tool_name:{tool_name}")
+
+    # Structural: file path detected
+    if message_mentions_file_path(message):
+        _record(FILE_AGENT_TOOLSET, "file_path_detected")
+
+    # Structural: action ID detected
+    if message_mentions_action_id(message):
+        _record(PENDING_ACTION_TOOLSET, "action_id_detected")
+
+    # Legacy NL keyword fallback
+    if _GIT_RE.search(message):
+        _record(GIT_TOOLSET, "keyword:git")
+    if _SERVICE_CONFIG_RE.search(message):
+        _record(SERVICE_CONFIG_TOOLSET, "keyword:service_config")
+    elif _SERVICE_CONTROL_RE.search(message):
+        _record(SERVICE_CONTROL_TOOLSET, "keyword:service_control")
+    elif _SYSTEM_RE.search(message):
+        _record(SYSTEM_TOOLSET, "keyword:system")
+    if _SENSE_RE.search(message):
+        _record(SENSES_TOOLSET, "keyword:senses")
+    if _DEBUG_RE.search(message):
+        _record(DEBUG_TOOLSET, "keyword:debug")
+    if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
+        _record(PERSONALITY_TOOLSET, "keyword:personality")
+
+    return ToolsetSelection(
+        tools=tools,
+        activated_domains=frozenset(activated_domains),
+        reasons=reasons,
     )
-    return ToolsetSelection(tools=tools, has_action_tools=has_action)
 
 
 def history_limit_for_message(message: str) -> int:

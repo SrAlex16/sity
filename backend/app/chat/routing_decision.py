@@ -1,23 +1,31 @@
 """routing_decision.py — structural chat routing decision.
 
 Pure module: no DB, no side-effects, no NLP on the user message.
-The decision is derived from already-selected tools and explicit flags.
+The decision is derived from the ToolsetSelection metadata (activated_domains)
+and explicit flags — never from len(tools) or keyword matching.
 
 Usage:
+    from app.chat.toolset_selector import select_toolset_with_metadata
     from app.chat.routing_decision import build_chat_routing_decision
 
-    decision = build_chat_routing_decision(
+    selection = select_toolset_with_metadata(request.message)
+    decision  = build_chat_routing_decision(
         message=request.message,
-        selected_tools=selected_tools,
+        selection=selection,
         local_ai_enabled=False,
     )
-    # decision.mode: ProviderMode
-    # decision.has_action_tools: bool
+    # decision.provider_mode: ProviderMode
+    # decision.tools:         list[dict]  — same as selection.tools
+    # decision.reason:        str
+    # decision.local_ai_enabled: bool
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+
+from app.chat.toolset_selector import ToolsetSelection
+
 
 # ---------------------------------------------------------------------------
 # Provider mode
@@ -27,12 +35,12 @@ class ProviderMode(str, Enum):
     """Which execution path to use for this chat turn.
 
     cloud_chat:
-        Conversational turn — no action tools selected.
-        Use cloud provider (Claude) in chat mode.
+        Conversational turn — no action domains activated.
+        Use cloud provider (Claude) in plain chat mode.
 
     cloud_tools:
-        At least one action tool is selected (file, git, system, senses, etc.).
-        Must use cloud provider: local models don't support tool calls.
+        At least one action domain was activated (file, git, system, …).
+        Must use cloud provider: local models don't support tool calling.
 
     local_chat_candidate:
         Conversational turn AND local_ai_enabled=True.
@@ -40,9 +48,9 @@ class ProviderMode(str, Enum):
         Caller is responsible for checking worker availability before routing.
     """
 
-    cloud_chat           = "cloud_chat"
-    cloud_tools          = "cloud_tools"
-    local_chat_candidate = "local_chat_candidate"
+    cloud_chat            = "cloud_chat"
+    cloud_tools           = "cloud_tools"
+    local_chat_candidate  = "local_chat_candidate"
 
 
 # ---------------------------------------------------------------------------
@@ -53,37 +61,17 @@ class ProviderMode(str, Enum):
 class ChatRoutingDecision:
     """Immutable routing decision for a single chat turn."""
 
-    mode: ProviderMode
+    provider_mode: ProviderMode
     """Execution path selected for this turn."""
 
-    has_action_tools: bool
-    """True if selected_tools contains any tool beyond the conversational base."""
-
-    local_ai_enabled: bool
-    """Value of the local_ai_enabled flag passed by the caller."""
+    tools: list[dict]
+    """Tool list for this turn (same as ToolsetSelection.tools)."""
 
     reason: str
     """Human-readable explanation of the decision (for logging)."""
 
-
-# ---------------------------------------------------------------------------
-# Tool classification
-# ---------------------------------------------------------------------------
-
-# Tools that belong to the conversational base and carry no side-effects.
-# Any tool NOT in this set is considered an "action tool" that requires cloud.
-_CONVERSATIONAL_TOOL_NAMES: frozenset[str] = frozenset({"no_action_required"})
-
-
-def _has_action_tools(selected_tools: list[dict]) -> bool:
-    """Return True if *selected_tools* contains any non-conversational tool.
-
-    Purely structural — checks tool names, not the user message.
-    """
-    return any(
-        t.get("name") not in _CONVERSATIONAL_TOOL_NAMES
-        for t in selected_tools
-    )
+    local_ai_enabled: bool
+    """Value of the local_ai_enabled flag passed by the caller."""
 
 
 # ---------------------------------------------------------------------------
@@ -92,46 +80,46 @@ def _has_action_tools(selected_tools: list[dict]) -> bool:
 
 def build_chat_routing_decision(
     *,
-    message: str,  # noqa: ARG001 — accepted for future use / logging context
-    selected_tools: list[dict],
+    message: str,  # accepted for caller context / future extensibility; not parsed
+    selection: ToolsetSelection,
     local_ai_enabled: bool,
 ) -> ChatRoutingDecision:
-    """Derive a ChatRoutingDecision from already-selected tools and flags.
+    """Derive a ChatRoutingDecision from a ToolsetSelection and flags.
 
     Args:
-        message:        The raw user message. Not parsed for routing logic —
-                        accepted for future extensibility and caller context.
-        selected_tools: Output of select_toolset_for_message (or equivalent).
-                        Routing is based solely on the tool list structure.
+        message:          Raw user message — not used for routing logic.
+        selection:        Output of select_toolset_with_metadata().
+                          Routing uses *activated_domains*, never len(tools).
         local_ai_enabled: Whether a local LLM worker is configured and active.
-                        Does NOT override the cloud_tools requirement.
+                          Does NOT override the cloud_tools requirement.
 
     Priority:
-        1. action tools present  → cloud_tools  (always, regardless of local flag)
-        2. local_ai_enabled      → local_chat_candidate
-        3. default               → cloud_chat
+        1. activated_domains non-empty → cloud_tools  (always, ignores local flag)
+        2. local_ai_enabled             → local_chat_candidate
+        3. default                      → cloud_chat
     """
-    action_tools = _has_action_tools(selected_tools)
+    has_action_domains = bool(selection.activated_domains)
 
-    if action_tools:
+    if has_action_domains:
+        domain_list = ", ".join(sorted(selection.activated_domains))
         return ChatRoutingDecision(
-            mode=ProviderMode.cloud_tools,
-            has_action_tools=True,
+            provider_mode=ProviderMode.cloud_tools,
+            tools=selection.tools,
+            reason=f"action domains activated: {domain_list}",
             local_ai_enabled=local_ai_enabled,
-            reason="action tools selected — cloud provider required for tool calling",
         )
 
     if local_ai_enabled:
         return ChatRoutingDecision(
-            mode=ProviderMode.local_chat_candidate,
-            has_action_tools=False,
-            local_ai_enabled=True,
+            provider_mode=ProviderMode.local_chat_candidate,
+            tools=selection.tools,
             reason="conversational turn, local AI enabled — eligible for local worker",
+            local_ai_enabled=True,
         )
 
     return ChatRoutingDecision(
-        mode=ProviderMode.cloud_chat,
-        has_action_tools=False,
-        local_ai_enabled=False,
+        provider_mode=ProviderMode.cloud_chat,
+        tools=selection.tools,
         reason="conversational turn, local AI disabled — using cloud chat",
+        local_ai_enabled=False,
     )
