@@ -68,6 +68,11 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Filtrado de mensajes operativos fuera del historial enviado a Claude.
 - Refactor inicial de `routes_chat.py`.
 - OllamaProvider v1 implementado y testeado (chat-only, httpx, sin tools).
+- Arquitectura híbrida cloud/local: `SITY_LOCAL_AI_ENABLED` + `SITY_LOCAL_AI_PROVIDER`.
+- `ChatRoutingDecision`: separa `cloud_tools`, `cloud_chat` y `local_chat_candidate`.
+- Prompt local compacto (`local_persona_system.md`): voz sin etiquetas de arquetipo, rasgos conductuales.
+- CORS multi-origen: `SITY_CORS_ORIGINS` (lista por comas) + retro-compat `SITY_CORS_ORIGIN`.
+- Pi → PC LAN Ollama funcional para conversación normal (tools siempre van por cloud).
 - Módulo de contexto temporal (`time_context.py`) inyectado en prompts.
 - Aislamiento completo de DB en pytest y en tests de integración mock.
 
@@ -255,10 +260,17 @@ Variables principales:
 SITY_PROJECT_ROOT=/home/alex/projects/sity
 SITY_PLATFORM=raspberrypi
 SITY_PROFILE=repo-only
-SITY_AI_PROVIDER=anthropic
+SITY_AI_PROVIDER=anthropic          # provider cloud: anthropic | mock | ollama (experimental)
 SITY_DAILY_TOKEN_HARD_CAP=true
 SITY_LOCAL_ONLY=false
-SITY_CORS_ORIGIN=http://192.168.1.133:5173
+SITY_CORS_ORIGINS=http://192.168.1.133:5173   # lista por comas; incluye localhost:5173 por defecto
+# SITY_CORS_ORIGIN=...              # legacy (singular), aún soportado
+# Local AI (desactivado por defecto)
+SITY_LOCAL_AI_ENABLED=false
+SITY_LOCAL_AI_PROVIDER=ollama
+SITY_OLLAMA_BASE_URL=http://127.0.0.1:11434
+SITY_OLLAMA_MODEL=<modelo>
+SITY_OLLAMA_TIMEOUT_SECONDS=60
 ```
 
 Objetivo:
@@ -290,29 +302,35 @@ backend/app/cortex/
   ollama_provider.py   — chat-only, httpx POST /api/chat, sin tools
 ```
 
-Providers actuales:
+**Provider cloud (`SITY_AI_PROVIDER`):**
 
 | Nombre | Clase | Estado |
 |---|---|---|
-| `anthropic` | `ClaudeProvider` | Proveedor real por defecto. Requiere `ANTHROPIC_API_KEY`. |
+| `anthropic` | `ClaudeProvider` | **Default estable.** Requiere `ANTHROPIC_API_KEY`. |
 | `mock` | `MockProvider` | Determinista, sin red, sin API key. Usado en tests y CI. |
-| `ollama` / `local` | `OllamaProvider` | Implementado. Chat-only, sin tools. Conecta a `SITY_OLLAMA_BASE_URL`. Modo manual/experimental para workers externos. |
+| `ollama` / `local` | `OllamaProvider` | Experimental / manual. Ver nota abajo. |
 
-Selección via variable de entorno:
+**Provider local (`SITY_LOCAL_AI_PROVIDER`):**
 
-```env
-SITY_AI_PROVIDER=anthropic   # default
-SITY_AI_PROVIDER=mock        # tests / CI
-SITY_AI_PROVIDER=ollama      # worker local externo (manual/experimental)
-```
-
-Variables de configuración para `OllamaProvider`:
+El provider local es **independiente** del provider cloud. Se activa con `SITY_LOCAL_AI_ENABLED=true`
+y solo se usa para turnos conversacionales (`local_chat_candidate`). Tools y acciones siempre
+van por el provider cloud.
 
 ```env
-SITY_OLLAMA_BASE_URL=http://127.0.0.1:11434     # default
-SITY_OLLAMA_MODEL=llama3.2:3b                   # sobreescribe el model del factory
-SITY_OLLAMA_TIMEOUT_SECONDS=60                  # default
+# Provider cloud (siempre activo):
+SITY_AI_PROVIDER=anthropic           # default
+
+# Provider local (solo conversación normal):
+SITY_LOCAL_AI_ENABLED=false          # default — no activar en producción sin modelo validado
+SITY_LOCAL_AI_PROVIDER=ollama
+SITY_OLLAMA_BASE_URL=http://127.0.0.1:11434
+SITY_OLLAMA_MODEL=<modelo>
+SITY_OLLAMA_TIMEOUT_SECONDS=60
 ```
+
+> **Nota:** No usar `SITY_AI_PROVIDER=ollama` para routing híbrido.
+> Eso haría que tools y planner también usasen Ollama, que no soporta tool calling.
+> Usar siempre `SITY_LOCAL_AI_ENABLED=true` + `SITY_LOCAL_AI_PROVIDER=ollama` para local.
 
 Un nombre desconocido lanza `ValueError` en startup para que los errores de configuración se detecten pronto.
 
@@ -1213,52 +1231,55 @@ Las capacidades las implementa el adaptador de plataforma activo.
 Objetivo:
 
 ```text
-Reducir o eliminar dependencia de Claude ejecutando un modelo local.
+Reducir o eliminar dependencia de Claude ejecutando un modelo local para conversación normal.
+Tools y acciones siguen en cloud (Anthropic) — los modelos locales no soportan tool calling.
 ```
 
-Estrategia correcta:
+### Estado actual (2026-05): infraestructura lista, modelo pendiente
+
+La arquitectura híbrida cloud/local está implementada y funcionando.
+El bloqueo actual no es técnico sino de calidad de modelo:
+**ningún modelo evaluado tiene voz compatible con Sity para uso diario.**
+
+`SITY_LOCAL_AI_ENABLED` debe permanecer `false` en producción hasta que se valide un modelo adecuado.
+Anthropic/Claude sigue siendo el provider por defecto estable.
+
+#### Lo que funciona
 
 ```text
-No quitar Claude de golpe.
-Usar local LLM como principal para tareas simples.
-Mantener Claude como fallback opcional.
+- Pi → PC Windows (RTX 3060 Ti) via LAN: Ollama en 0.0.0.0:11434, conectividad OK.
+- ChatRoutingDecision separa correctamente cloud_tools (→ Anthropic) de local_chat_candidate (→ Ollama).
+- Tools y acciones siempre van por Anthropic. El provider local no ve tools.
+- Prompt local compacto (local_persona_system.md) separado del prompt cloud.
+- CORS configurable permite frontend temporal en puerto distinto.
 ```
 
-### Aprendizajes con Ollama en Pi (2026-05)
+#### Modelos evaluados (PC LAN, RTX 3060 Ti 8 GB)
 
-```text
-- llama3.2:1b y llama3.2:3b se ejecutaron en la Raspberry Pi 4B.
-- Funcionan: OllamaProvider conecta, genera y mapea métricas correctamente.
-- No aptos para uso diario: latencia y calidad insuficientes para conversación fluida.
-- Ollama se desinstalará de la Pi tras las pruebas.
-- No activar routing híbrido automático en Pi.
-```
+| Modelo | Decisión | Razón |
+|---|---|---|
+| `llama3.1:8b` | **Descartado** | Falso safety crítico — lenguaje vulgar normal tratado como crisis. Bucle "no puedo continuar". |
+| `mistral-nemo:12b` | **Candidato pendiente** | Mejor comprensión, pero inconsistente y a veces corporativo. No aprobado. |
+| `openhermes` | **Descartado** | Caótico, tono inestable, respuestas raras. |
+| `mistral` | **Descartado** | Comprensión floja, confunde contexto. |
+| `dolphin-mistral` | **Descartado** | Terapéutico/caótico. No encaja con voz de Sity. |
+| `phi` | **Descartado** | Rompe idioma, genera en inglés, escenarios inventados. |
+| `mixtral` | **No evaluado** | ~26 GB; probable VRAM insuficiente en RTX 3060 Ti 8 GB. |
 
-### Dirección futura: Local AI Worker en LAN
+Próximos candidatos: `qwen2.5:7b`, `qwen2.5:14b`, `gemma2:9b`.
 
-```text
-En lugar de ejecutar el LLM en la Pi, el plan es usar un PC de escritorio
-en la misma red local como worker de inferencia.
+Ver evaluación completa: [`docs/local-ai-evaluation.md`](docs/local-ai-evaluation.md).
 
-La Pi sigue siendo el host de Sity (backend + frontend).
-El worker solo expone la API Ollama (o compatible) en la LAN.
-SITY_OLLAMA_BASE_URL apunta al worker externo.
-```
-
-Ejemplo de configuración en Pi:
+#### Config experimental para pruebas
 
 ```env
-SITY_AI_PROVIDER=ollama
-SITY_OLLAMA_BASE_URL=http://192.168.1.XX:11434
-SITY_OLLAMA_MODEL=llama3.2:3b
-```
-
-```text
-Ventajas:
-- Sin cambios en OllamaProvider ni en el core.
-- El worker puede ser cualquier máquina con Ollama (Linux, Windows con WSL, Mac).
-- Fácil de activar/desactivar cambiando SITY_AI_PROVIDER.
-- La Pi no se sobrecarga.
+SITY_AI_PROVIDER=anthropic
+SITY_LOCAL_AI_ENABLED=true
+SITY_LOCAL_AI_PROVIDER=ollama
+SITY_OLLAMA_BASE_URL=http://192.168.1.129:11434
+SITY_OLLAMA_MODEL=<modelo-a-probar>
+SITY_DAILY_TOKEN_HARD_CAP=false
+SITY_CORS_ORIGINS=http://192.168.1.133:5174
 ```
 
 ### Fases
@@ -1267,22 +1288,15 @@ Ventajas:
 1. Provider Interface.                     ✓ completado
 2. MockProvider para tests.                ✓ completado
 3. OllamaProvider chat-only.               ✓ completado
-4. Local AI Worker en LAN (PC externo).    pendiente — requiere hardware disponible
-5. Hybrid mode (local primero, Claude fallback).
-6. Local tool intent con JSON estricto.
-7. Full local/offline mode.
+4. Hybrid split cloud/local.               ✓ completado (SITY_LOCAL_AI_ENABLED)
+5. Local AI Worker en LAN (PC externo).    ✓ funcional técnicamente — bloqueado por calidad de modelo
+6. Validar modelo local apto.              en progreso — qwen2.5/gemma2 pendientes
+7. Hybrid mode activo por defecto.         pendiente — tras paso 6
+8. Local tool intent con JSON estricto.    pendiente
+9. Full local/offline mode.                pendiente
 ```
 
-Variables actuales (ya funcionales):
-
-```env
-SITY_AI_PROVIDER=ollama
-SITY_OLLAMA_BASE_URL=http://192.168.1.XX:11434
-SITY_OLLAMA_MODEL=llama3.2:3b
-SITY_OLLAMA_TIMEOUT_SECONDS=60
-```
-
-Variables futuras (hybrid mode):
+Variables futuras (hybrid mode con fallback):
 
 ```env
 SITY_AI_PROVIDER=hybrid
