@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 # Esto no debe crear acciones ni interpretar intención de negocio.
 # Solo selecciona un toolset/contexto más pequeño usando señales técnicas conservadoras.
@@ -190,6 +191,38 @@ def select_toolset_for_message(message: str) -> list[dict]:
         selected.extend(toolset)
 
     return _dedupe_tools(selected)
+
+
+# ---------------------------------------------------------------------------
+# Metadata wrapper
+# ---------------------------------------------------------------------------
+
+_CONVERSATIONAL_TOOL_NAMES: frozenset[str] = frozenset({"no_action_required"})
+
+
+@dataclass(frozen=True)
+class ToolsetSelection:
+    """Result of toolset selection with structural metadata."""
+
+    tools: list[dict]
+    """The selected tool list (same as select_toolset_for_message output)."""
+
+    has_action_tools: bool
+    """True if *tools* contains any tool beyond the conversational base."""
+
+
+def select_toolset_with_metadata(message: str) -> ToolsetSelection:
+    """Select tools for a message and annotate with structural metadata.
+
+    Thin wrapper over select_toolset_for_message. Use this when the caller
+    also needs has_action_tools without a second pass over the list.
+    select_toolset_for_message remains the primary API and a no-op wrapper.
+    """
+    tools = select_toolset_for_message(message)
+    has_action = any(
+        t.get("name") not in _CONVERSATIONAL_TOOL_NAMES for t in tools
+    )
+    return ToolsetSelection(tools=tools, has_action_tools=has_action)
 
 
 def history_limit_for_message(message: str) -> int:

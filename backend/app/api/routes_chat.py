@@ -21,6 +21,7 @@ from app.chat.toolset_selector import (
     message_mentions_file_path,
     select_toolset_for_message,
 )
+from app.chat.routing_decision import build_chat_routing_decision
 from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.tool_loop_runner import run_tool_loop
@@ -328,6 +329,24 @@ def _chat_message_inner(
 
     selected_tools = select_toolset_for_message(request.message)
 
+    routing_decision = build_chat_routing_decision(
+        message=request.message,
+        selected_tools=selected_tools,
+        local_ai_enabled=False,  # no local worker configured — placeholder
+    )
+
+    write_log(
+        level="INFO",
+        module="chat",
+        event="routing_decision",
+        trace_id=trace_id,
+        payload={
+            "mode": routing_decision.mode.value,
+            "has_action_tools": routing_decision.has_action_tools,
+            "local_ai_enabled": routing_decision.local_ai_enabled,
+            "reason": routing_decision.reason,
+        },
+    )
 
     tool_results_for_claude: list[dict] = []
     updated_parameters: list[str] = []
