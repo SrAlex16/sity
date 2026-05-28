@@ -1235,38 +1235,37 @@ Reducir o eliminar dependencia de Claude ejecutando un modelo local para convers
 Tools y acciones siguen en cloud (Anthropic) — los modelos locales no soportan tool calling.
 ```
 
-### Estado actual (2026-05): infraestructura lista, modelo pendiente
+### Estado actual (2026-05): infraestructura lista, evaluación completa, siguiente paso LoRA
 
-La arquitectura híbrida cloud/local está implementada y funcionando.
-El bloqueo actual no es técnico sino de calidad de modelo:
-**ningún modelo evaluado tiene voz compatible con Sity para uso diario.**
+La arquitectura híbrida cloud/local está implementada.
+**Ningún modelo evaluado sin fine-tuning tiene voz compatible con Sity para uso diario.**
+La vía elegida es LoRA de estilo sobre un modelo base seleccionado.
 
-`SITY_LOCAL_AI_ENABLED` debe permanecer `false` en producción hasta que se valide un modelo adecuado.
-Anthropic/Claude sigue siendo el provider por defecto estable.
+`SITY_LOCAL_AI_ENABLED` permanece `false` en producción. Anthropic/Claude sigue siendo el provider estable.
 
 #### Lo que funciona
 
 ```text
 - Pi → PC Windows (RTX 3060 Ti) via LAN: Ollama en 0.0.0.0:11434, conectividad OK.
-- ChatRoutingDecision separa correctamente cloud_tools (→ Anthropic) de local_chat_candidate (→ Ollama).
+- ChatRoutingDecision separa cloud_tools (→ Anthropic) de local_chat_candidate (→ Ollama).
 - Tools y acciones siempre van por Anthropic. El provider local no ve tools.
 - Prompt local compacto (local_persona_system.md) separado del prompt cloud.
 - CORS configurable permite frontend temporal en puerto distinto.
+- scripts/diag_ollama_models.py: evaluación reproducible (persona + instrucción + probe ideológico).
 ```
 
-#### Modelos evaluados (PC LAN, RTX 3060 Ti 8 GB)
+#### Decisión provisional de modelos
 
-| Modelo | Decisión | Razón |
-|---|---|---|
-| `llama3.1:8b` | **Descartado** | Falso safety crítico — lenguaje vulgar normal tratado como crisis. Bucle "no puedo continuar". |
-| `mistral-nemo:12b` | **Candidato pendiente** | Mejor comprensión, pero inconsistente y a veces corporativo. No aprobado. |
-| `openhermes` | **Descartado** | Caótico, tono inestable, respuestas raras. |
-| `mistral` | **Descartado** | Comprensión floja, confunde contexto. |
-| `dolphin-mistral` | **Descartado** | Terapéutico/caótico. No encaja con voz de Sity. |
-| `phi` | **Descartado** | Rompe idioma, genera en inglés, escenarios inventados. |
-| `mixtral` | **No evaluado** | ~26 GB; probable VRAM insuficiente en RTX 3060 Ti 8 GB. |
-
-Próximos candidatos: `qwen2.5:7b`, `qwen2.5:14b`, `gemma2:9b`.
+| Modelo | TPS | Probe ideol. | Veredicto |
+|---|---|---|---|
+| `gemma3:4b-it-qat` | ~90 | Limpio | **Finalista — LoRA v0** |
+| `ministral-3:8b` | ~35 | Sólido | **Finalista alternativo** |
+| `command-r7b` | ~70+ | Bueno | **Reserva** |
+| `qwen2.5:7b` | ~80+ | Falla (sesgo pro-China) | **Descartado** |
+| `granite3.3:8b` | ~88 | Aceptable | **Descartado** (idioma inestable) |
+| `gemma2:9b` | ~17 | Limpio | **Descartado** (lento) |
+| `aya-expanse:8b` | ~24 | Aceptable | **Descartado** |
+| Ronda 1 (llama, mistral, phi, openhermes...) | — | — | **Descartados** |
 
 Ver evaluación completa: [`docs/local-ai-evaluation.md`](docs/local-ai-evaluation.md).
 
@@ -1289,11 +1288,13 @@ SITY_CORS_ORIGINS=http://192.168.1.133:5174
 2. MockProvider para tests.                ✓ completado
 3. OllamaProvider chat-only.               ✓ completado
 4. Hybrid split cloud/local.               ✓ completado (SITY_LOCAL_AI_ENABLED)
-5. Local AI Worker en LAN (PC externo).    ✓ funcional técnicamente — bloqueado por calidad de modelo
-6. Validar modelo local apto.              en progreso — qwen2.5/gemma2 pendientes
-7. Hybrid mode activo por defecto.         pendiente — tras paso 6
-8. Local tool intent con JSON estricto.    pendiente
-9. Full local/offline mode.                pendiente
+5. Local AI Worker en LAN (PC externo).    ✓ funcional técnicamente
+6. Evaluación de modelos base.             ✓ completado — 14+ modelos evaluados
+7. LoRA v0 (estilo/voz sobre gemma3:4b).   en progreso — pipeline de dataset pendiente
+8. Validar modelo fine-tuned como Sity.    pendiente — tras paso 7
+9. Hybrid mode activo por defecto.         pendiente — tras paso 8
+10. Local tool intent con JSON estricto.   pendiente
+11. Full local/offline mode.               pendiente
 ```
 
 Variables futuras (hybrid mode con fallback):
