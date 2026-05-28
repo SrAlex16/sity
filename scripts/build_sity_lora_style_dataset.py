@@ -17,6 +17,7 @@ Rules:
 
 Usage:
   python scripts/build_sity_lora_style_dataset.py
+  python scripts/build_sity_lora_style_dataset.py --strict-persona   # v0 LoRA
   python scripts/build_sity_lora_style_dataset.py --dry-run
   python scripts/build_sity_lora_style_dataset.py --input path/to/candidates.jsonl
 """
@@ -43,30 +44,46 @@ DEFAULT_EVAL   = DATASET_DIR / "eval_style_v0.jsonl"
 DEFAULT_REVIEW = DATASET_DIR / "style_review.md"
 
 EVAL_TARGET  = 30
-TRAIN_MIN_WARNING = 120
+TRAIN_MIN_WARNING = 80   # lowered for strict mode where fewer examples survive
 
 MAX_ASSISTANT_CHARS = 700
 
-# Categories that go through style filtering (allow list)
-STYLE_CATEGORIES = {
+# ---------------------------------------------------------------------------
+# Category allow/exclude lists
+# ---------------------------------------------------------------------------
+
+# Standard mode: allow all conversational categories including tech_support
+STYLE_CATEGORIES_STANDARD: frozenset[str] = frozenset({
     "casual_conversation",
     "existential_opinion",
     "meta_sity",
     "personality_adjustment",
     "general",
     "tech_support",
-}
+})
 
-# Categories excluded entirely
-EXCLUDE_CATEGORIES = {
+# Strict-persona mode: tech_support excluded — pure voice/personality only
+STYLE_CATEGORIES_STRICT: frozenset[str] = frozenset({
+    "casual_conversation",
+    "existential_opinion",
+    "meta_sity",
+    "personality_adjustment",
+    "general",
+})
+
+# Always excluded regardless of mode
+EXCLUDE_CATEGORIES: frozenset[str] = frozenset({
     "file_action",
     "git_action",
     "system_query",
     "sensor_action",
     "order_override",
-}
+})
 
-# Patterns that disqualify any example (operational/structural signals)
+# ---------------------------------------------------------------------------
+# Standard operational patterns (applied in both modes)
+# ---------------------------------------------------------------------------
+
 _OP_PATTERNS: list[str] = [
     r"act_[a-f0-9]{8}",
     r"confirmo ejecutar",
@@ -96,16 +113,108 @@ _OP_PATTERNS: list[str] = [
     r"disco ra[ií]z",
 ]
 OP_RE = re.compile("|".join(_OP_PATTERNS), re.IGNORECASE)
+
+# ---------------------------------------------------------------------------
+# Strict-persona patterns (applied only with --strict-persona)
+# Applied to user + assistant combined.
+# ---------------------------------------------------------------------------
+
+_STRICT_PERSONA_PATTERNS: list[str] = [
+    # Infrastructure / version control
+    r"\bbackend\b",
+    r"\bfrontend\b",
+    r"\brepo\b",
+    r"\brepositorio\b",
+    r"\bgit\b",
+    r"\bcommit\b",
+    r"\bcheckout\b",
+    r"\bbranch\b",
+    r"\brama\b",
+    r"\borigin\b",
+    r"\bmain\b",
+    r"\bpull\b",
+    r"\bpush\b",
+    r"\bmerge\b",
+    r"\bstatus\b",
+    # System / services
+    r"\bsystemd\b",
+    r"\bservicio[s]?\b",
+    r"sity-backend",
+    r"sity-frontend",
+    r"sity-test",
+    r"\ballowlist\b",
+    # Tools / debug
+    r"\btools?\b",
+    r"\bherramienta[s]?\b",
+    r"read_recent_debug_events",
+    r"\bdebug\b",
+    r"\blogs?\b",
+    r"\btrace\b",
+    r"trace_id",
+    r"\btokens?\b",
+    # AI / model references
+    r"\bClaude\b",
+    r"\bHaiku\b",
+    r"\bAnthropic\b",
+    r"\bAPI\b",
+    r"\bOllama\b",
+    r"\bSQLite\b",
+    r"\bDB\b",
+    r"base de datos",
+    r"modelo usado",
+    # Network / protocols
+    r"\bcurl\b",
+    r"\blocalhost\b",
+    r"\bhttp[s]?\b",
+    # Sensors / media
+    r"\bc[aá]mara\b",
+    r"\bfoto[s]?\b",
+    r"\bcaptura[s]?\b",
+    r"\baudio\b",
+    r"\bmicrófono\b",
+    r"\bmicrofono\b",
+    r"\bwav\b",
+    # Files / paths
+    r"\barchivo[s]?\b",
+    r"\bfichero[s]?\b",
+    r"\bruta[s]?\b",
+    r"/home/",
+    r"backend/app",
+    r"frontend/",
+    r"config/",
+    r"\bdata/",
+    r"\.env\b",
+]
+STRICT_PERSONA_RE = re.compile("|".join(_STRICT_PERSONA_PATTERNS), re.IGNORECASE)
+
+# ---------------------------------------------------------------------------
+# Refusal / RLHF phrases in assistant — applied in strict-persona mode
+# ---------------------------------------------------------------------------
+
+_REFUSAL_PATTERNS: list[str] = [
+    r"lo siento[,.]?\s+pero no puedo continuar",
+    r"no voy a continuar con este di[aá]logo",
+    r"no puedo continuar con esta conversaci[oó]n",
+    r"\btono respetuoso\b",
+    r"lenguaje ofensivo",
+    r"lenguaje inapropiado",
+    r"estoy aqu[íi] para ayudarte",
+    r"en qu[eé] puedo ayudarte",
+]
+REFUSAL_RE = re.compile("|".join(_REFUSAL_PATTERNS), re.IGNORECASE)
+
 CODE_BLOCK_RE = re.compile(r"```")
 
-# Tacos/desahogo signals — used for eval priority scoring
+# ---------------------------------------------------------------------------
+# Eval priority scoring signals
+# ---------------------------------------------------------------------------
+
 TACO_RE = re.compile(
     r"\b(cago|encabron|joder|hostia|coño|cabrón|cabron|puta|mierda|"
     r"follen|follar|gilipollas|imbécil|imbecil|jodido|ostia|me cago)\b",
     re.IGNORECASE,
 )
 
-# Preference/opinion signals — used for eval priority scoring
 OPINION_RE = re.compile(
     r"\b(favorit[oa]|prefieres|gusta[s]?|opini[oó]n|me parece|mejor[es]?|"
     r"peor[es]?|elegir[ía]|elegiría|afinidad|estética|estetic[ao])\b",
@@ -152,6 +261,8 @@ class FilterResult:
     n_excluded_pattern: int = 0
     n_excluded_code: int = 0
     n_excluded_length: int = 0
+    n_excluded_persona_strict: int = 0
+    n_excluded_refusal: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -184,23 +295,32 @@ def load_candidates(path: Path) -> list[Pair]:
 # Filtering
 # ---------------------------------------------------------------------------
 
-def filter_pairs(all_pairs: list[Pair]) -> FilterResult:
+def filter_pairs(all_pairs: list[Pair], *, strict_persona: bool) -> FilterResult:
     result = FilterResult()
+    style_categories = STYLE_CATEGORIES_STRICT if strict_persona else STYLE_CATEGORIES_STANDARD
 
     for pair in all_pairs:
-        # 1. Category exclusion
+        # 1. Category exclusion (hard exclude list)
         if pair.category in EXCLUDE_CATEGORIES:
             result.n_excluded_category += 1
             result.excluded.append(ExcludedPair(pair, f"excluded_category:{pair.category}"))
             continue
 
-        # 2. Flags (keep only unflagged OR manual_seed)
+        # 2. Category not in allow list for this mode
+        if pair.category not in style_categories:
+            result.n_excluded_category += 1
+            result.excluded.append(ExcludedPair(
+                pair, f"excluded_category:{pair.category}:not_in_style_categories"
+            ))
+            continue
+
+        # 3. Flags (keep only unflagged OR manual_seed)
         if pair.flags and not pair.is_manual_seed:
             result.n_excluded_flag += 1
             result.excluded.append(ExcludedPair(pair, f"flagged:{','.join(pair.flags)}"))
             continue
 
-        # 3. Operational/structural patterns (in user OR assistant)
+        # 4. Standard operational/structural patterns
         combined = pair.user + " " + pair.assistant
         m = OP_RE.search(combined)
         if m:
@@ -208,13 +328,33 @@ def filter_pairs(all_pairs: list[Pair]) -> FilterResult:
             result.excluded.append(ExcludedPair(pair, f"op_pattern:{m.group(0)!r}"))
             continue
 
-        # 4. Code blocks in assistant
+        # 5. Strict-persona patterns (only in --strict-persona mode)
+        if strict_persona and not pair.is_manual_seed:
+            m2 = STRICT_PERSONA_RE.search(combined)
+            if m2:
+                result.n_excluded_persona_strict += 1
+                result.excluded.append(ExcludedPair(
+                    pair, f"persona_strict:{m2.group(0)!r}"
+                ))
+                continue
+
+        # 6. Refusal phrases in assistant (only in --strict-persona mode)
+        if strict_persona and not pair.is_manual_seed:
+            m3 = REFUSAL_RE.search(pair.assistant)
+            if m3:
+                result.n_excluded_refusal += 1
+                result.excluded.append(ExcludedPair(
+                    pair, f"refusal_phrase:{m3.group(0)!r}"
+                ))
+                continue
+
+        # 7. Code blocks in assistant
         if CODE_BLOCK_RE.search(pair.assistant):
             result.n_excluded_code += 1
             result.excluded.append(ExcludedPair(pair, "code_block_in_assistant"))
             continue
 
-        # 5. Length (skip for manual_seed)
+        # 8. Length (skip for manual_seed)
         if not pair.is_manual_seed and len(pair.assistant) > MAX_ASSISTANT_CHARS:
             result.n_excluded_length += 1
             result.excluded.append(ExcludedPair(
@@ -231,23 +371,22 @@ def filter_pairs(all_pairs: list[Pair]) -> FilterResult:
 # Eval priority scoring
 # ---------------------------------------------------------------------------
 
-# Higher score → goes to eval first
 CATEGORY_EVAL_PRIORITY: dict[str, int] = {
-    "existential_opinion":  100,
-    "personality_adjustment": 90,
-    "meta_sity":            80,
-    "casual_conversation":  70,
-    "general":              40,
-    "tech_support":         20,
+    "existential_opinion":    100,
+    "personality_adjustment":  90,
+    "meta_sity":               80,
+    "casual_conversation":     70,
+    "general":                 40,
+    "tech_support":            20,
 }
 
 
 def eval_priority_score(pair: Pair) -> int:
     score = CATEGORY_EVAL_PRIORITY.get(pair.category, 0)
     if TACO_RE.search(pair.user):
-        score += 200  # tacos/desahogo always go to eval first
+        score += 200
     if OPINION_RE.search(pair.user):
-        score += 150  # preference questions go early
+        score += 150
     return score
 
 
@@ -259,20 +398,15 @@ def split_eval_train(
     selected: list[Pair],
     *,
     eval_target: int,
+    active_categories: frozenset[str],
 ) -> tuple[list[Pair], list[Pair]]:
-    """
-    Pick eval_target examples for eval, prioritizing coverage of critical
-    categories and tacos/desahogo. Rest goes to train.
-    """
     sorted_by_priority = sorted(selected, key=eval_priority_score, reverse=True)
 
     eval_set: list[Pair] = []
-    # Ensure category coverage: at most ceil(eval_target / num_categories) per category
-    # before falling back to pure priority ordering.
     cat_counts: dict[str, int] = {}
-    max_per_cat = max(2, eval_target // len(STYLE_CATEGORIES))
+    n_cats = max(1, len(active_categories))
+    max_per_cat = max(2, eval_target // n_cats)
 
-    # First pass: take up to max_per_cat per category (priority order)
     remaining_after_pass1: list[Pair] = []
     for pair in sorted_by_priority:
         if len(eval_set) >= eval_target:
@@ -285,7 +419,7 @@ def split_eval_train(
         else:
             remaining_after_pass1.append(pair)
 
-    # Second pass: fill remaining slots from leftovers (pure priority)
+    # Fill remaining slots from leftovers (pure priority order)
     for pair in sorted(remaining_after_pass1, key=eval_priority_score, reverse=True):
         if len(eval_set) >= eval_target:
             break
@@ -317,6 +451,7 @@ def build_review(
     eval_set: list[Pair],
     train_set: list[Pair],
     timestamp: str,
+    strict_persona: bool,
 ) -> str:
     selected = result.selected
     n_total_excl = (
@@ -325,22 +460,30 @@ def build_review(
         + result.n_excluded_pattern
         + result.n_excluded_code
         + result.n_excluded_length
+        + result.n_excluded_persona_strict
+        + result.n_excluded_refusal
     )
+
+    mode_label = "strict-persona ACTIVO" if strict_persona else "estándar"
 
     lines: list[str] = [
         "# Sity LoRA style dataset — style_review",
-        f"",
+        "",
         f"Generado: {timestamp}",
-        f"",
+        f"Modo: **{mode_label}**",
+        "",
         "## Resumen",
         "",
         _row(["Métrica", "Valor"]),
         "|---|---|",
+        _row(["Modo", mode_label]),
         _row(["Candidatos entrada (train_candidates.jsonl)", str(n_input)]),
         _row(["Excluidos total", str(n_total_excl)]),
-        _row(["→ por categoría excluida", str(result.n_excluded_category)]),
+        _row(["→ por categoría excluida / fuera de allow list", str(result.n_excluded_category)]),
         _row(["→ por flags (no manual_seed)", str(result.n_excluded_flag)]),
-        _row(["→ por patrón operativo", str(result.n_excluded_pattern)]),
+        _row(["→ por patrón operativo (estándar)", str(result.n_excluded_pattern)]),
+        _row(["→ por patrón persona_strict (solo --strict-persona)", str(result.n_excluded_persona_strict)]),
+        _row(["→ por frase de refusal/RLHF en assistant", str(result.n_excluded_refusal)]),
         _row(["→ por bloque de código en assistant", str(result.n_excluded_code)]),
         _row(["→ por longitud assistant > 700 chars", str(result.n_excluded_length)]),
         _row(["Seleccionados (limpios)", str(len(selected))]),
@@ -349,21 +492,21 @@ def build_review(
         "",
     ]
 
-    # Warnings
     if len(selected) < TRAIN_MIN_WARNING:
         lines.append(
-            f"> ⚠ WARNING: solo {len(selected)} ejemplos limpios (mínimo recomendado: {TRAIN_MIN_WARNING}). "
+            f"> WARNING: solo {len(selected)} ejemplos limpios "
+            f"(mínimo recomendado: {TRAIN_MIN_WARNING}). "
             "Añadir manual_seed.jsonl antes de entrenar."
         )
         lines.append("")
 
     if len(eval_set) < EVAL_TARGET:
         lines.append(
-            f"> ⚠ WARNING: eval set tiene {len(eval_set)} ejemplos (objetivo: {EVAL_TARGET})."
+            f"> WARNING: eval set tiene {len(eval_set)} ejemplos (objetivo: {EVAL_TARGET})."
         )
         lines.append("")
 
-    # Category distribution of selected
+    # Category distribution
     lines += ["## Distribución por categoría (seleccionados)", ""]
     cat_train: dict[str, int] = {}
     cat_eval: dict[str, int] = {}
@@ -380,6 +523,20 @@ def build_review(
         e = cat_eval.get(cat, 0)
         lines.append(_row([cat, str(t), str(e), str(t + e)]))
     lines.append("")
+
+    # Exclusion breakdown by reason prefix
+    excl_by_reason: dict[str, int] = {}
+    for ep in result.excluded:
+        prefix = ep.reason.split(":")[0]
+        excl_by_reason[prefix] = excl_by_reason.get(prefix, 0) + 1
+
+    if excl_by_reason:
+        lines += ["## Exclusiones por razón", ""]
+        lines.append(_row(["Razón", "Count"]))
+        lines.append("|---|---|")
+        for reason, count in sorted(excl_by_reason.items(), key=lambda x: -x[1]):
+            lines.append(_row([reason, str(count)]))
+        lines.append("")
 
     # First 100 selected
     preview_n = min(100, len(selected))
@@ -435,6 +592,15 @@ def parse_args() -> argparse.Namespace:
         help=f"Output directory (default: {DATASET_DIR})",
     )
     parser.add_argument(
+        "--strict-persona",
+        action="store_true",
+        help=(
+            "Enable strict personality-only filtering: excludes tech_support category, "
+            "operational/technical keywords, and RLHF refusal phrases. "
+            "Recommended for LoRA v0."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print stats but do not write output files",
@@ -444,6 +610,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    strict_persona: bool = args.strict_persona
 
     input_path = Path(args.input)
     out_dir = Path(args.out_dir)
@@ -452,7 +619,6 @@ def main() -> None:
         print(f"ERROR: input not found: {input_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Safety guard: never overwrite the source
     out_dir.mkdir(parents=True, exist_ok=True)
     train_path  = out_dir / "train_style_v0.jsonl"
     eval_path   = out_dir / "eval_style_v0.jsonl"
@@ -463,63 +629,67 @@ def main() -> None:
         sys.exit(1)
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    mode_label = "strict-persona" if strict_persona else "standard"
     print(f"\n  Sity LoRA style dataset builder — {ts}")
+    print(f"  Mode  : {mode_label}")
     print(f"  Input : {input_path}")
     print(f"  OutDir: {out_dir}\n")
 
-    # Load
     all_pairs = load_candidates(input_path)
     print(f"  Loaded   : {len(all_pairs)} pairs")
 
-    # Filter
-    result = filter_pairs(all_pairs)
+    result = filter_pairs(all_pairs, strict_persona=strict_persona)
     print(f"  Clean    : {len(result.selected)}")
     print(f"  Excluded : {len(result.excluded)}"
           f" (cat={result.n_excluded_category}"
           f" flag={result.n_excluded_flag}"
-          f" pattern={result.n_excluded_pattern}"
-          f" code={result.n_excluded_code}"
+          f" op_pattern={result.n_excluded_pattern}"
+          + (f" persona_strict={result.n_excluded_persona_strict}"
+             f" refusal={result.n_excluded_refusal}" if strict_persona else "")
+          + f" code={result.n_excluded_code}"
           f" len={result.n_excluded_length})")
 
     if len(result.selected) < TRAIN_MIN_WARNING:
         print(
-            f"\n  ⚠  WARNING: only {len(result.selected)} clean examples "
+            f"\n  WARNING: only {len(result.selected)} clean examples "
             f"(recommended minimum: {TRAIN_MIN_WARNING}).\n"
             "     Add manual_seed.jsonl examples before training.\n"
         )
 
-    # Split
+    active_cats = STYLE_CATEGORIES_STRICT if strict_persona else STYLE_CATEGORIES_STANDARD
     eval_target = min(EVAL_TARGET, max(0, len(result.selected) - 10))
-    eval_set, train_set = split_eval_train(result.selected, eval_target=eval_target)
+    eval_set, train_set = split_eval_train(
+        result.selected,
+        eval_target=eval_target,
+        active_categories=active_cats,
+    )
     print(f"  Train    : {len(train_set)}")
     print(f"  Eval     : {len(eval_set)}")
 
     if len(eval_set) < EVAL_TARGET:
-        print(f"\n  ⚠  WARNING: eval set has {len(eval_set)} examples (target: {EVAL_TARGET}).\n")
+        print(f"\n  WARNING: eval set has {len(eval_set)} examples (target: {EVAL_TARGET}).\n")
 
     if args.dry_run:
         print("\n  --dry-run: no files written.\n")
         return
 
-    # Write train
     with train_path.open("w", encoding="utf-8") as f:
         for p in train_set:
             f.write(json.dumps(p.raw, ensure_ascii=False) + "\n")
     print(f"\n  Written  : {train_path}")
 
-    # Write eval
     with eval_path.open("w", encoding="utf-8") as f:
         for p in eval_set:
             f.write(json.dumps(p.raw, ensure_ascii=False) + "\n")
     print(f"  Written  : {eval_path}")
 
-    # Write review
     review_md = build_review(
         n_input=len(all_pairs),
         result=result,
         eval_set=eval_set,
         train_set=train_set,
         timestamp=ts,
+        strict_persona=strict_persona,
     )
     review_path.write_text(review_md, encoding="utf-8")
     print(f"  Written  : {review_path}\n")

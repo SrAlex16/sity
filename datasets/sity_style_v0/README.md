@@ -27,47 +27,60 @@ respuestas con tool outputs mecánicos, confirmaciones de acciones pendientes, r
 Un LoRA de personalidad aprende voz y tono, no cómo formatear acciones pendientes ni cómo
 listar directorios. Entrenarlo con ese material contamina el estilo y puede causar que el
 modelo emita pseudo-tool-calls o respuestas operativas donde debería responder con naturalidad.
+Los ejemplos técnicos/backend/tools pueden ser útiles en fases futuras (v1+, LoRA de capacidades),
+pero no en v0 de voz.
 
 `train_style_v0.jsonl` es la **selección curada**: solo conversación natural, opiniones,
-meta-preguntas sobre Sity, ajustes de personalidad y tech_support sin señales operativas.
+meta-preguntas sobre Sity, ajustes de personalidad. Generado con `--strict-persona`.
 
 ---
 
 ## Categorías y su estado en v0
 
-| Categoría | Incluida en v0 | Motivo |
-|---|---|---|
-| `casual_conversation` | ✓ | Objetivo principal de voz |
-| `existential_opinion` | ✓ | Preferencias, opiniones, criterio estético |
-| `meta_sity` | ✓ | Preguntas sobre qué es Sity, capacidades, identidad |
-| `personality_adjustment` | ✓ | Respuestas tras cambio de sliders |
-| `general` | ✓ (filtrada) | Solo pares sin señales operativas |
-| `tech_support` | ✓ (filtrada) | Solo si no contiene outputs de tools ni rutas |
-| `file_action` | ✗ | Outputs de tools de archivo — no es voz |
-| `git_action` | ✗ | Outputs de tools git — no es voz |
-| `system_query` | ✗ | Outputs de herramientas de sistema — no es voz |
-| `sensor_action` | ✗ | Outputs de cámara/audio — no es voz |
-| `order_override` | ✗ | Lógica de confirmación — no es voz |
+| Categoría | Modo estándar | Modo strict-persona | Motivo |
+|---|---|---|---|
+| `casual_conversation` | ✓ | ✓ | Objetivo principal de voz |
+| `existential_opinion` | ✓ | ✓ | Preferencias, opiniones, criterio estético |
+| `meta_sity` | ✓ | ✓ | Preguntas sobre qué es Sity, capacidades, identidad |
+| `personality_adjustment` | ✓ | ✓ | Respuestas tras cambio de sliders |
+| `general` | ✓ (filtrada) | ✓ (filtrada, más estricto) | Solo pares sin señales operativas |
+| `tech_support` | ✓ (filtrada) | ✗ | v0 de voz excluye soporte técnico — útil en v1+ |
+| `file_action` | ✗ | ✗ | Outputs de tools de archivo — no es voz |
+| `git_action` | ✗ | ✗ | Outputs de tools git — no es voz |
+| `system_query` | ✗ | ✗ | Outputs de herramientas de sistema — no es voz |
+| `sensor_action` | ✗ | ✗ | Outputs de cámara/audio — no es voz |
+| `order_override` | ✗ | ✗ | Lógica de confirmación — no es voz |
 
 ---
 
 ## Cómo generar train_style_v0 y eval_style_v0
 
+**Para LoRA v0 de personalidad, usar siempre `--strict-persona`:**
+
 ```bash
-python scripts/build_sity_lora_style_dataset.py
+python scripts/build_sity_lora_style_dataset.py --strict-persona
 ```
 
-Opciones:
+El modo `--strict-persona`:
+- Excluye `tech_support` (respuestas sobre estado del sistema, servicios, debug).
+- Aplica ~40 patrones adicionales que eliminan cualquier mención a backend, git, tools, APIs, sensores, rutas, nombres de modelos, frases de RLHF/refusal, etc.
+- Produce un dataset de voz pura, sin contaminación operativa.
+
+Otros modos:
 
 ```bash
 # Vista previa sin escribir archivos
-python scripts/build_sity_lora_style_dataset.py --dry-run
+python scripts/build_sity_lora_style_dataset.py --strict-persona --dry-run
+
+# Modo estándar (menos restrictivo, útil para debug o fases futuras)
+python scripts/build_sity_lora_style_dataset.py
 
 # Input personalizado
-python scripts/build_sity_lora_style_dataset.py --input path/to/candidates.jsonl
+python scripts/build_sity_lora_style_dataset.py --strict-persona --input path/to/candidates.jsonl
 ```
 
-El script también genera `style_review.md` con counts y previews de seleccionados/excluidos.
+El script también genera `style_review.md` con modo activo, counts por razón de exclusión,
+y previews de los primeros 100 seleccionados y 100 excluidos.
 
 ---
 
