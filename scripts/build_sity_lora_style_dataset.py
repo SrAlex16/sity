@@ -38,10 +38,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATASET_DIR = REPO_ROOT / "datasets" / "sity_style_v0"
 
-DEFAULT_INPUT  = DATASET_DIR / "train_candidates.jsonl"
-DEFAULT_TRAIN  = DATASET_DIR / "train_style_v0.jsonl"
-DEFAULT_EVAL   = DATASET_DIR / "eval_style_v0.jsonl"
-DEFAULT_REVIEW = DATASET_DIR / "style_review.md"
+DEFAULT_INPUT     = DATASET_DIR / "train_candidates.jsonl"
+DEFAULT_TRAIN     = DATASET_DIR / "train_style_v0.jsonl"
+DEFAULT_EVAL      = DATASET_DIR / "eval_style_v0.jsonl"
+DEFAULT_REVIEW    = DATASET_DIR / "style_review.md"
+DEFAULT_DENYLIST  = DATASET_DIR / "deny_pair_ids.txt"
 
 EVAL_TARGET  = 30
 TRAIN_MIN_WARNING = 80   # lowered for strict mode where fewer examples survive
@@ -192,14 +193,13 @@ STRICT_PERSONA_RE = re.compile("|".join(_STRICT_PERSONA_PATTERNS), re.IGNORECASE
 # ---------------------------------------------------------------------------
 
 _REFUSAL_PATTERNS: list[str] = [
-    r"lo siento[,.]?\s+pero no puedo continuar",
+    r"lo siento[,.]?\s+pero\b",           # catches all "Lo siento, pero..." variants
     r"no voy a continuar con este di[aá]logo",
     r"no puedo continuar con esta conversaci[oó]n",
     r"\btono respetuoso\b",
     r"lenguaje ofensivo",
     r"lenguaje inapropiado",
-    r"estoy aqu[íi] para ayudarte",
-    r"en qu[eé] puedo ayudarte",
+    r"\bpuedo ayudarte\b",                # "estoy aquí para ayudarte", "en qué puedo ayudarte", etc.
 ]
 REFUSAL_RE = re.compile("|".join(_REFUSAL_PATTERNS), re.IGNORECASE)
 
@@ -263,11 +263,26 @@ class FilterResult:
     n_excluded_length: int = 0
     n_excluded_persona_strict: int = 0
     n_excluded_refusal: int = 0
+    n_excluded_denylist: int = 0
 
 
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
+
+def load_deny_list(path: Path) -> frozenset[str]:
+    """Load pair_ids from a deny list file. Lines starting with # are comments."""
+    if not path.exists():
+        return frozenset()
+    ids: list[str] = []
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            ids.append(line)
+    return frozenset(ids)
+
 
 def load_candidates(path: Path) -> list[Pair]:
     pairs: list[Pair] = []
@@ -295,18 +310,29 @@ def load_candidates(path: Path) -> list[Pair]:
 # Filtering
 # ---------------------------------------------------------------------------
 
-def filter_pairs(all_pairs: list[Pair], *, strict_persona: bool) -> FilterResult:
+def filter_pairs(
+    all_pairs: list[Pair],
+    *,
+    strict_persona: bool,
+    deny_ids: frozenset[str] = frozenset(),
+) -> FilterResult:
     result = FilterResult()
     style_categories = STYLE_CATEGORIES_STRICT if strict_persona else STYLE_CATEGORIES_STANDARD
 
     for pair in all_pairs:
-        # 1. Category exclusion (hard exclude list)
+        # 1. Manual denylist (semantic quality — not catchable by regex)
+        if pair.pair_id in deny_ids:
+            result.n_excluded_denylist += 1
+            result.excluded.append(ExcludedPair(pair, "manual_denylist"))
+            continue
+
+        # 3. Category exclusion (hard exclude list)
         if pair.category in EXCLUDE_CATEGORIES:
             result.n_excluded_category += 1
             result.excluded.append(ExcludedPair(pair, f"excluded_category:{pair.category}"))
             continue
 
-        # 2. Category not in allow list for this mode
+        # 4. Category not in allow list for this mode
         if pair.category not in style_categories:
             result.n_excluded_category += 1
             result.excluded.append(ExcludedPair(
@@ -314,13 +340,13 @@ def filter_pairs(all_pairs: list[Pair], *, strict_persona: bool) -> FilterResult
             ))
             continue
 
-        # 3. Flags (keep only unflagged OR manual_seed)
+        # 5. Flags (keep only unflagged OR manual_seed)
         if pair.flags and not pair.is_manual_seed:
             result.n_excluded_flag += 1
             result.excluded.append(ExcludedPair(pair, f"flagged:{','.join(pair.flags)}"))
             continue
 
-        # 4. Standard operational/structural patterns
+        # 6. Standard operational/structural patterns
         combined = pair.user + " " + pair.assistant
         m = OP_RE.search(combined)
         if m:
@@ -328,7 +354,7 @@ def filter_pairs(all_pairs: list[Pair], *, strict_persona: bool) -> FilterResult
             result.excluded.append(ExcludedPair(pair, f"op_pattern:{m.group(0)!r}"))
             continue
 
-        # 5. Strict-persona patterns (only in --strict-persona mode)
+        # 7. Strict-persona patterns (only in --strict-persona mode)
         if strict_persona and not pair.is_manual_seed:
             m2 = STRICT_PERSONA_RE.search(combined)
             if m2:
@@ -338,7 +364,7 @@ def filter_pairs(all_pairs: list[Pair], *, strict_persona: bool) -> FilterResult
                 ))
                 continue
 
-        # 6. Refusal phrases in assistant (only in --strict-persona mode)
+        # 8. Refusal phrases in assistant (only in --strict-persona mode)
         if strict_persona and not pair.is_manual_seed:
             m3 = REFUSAL_RE.search(pair.assistant)
             if m3:
@@ -348,13 +374,13 @@ def filter_pairs(all_pairs: list[Pair], *, strict_persona: bool) -> FilterResult
                 ))
                 continue
 
-        # 7. Code blocks in assistant
+        # 9. Code blocks in assistant
         if CODE_BLOCK_RE.search(pair.assistant):
             result.n_excluded_code += 1
             result.excluded.append(ExcludedPair(pair, "code_block_in_assistant"))
             continue
 
-        # 8. Length (skip for manual_seed)
+        # 10. Length (skip for manual_seed)
         if not pair.is_manual_seed and len(pair.assistant) > MAX_ASSISTANT_CHARS:
             result.n_excluded_length += 1
             result.excluded.append(ExcludedPair(
@@ -462,6 +488,7 @@ def build_review(
         + result.n_excluded_length
         + result.n_excluded_persona_strict
         + result.n_excluded_refusal
+        + result.n_excluded_denylist
     )
 
     mode_label = "strict-persona ACTIVO" if strict_persona else "estándar"
@@ -486,6 +513,7 @@ def build_review(
         _row(["→ por frase de refusal/RLHF en assistant", str(result.n_excluded_refusal)]),
         _row(["→ por bloque de código en assistant", str(result.n_excluded_code)]),
         _row(["→ por longitud assistant > 700 chars", str(result.n_excluded_length)]),
+        _row(["→ por manual_denylist (deny_pair_ids.txt)", str(result.n_excluded_denylist)]),
         _row(["Seleccionados (limpios)", str(len(selected))]),
         _row(["→ train_style_v0.jsonl", str(len(train_set))]),
         _row(["→ eval_style_v0.jsonl", str(len(eval_set))]),
@@ -536,6 +564,18 @@ def build_review(
         lines.append("|---|---|")
         for reason, count in sorted(excl_by_reason.items(), key=lambda x: -x[1]):
             lines.append(_row([reason, str(count)]))
+        lines.append("")
+
+    # Denylist section
+    denied = [ep for ep in result.excluded if ep.reason == "manual_denylist"]
+    if denied:
+        show_n = min(100, len(denied))
+        lines += [f"## Excluidos por manual_denylist ({len(denied)} total)", ""]
+        lines.append(_row(["Pair ID", "Cat", "User (preview)", "Assistant (preview)"]))
+        lines.append("|---|---|---|---|")
+        for ep in denied[:show_n]:
+            p = ep.pair
+            lines.append(_row([p.pair_id, p.category, _preview(p.user), _preview(p.assistant)]))
         lines.append("")
 
     # First 100 selected
@@ -635,10 +675,17 @@ def main() -> None:
     print(f"  Input : {input_path}")
     print(f"  OutDir: {out_dir}\n")
 
+    deny_path = out_dir / "deny_pair_ids.txt"
+    deny_ids = load_deny_list(deny_path)
+    if deny_ids:
+        print(f"  Denylist : {len(deny_ids)} IDs from {deny_path.name}")
+    else:
+        print(f"  Denylist : none ({deny_path.name} not found or empty)")
+
     all_pairs = load_candidates(input_path)
     print(f"  Loaded   : {len(all_pairs)} pairs")
 
-    result = filter_pairs(all_pairs, strict_persona=strict_persona)
+    result = filter_pairs(all_pairs, strict_persona=strict_persona, deny_ids=deny_ids)
     print(f"  Clean    : {len(result.selected)}")
     print(f"  Excluded : {len(result.excluded)}"
           f" (cat={result.n_excluded_category}"
@@ -647,7 +694,8 @@ def main() -> None:
           + (f" persona_strict={result.n_excluded_persona_strict}"
              f" refusal={result.n_excluded_refusal}" if strict_persona else "")
           + f" code={result.n_excluded_code}"
-          f" len={result.n_excluded_length})")
+          f" len={result.n_excluded_length}"
+          f" denylist={result.n_excluded_denylist})")
 
     if len(result.selected) < TRAIN_MIN_WARNING:
         print(

@@ -12,6 +12,7 @@ Dataset de entrenamiento para LoRA de estilo/voz sobre Sity.
 | `train_style_v0.jsonl` | Selección curada para LoRA v0 de personalidad. Solo pares conversacionales limpios. |
 | `eval_style_v0.jsonl` | Eval set (30 ejemplos) priorizado por categorías críticas. |
 | `style_review.md` | Informe del último build: counts, ejemplos seleccionados y excluidos con motivo. |
+| `deny_pair_ids.txt` | Denylist manual de pair_ids a excluir. Una línea por ID, comentarios con `#`. Editar aquí para bloquear ejemplos semánticamente malos que no detecta el regex. |
 | `manual_seed.jsonl` | *(pendiente)* Ejemplos escritos/revisados a mano: tacos, preferencias, argot vulgar. |
 | `reject_patterns.txt` | *(pendiente)* Patrones de exclusión adicionales para el extractor. |
 
@@ -80,7 +81,20 @@ python scripts/build_sity_lora_style_dataset.py --strict-persona --input path/to
 ```
 
 El script también genera `style_review.md` con modo activo, counts por razón de exclusión,
-y previews de los primeros 100 seleccionados y 100 excluidos.
+listado de pares excluidos por denylist, y previews de los primeros 100 seleccionados y excluidos.
+
+### Curación manual adicional
+
+Para excluir pares semánticamente malos que no detecta el regex (bucles RLHF, contexto operativo
+residual, respuestas que no son voz pura), editar `deny_pair_ids.txt`:
+
+```
+# Motivo del bloqueo
+pair_00456
+pair_01019
+```
+
+El script carga el archivo automáticamente si existe. No requiere flags adicionales.
 
 ---
 
