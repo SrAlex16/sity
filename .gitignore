@@ -32,3 +32,8 @@ captures/audio/*
 
 config/local-file-access-*.txt
 config/no-deberia.txt
+
+training/.venv/
+training/output/
+training/*.yaml
+!training/*.example.yaml
