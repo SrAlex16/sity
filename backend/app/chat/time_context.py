@@ -19,7 +19,7 @@ Model instructions embedded in render_time_context output:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from enum import Enum
 from typing import Any
 
@@ -112,6 +112,7 @@ def build_time_context(
     db_messages: list[Any],
     *,
     now: datetime | None = None,
+    local_tz: tzinfo | None = None,
 ) -> TimeContextSnapshot:
     """Compute a TimeContextSnapshot from a list of DB message objects.
 
@@ -121,14 +122,17 @@ def build_time_context(
             The list is iterated in order; the *last* entry for each role wins,
             so pass messages ordered oldest-first (as get_recent_db_messages
             already returns them).
-        now:  Reference moment.  Defaults to ``datetime.now(timezone.utc)``.
-            Override in tests for deterministic results.
+        now:      Reference moment.  Defaults to ``datetime.now(timezone.utc)``.
+                  Override in tests for deterministic results.
+        local_tz: Timezone used for calendar-day comparison (new_day detection).
+                  Defaults to the server's local timezone.  Pass explicitly in
+                  tests to make them portable across CI environments.
     """
     if now is None:
         now = datetime.now(timezone.utc)
 
     now_utc = _as_utc(now)
-    now_local = now_utc.astimezone()   # server local timezone
+    now_local = now_utc.astimezone(local_tz)   # local_tz=None → server local timezone
 
     last_user_utc: datetime | None = None
     last_sity_utc: datetime | None = None
@@ -154,7 +158,7 @@ def build_time_context(
         if secs_user >= 86400:
             user_gap = GapCategory.very_long_gap
         else:
-            last_user_local = last_user_utc.astimezone()
+            last_user_local = last_user_utc.astimezone(local_tz)
             if last_user_local.date() != now_local.date():
                 user_gap = GapCategory.new_day
             else:

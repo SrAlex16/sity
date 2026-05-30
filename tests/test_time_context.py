@@ -405,7 +405,7 @@ def test_new_day_detected_across_midnight() -> None:
         role = "user"
         created_at = last_user_utc
 
-    snap = build_time_context([_MsgWithTZ()], now=now_utc)
+    snap = build_time_context([_MsgWithTZ()], now=now_utc, local_tz=TZ_PLUS2)
     # 10 minutes elapsed — would be short_gap by seconds alone,
     # but calendar day changed in local time → new_day
     assert snap.user_gap_category == GapCategory.new_day
@@ -445,7 +445,7 @@ def test_render_new_day_category_present() -> None:
         created_at = datetime(2024, 6, 15, 21, 55, tzinfo=UTC)
         text = ""
 
-    snap = build_time_context([_Msg()], now=now_utc)
+    snap = build_time_context([_Msg()], now=now_utc, local_tz=TZ_PLUS2)
     rendered = render_time_context(snap)
     assert "new_day" in rendered
 
