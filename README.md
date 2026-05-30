@@ -75,6 +75,9 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Pi → PC LAN Ollama funcional para conversación normal (tools siempre van por cloud).
 - Módulo de contexto temporal (`time_context.py`) inyectado en prompts.
 - Aislamiento completo de DB en pytest y en tests de integración mock.
+- Diagnóstico manual de modelos Ollama añadido en `scripts/diag_ollama_models.py`.
+- Pipeline LoRA validado en WSL con `google/gemma-3-4b-it`, Unsloth y RTX 3060 Ti.
+- Adapter LoRA de overfit probado: identidad Sity, femenino gramatical y rechazo de tools inventadas.
 
 ### Refactor reciente
 
@@ -181,6 +184,19 @@ scripts/
 captures/
   Capturas temporales de cámara/audio.
   Ignorado por git salvo `.gitkeep`.
+
+docs/
+  Documentación operativa y técnica actualizada:
+  - `docs/architecture.md`
+  - `docs/operations/current-state.md`
+  - `docs/operations/development-workflow.md`
+  - `docs/operations/ollama-diagnostics.md`
+  - `docs/training/gemma3-lora.md`
+
+training/
+  Scripts y datasets mínimos para smoke tests LoRA.
+  Los adapters generados en `training/output/` no se versionan.
+  Los modelos Hugging Face descargados viven fuera del repo.
 ```
 
 Principio base:
@@ -192,6 +208,22 @@ Backend ejecuta.
 ```
 
 El modelo puede proponer acciones, pero el backend decide si son válidas, seguras, permitidas y si requieren confirmación.
+
+---
+
+## Documentación operativa
+
+Documentos principales:
+
+```text
+docs/architecture.md                         — arquitectura actual y objetivo
+docs/operations/current-state.md             — estado operativo del proyecto
+docs/operations/development-workflow.md      — flujo PC / WSL / Raspberry
+docs/operations/ollama-diagnostics.md        — diagnóstico manual de modelos Ollama
+docs/training/gemma3-lora.md                 — pipeline LoRA Gemma 3 4B con Unsloth
+```
+
+La documentación debe actualizarse cuando cambien decisiones de arquitectura, seguridad, training, providers o despliegue.
 
 ---
 
@@ -333,6 +365,14 @@ SITY_OLLAMA_TIMEOUT_SECONDS=60
 > Usar siempre `SITY_LOCAL_AI_ENABLED=true` + `SITY_LOCAL_AI_PROVIDER=ollama` para local.
 
 Un nombre desconocido lanza `ValueError` en startup para que los errores de configuración se detecten pronto.
+
+### Diagnóstico manual de Ollama
+
+El script `scripts/diag_ollama_models.py` permite medir modelos Ollama sin tocar runtime ni routing.
+
+Los resultados se guardan en `reports/ollama/` y no se versionan.
+
+Ver `docs/operations/ollama-diagnostics.md`.
 
 ---
 
@@ -702,6 +742,51 @@ Regla:
 ```text
 La orden elimina teatro, no seguridad.
 ```
+
+---
+
+## Fine-tuning / LoRA
+
+Sity tiene un pipeline experimental de LoRA para reforzar conducta base del modelo local, no para sustituir la lógica del backend.
+
+Validado en WSL:
+
+```text
+Modelo base: google/gemma-3-4b-it
+Entrenamiento: Unsloth + LoRA 4-bit
+GPU: NVIDIA GeForce RTX 3060 Ti 8 GB
+```
+
+Resultados validados:
+
+```text
+- carga del modelo en 4-bit OK
+- entrenamiento LoRA smoke OK
+- entrenamiento LoRA overfit OK
+- inferencia con adapter OK
+- identidad Sity aprendida en overfit
+- femenino gramatical aprendido en overfit
+- rechazo de tools inventadas aprendido en overfit
+```
+
+Rutas:
+
+```text
+training/data/                         — datasets versionables de prueba
+training/scripts/                      — scripts manuales de carga/train/inferencia
+training/output/                       — adapters generados, ignorados por git
+~/models/hf/google-gemma-3-4b-it       — modelo descargado fuera del repo
+```
+
+No versionar:
+
+```text
+training/output/
+unsloth_compiled_cache/
+modelos descargados de Hugging Face
+```
+
+Ver `docs/training/gemma3-lora.md`.
 
 ---
 
