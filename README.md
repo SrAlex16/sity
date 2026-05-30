@@ -77,6 +77,7 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Aislamiento completo de DB en pytest y en tests de integración mock.
 - Diagnóstico manual de modelos Ollama añadido en `scripts/diag_ollama_models.py`.
 - Pipeline LoRA validado en WSL con `google/gemma-3-4b-it`, Unsloth y RTX 3060 Ti.
+- Snapshot de personalidad (`tone_meta`) guardado junto a cada respuesta de Sity.
 - Adapter LoRA de overfit probado: identidad Sity, femenino gramatical y rechazo de tools inventadas.
 
 ### Refactor reciente
