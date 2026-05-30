@@ -41,6 +41,7 @@ def _format_services(services: tuple[str, ...]) -> str:
 class PersonaDecision:
     system_prompt: str
     refusal_mode: bool
+    tone_snapshot: dict
 
 
 CRITICAL_KEYWORDS = {
@@ -179,7 +180,28 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "allowed_systemd_services": _format_services(get_allowed_systemd_services()),
         }).strip()
 
-        return PersonaDecision(system_prompt=system_prompt, refusal_mode=refusal_mode)
+        tone_snapshot = {
+            "sarcasm":     round(sarcasm, 4),
+            "mala_leche":  round(rudeness, 4),
+            "warmth":      round(warmth, 4),
+            "honesty":     round(honesty, 4),
+            "initiative":  round(initiative, 4),
+            "dry_humor":   round(dry_humor, 4),
+            "tsundere":    round(tsundere, 4),
+            "contrarian":  round(contrarian, 4),
+            "patience":    round(patience, 4),
+            "verbosity":   round(verbosity, 4),
+            "helpfulness": round(helpfulness, 4),
+            "melancholy":  round(melancholy, 4),
+            "refusal_mode": "active" if refusal_mode else "normal",
+            "persona_profile": "base",
+        }
+
+        return PersonaDecision(
+            system_prompt=system_prompt,
+            refusal_mode=refusal_mode,
+            tone_snapshot=tone_snapshot,
+        )
 
     def _build_style_directives(
         self,

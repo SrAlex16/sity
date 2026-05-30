@@ -47,6 +47,7 @@ def build_final_ai_response(
     user_message: str,
     updated_parameters: list[str],
     artifacts: list[ChatArtifact],
+    tone_meta: str | None = None,
 ) -> ChatMessageResponse:
     # 1. Persist AIUsage row
     usage_row = AIUsage(
@@ -106,7 +107,7 @@ def build_final_ai_response(
     response.text = guard_result.text
 
     # 5. Persist assistant message
-    save_message(session, role="sity", text=response.text, trace_id=trace_id)
+    save_message(session, role="sity", text=response.text, trace_id=trace_id, tone_meta=tone_meta)
 
     # 6. Track refusal if applicable
     if refusal_mode:

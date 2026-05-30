@@ -90,6 +90,7 @@ class ChatMessage(SQLModel, table=True):
     text: str
     trace_id: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
+    tone_meta: Optional[str] = Field(default=None)  # JSON snapshot of persona state at generation time
 
 
 class PendingAction(SQLModel, table=True):

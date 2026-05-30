@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -86,6 +87,7 @@ def save_chat_message(
     role: str,
     text: str,
     trace_id: Optional[str] = None,
+    tone_meta: Optional[str] = None,
 ) -> None:
     get_or_create_default_chat_session(session)
 
@@ -95,6 +97,7 @@ def save_chat_message(
             role=role,
             text=text,
             trace_id=trace_id,
+            tone_meta=tone_meta,
         )
     )
 
@@ -482,7 +485,8 @@ def _chat_message_inner(
                     trace_id=trace_id,
                     payload={"tool": _loop.early_tool_name, "model": _loop.local_model},
                 )
-                save_chat_message(session, role="sity", text=_loop.local_text, trace_id=trace_id)
+                save_chat_message(session, role="sity", text=_loop.local_text, trace_id=trace_id,
+                                  tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return local_tool_response(
                     trace_id=trace_id,
                     text=_loop.local_text,
@@ -511,7 +515,8 @@ def _chat_message_inner(
                     payload={"tool": _loop.early_tool_name},
                     audit=True,
                 )
-                save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id)
+                save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id,
+                                  tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return micro_reaction_response(
                     trace_id=trace_id,
                     text=_react_text,
@@ -580,4 +585,5 @@ def _chat_message_inner(
         user_message=request.message,
         updated_parameters=updated_parameters,
         artifacts=response_artifacts,
+        tone_meta=json.dumps(persona_decision.tone_snapshot),
     )
