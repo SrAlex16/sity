@@ -318,6 +318,19 @@ def _chat_message_inner(
 
     write_log(
         level="INFO",
+        module="chat",
+        event="history_injected",
+        trace_id=trace_id,
+        payload={
+            "session_id": DEFAULT_CHAT_SESSION_ID,
+            "history_limit": history_limit,
+            "history_count": len(recent_history),
+            "planner_history_count": len(planner_history),
+        },
+    )
+
+    write_log(
+        level="INFO",
         module="core",
         event="persona_context_built",
         trace_id=trace_id,

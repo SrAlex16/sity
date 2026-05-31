@@ -302,9 +302,14 @@ def select_toolset_with_metadata(message: str) -> ToolsetSelection:
 def history_limit_for_message(message: str) -> int:
     normalized = message.lower()
 
+    # Explicit memory/continuity queries — need the deepest window.
     context_heavy_terms = [
         "ayer", "antes", "recuerdas", "dijiste", "hablamos",
         "historial", "qué hicimos", "que hicimos", "resume",
+        "hemos hablado", "hemos dicho", "hemos tratado",
+        "mencionaste", "comentaste", "qué recuerdas",
+        "te acuerdas", "en esta conversación", "durante esta sesión",
+        "de qué hablamos", "qué temas",
     ]
 
     single_action_terms = [
@@ -324,9 +329,11 @@ def history_limit_for_message(message: str) -> int:
         return 4
 
     if any(term in normalized for term in context_heavy_terms):
-        return 8
+        return 20
 
     if any(term in normalized for term in technical_terms):
-        return 8
+        return 10
 
-    return 4
+    # Default: enough for a multi-topic session (5 turns × 2 = 10 messages).
+    # Raised from 4 to avoid losing topics discussed a few turns earlier.
+    return 10
