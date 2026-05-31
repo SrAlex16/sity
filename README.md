@@ -78,6 +78,8 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Diagnóstico manual de modelos Ollama añadido en `scripts/diag_ollama_models.py`.
 - Pipeline LoRA validado en WSL con `google/gemma-3-4b-it`, Unsloth y RTX 3060 Ti.
 - Snapshot de personalidad (`tone_meta`) guardado junto a cada respuesta de Sity.
+- Regla de idioma e interlocutor en prompt: tuteo singular, sin voseo ni plural (vosotros). 9 tests.
+- Continuidad conversacional corregida: `history_limit` por defecto 4→10; términos de consulta de memoria ampliados. 12 tests.
 - Adapter LoRA de overfit probado: identidad Sity, femenino gramatical y rechazo de tools inventadas.
 
 ### Refactor reciente
