@@ -148,3 +148,40 @@ def test_persona_decision_system_prompt_non_trivial(engine: PersonaEngine) -> No
 def test_persona_decision_refusal_mode_is_bool(engine: PersonaEngine) -> None:
     decision = engine.build_persona_prompt({}, "hola")
     assert isinstance(decision.refusal_mode, bool)
+
+
+# ------------------------------------------------------------------ #
+# 6. Idioma e interlocutor — tuteo singular, no voseo, no vosotros   #
+# ------------------------------------------------------------------ #
+
+def test_interlocutor_alex_in_prompt(default_prompt: str) -> None:
+    assert "Alex" in default_prompt, "Prompt must name Alex as the sole interlocutor"
+
+
+def test_tuteo_singular_section_in_prompt(default_prompt: str) -> None:
+    assert "segunda persona del singular" in default_prompt or "tuteo" in default_prompt
+
+
+@pytest.mark.parametrize("form", ["tú", "quieres", "puedes", "tienes"])
+def test_tuteo_forms_in_prompt(default_prompt: str, form: str) -> None:
+    assert form in default_prompt, f"Tuteo form {form!r} must appear in prompt"
+
+
+@pytest.mark.parametrize("voseo", ["vos", "querés", "tenés", "podés", "hacés", "sos"])
+def test_voseo_forms_listed_in_prompt(default_prompt: str, voseo: str) -> None:
+    # Each forbidden voseo form must appear verbatim in the no-voseo prohibition rule.
+    assert voseo in default_prompt, f"Voseo form {voseo!r} must be explicitly listed in the no-voseo rule"
+
+
+@pytest.mark.parametrize("plural", ["vosotros", "vosotras", "vuestro", "estáis", "hacéis", "queréis"])
+def test_plural_forms_listed_in_prompt(default_prompt: str, plural: str) -> None:
+    # Each forbidden plural form must appear verbatim in the no-plural prohibition rule.
+    assert plural in default_prompt, f"Plural form {plural!r} must be explicitly listed in the no-plural rule"
+
+
+def test_no_voseo_rule_present(default_prompt: str) -> None:
+    assert "voseo" in default_prompt, "Prompt must contain an explicit no-voseo rule"
+
+
+def test_no_vosotros_rule_present(default_prompt: str) -> None:
+    assert "vosotros" in default_prompt, "Prompt must contain an explicit no-vosotros rule"
