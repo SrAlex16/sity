@@ -10,6 +10,7 @@ from sqlmodel import Session, func, select
 from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
+from app.chat.local_provider_config import resolve_local_provider_model
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.ai_request_builder import (
     build_after_tools_ai_request,
@@ -344,12 +345,26 @@ def _chat_message_inner(
 
     # Build local provider when SITY_LOCAL_AI_ENABLED=true.
     # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
+    # SITY_OLLAMA_MODEL must be set explicitly — never use the cloud model as fallback.
     _local_provider = None
     if runtime_config.local_ai_enabled:
-        _local_provider = build_ai_provider(
-            runtime_config.local_ai_provider,
-            model=config.get("ai", {}).get("claude", {}).get("model", ""),
-        )
+        _ollama_model = resolve_local_provider_model(runtime_config)
+        if _ollama_model is None:
+            write_log(
+                level="ERROR",
+                module="chat",
+                event="local_ai_misconfigured",
+                trace_id=trace_id,
+                payload={
+                    "error_message": "SITY_LOCAL_AI_ENABLED=true but SITY_OLLAMA_MODEL is not configured",
+                    "local_ai_provider": runtime_config.local_ai_provider,
+                },
+            )
+        else:
+            _local_provider = build_ai_provider(
+                runtime_config.local_ai_provider,
+                model=_ollama_model,
+            )
 
     runner = ProviderCallRunner(AIGateway(config=config), local_provider=_local_provider)
 

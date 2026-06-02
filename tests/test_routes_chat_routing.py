@@ -59,6 +59,7 @@ def local_ai_client(monkeypatch: pytest.MonkeyPatch):
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
+    monkeypatch.setenv("SITY_OLLAMA_MODEL", "gemma3:4b-it-qat")
     captured: list[dict] = []
 
     def _fake_post(url: str, *, json: Any = None, **kwargs: Any) -> Any:
@@ -136,6 +137,7 @@ def test_local_ai_action_message_ollama_not_called(monkeypatch):
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
+    monkeypatch.setenv("SITY_OLLAMA_MODEL", "gemma3:4b-it-qat")
     ollama_called = []
 
     def _should_not_be_called(*a: Any, **kw: Any) -> Any:
@@ -163,6 +165,7 @@ def test_local_ai_action_message_no_tools_not_supported(monkeypatch):
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
+    monkeypatch.setenv("SITY_OLLAMA_MODEL", "gemma3:4b-it-qat")
     monkeypatch.setattr(
         httpx, "post",
         lambda *a, **kw: _mock_ollama_response()  # guard — should not be reached
@@ -285,3 +288,32 @@ def test_run_local_chat_no_provider_returns_error():
     resp = runner.run_local_chat(req)
     assert resp.ok is False
     assert resp.error_type == "provider_not_configured"
+
+
+# ---------------------------------------------------------------------------
+# Integration: local AI enabled but SITY_OLLAMA_MODEL missing → controlled error
+# ---------------------------------------------------------------------------
+
+def test_local_ai_missing_model_returns_provider_not_configured(monkeypatch):
+    """SITY_LOCAL_AI_ENABLED=true + SITY_OLLAMA_MODEL unset → provider_not_configured.
+
+    The route must return a controlled error (ok=False, error_type=provider_not_configured)
+    rather than raising an exception or using the cloud model string for Ollama.
+    httpx.post is guarded to ensure no real Ollama call goes out.
+    """
+    monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
+    monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
+    monkeypatch.delenv("SITY_OLLAMA_MODEL", raising=False)
+
+    def _should_not_be_called(*a, **kw):
+        raise AssertionError("httpx.post called — Ollama should not be reached when model is missing")
+
+    monkeypatch.setattr(httpx, "post", _should_not_be_called)
+
+    with TestClient(app, raise_server_exceptions=True) as client:
+        resp = client.post("/chat/message", json={"message": "hola"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert body.get("error_type") == "provider_not_configured"
