@@ -4,7 +4,13 @@ import {
   getPersonality,
   type PersonalitySettings,
 } from "./api/sityApi";
-import { getLastTrace, getRecentEvents, type TraceEvent } from "./api/debugApi";
+import {
+  fetchDatasetStats,
+  getLastTrace,
+  getRecentEvents,
+  type DatasetStatsResponse,
+  type TraceEvent,
+} from "./api/debugApi";
 import { useChat } from "./hooks/useChat";
 import { ChatTab } from "./components/ChatTab";
 import { SettingsTab } from "./components/SettingsTab";
@@ -26,6 +32,10 @@ function App() {
   const [lastTraceEvents, setLastTraceEvents] = useState<TraceEvent[]>([]);
   const [lastTraceId, setLastTraceId] = useState<string | null>(null);
   const [debugError, setDebugError] = useState<string | null>(null);
+
+  const [datasetStats, setDatasetStats] = useState<DatasetStatsResponse | null>(null);
+  const [datasetStatsLoading, setDatasetStatsLoading] = useState(false);
+  const [datasetStatsError, setDatasetStatsError] = useState<string | null>(null);
 
   const {
     chatInput,
@@ -78,19 +88,32 @@ function App() {
 
   async function refreshDebug() {
     setDebugError(null);
+    setDatasetStatsError(null);
+    setDatasetStatsLoading(true);
 
-    try {
-      const [recent, lastTrace] = await Promise.all([
-        getRecentEvents(50),
-        getLastTrace(),
-      ]);
+    const [traceSettled, statsSettled] = await Promise.allSettled([
+      Promise.all([getRecentEvents(50), getLastTrace()]),
+      fetchDatasetStats(),
+    ]);
 
+    if (traceSettled.status === "fulfilled") {
+      const [recent, lastTrace] = traceSettled.value;
       setRecentEvents(recent.events);
       setLastTraceId(lastTrace.trace_id);
       setLastTraceEvents(lastTrace.events);
-    } catch (err) {
+    } else {
+      const err = traceSettled.reason;
       setDebugError(err instanceof Error ? err.message : "Error desconocido");
     }
+
+    if (statsSettled.status === "fulfilled") {
+      setDatasetStats(statsSettled.value);
+    } else {
+      const err = statsSettled.reason;
+      setDatasetStatsError(err instanceof Error ? err.message : "Error cargando dataset stats");
+    }
+
+    setDatasetStatsLoading(false);
   }
 
   async function setAbsolute(parameter: keyof PersonalitySettings, value: number) {
@@ -205,6 +228,9 @@ function App() {
             recentEvents={recentEvents}
             debugError={debugError}
             onRefresh={refreshDebug}
+            datasetStats={datasetStats}
+            datasetStatsLoading={datasetStatsLoading}
+            datasetStatsError={datasetStatsError}
           />
         )}
       </div>
