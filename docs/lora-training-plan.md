@@ -1,4 +1,4 @@
-# Sity LoRA v0 — Plan de entrenamiento
+# Sity LoRA — Plan de entrenamiento
 
 ## Objetivo
 
@@ -10,6 +10,51 @@ de asistente genérico. No se busca ampliar capacidades técnicas ni de razonami
 
 Si el adapter hace que la base emita menos "lo siento, pero...", menos "¿en qué puedo ayudarte?"
 y más respuestas cortas con criterio propio, v0 ha cumplido su objetivo.
+
+---
+
+## Dataset v1 — captura activa en timeline real
+
+El dataset v1 parte del timeline conversacional real de Sity (una única sesión `"default"`), enriquecido con metadata por mensaje. La captura comenzó el 2026-05-31T20:09:13+02:00.
+
+### Infraestructura de captura
+
+- **Dataset Capture** (`backend/app/training/dataset_capture.py`): etiqueta mensajes nuevos con `dataset_source`, `speaker_label`, `dataset_tags`, `dataset_eligible`. No altera prompt ni comportamiento.
+- **DatasetStats** (`backend/app/training/dataset_stats.py`): computa estadísticas de cobertura por bucket, tag y source. Endpoint `GET /debug/dataset-stats`.
+- **Pestaña Dataset** en el frontend: visualiza progreso de captura y permite configurar Dataset Capture con presets.
+
+### Modelo conceptual
+
+No hay sesiones separadas. Toda la conversación es un único timeline. La separación semántica para entrenamiento se hace mediante metadata por mensaje (`tone_meta`, `dataset_source`, `dataset_tags_json`, etc.). Esta metadata **no se inyecta en el prompt de Sity**.
+
+### Targets actuales
+
+| Bucket | Target |
+|---|---|
+| `canon_base` | 650 |
+| `variation_sarcasm_high` | 60 |
+| `variation_rudeness_high` | 60 |
+| `variation_warm` | 60 |
+| `variation_brief` | 60 |
+| `variation_melancholy` | 40 |
+| `variation_tsundere` | 40 |
+| `multi_persona` | 50 |
+
+Los buckets se infieren automáticamente desde `tone_meta`. No requieren etiquetado manual salvo `multi_persona`, que requiere `dataset_source = synthetic_claude_user` o el tag `multi_persona`.
+
+### Flujo recomendado
+
+Ver `docs/operations/dataset-capture.md` para el flujo detallado de captura (conversación normal, variaciones de personalidad, sesiones Claude-extension, debug).
+
+### Exportar candidatos desde el timeline real
+
+```sql
+SELECT * FROM chatmessage
+WHERE created_at >= '2026-05-31 18:09:13'
+  AND dataset_eligible = 1
+  AND tone_meta IS NOT NULL
+ORDER BY id;
+```
 
 ---
 

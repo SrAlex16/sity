@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-05-30.
+Última actualización: 2026-06-03.
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -40,7 +40,8 @@ Responsabilidades:
 
 - chat;
 - settings;
-- debug;
+- debug (trazas y eventos recientes);
+- dataset (Dataset Capture + DatasetStats);
 - previews de cámara/audio;
 - cancelación de acciones;
 - interacción táctil futura.
@@ -231,6 +232,32 @@ Reglas no negociables:
 - Seguridad y privacidad tienen prioridad sobre teatro/persona.
 - Puede protestar, pero no bloquear comandos críticos.
 - No puede negarse a apagar sensores, activar modo privado o borrar memoria si la política lo permite.
+
+## Dataset y pipeline de entrenamiento
+
+Sity usa un único timeline de conversación (`DEFAULT_CHAT_SESSION_ID = "default"`). No hay sesiones separadas para dataset. La separación semántica se hace mediante metadata por mensaje en `ChatMessage`.
+
+### Metadata por mensaje
+
+Campos de proveniencia:
+
+- `tone_meta`: snapshot del vector de personalidad en cada respuesta de Sity. Base para calcular el bucket de entrenamiento.
+- `dataset_source`: origen del par (`normal_use`, `synthetic_claude_user`, `human_guest`, `debug_test`).
+- `dataset_eligible`: si el par es candidato a entrenamiento.
+- `dataset_tags_json`: tags multi-label (`sarcasm_high`, `brief`, `multi_persona`, etc.).
+- `speaker_label`, `speaker_source`, `speaker_confidence`: identificación del hablante (para reconocimiento futuro).
+
+Esta metadata **no se inyecta en el prompt de Sity**. Es invisible para el modelo en tiempo de inferencia.
+
+### Dataset Capture
+
+`backend/app/training/dataset_capture.py` — `DatasetCaptureService` gestiona el contexto de captura activo, persistido en la tabla `Setting` (key `dataset_capture`). Cuando está activo, cada mensaje guardado recibe los campos de metadata configurados. No cambia prompt ni comportamiento conversacional.
+
+### DatasetStats
+
+`backend/app/training/dataset_stats.py` — módulo puro sin efectos secundarios. Recibe el timeline completo y devuelve estadísticas de cobertura por bucket, tag y source. La unidad básica es un par consecutivo user→Sity con `tone_meta` presente y `dataset_eligible = true`.
+
+Ver: `docs/operations/dataset-capture.md`.
 
 ## Local AI y LoRA
 

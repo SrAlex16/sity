@@ -84,6 +84,10 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - `SITY_OLLAMA_MODEL` requerido explícitamente cuando `SITY_LOCAL_AI_ENABLED=true`; misconfiguration loggeada como `local_ai_misconfigured` con respuesta controlada.
 - Tool call inputs del planner redactados en logs (`redact_tool_call_input`): always-redact para write_file/apply_*; preview truncado para el resto.
 - Generador sintético de dataset v1 con caching explícito de prompt: `scripts/generate_sity_v1_with_claude_cache.py`.
+- Metadata por mensaje en `ChatMessage`: `speaker_label`, `speaker_source`, `speaker_confidence`, `dataset_source`, `dataset_eligible`, `dataset_tags_json`, `identity_evidence_json` (reservado).
+- Dataset Capture Mode: etiquetado de mensajes nuevos sin cambiar prompt ni comportamiento. Persistido en `Setting` table. Endpoints `GET/PUT /debug/dataset-capture`, `POST /debug/dataset-capture/disable`. Presets: `normal_use`, `synthetic_claude_user`, `human_guest`, `debug_test`.
+- DatasetStats backend: módulo puro de cómputo de pares user→Sity usables para LoRA. Endpoint `GET /debug/dataset-stats`. Buckets, tags y progreso hacia targets por tipo de personalidad.
+- Pestaña Dataset en el frontend: Dataset Capture (formulario con presets) + DatasetStats (cobertura, targets, desglose por source/tag, últimos pares).
 
 ### Refactor reciente
 
@@ -120,17 +124,20 @@ Frontend modularizado:
 
 ```text
 frontend/src/
-  App.tsx                 — shell/orquestador (215 líneas)
+  App.tsx                 — shell/orquestador, routing de pestañas
   hooks/useChat.ts        — estado y ciclo de vida del chat
   components/
     ChatTab.tsx           — presentacional
     SettingsTab.tsx       — presentacional
-    DebugTab.tsx          — presentacional
+    DebugTab.tsx          — trazas SSE y eventos recientes
+    DatasetTab.tsx        — Dataset Capture + DatasetStats
   api/
     chatApi.ts
     sityApi.ts
-    debugApi.ts
+    debugApi.ts           — incluye DatasetStats y DatasetCapture
 ```
+
+Pestañas disponibles: **Chat**, **Settings**, **Debug** (solo trazas), **Dataset** (captura y estadísticas LoRA).
 
 ---
 
@@ -226,6 +233,7 @@ Documentos principales:
 docs/architecture.md                         — arquitectura actual y objetivo
 docs/operations/current-state.md             — estado operativo del proyecto
 docs/operations/development-workflow.md      — flujo PC / WSL / Raspberry
+docs/operations/dataset-capture.md          — Dataset Capture, DatasetStats y flujo LoRA v1
 docs/operations/ollama-diagnostics.md        — diagnóstico manual de modelos Ollama
 docs/training/gemma3-lora.md                 — pipeline LoRA Gemma 3 4B con Unsloth
 ```

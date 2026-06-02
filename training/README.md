@@ -2,8 +2,12 @@
 
 Directorio de configuración para fine-tuning LoRA de Sity.
 
-Los pesos, adapters, checkpoints y outputs de entrenamiento **no se versionar en git**
+Los pesos, adapters, checkpoints y outputs de entrenamiento **no se versionan en git**
 (ver `.gitignore`). Solo se versiona configuración y scripts.
+
+El dataset v1 parte del timeline conversacional real de Sity. La captura y las estadísticas
+de cobertura se gestionan desde el backend y la pestaña Dataset del frontend.
+Ver `docs/operations/dataset-capture.md` para el flujo completo de captura.
 
 ---
 
@@ -13,6 +17,13 @@ Los pesos, adapters, checkpoints y outputs de entrenamiento **no se versionar en
 |---|---|
 | `check_cuda_env.py` | Preflight CUDA/training — ejecutar antes de cualquier instalación |
 | `sity_gemma3_lora_v0.example.yaml` | Config de referencia para Axolotl / script propio |
+
+Módulos de captura de dataset (en el backend, no en este directorio):
+
+| Módulo | Descripción |
+|---|---|
+| `backend/app/training/dataset_capture.py` | `DatasetCaptureService` — etiqueta mensajes nuevos con metadata de proveniencia |
+| `backend/app/training/dataset_stats.py` | Cómputo puro de estadísticas de cobertura por bucket, tag y source |
 
 ---
 

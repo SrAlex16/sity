@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-06-02.
+Última actualización: 2026-06-03.
 
 Este documento resume el estado operativo actual del proyecto y las decisiones que condicionan los siguientes pasos. No sustituye al `README.md`; sirve como foto rápida para retomar trabajo sin depender de conversaciones antiguas.
 
@@ -35,6 +35,10 @@ Estado reciente:
 - `local_provider_config.py`: `SITY_OLLAMA_MODEL` requerido explícitamente cuando `SITY_LOCAL_AI_ENABLED=true`; misconfiguration loggeada, error controlado.
 - `redact_tool_call_input`: inputs de tool calls redactados en logs (always-redact para write_file/apply_*).
 - Generador sintético `scripts/generate_sity_v1_with_claude_cache.py` con prompt caching explícito.
+- Metadata por mensaje en `ChatMessage`: proveniencia de hablante y contexto de captura de dataset. No se inyecta en el prompt.
+- Dataset Capture Mode: etiquetado de mensajes nuevos para dataset sin cambiar comportamiento conversacional. Persistido en `Setting` table. Endpoints `GET/PUT /debug/dataset-capture`, `POST /debug/dataset-capture/disable`.
+- DatasetStats: módulo puro de cómputo `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`. Buckets, tags y progreso hacia targets LoRA v1.
+- Pestaña Dataset en el frontend: Dataset Capture (formulario con presets) + DatasetStats (cobertura, desglose, últimos pares). Pestaña Debug separada: solo trazas y eventos recientes.
 
 ## Tests
 
@@ -92,6 +96,35 @@ reports/ollama/
 
 `reports/` está ignorado por git.
 
+## Modelo de datos: timeline única
+
+Sity usa un único timeline continuo (`DEFAULT_CHAT_SESSION_ID = "default"`). No hay sesiones separadas por modo, usuario o captura. La separación semántica para dataset se hace mediante **metadata por mensaje** en `ChatMessage`:
+
+- `tone_meta`: snapshot de personalidad en cada respuesta de Sity.
+- `dataset_source`, `dataset_eligible`, `dataset_tags_json`: proveniencia y elegibilidad para training.
+- `speaker_label`, `speaker_source`, `speaker_confidence`: identificación del hablante (para futuro reconocimiento).
+
+Esta metadata no se inyecta en el prompt de Sity. Es invisible para el modelo en tiempo de inferencia.
+
+## Dataset v1 — en captura activa
+
+Las conversaciones para dataset v1 se capturan desde **2026-05-31T20:09:13+02:00**. Los bugs de voseo y continuidad conversacional estaban corregidos antes de esa marca.
+
+La pestaña Dataset del frontend muestra en tiempo real el progreso de captura hacia los targets LoRA v1.
+
+Para sesiones con Claude-extension (`multi_persona`): activar preset `synthetic_claude_user` en Dataset Capture antes de iniciar, desactivar al terminar.
+
+Para exportar candidatos del timeline real:
+
+```sql
+SELECT * FROM chatmessage
+WHERE created_at >= '2026-05-31 18:09:13'
+  AND dataset_eligible = 1
+  AND tone_meta IS NOT NULL;
+```
+
+Ver flujo completo: `docs/operations/dataset-capture.md`.
+
 ## Fine-tuning / LoRA
 
 Se validó pipeline LoRA en WSL con:
@@ -127,17 +160,9 @@ Esto no significa que exista aún un modelo Sity de calidad. Solo significa que 
 
 ## Próximo paso recomendado
 
-### Dataset v1 — en progreso
+### Dataset v1 — en captura
 
-Las conversaciones reales para el dataset v1 se están capturando desde **2026-05-31T20:09:13+02:00** (UTC: `2026-05-31 18:09:13`). Los bugs de voseo y continuidad conversacional estaban ya corregidos antes de esa marca.
-
-Para exportar candidatos al dataset:
-
-```sql
-SELECT * FROM chatmessage WHERE created_at >= '2026-05-31 18:09:13';
-```
-
-El generador sintético (`scripts/generate_sity_v1_with_claude_cache.py`) está disponible para completar buckets con poca cobertura real.
+El generador sintético (`scripts/generate_sity_v1_with_claude_cache.py`) está disponible para completar buckets con poca cobertura real. Revisión manual obligatoria antes de incorporar al training set.
 
 ### Cuándo activar hybrid local
 
