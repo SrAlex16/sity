@@ -81,6 +81,9 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Regla de idioma e interlocutor en prompt: tuteo singular, sin voseo ni plural (vosotros). 9 tests.
 - Continuidad conversacional corregida: `history_limit` por defecto 4→10; términos de consulta de memoria ampliados. 12 tests.
 - Adapter LoRA de overfit probado: identidad Sity, femenino gramatical y rechazo de tools inventadas.
+- `SITY_OLLAMA_MODEL` requerido explícitamente cuando `SITY_LOCAL_AI_ENABLED=true`; misconfiguration loggeada como `local_ai_misconfigured` con respuesta controlada.
+- Tool call inputs del planner redactados en logs (`redact_tool_call_input`): always-redact para write_file/apply_*; preview truncado para el resto.
+- Generador sintético de dataset v1 con caching explícito de prompt: `scripts/generate_sity_v1_with_claude_cache.py`.
 
 ### Refactor reciente
 
@@ -102,9 +105,10 @@ Módulos extraídos en `backend/app/chat/`:
   ai_request_builder.py    — construcción de AIRequest para cada fase
   provider_call_runner.py  — wrapper semántico sobre AIGateway
   final_response_builder.py — cierre AI: AIUsage + snapshot + log + guard + save
+  local_provider_config.py — validación y resolución del modelo Ollama local
 ```
 
-`routes_chat.py`: 757 → 543 líneas (−214).
+`routes_chat.py`: 757 → 543 líneas (−214) tras el refactor inicial; crece con nuevas features.
 
 Schemas API compartidos:
 
@@ -132,7 +136,7 @@ frontend/src/
 
 ## Limitaciones conocidas
 
-- `routes_chat.py` (543 líneas) todavía contiene la orquestación del flujo AI (planner → tool loop → after_tools) y los early returns. No hay aún `ChatOrchestrator`.
+- `routes_chat.py` todavía contiene la orquestación del flujo AI (planner → tool loop → after_tools) y los early returns. No hay aún `ChatOrchestrator`.
 - `ToolExecutor` todavía tiene demasiada lógica concentrada.
 - La primera llamada a Claude sigue siendo necesaria para interpretar muchas acciones.
 - `list_file_changes` puede seguir usando Claude para redactar resumen.
@@ -924,7 +928,7 @@ No requiere `ANTHROPIC_API_KEY` ni consume presupuesto de Claude.
 ```text
 backend-local:
   - python -m compileall backend/app
-  - pytest -q tests  (205 tests; DB init en conftest autouse)
+  - pytest -q tests  (DB init en conftest autouse)
 
 integration-mock:
   - Levanta FastAPI en puerto 8010 con SITY_AI_PROVIDER=mock
@@ -1378,7 +1382,7 @@ SITY_CORS_ORIGINS=http://192.168.1.133:5174
 4. Hybrid split cloud/local.               ✓ completado (SITY_LOCAL_AI_ENABLED)
 5. Local AI Worker en LAN (PC externo).    ✓ funcional técnicamente
 6. Evaluación de modelos base.             ✓ completado — 14+ modelos evaluados
-7. LoRA v0 (estilo/voz sobre gemma3:4b).   en progreso — pipeline de dataset pendiente
+7. LoRA v0 (estilo/voz sobre gemma3:4b).   en progreso — dataset v0 listo; v1 real en captura
 8. Validar modelo fine-tuned como Sity.    pendiente — tras paso 7
 9. Hybrid mode activo por defecto.         pendiente — tras paso 8
 10. Local tool intent con JSON estricto.   pendiente

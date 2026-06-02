@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-05-30.
+Última actualización: 2026-06-02.
 
 Este documento resume el estado operativo actual del proyecto y las decisiones que condicionan los siguientes pasos. No sustituye al `README.md`; sirve como foto rápida para retomar trabajo sin depender de conversaciones antiguas.
 
@@ -32,6 +32,9 @@ Estado reciente:
 - TimeContext añadido para que Sity pueda reaccionar al paso del tiempo por turno.
 - Provider abstraction activa mediante `AITextProvider`.
 - `OllamaProvider` implementado como chat-only, sin tools.
+- `local_provider_config.py`: `SITY_OLLAMA_MODEL` requerido explícitamente cuando `SITY_LOCAL_AI_ENABLED=true`; misconfiguration loggeada, error controlado.
+- `redact_tool_call_input`: inputs de tool calls redactados en logs (always-redact para write_file/apply_*).
+- Generador sintético `scripts/generate_sity_v1_with_claude_cache.py` con prompt caching explícito.
 
 ## Tests
 
@@ -124,20 +127,24 @@ Esto no significa que exista aún un modelo Sity de calidad. Solo significa que 
 
 ## Próximo paso recomendado
 
-Construir `training/data/sity_persona_v0.jsonl` con 100-200 muestras centradas en comportamiento, no conocimiento.
+### Dataset v1 — en progreso
 
-Áreas del dataset v0.1:
+Las conversaciones reales para el dataset v1 se están capturando desde **2026-05-31T20:09:13+02:00** (UTC: `2026-05-31 18:09:13`). Los bugs de voseo y continuidad conversacional estaban ya corregidos antes de esa marca.
 
-1. Identidad de Sity.
-2. Femenino gramatical.
-3. Español de España.
-4. Tono seco/sarcástico controlado.
-5. No inventar tools.
-6. No simular acciones.
-7. Backend como autoridad.
-8. Seguridad y privacidad siempre obedecidas.
-9. Corrección del usuario.
-10. Contexto temporal.
-11. Límites de local AI.
-12. Respuestas breves de conversación normal.
+Para exportar candidatos al dataset:
+
+```sql
+SELECT * FROM chatmessage WHERE created_at >= '2026-05-31 18:09:13';
+```
+
+El generador sintético (`scripts/generate_sity_v1_with_claude_cache.py`) está disponible para completar buckets con poca cobertura real.
+
+### Cuándo activar hybrid local
+
+No activar `SITY_LOCAL_AI_ENABLED=true` en producción hasta que:
+- Exista un adapter LoRA validado con calidad Sity real (no solo overfit).
+- Se haya medido el modelo fine-tuned con `scripts/diag_ollama_models.py`.
+- `SITY_OLLAMA_MODEL` esté configurado explícitamente en el entorno.
+
+El provider cloud (Anthropic) sigue siendo el provider estable para tools y acciones.
 
