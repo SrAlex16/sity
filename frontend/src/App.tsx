@@ -20,9 +20,10 @@ import { useChat } from "./hooks/useChat";
 import { ChatTab } from "./components/ChatTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { DebugTab } from "./components/DebugTab";
+import { DatasetTab } from "./components/DatasetTab";
 import "./App.css";
 
-type Tab = "chat" | "settings" | "debug";
+type Tab = "chat" | "settings" | "debug" | "dataset";
 
 function App() {
   const [tab, setTab] = useState<Tab>("chat");
@@ -62,7 +63,7 @@ function App() {
   } = useChat({
     onMessageSent: () => {
       refreshPersonality();
-      refreshDebug();
+      refreshTrace();
     },
   });
 
@@ -82,7 +83,6 @@ function App() {
   async function refreshPersonality() {
     setLoading(true);
     setError(null);
-
     try {
       const data = await getPersonality();
       setPersonality(data);
@@ -95,34 +95,34 @@ function App() {
     }
   }
 
-  async function refreshDebug() {
+  async function refreshTrace() {
     setDebugError(null);
+    try {
+      const [recent, lastTrace] = await Promise.all([getRecentEvents(50), getLastTrace()]);
+      setRecentEvents(recent.events);
+      setLastTraceId(lastTrace.trace_id);
+      setLastTraceEvents(lastTrace.events);
+    } catch (err) {
+      setDebugError(err instanceof Error ? err.message : "Error desconocido");
+    }
+  }
+
+  async function refreshDataset() {
     setDatasetStatsError(null);
     setDatasetStatsLoading(true);
     setDatasetCaptureError(null);
     setDatasetCaptureLoading(true);
 
-    const [traceSettled, statsSettled, captureSettled] = await Promise.allSettled([
-      Promise.all([getRecentEvents(50), getLastTrace()]),
+    const [statsSettled, captureSettled] = await Promise.allSettled([
       fetchDatasetStats(),
       fetchDatasetCapture(),
     ]);
-
-    if (traceSettled.status === "fulfilled") {
-      const [recent, lastTrace] = traceSettled.value;
-      setRecentEvents(recent.events);
-      setLastTraceId(lastTrace.trace_id);
-      setLastTraceEvents(lastTrace.events);
-    } else {
-      const err = traceSettled.reason;
-      setDebugError(err instanceof Error ? err.message : "Error desconocido");
-    }
 
     if (statsSettled.status === "fulfilled") {
       setDatasetStats(statsSettled.value);
     } else {
       const err = statsSettled.reason;
-      setDatasetStatsError(err instanceof Error ? err.message : "Error cargando dataset stats");
+      setDatasetStatsError(err instanceof Error ? err.message : "Error cargando stats");
     }
 
     if (captureSettled.status === "fulfilled") {
@@ -165,19 +165,13 @@ function App() {
   async function setAbsolute(parameter: keyof PersonalitySettings, value: number) {
     setSavingKey(parameter);
     setError(null);
-
     try {
       const response = await adjustPersonality(parameter, "set_absolute", value);
       setPersonality((current) =>
-        current
-          ? {
-              ...current,
-              [parameter]: response.new_value,
-            }
-          : current,
+        current ? { ...current, [parameter]: response.new_value } : current,
       );
       setMessage(response.message);
-      await refreshDebug();
+      await refreshTrace();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
       setMessage("No he podido guardar el ajuste. Fascinante incompetencia técnica.");
@@ -188,7 +182,8 @@ function App() {
 
   useEffect(() => {
     refreshPersonality();
-    refreshDebug();
+    refreshTrace();
+    refreshDataset();
   }, []);
 
   return (
@@ -196,9 +191,7 @@ function App() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
         <header className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-xl">
           <div className="flex items-center gap-3">
-            <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">
-              Sity Core
-            </p>
+            <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Sity Core</p>
             {datasetCapture?.enabled && (
               <span className="rounded-full border border-amber-500 bg-amber-950/60 px-2 py-0.5 text-xs text-amber-300">
                 Dataset capture: {datasetCapture.dataset_source}
@@ -212,23 +205,15 @@ function App() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            {(["chat", "settings", "debug"] as Tab[]).map((item) => (
+            {(["chat", "settings", "debug", "dataset"] as Tab[]).map((item) => (
               <button
                 key={item}
                 onClick={() => {
                   setTab(item);
-
-                  if (item === "chat") {
-                    window.setTimeout(() => scrollChatToBottom("auto"), 50);
-                  }
-
-                  if (item === "settings") {
-                    refreshPersonality();
-                  }
-
-                  if (item === "debug") {
-                    refreshDebug();
-                  }
+                  if (item === "chat") window.setTimeout(() => scrollChatToBottom("auto"), 50);
+                  if (item === "settings") refreshPersonality();
+                  if (item === "debug") refreshTrace();
+                  if (item === "dataset") refreshDataset();
                 }}
                 className={`rounded-xl px-4 py-2 text-sm capitalize ${
                   tab === item
@@ -281,7 +266,12 @@ function App() {
             lastTraceEvents={lastTraceEvents}
             recentEvents={recentEvents}
             debugError={debugError}
-            onRefresh={refreshDebug}
+            onRefresh={refreshTrace}
+          />
+        )}
+
+        {tab === "dataset" && (
+          <DatasetTab
             datasetStats={datasetStats}
             datasetStatsLoading={datasetStatsLoading}
             datasetStatsError={datasetStatsError}
@@ -290,6 +280,7 @@ function App() {
             datasetCaptureError={datasetCaptureError}
             onSaveDatasetCapture={saveDatasetCapture}
             onDisableDatasetCapture={disableDatasetCaptureAsync}
+            onRefresh={refreshDataset}
           />
         )}
       </div>
