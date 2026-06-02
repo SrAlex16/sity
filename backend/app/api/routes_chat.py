@@ -47,6 +47,7 @@ from app.cortex.providers.factory import build_ai_provider
 
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
+from app.memory.message_metadata import MessageMetadata, build_message_metadata
 from app.settings.config_loader import load_default_config
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
@@ -90,7 +91,11 @@ def save_chat_message(
     text: str,
     trace_id: Optional[str] = None,
     tone_meta: Optional[str] = None,
+    metadata: Optional[MessageMetadata] = None,
 ) -> None:
+    if metadata is None:
+        metadata = build_message_metadata(role=role)
+
     get_or_create_default_chat_session(session)
 
     session.add(
@@ -100,6 +105,14 @@ def save_chat_message(
             text=text,
             trace_id=trace_id,
             tone_meta=tone_meta,
+            speaker_id=metadata.speaker_id,
+            speaker_label=metadata.speaker_label,
+            speaker_source=metadata.speaker_source,
+            speaker_confidence=metadata.speaker_confidence,
+            identity_evidence_json=metadata.identity_evidence_json,
+            dataset_source=metadata.dataset_source,
+            dataset_eligible=metadata.dataset_eligible,
+            dataset_tags_json=metadata.dataset_tags_json,
         )
     )
 

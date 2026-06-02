@@ -92,6 +92,16 @@ class ChatMessage(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     tone_meta: Optional[str] = Field(default=None)  # JSON snapshot of persona state at generation time
 
+    # Provenance and dataset metadata — see app.memory.message_metadata
+    speaker_id: Optional[str] = Field(default=None)
+    speaker_label: Optional[str] = Field(default=None)
+    speaker_source: Optional[str] = Field(default=None)
+    speaker_confidence: Optional[float] = Field(default=None)
+    identity_evidence_json: Optional[str] = Field(default=None)
+    dataset_source: Optional[str] = Field(default=None)
+    dataset_eligible: bool = Field(default=True)
+    dataset_tags_json: Optional[str] = Field(default=None)
+
 
 class PendingAction(SQLModel, table=True):
     id: str = Field(primary_key=True)
