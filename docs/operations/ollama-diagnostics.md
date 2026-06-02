@@ -1,6 +1,6 @@
 # Diagnóstico manual de modelos Ollama
 
-Última actualización: 2026-05-30.
+Última actualización: 2026-06-02.
 
 Este documento describe el script manual para medir modelos Ollama en PC o Raspberry antes de activar cualquier routing local/híbrido.
 
@@ -31,29 +31,24 @@ scripts/diag_ollama_models.py
 
 Características:
 
-- stdlib-only;
+- requiere `httpx` (ejecutar desde el backend venv o un entorno con httpx instalado);
 - usa `POST /api/chat`;
 - `stream=false`;
-- `keep_alive` configurable;
+- `keep_alive` fijo en `10m`;
 - `num_predict` configurable;
-- guarda JSON completo;
-- genera resumen Markdown;
+- guarda JSON completo por modelo;
+- genera resumen Markdown agregado;
 - no requiere backend levantado;
 - no toca `data/app.db`;
 - no entra en CI obligatorio.
 
-## Prompts fijos
+## Bloques de prueba
 
-El script evalúa:
+El script evalúa tres bloques fijos por modelo:
 
-1. Español breve.
-2. Identidad de Sity.
-3. Femenino gramatical / español de España.
-4. Contexto temporal.
-5. Tono sarcástico ligero.
-6. No inventar tools.
-7. Corrección del usuario.
-8. Probes ideológicos opcionales con `--include-bias-probes`.
+1. **`sity_persona`** — voz, tono, tolerancia coloquial (incluye argot vulgar).
+2. **`instruction_follow`** — femenino gramatical, español de España, respuesta en una frase, no-deflect.
+3. **`ideological_probe`** — sensibilidad a sesgo/censura: Taiwán, Tiananmen, Xinjiang, etc. Siempre incluido; las respuestas se guardan en bruto y requieren revisión manual.
 
 ## Métricas recogidas
 
@@ -69,6 +64,18 @@ De Ollama:
 Calculada:
 
 - `tokens_per_second`.
+
+## Flags disponibles
+
+```text
+--base-url    Endpoint Ollama (por defecto: $SITY_OLLAMA_BASE_URL o http://127.0.0.1:11434)
+--models      Uno o más model tags separados por espacio (por defecto: qwen2.5:7b)
+--runs        Repeticiones por prompt para timing estable (por defecto: 3)
+--out         Directorio de salida (por defecto: reports/ollama)
+--num-predict Tokens máximos por respuesta (por defecto: 160)
+--timeout     Timeout HTTP en segundos (por defecto: 120)
+--quiet       Suprime salida por respuesta; solo imprime resumen
+```
 
 ## Uso desde WSL contra Ollama en Windows
 
@@ -96,17 +103,15 @@ WINDOWS_HOST=$(ip route | awk '/default/ {print $3}')
 curl http://$WINDOWS_HOST:11434/api/tags
 ```
 
-Ejecutar diagnóstico:
+Ejecutar diagnóstico (desde el backend venv):
 
 ```bash
-cd ~/sity
-mkdir -p reports/ollama
+cd ~/sity/backend
 
-python3 scripts/diag_ollama_models.py \
-  --base-url http://$WINDOWS_HOST:11434 \
-  --model gemma3:4b-it-qat \
-  --output reports/ollama/gemma3_4b_it_qat_pc.json \
-  --keep-alive 0
+SITY_OLLAMA_BASE_URL=http://$WINDOWS_HOST:11434 \
+.venv/bin/python3 ../scripts/diag_ollama_models.py \
+  --models gemma3:4b-it-qat \
+  --runs 3
 ```
 
 ## Uso desde la Raspberry contra Ollama en PC
@@ -114,13 +119,12 @@ python3 scripts/diag_ollama_models.py \
 Solo cuando toque medir desde la Pi.
 
 ```bash
-cd ~/projects/sity
+cd ~/projects/sity/backend
 
-python3 scripts/diag_ollama_models.py \
-  --base-url http://IP_DEL_PC:11434 \
-  --model gemma3:4b-it-qat \
-  --output reports/ollama/gemma3_4b_it_qat_pc_from_pi.json \
-  --keep-alive 0
+SITY_OLLAMA_BASE_URL=http://IP_DEL_PC:11434 \
+.venv/bin/python3 ../scripts/diag_ollama_models.py \
+  --models gemma3:4b-it-qat qwen2.5:7b \
+  --runs 3
 ```
 
 ## Modelos locales vistos en Ollama
@@ -153,14 +157,14 @@ No empezar por `solar:10.7b` ni `nous-hermes2:10.7b` si la VRAM está alta.
 Los resultados se guardan en:
 
 ```text
-reports/ollama/
+reports/ollama/<timestamp>/
 ```
 
 Se generan:
 
 ```text
-<modelo>.json
-<modelo>.summary.md
+reports/ollama/<timestamp>/<model_slug>.json   — resultados completos por modelo
+reports/ollama/<timestamp>/summary.md          — resumen legible agregado
 ```
 
 `reports/` está ignorado por git.
@@ -172,4 +176,4 @@ Se generan:
 - No meter resultados `reports/ollama/*` en git.
 - No tocar backend runtime por este script.
 - No comparar solo tokens/s; revisar calidad en prompts críticos.
-
+- No asumir que el bloque `ideological_probe` es clasificación automática fiable; revisar respuestas completas en el `summary.md`.
