@@ -48,6 +48,7 @@ from app.cortex.providers.factory import build_ai_provider
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
 from app.memory.message_metadata import MessageMetadata, build_message_metadata
+from app.training.dataset_capture import DatasetCaptureService
 from app.settings.config_loader import load_default_config
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
@@ -233,6 +234,26 @@ def _chat_message_inner(
     settings_service = SettingsService(session)
     personality = settings_service.get_personality()
 
+    # Read capture context once per turn; build role-specific metadata from it.
+    _capture_svc = DatasetCaptureService(session)
+    _capture_ctx = _capture_svc.get()
+    _user_metadata = _capture_svc.build_user_metadata(_capture_ctx)
+    _sity_metadata = _capture_svc.build_sity_metadata(_capture_ctx)
+
+    def _save_with_capture(
+        s: Session,
+        *,
+        role: str,
+        text: str,
+        trace_id: Optional[str] = None,
+        tone_meta: Optional[str] = None,
+        metadata: Optional[MessageMetadata] = None,
+    ) -> None:
+        if metadata is None:
+            metadata = _sity_metadata if role == "sity" else _user_metadata
+        save_chat_message(s, role=role, text=text, trace_id=trace_id,
+                          tone_meta=tone_meta, metadata=metadata)
+
     write_log(
         level="INFO",
         module="chat",
@@ -280,7 +301,7 @@ def _chat_message_inner(
         message=request.message,
         daily_budget=daily_budget,
         warnings=[],
-        save_message=save_chat_message,
+        save_message=_save_with_capture,
         get_usage=get_today_token_usage,
     )
 
@@ -306,7 +327,7 @@ def _chat_message_inner(
             message=request.message,
             daily_budget=daily_budget,
             runtime_config=runtime_config,
-            save_message=save_chat_message,
+            save_message=_save_with_capture,
             get_usage=get_today_token_usage,
         )
     )
@@ -355,7 +376,7 @@ def _chat_message_inner(
         },
     )
 
-    save_chat_message(session, role="user", text=request.message, trace_id=trace_id)
+    _save_with_capture(session, role="user", text=request.message, trace_id=trace_id)
 
     # Build local provider when SITY_LOCAL_AI_ENABLED=true.
     # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
@@ -527,8 +548,8 @@ def _chat_message_inner(
                     trace_id=trace_id,
                     payload={"tool": _loop.early_tool_name, "model": _loop.local_model},
                 )
-                save_chat_message(session, role="sity", text=_loop.local_text, trace_id=trace_id,
-                                  tone_meta=json.dumps(persona_decision.tone_snapshot))
+                _save_with_capture(session, role="sity", text=_loop.local_text, trace_id=trace_id,
+                                   tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return local_tool_response(
                     trace_id=trace_id,
                     text=_loop.local_text,
@@ -557,8 +578,8 @@ def _chat_message_inner(
                     payload={"tool": _loop.early_tool_name},
                     audit=True,
                 )
-                save_chat_message(session, role="sity", text=_react_text, trace_id=trace_id,
-                                  tone_meta=json.dumps(persona_decision.tone_snapshot))
+                _save_with_capture(session, role="sity", text=_react_text, trace_id=trace_id,
+                                   tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return micro_reaction_response(
                     trace_id=trace_id,
                     text=_react_text,
@@ -622,7 +643,7 @@ def _chat_message_inner(
         warning_threshold=warning_threshold,
         critical_threshold=critical_threshold,
         get_today_token_usage=get_today_token_usage,
-        save_message=save_chat_message,
+        save_message=_save_with_capture,
         refusal_mode=persona_decision.refusal_mode,
         user_message=request.message,
         updated_parameters=updated_parameters,

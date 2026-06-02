@@ -5,9 +5,14 @@ import {
   type PersonalitySettings,
 } from "./api/sityApi";
 import {
+  disableDatasetCapture,
+  fetchDatasetCapture,
   fetchDatasetStats,
   getLastTrace,
   getRecentEvents,
+  updateDatasetCapture,
+  type DatasetCaptureContext,
+  type DatasetCaptureRequest,
   type DatasetStatsResponse,
   type TraceEvent,
 } from "./api/debugApi";
@@ -36,6 +41,10 @@ function App() {
   const [datasetStats, setDatasetStats] = useState<DatasetStatsResponse | null>(null);
   const [datasetStatsLoading, setDatasetStatsLoading] = useState(false);
   const [datasetStatsError, setDatasetStatsError] = useState<string | null>(null);
+
+  const [datasetCapture, setDatasetCapture] = useState<DatasetCaptureContext | null>(null);
+  const [datasetCaptureLoading, setDatasetCaptureLoading] = useState(false);
+  const [datasetCaptureError, setDatasetCaptureError] = useState<string | null>(null);
 
   const {
     chatInput,
@@ -90,10 +99,13 @@ function App() {
     setDebugError(null);
     setDatasetStatsError(null);
     setDatasetStatsLoading(true);
+    setDatasetCaptureError(null);
+    setDatasetCaptureLoading(true);
 
-    const [traceSettled, statsSettled] = await Promise.allSettled([
+    const [traceSettled, statsSettled, captureSettled] = await Promise.allSettled([
       Promise.all([getRecentEvents(50), getLastTrace()]),
       fetchDatasetStats(),
+      fetchDatasetCapture(),
     ]);
 
     if (traceSettled.status === "fulfilled") {
@@ -113,7 +125,41 @@ function App() {
       setDatasetStatsError(err instanceof Error ? err.message : "Error cargando dataset stats");
     }
 
+    if (captureSettled.status === "fulfilled") {
+      setDatasetCapture(captureSettled.value);
+    } else {
+      const err = captureSettled.reason;
+      setDatasetCaptureError(err instanceof Error ? err.message : "Error cargando captura");
+    }
+
     setDatasetStatsLoading(false);
+    setDatasetCaptureLoading(false);
+  }
+
+  async function saveDatasetCapture(payload: DatasetCaptureRequest): Promise<void> {
+    setDatasetCaptureLoading(true);
+    setDatasetCaptureError(null);
+    try {
+      const result = await updateDatasetCapture(payload);
+      setDatasetCapture(result);
+    } catch (err) {
+      setDatasetCaptureError(err instanceof Error ? err.message : "Error guardando");
+    } finally {
+      setDatasetCaptureLoading(false);
+    }
+  }
+
+  async function disableDatasetCaptureAsync(): Promise<void> {
+    setDatasetCaptureLoading(true);
+    setDatasetCaptureError(null);
+    try {
+      const result = await disableDatasetCapture();
+      setDatasetCapture(result);
+    } catch (err) {
+      setDatasetCaptureError(err instanceof Error ? err.message : "Error desactivando");
+    } finally {
+      setDatasetCaptureLoading(false);
+    }
   }
 
   async function setAbsolute(parameter: keyof PersonalitySettings, value: number) {
@@ -149,9 +195,17 @@ function App() {
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
         <header className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-xl">
-          <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">
-            Sity Core
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">
+              Sity Core
+            </p>
+            {datasetCapture?.enabled && (
+              <span className="rounded-full border border-amber-500 bg-amber-950/60 px-2 py-0.5 text-xs text-amber-300">
+                Dataset capture: {datasetCapture.dataset_source}
+                {datasetCapture.speaker_label ? ` / ${datasetCapture.speaker_label}` : ""}
+              </span>
+            )}
+          </div>
           <h1 className="mt-3 text-4xl font-bold">Control Panel</h1>
           <p className="mt-3 max-w-3xl text-zinc-300">
             Conversación, personalidad y trazabilidad. Una cantidad absurda de infraestructura para que pueda juzgarte con precisión.
@@ -231,6 +285,11 @@ function App() {
             datasetStats={datasetStats}
             datasetStatsLoading={datasetStatsLoading}
             datasetStatsError={datasetStatsError}
+            datasetCapture={datasetCapture}
+            datasetCaptureLoading={datasetCaptureLoading}
+            datasetCaptureError={datasetCaptureError}
+            onSaveDatasetCapture={saveDatasetCapture}
+            onDisableDatasetCapture={disableDatasetCaptureAsync}
           />
         )}
       </div>

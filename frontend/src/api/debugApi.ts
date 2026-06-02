@@ -72,6 +72,61 @@ export async function getLastTrace(): Promise<LastTraceResponse> {
   return response.json();
 }
 
+export type DatasetCaptureContext = {
+  ok: boolean;
+  enabled: boolean;
+  dataset_source: string;
+  speaker_label: string | null;
+  speaker_source: string | null;
+  speaker_confidence: number | null;
+  dataset_eligible: boolean;
+  dataset_tags: string[];
+  updated_at: string | null;
+};
+
+export type DatasetCaptureRequest = {
+  enabled: boolean;
+  dataset_source?: string;
+  speaker_label?: string | null;
+  speaker_source?: string | null;
+  speaker_confidence?: number | null;
+  dataset_eligible?: boolean;
+  dataset_tags?: string[];
+};
+
+export async function fetchDatasetCapture(): Promise<DatasetCaptureContext> {
+  const response = await fetch(`${API_BASE}/debug/dataset-capture`);
+  if (!response.ok) {
+    throw new Error(`Failed to load dataset capture: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function updateDatasetCapture(
+  payload: DatasetCaptureRequest,
+): Promise<DatasetCaptureContext> {
+  const response = await fetch(`${API_BASE}/debug/dataset-capture`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Failed to save dataset capture (${response.status}): ${detail}`);
+  }
+  return response.json();
+}
+
+export async function disableDatasetCapture(): Promise<DatasetCaptureContext> {
+  const response = await fetch(`${API_BASE}/debug/dataset-capture/disable`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to disable dataset capture: ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function fetchDatasetStats(): Promise<DatasetStatsResponse> {
   const response = await fetch(`${API_BASE}/debug/dataset-stats`);
 
