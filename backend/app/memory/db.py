@@ -44,6 +44,8 @@ def _migrate_chatmessage() -> None:
     with engine.connect() as conn:
         result = conn.execute(text("PRAGMA table_info(chatmessage)"))
         existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # table not yet created; create_all handles the full schema
         for col_name, col_type in new_columns:
             if col_name not in existing:
                 conn.execute(text(f"ALTER TABLE chatmessage ADD COLUMN {col_name} {col_type}"))
@@ -51,6 +53,7 @@ def _migrate_chatmessage() -> None:
 
 
 def init_db() -> None:
+    import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     _configure_sqlite()
     SQLModel.metadata.create_all(engine)
     _migrate_chatmessage()
