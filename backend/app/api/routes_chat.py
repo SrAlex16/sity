@@ -50,6 +50,7 @@ from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
 from app.settings.config_loader import load_default_config
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
+from app.trace.redaction import redact_tool_call_input
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -448,7 +449,7 @@ def _chat_message_inner(
                     {
                         "id": tc.id,
                         "name": tc.name,
-                        "input": tc.input,
+                        "input_summary": redact_tool_call_input(tc.name, tc.input),
                     }
                     for tc in planner_response.tool_calls
                 ],
