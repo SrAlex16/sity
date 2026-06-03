@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from sqlalchemy import text as sa_text
+
 from app.api.schemas import ChatHistoryItem
 from app.chat.time_context import build_time_context, render_time_context
 
@@ -33,6 +35,15 @@ def with_history(message: str, history_text: str) -> str:
     )
 
 
+def _count_total_messages() -> int:
+    try:
+        from app.memory.db import engine
+        with engine.connect() as conn:
+            return conn.execute(sa_text("SELECT COUNT(*) FROM chatmessage")).scalar() or 0
+    except Exception:
+        return 0
+
+
 @dataclass(frozen=True)
 class PromptContext:
     recent_history: list[ChatHistoryItem]
@@ -61,8 +72,16 @@ class PromptContextBuilder:
         raw_msgs = self.get_recent_messages(session, limit=10)
         time_block = render_time_context(build_time_context(raw_msgs))
 
+        n_total = _count_total_messages()
+        memory_ctx = (
+            f"Contexto de memoria: estás en el mensaje {n_total} de esta conversación. "
+            f"Solo ves los últimos {history_limit} mensajes en el historial de abajo. "
+            f"El historial completo está almacenado y puedes buscarlo con "
+            f"search_conversation_history."
+        )
+
         base_user_message = with_history(message, render_history(recent_history))
-        user_message_with_time = f"{time_block}\n\n{base_user_message}"
+        user_message_with_time = f"{time_block}\n\n{memory_ctx}\n\n{base_user_message}"
 
         return PromptContext(
             recent_history=recent_history,

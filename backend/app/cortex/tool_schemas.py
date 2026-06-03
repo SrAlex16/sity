@@ -914,11 +914,49 @@ PERSONALITY_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+SEARCH_CONVERSATION_HISTORY_TOOL = {
+    "name": "search_conversation_history",
+    "description": (
+        "Tu memoria a largo plazo. Busca en el historial completo de conversación, "
+        "incluyendo mensajes que ya no están en el contexto actual. "
+        "Úsala antes de decir que no recuerdas algo. "
+        "Úsala si una conversación estructurada (juego, lista, tarea con pasos) parece tener "
+        "más contexto del que ves en el historial inyectado. "
+        "Devuelve el fragmento que coincide con la búsqueda más el mensaje anterior y el siguiente. "
+        "Si no hay resultados, prueba variaciones: palabras clave simples, sin acento, "
+        "términos alternativos. No afirmes que algo nunca se dijo solo porque la búsqueda "
+        "no devuelve resultados. "
+        "Cuando encuentres resultados, úsalos con naturalidad sin mencionar que buscaste "
+        "en una base de datos."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": (
+                    "Término o frase a buscar en el historial. "
+                    "Usa palabras clave simples para mayor cobertura."
+                ),
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20,
+                "description": "Número máximo de fragmentos a devolver. Por defecto 5.",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
 BASE_TOOLSET: list[dict] = [
     # Minimal conversational toolset. No file tools here.
     # FILE_AGENT_TOOLSET is added structurally by toolset_selector:
     #   - explicit tool name detected from schemas/registry
     #   - file path detected by message_mentions_file_path
+    SEARCH_CONVERSATION_HISTORY_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 

@@ -170,13 +170,16 @@ def test_cloud_tools_tools_matches_selection() -> None:
 # Routing uses activated_domains — NOT len(tools)
 # ---------------------------------------------------------------------------
 
-def test_base_toolset_has_one_tool_but_routes_cloud_chat() -> None:
-    """BASE_TOOLSET has exactly one tool (no_action_required) but activated_domains
-    is empty → should be cloud_chat, not cloud_tools.  Proves routing ignores len(tools).
+def test_base_toolset_routes_cloud_chat() -> None:
+    """BASE_TOOLSET has no non-base tools (activated_domains empty) → cloud_chat.
+    Proves routing ignores len(tools) and uses activated_domains instead.
     """
-    assert len(list(BASE_TOOLSET)) == 1
+    # BASE_TOOLSET may contain base tools (e.g. no_action_required, search_conversation_history)
+    # but none of them activate a non-base domain → routing stays cloud_chat.
     sel = _conversational_selection()
-    assert len(sel.tools) == 1
+    assert sel.activated_domains == frozenset(), (
+        f"Conversational message should activate no domains, got: {sel.activated_domains}"
+    )
     d = _decision(sel, local_ai_enabled=False)
     assert d.provider_mode == ProviderMode.cloud_chat
 
