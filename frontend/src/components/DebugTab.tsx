@@ -50,9 +50,9 @@ export function DebugTab({
   onRefresh,
 }: DebugTabProps) {
   return (
-    <section className="grid gap-4 lg:grid-cols-2">
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-        <div className="flex items-center justify-between gap-4">
+    <section className="grid gap-4 lg:grid-cols-2 lg:items-start">
+      <div className="flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5" style={{ maxHeight: "80vh" }}>
+        <div className="flex shrink-0 items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold">Última traza</h2>
             <p className="mt-1 text-sm text-zinc-500">
@@ -68,12 +68,12 @@ export function DebugTab({
         </div>
 
         {debugError && (
-          <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
+          <p className="mt-3 shrink-0 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
             {debugError}
           </p>
         )}
 
-        <div className="mt-5 grid gap-3">
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto grid gap-3 content-start">
           {lastTraceEvents.length === 0 && (
             <p className="text-zinc-500">No hay eventos para esta traza.</p>
           )}
@@ -83,9 +83,12 @@ export function DebugTab({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-xl font-semibold">Eventos recientes</h2>
-        <div className="mt-5 grid gap-3">
+      <div className="flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5" style={{ maxHeight: "80vh" }}>
+        <h2 className="shrink-0 text-xl font-semibold">Eventos recientes</h2>
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto grid gap-3 content-start">
+          {recentEvents.length === 0 && (
+            <p className="text-zinc-500">No hay eventos recientes.</p>
+          )}
           {recentEvents.map((event, index) => (
             <EventCard key={`${event.timestamp}-${index}`} event={event} />
           ))}
