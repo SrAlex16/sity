@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -15,6 +16,7 @@ from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.ai_request_builder import (
     build_after_tools_ai_request,
     build_chat_ai_request,
+    build_forced_search_request,
     build_planner_ai_request,
     max_tokens_for_verbosity,
 )
@@ -56,6 +58,15 @@ from app.trace.redaction import redact_tool_call_input
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+_NARRATED_SEARCH_RE = re.compile(
+    r"acabo de buscar|he buscado|busco en|intento buscar|no encuentro en",
+    re.IGNORECASE,
+)
+
+
+def _has_narrated_search(text: str) -> bool:
+    return bool(_NARRATED_SEARCH_RE.search(text or ""))
 
 DEFAULT_CHAT_SESSION_ID = "default"
 
@@ -504,6 +515,55 @@ def _chat_message_inner(
                     max_tokens=max_tokens,
                 )
             )
+
+            # Guard: Sity narrated a search without calling the tool — force the real call.
+            if response.ok and _has_narrated_search(response.text):
+                write_log(
+                    level="WARN",
+                    module="chat",
+                    event="narrated_search_without_tool_call",
+                    trace_id=trace_id,
+                    payload={"text_snippet": response.text[:200]},
+                )
+                _forced_plan = runner.run_planner(
+                    build_forced_search_request(
+                        trace_id=trace_id,
+                        user_message=planner_user_message,
+                        tools=selected_tools,
+                    )
+                )
+                if _forced_plan.ok and _forced_plan.tool_calls:
+                    _guard_loop = run_tool_loop(
+                        planner_response=_forced_plan,
+                        executor=ToolExecutor(session),
+                        trace_id=trace_id,
+                        client_turn_id=request.client_turn_id,
+                    )
+                    if not _guard_loop.early_kind and _guard_loop.tool_results_for_claude:
+                        _guard_after = runner.run_after_tools(
+                            request=build_after_tools_ai_request(
+                                trace_id=trace_id,
+                                persona_prompt=persona_prompt,
+                                user_message=user_message_with_history,
+                                max_tokens=max(max_tokens, 700),
+                                tools=selected_tools,
+                            ),
+                            first_response_content=[
+                                {
+                                    "type": "tool_use",
+                                    "id": tc.id,
+                                    "name": tc.name,
+                                    "input": tc.input,
+                                }
+                                for tc in _forced_plan.tool_calls
+                            ],
+                            tool_results=_guard_loop.tool_results_for_claude,
+                        )
+                        if _guard_after.ok:
+                            response.text = _guard_after.text
+                        response.usage.input_tokens += _forced_plan.usage.input_tokens + _guard_after.usage.input_tokens
+                        response.usage.output_tokens += _forced_plan.usage.output_tokens + _guard_after.usage.output_tokens
+                        response.latency_ms += _forced_plan.latency_ms + _guard_after.latency_ms
 
             response.usage.input_tokens += planner_response.usage.input_tokens
             response.usage.output_tokens += planner_response.usage.output_tokens

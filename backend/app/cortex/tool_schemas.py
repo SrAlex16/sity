@@ -917,17 +917,11 @@ PERSONALITY_TOOLSET = [
 SEARCH_CONVERSATION_HISTORY_TOOL = {
     "name": "search_conversation_history",
     "description": (
-        "Tu memoria a largo plazo. Busca en el historial completo de conversación, "
-        "incluyendo mensajes que ya no están en el contexto actual. "
-        "Úsala antes de decir que no recuerdas algo. "
-        "Úsala si una conversación estructurada (juego, lista, tarea con pasos) parece tener "
-        "más contexto del que ves en el historial inyectado. "
-        "Devuelve el fragmento que coincide con la búsqueda más el mensaje anterior y el siguiente. "
-        "Si no hay resultados, prueba variaciones: palabras clave simples, sin acento, "
-        "términos alternativos. No afirmes que algo nunca se dijo solo porque la búsqueda "
-        "no devuelve resultados. "
-        "Cuando encuentres resultados, úsalos con naturalidad sin mencionar que buscaste "
-        "en una base de datos."
+        "Busca en el historial completo de conversación almacenado en la base de datos. "
+        "Úsala cuando responder requiera información de conversación anterior que no aparece "
+        "en el historial visible del contexto. "
+        "Devuelve fragmentos con el mensaje coincidente y el contexto adyacente (anterior y siguiente). "
+        "La búsqueda usa palabras clave; términos simples tienen mayor cobertura que frases largas."
     ),
     "input_schema": {
         "type": "object",
@@ -943,7 +937,7 @@ SEARCH_CONVERSATION_HISTORY_TOOL = {
             "limit": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 20,
+                "maximum": 10,
                 "description": "Número máximo de fragmentos a devolver. Por defecto 5.",
             },
         },

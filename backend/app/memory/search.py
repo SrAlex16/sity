@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -15,12 +16,18 @@ log = logging.getLogger(__name__)
 
 _FTS_READY: bool = False
 
+_MAX_TEXT_CHARS = 1000
+_LIMIT_MIN = 1
+_LIMIT_MAX = 10
+_LIMIT_DEFAULT = 5
+
 
 @dataclass
 class MessageContext:
     role: str
     text: str
     created_at: Optional[datetime]
+    message_id: Optional[int] = None
 
 
 @dataclass
@@ -43,6 +50,22 @@ def _parse_dt(value: object) -> Optional[datetime]:
 
 def _is_operational(role: str, text: str) -> bool:
     return role == "sity" and is_operational_guard_message(text)
+
+
+def _truncate(text: str) -> str:
+    if len(text) <= _MAX_TEXT_CHARS:
+        return text
+    return text[:_MAX_TEXT_CHARS] + "…"
+
+
+def _make_ctx(row: Optional[tuple]) -> Optional[MessageContext]:
+    """Build MessageContext from a DB row; returns None for operational messages."""
+    if row is None:
+        return None
+    role, text, created_at = row[0], row[1], row[2]
+    if _is_operational(role, text):
+        return None
+    return MessageContext(role=role, text=_truncate(text), created_at=_parse_dt(created_at))
 
 
 def _setup_fts() -> bool:
@@ -81,19 +104,14 @@ def _setup_fts() -> bool:
             ))
             conn.commit()
 
-            # Populate FTS if empty but chatmessage has rows (first-run or missing rebuild)
-            fts_count = conn.execute(
-                sa_text("SELECT COUNT(*) FROM chatmessage_fts")
-            ).scalar() or 0
-            msg_count = conn.execute(
-                sa_text("SELECT COUNT(*) FROM chatmessage")
-            ).scalar() or 0
-            if fts_count == 0 and msg_count > 0:
-                conn.execute(
-                    sa_text("INSERT INTO chatmessage_fts(chatmessage_fts) VALUES ('rebuild')")
-                )
-                conn.commit()
-                log.info("FTS5 chatmessage_fts rebuilt with %d messages", msg_count)
+            # Always rebuild at startup: COUNT(*) on a content table reads from the source
+            # table, not the FTS index — the index can be empty while COUNT returns non-zero.
+            # Rebuild is idempotent and fast for our dataset size (~ms per 1k messages).
+            conn.execute(
+                sa_text("INSERT INTO chatmessage_fts(chatmessage_fts) VALUES ('rebuild')")
+            )
+            conn.commit()
+            log.info("FTS5 chatmessage_fts rebuilt")
 
         _FTS_READY = True
         return True
@@ -103,7 +121,8 @@ def _setup_fts() -> bool:
 
 
 def _search_fts(conn, query: str, limit: int) -> list:
-    fts_query = '"' + query.replace('"', " ") + '"'
+    # OR queries must not be quoted — quoting turns them into a phrase search
+    fts_query = query if " OR " in query else '"' + query.replace('"', " ") + '"'
     return conn.execute(
         sa_text(
             "SELECT c.id, c.role, c.text, c.created_at "
@@ -117,14 +136,30 @@ def _search_fts(conn, query: str, limit: int) -> list:
     ).fetchall()
 
 
-def _search_like(conn, query: str, limit: int) -> list:
-    return conn.execute(
-        sa_text(
-            "SELECT id, role, text, created_at FROM chatmessage "
-            "WHERE text LIKE :q ORDER BY id DESC LIMIT :n"
-        ),
-        {"q": f"%{query}%", "n": limit},
-    ).fetchall()
+def _search_like_tokens(conn, query: str, limit: int) -> list:
+    """LIKE search per token — avoids treating the full OR-joined string as a phrase."""
+    # Strip FTS boolean operators, then extract tokens of at least 3 chars
+    clean = re.sub(r"\b(?:OR|AND|NOT)\b", " ", query)
+    tokens = [t for t in clean.split() if len(t) >= 3]
+    if not tokens:
+        tokens = [query]
+
+    seen_ids: set[int] = set()
+    rows: list = []
+    for token in tokens:
+        for row in conn.execute(
+            sa_text(
+                "SELECT id, role, text, created_at FROM chatmessage "
+                "WHERE text LIKE :q ORDER BY id DESC LIMIT :n"
+            ),
+            {"q": f"%{token}%", "n": limit},
+        ).fetchall():
+            if row[0] not in seen_ids:
+                seen_ids.add(row[0])
+                rows.append(row)
+        if len(rows) >= limit:
+            break
+    return rows[:limit]
 
 
 def _adjacent(conn, msg_id: int) -> tuple[Optional[tuple], Optional[tuple]]:
@@ -145,19 +180,22 @@ def _adjacent(conn, msg_id: int) -> tuple[Optional[tuple], Optional[tuple]]:
     return prev, nxt
 
 
-def search_conversation_history(query: str, limit: int = 5) -> list[SearchResult]:
-    """Search conversation history using FTS5 (falls back to LIKE).
+def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list[SearchResult]:
+    """Search conversation history using FTS5 (falls back to LIKE per token).
 
     Returns up to `limit` results, each with prev/next message context.
-    Operational guard messages are filtered from results.
+    Operational guard messages are filtered from results and adjacents.
+    Message text is truncated to _MAX_TEXT_CHARS characters.
+    limit is clamped to [_LIMIT_MIN, _LIMIT_MAX].
     """
     query = (query or "").strip()
     if not query:
         return []
 
+    limit = max(_LIMIT_MIN, min(limit, _LIMIT_MAX))
     use_fts = _setup_fts()
     # Oversample to compensate for filtered operational messages
-    fetch_n = min(limit * 3, 60)
+    fetch_n = min(limit * 3, 30)
 
     results: list[SearchResult] = []
     seen_ids: set[int] = set()
@@ -171,7 +209,7 @@ def search_conversation_history(query: str, limit: int = 5) -> list[SearchResult
                 log.warning("FTS5 query failed, falling back to LIKE: %s", exc)
 
         if not rows:
-            rows = _search_like(conn, query, fetch_n)
+            rows = _search_like_tokens(conn, query, fetch_n)
 
         for row in rows:
             msg_id, role, text, created_at = row[0], row[1], row[2], row[3]
@@ -182,13 +220,14 @@ def search_conversation_history(query: str, limit: int = 5) -> list[SearchResult
             prev_row, next_row = _adjacent(conn, msg_id)
 
             results.append(SearchResult(
-                match=MessageContext(role=role, text=text, created_at=_parse_dt(created_at)),
-                prev=MessageContext(
-                    role=prev_row[0], text=prev_row[1], created_at=_parse_dt(prev_row[2])
-                ) if prev_row else None,
-                next=MessageContext(
-                    role=next_row[0], text=next_row[1], created_at=_parse_dt(next_row[2])
-                ) if next_row else None,
+                match=MessageContext(
+                    role=role,
+                    text=_truncate(text),
+                    created_at=_parse_dt(created_at),
+                    message_id=msg_id,
+                ),
+                prev=_make_ctx(prev_row),
+                next=_make_ctx(next_row),
             ))
             if len(results) >= limit:
                 break

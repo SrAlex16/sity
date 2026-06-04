@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.memory.search import search_conversation_history
+from app.memory.recall import MemoryFragment, MemoryRecallResult, MemoryRecallRunner
+from app.memory.search import MessageContext
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
@@ -16,15 +17,57 @@ def _fmt_ts(dt) -> str:
         return str(dt)
 
 
-def _fmt_fragment(label: str, role: str, text: str, ts) -> str:
-    who = _ROLE_LABEL.get(role, role)
-    return f"  [{label}] {who} ({_fmt_ts(ts)}): {text}"
+def _fmt_ctx(label: str, ctx: MessageContext) -> str:
+    who = _ROLE_LABEL.get(ctx.role, ctx.role)
+    ts = _fmt_ts(ctx.created_at)
+    return f"  [{label}] {who} ({ts}): {ctx.text}"
+
+
+def _fmt_fragment(i: int, f: MemoryFragment) -> str:
+    mid = f"msg #{f.message_id}" if f.message_id is not None else "msg"
+    ts = _fmt_ts(f.timestamp)
+    who = _ROLE_LABEL.get(f.role, f.role)
+
+    lines = [f"Fragmento {i} [{mid}, {ts}]:"]
+    if f.prev:
+        lines.append(_fmt_ctx("anterior", f.prev))
+    lines.append(f"  [coincidencia] {who}: {f.text}")
+    if f.next:
+        lines.append(_fmt_ctx("siguiente", f.next))
+    return "\n".join(lines)
+
+
+def _fmt_recall_result(r: MemoryRecallResult) -> str:
+    queries_str = ", ".join(f'"{q}"' for q in r.queries_tried)
+    lines = [
+        "Memoria recuperada:",
+        f"status: {r.status}",
+        f"confidence: {r.result_confidence:.2f}",
+        f"queries: [{queries_str}]",
+        "",
+    ]
+
+    if r.fragments:
+        lines.append("Evidencia:")
+        for i, f in enumerate(r.fragments, 1):
+            lines.append(_fmt_fragment(i, f))
+            lines.append("")
+    else:
+        lines.append("Evidencia:")
+        lines.append("Sin resultados.")
+        lines.append("")
+
+    lines.append(f"Resumen: {r.evidence_summary}")
+    if r.truncated:
+        lines.append("(Resultados truncados al límite máximo.)")
+
+    return "\n".join(lines)
 
 
 @tool_handler("search_conversation_history")
 def handle_search_conversation_history(ctx: ToolContext) -> ToolExecutionResult:
     query = str(ctx.tool_input.get("query", "")).strip()
-    limit = int(ctx.tool_input.get("limit", 5))
+    trace_id = ctx.trace_id
 
     if not query:
         return ToolExecutionResult(
@@ -35,43 +78,20 @@ def handle_search_conversation_history(ctx: ToolContext) -> ToolExecutionResult:
             raw_result={"success": False, "text": "No he encontrado nada en el historial sobre eso."},
         )
 
-    results = search_conversation_history(query=query, limit=limit)
-
-    if not results:
-        return ToolExecutionResult(
-            tool_name=ctx.tool_name,
-            ok=True,
-            message="sin resultados",
-            updated_parameters=[],
-            raw_result={
-                "success": True,
-                "query": query,
-                "count": 0,
-                "text": "No he encontrado nada en el historial sobre eso.",
-            },
-        )
-
-    fragments: list[str] = []
-    for i, r in enumerate(results, 1):
-        lines = [f"Fragmento {i}:"]
-        if r.prev:
-            lines.append(_fmt_fragment("anterior", r.prev.role, r.prev.text, r.prev.created_at))
-        lines.append(_fmt_fragment("coincidencia", r.match.role, r.match.text, r.match.created_at))
-        if r.next:
-            lines.append(_fmt_fragment("siguiente", r.next.role, r.next.text, r.next.created_at))
-        fragments.append("\n".join(lines))
-
-    text = "\n\n".join(fragments)
+    result = MemoryRecallRunner().recall(query=query, trace_id=trace_id)
+    text = _fmt_recall_result(result)
 
     return ToolExecutionResult(
         tool_name=ctx.tool_name,
         ok=True,
-        message=f"{len(results)} fragmento(s) encontrado(s).",
+        message=f"status={result.status}, {len(result.fragments)} fragmento(s).",
         updated_parameters=[],
         raw_result={
             "success": True,
             "query": query,
-            "count": len(results),
+            "status": result.status,
+            "confidence": result.result_confidence,
+            "count": len(result.fragments),
             "text": text,
         },
     )

@@ -218,3 +218,36 @@ def test_empty_history_builds_without_error() -> None:
     ctx = builder.build(session=None, message="hola", history_limit=10, planner_history_limit=4)
     assert "hola" in ctx.user_message_with_history
     assert len(ctx.recent_history) == 0
+
+
+# ---------------------------------------------------------------------------
+# 3. Structural memory context in planner_user_message
+# ---------------------------------------------------------------------------
+
+def test_planner_message_includes_structural_memory_fields() -> None:
+    """planner_user_message must contain all structural memory context fields."""
+    msgs = _make_conversation()
+    builder = PromptContextBuilder(get_recent_messages=_make_getter(msgs))
+    ctx = builder.build(
+        session=None,
+        message="qué fue lo primero que hablamos?",
+        history_limit=10,
+        planner_history_limit=4,
+    )
+    for field in ("total_messages", "visible_history_count", "history_limit", "long_memory_tool_available"):
+        assert field in ctx.planner_user_message, (
+            f"Structural memory field {field!r} missing from planner_user_message"
+        )
+
+
+def test_planner_message_includes_user_message() -> None:
+    """planner_user_message must still include the original user message."""
+    msgs = _make_conversation()
+    builder = PromptContextBuilder(get_recent_messages=_make_getter(msgs))
+    ctx = builder.build(
+        session=None,
+        message="siguiente pregunta sobre anime",
+        history_limit=10,
+        planner_history_limit=4,
+    )
+    assert "siguiente pregunta sobre anime" in ctx.planner_user_message

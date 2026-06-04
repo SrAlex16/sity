@@ -56,6 +56,7 @@ Debes elegir exactamente una herramienta:
 - Si el usuario pide explícitamente revertir un rollback anterior: usa rollback_latest_file_change con include_rollbacks=true.
 - Usa rollback_file_change solo si el usuario proporciona un backup_path concreto.
 - Usa find_latest_reversible_file_change solo si el usuario pide ver cuál sería el último cambio reversible sin querer ejecutar el rollback todavía.
+- Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 
 Regla de contexto: Si el turno anterior fue sobre leer un archivo y el usuario confirma o aclara, mantén la intención de lectura. No cambies a herramientas Git salvo que el usuario pida explícitamente commits, ramas, diff, status git, pull o push.
@@ -116,6 +117,26 @@ def build_planner_ai_request(
         max_tokens=max_tokens,
         tools_enabled=True,
         tool_choice={"type": "any"},
+        tools=tools,
+    )
+
+
+def build_forced_search_request(
+    *,
+    trace_id: str,
+    user_message: str,
+    tools: list[dict[str, Any]],
+    max_tokens: int = 500,
+) -> AIRequest:
+    """Force a search_conversation_history call when narration without tool use was detected."""
+    return AIRequest(
+        trace_id=trace_id,
+        task_type="action_planner",
+        system_prompt=_build_action_planner_prompt(),
+        user_message=user_message,
+        max_tokens=max_tokens,
+        tools_enabled=True,
+        tool_choice={"type": "tool", "name": "search_conversation_history"},
         tools=tools,
     )
 
