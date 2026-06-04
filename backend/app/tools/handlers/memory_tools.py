@@ -58,6 +58,9 @@ def _fmt_recall_result(r: MemoryRecallResult) -> str:
         lines.append("")
 
     lines.append(f"Resumen: {r.evidence_summary}")
+    if r.windows_read:
+        anchors = ", ".join(f"#{a}" for a in r.anchor_message_ids)
+        lines.append(f"(Ventanas de contexto leídas: {r.windows_read}, anclas: {anchors})")
     if r.truncated:
         lines.append("(Resultados truncados al límite máximo.)")
 

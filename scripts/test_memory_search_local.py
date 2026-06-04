@@ -196,6 +196,80 @@ def run_tests() -> None:
     assert isinstance(results[0].match.message_id, int), "message_id must be int"
     print("PASS test_match_has_message_id")
 
+    # -----------------------------------------------------------------------
+    # Window navigation tests
+    # Scenario: anchor message at position X, answer at X+13 (beyond prev/next)
+    # -----------------------------------------------------------------------
+
+    _reset_fts()
+    from app.memory.search import read_conversation_window, _WINDOW_BEFORE_MAX, _WINDOW_AFTER_MAX
+
+    # Seed: anchor + 12 intermediate messages + answer
+    _seed(
+        [("user", "Empezamos la tarea nueva referencia inicial aquí.")]
+        + [("sity" if i % 2 == 0 else "user", f"Diálogo continuo turno número {i} aquí.")
+           for i in range(1, 13)]
+        + [("sity", "El código definitivo de cierre era ZX-41 confirmado.")]
+    )
+    _reset_fts()
+
+    # --- Test 14: window finds content beyond prev/next ---
+    results = search_conversation_history("tarea referencia inicial", limit=1)
+    assert len(results) >= 1, "Should find anchor"
+    anchor_result = results[0]
+    anchor_id = anchor_result.match.message_id
+    assert anchor_id is not None, "Anchor must have message_id"
+
+    # prev/next of anchor does NOT include ZX-41
+    prev_text = anchor_result.prev.text if anchor_result.prev else ""
+    next_text = anchor_result.next.text if anchor_result.next else ""
+    visible = anchor_result.match.text + prev_text + next_text
+    assert "ZX-41" not in visible, "ZX-41 should not be in prev/match/next"
+
+    # Window with after=20 includes ZX-41
+    window = read_conversation_window(anchor_id, before=5, after=20)
+    window_texts = " ".join(m.text for m in window)
+    assert "ZX-41" in window_texts, f"ZX-41 not found in window. Window texts: {window_texts[:300]}"
+    print("PASS test_window_finds_beyond_prev_next")
+
+    # --- Test 15: window respects before/after limits ---
+    _reset_fts()
+    window_small = read_conversation_window(anchor_id, before=2, after=3)
+    assert len(window_small) <= 6, (
+        f"Window with before=2, after=3 should have ≤6 messages, got {len(window_small)}"
+    )
+    print("PASS test_window_respects_limits")
+
+    # --- Test 16: window is in chronological order ---
+    _reset_fts()
+    window_ord = read_conversation_window(anchor_id, before=5, after=15)
+    assert len(window_ord) >= 2, "Window should have multiple messages"
+    ids = [m.message_id for m in window_ord if m.message_id is not None]
+    assert ids == sorted(ids), f"Window not in chronological order: {ids}"
+    print("PASS test_window_chronological_order")
+
+    # --- Test 17: window max limits clamped ---
+    _reset_fts()
+    window_max = read_conversation_window(anchor_id, before=999, after=999)
+    assert len(window_max) <= 60, (
+        f"Window should be clamped to _WINDOW_LIMIT_MAX=60, got {len(window_max)}"
+    )
+    print("PASS test_window_max_clamped")
+
+    # --- Test 18: MemoryRecallRunner uses window to find beyond prev/next ---
+    _reset_fts()
+    from app.memory.recall import MemoryRecallRunner
+
+    runner = MemoryRecallRunner()
+    result = runner.recall(query="tarea referencia inicial", trace_id="window_integration_test")
+    assert result.windows_read > 0, (
+        f"Runner should have read at least one window, got windows_read={result.windows_read}"
+    )
+    assert result.status in ("found", "partial"), (
+        f"Expected found/partial after window, got {result.status}"
+    )
+    print("PASS test_runner_uses_window_for_navigation")
+
     print("\nAll tests passed.")
 
 

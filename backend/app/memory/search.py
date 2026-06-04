@@ -21,6 +21,10 @@ _LIMIT_MIN = 1
 _LIMIT_MAX = 10
 _LIMIT_DEFAULT = 5
 
+_WINDOW_BEFORE_MAX = 20
+_WINDOW_AFTER_MAX = 50
+_WINDOW_LIMIT_MAX = 60
+
 
 @dataclass
 class MessageContext:
@@ -178,6 +182,65 @@ def _adjacent(conn, msg_id: int) -> tuple[Optional[tuple], Optional[tuple]]:
         {"mid": msg_id},
     ).fetchone()
     return prev, nxt
+
+
+def read_conversation_window(
+    center_message_id: int,
+    before: int = 10,
+    after: int = 30,
+) -> list[MessageContext]:
+    """Read a chronological window of messages around center_message_id.
+
+    Returns messages ordered by id (chronological).
+    Operational messages are filtered out.
+    before clamped to [0, _WINDOW_BEFORE_MAX], after to [0, _WINDOW_AFTER_MAX].
+    Total result clamped to _WINDOW_LIMIT_MAX.
+    """
+    before = max(0, min(before, _WINDOW_BEFORE_MAX))
+    after = max(0, min(after, _WINDOW_AFTER_MAX))
+
+    with engine.connect() as conn:
+        prev_rows = conn.execute(
+            sa_text(
+                "SELECT id, role, text, created_at FROM chatmessage "
+                "WHERE id < :mid ORDER BY id DESC LIMIT :n"
+            ),
+            {"mid": center_message_id, "n": before},
+        ).fetchall()
+
+        center_row = conn.execute(
+            sa_text(
+                "SELECT id, role, text, created_at FROM chatmessage WHERE id = :mid"
+            ),
+            {"mid": center_message_id},
+        ).fetchone()
+
+        next_rows = conn.execute(
+            sa_text(
+                "SELECT id, role, text, created_at FROM chatmessage "
+                "WHERE id > :mid ORDER BY id ASC LIMIT :n"
+            ),
+            {"mid": center_message_id, "n": after},
+        ).fetchall()
+
+    # Combine in chronological order: prev (reversed), center, next
+    all_rows = list(reversed(prev_rows)) + ([center_row] if center_row else []) + list(next_rows)
+
+    messages: list[MessageContext] = []
+    for row in all_rows:
+        if len(messages) >= _WINDOW_LIMIT_MAX:
+            break
+        msg_id, role, text, created_at = row[0], row[1], row[2], row[3]
+        if _is_operational(role, text):
+            continue
+        messages.append(MessageContext(
+            role=role,
+            text=_truncate(text),
+            created_at=_parse_dt(created_at),
+            message_id=msg_id,
+        ))
+
+    return messages
 
 
 def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list[SearchResult]:

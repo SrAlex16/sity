@@ -13,13 +13,21 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from app.memory.search import MessageContext, SearchResult, search_conversation_history
+from app.memory.search import (
+    MessageContext,
+    SearchResult,
+    read_conversation_window,
+    search_conversation_history,
+)
 
 log = logging.getLogger(__name__)
 
 _MAX_ATTEMPTS = 4
-_MAX_TOTAL_FRAGMENTS = 10
+_MAX_WINDOWS = 2        # max window reads per recall session
+_MAX_TOTAL_FRAGMENTS = 30
 _TOKEN_MIN_LEN = 4
+_WINDOW_BEFORE = 5
+_WINDOW_AFTER = 20
 
 # Evidence quality thresholds (novel token ratio per fragment)
 _NOVEL_THRESHOLD_SUFFICIENT = 0.60   # max per-fragment novel ratio → "sufficient" → "found"
@@ -47,6 +55,8 @@ class MemoryRecallResult:
     evidence_summary: str
     result_confidence: float  # 0.0–1.0
     truncated: bool
+    windows_read: int = 0
+    anchor_message_ids: list[int] = field(default_factory=list)
 
 
 def _extract_tokens(text: str) -> set[str]:
@@ -69,7 +79,10 @@ class MemoryRecallRunner:
         queries_tried: list[str] = []
         ev_status = "not_found"
         ev_confidence = 0.0
+        windows_read = 0
+        anchor_message_ids: list[int] = []
 
+        # Phase 1: iterative search with query variants
         for attempt, q in enumerate(queries[:_MAX_ATTEMPTS], 1):
             if q in queries_tried:
                 continue
@@ -110,6 +123,52 @@ class MemoryRecallRunner:
             if ev_status == "sufficient":
                 break
 
+        # Phase 2: window expansion around promising anchors
+        if ev_status != "sufficient":
+            seen_anchors: set[int] = set()
+            for frag in all_fragments:
+                if frag.message_id is None or len(seen_anchors) >= _MAX_WINDOWS:
+                    continue
+                anchor_id = frag.message_id
+                if anchor_id in seen_anchors:
+                    continue
+                seen_anchors.add(anchor_id)
+                anchor_message_ids.append(anchor_id)
+
+                window = read_conversation_window(
+                    anchor_id, before=_WINDOW_BEFORE, after=_WINDOW_AFTER
+                )
+                new_from_window = 0
+                for ctx in window:
+                    key = ctx.text[:120]
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    all_fragments.append(MemoryFragment(
+                        message_id=ctx.message_id,
+                        timestamp=ctx.created_at,
+                        role=ctx.role,
+                        text=ctx.text,
+                        prev=None,
+                        next=None,
+                    ))
+                    new_from_window += 1
+
+                windows_read += 1
+                ev_status, ev_confidence, ev_reason = self._evaluate_evidence(
+                    all_fragments, query
+                )
+
+                log.info(
+                    "memory_recall_window_read trace_id=%s anchor_id=%d "
+                    "window_msgs=%d new_fragments=%d ev_status=%s confidence=%.2f",
+                    trace_id, anchor_id, len(window), new_from_window,
+                    ev_status, ev_confidence,
+                )
+
+                if ev_status == "sufficient":
+                    break
+
         truncated = len(all_fragments) > _MAX_TOTAL_FRAGMENTS
         fragments = all_fragments[:_MAX_TOTAL_FRAGMENTS]
 
@@ -120,11 +179,12 @@ class MemoryRecallRunner:
         else:
             status = "not_found"
 
-        summary = self._build_summary(fragments, status)
+        summary = self._build_summary(fragments, status, windows_read)
 
         log.info(
-            "memory_recall_finished trace_id=%s status=%s confidence=%.2f fragments=%d",
-            trace_id, status, ev_confidence, len(fragments),
+            "memory_recall_finished trace_id=%s status=%s confidence=%.2f "
+            "fragments=%d windows=%d",
+            trace_id, status, ev_confidence, len(fragments), windows_read,
         )
 
         return MemoryRecallResult(
@@ -134,6 +194,8 @@ class MemoryRecallRunner:
             evidence_summary=summary,
             result_confidence=ev_confidence,
             truncated=truncated,
+            windows_read=windows_read,
+            anchor_message_ids=anchor_message_ids,
         )
 
     # ------------------------------------------------------------------
@@ -217,7 +279,13 @@ class MemoryRecallRunner:
             return "noise", avg_novel, f"avg_novel={avg_novel:.2f}_below_partial"
         return "not_found", 0.0, "no_fragments"
 
-    def _build_summary(self, fragments: list[MemoryFragment], status: str) -> str:
+    def _build_summary(
+        self,
+        fragments: list[MemoryFragment],
+        status: str,
+        windows_read: int = 0,
+    ) -> str:
         if status == "not_found":
             return "No hay evidencia suficiente para responder con seguridad."
-        return f"Se encontraron {len(fragments)} fragmento(s) relevante(s) en el historial."
+        extra = f" (ventanas: {windows_read})" if windows_read else ""
+        return f"Se encontraron {len(fragments)} fragmento(s) relevante(s) en el historial{extra}."
