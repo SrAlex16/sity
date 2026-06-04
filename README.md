@@ -88,6 +88,12 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Dataset Capture Mode: etiquetado de mensajes nuevos sin cambiar prompt ni comportamiento. Persistido en `Setting` table. Endpoints `GET/PUT /debug/dataset-capture`, `POST /debug/dataset-capture/disable`. Presets: `normal_use`, `synthetic_claude_user`, `human_guest`, `debug_test`.
 - DatasetStats backend: módulo puro de cómputo de pares user→Sity usables para LoRA. Endpoint `GET /debug/dataset-stats`. Buckets, tags y progreso hacia targets por tipo de personalidad.
 - Pestaña Dataset en el frontend: Dataset Capture (formulario con presets) + DatasetStats (cobertura, targets, desglose por source/tag, últimos pares).
+- FTS5 full-text search sobre historial (`chatmessage_fts`): content table SQLite con triggers automáticos + fallback LIKE por token para instancias sin FTS5.
+- Tool `search_conversation_history` en `BASE_TOOLSET`: siempre disponible para que el planner decida cuándo buscar en el historial.
+- `MemoryRecallRunner`: búsqueda iterativa con hasta 4 variantes de query. Evalúa calidad de evidencia por **novel token ratio** (fracción de tokens del fragmento no presentes en la query original). Para cuando hay evidencia suficiente (max_novel ≥ 0.60) o se agotan intentos. Evita falsos positivos por fragmentos que solo repiten la pregunta del usuario.
+- Contexto estructural de memoria inyectado en `planner_user_message` cada turno: `total_messages`, `visible_history_count`, `history_limit`, `long_memory_tool_available`.
+- Búsqueda proactiva de memoria cuando `n_total > history_limit`: inyecta bloque `[MEMORIA RELEVANTE]` antes de llamar al planner.
+- Filtrado de mensajes operativos en contexto prev/next de resultados de búsqueda.
 
 ### Refactor reciente
 
@@ -101,7 +107,7 @@ Módulos extraídos en `backend/app/chat/`:
   budget_snapshot.py       — cálculo de ratio/warnings tras cada llamada AI
   local_flow.py            — confirmaciones locales, IDs, ambigüedad
   pending_action_runner.py — ejecución de pending actions confirmadas
-  prompt_context.py        — historial, renderizado, filtrado operativo
+  prompt_context.py        — historial, renderizado, filtrado operativo, memoria proactiva
   response_factory.py      — helpers de construcción de ChatMessageResponse
   tool_loop_step.py        — ejecución y normalización de una sola tool call
   tool_loop_runner.py      — iteración del tool loop; devuelve ToolLoopRunOutcome
@@ -110,6 +116,16 @@ Módulos extraídos en `backend/app/chat/`:
   provider_call_runner.py  — wrapper semántico sobre AIGateway
   final_response_builder.py — cierre AI: AIUsage + snapshot + log + guard + save
   local_provider_config.py — validación y resolución del modelo Ollama local
+```
+
+Módulos de memoria (`backend/app/memory/`):
+
+```text
+  search.py   — search_conversation_history: FTS5 + LIKE fallback, filtrado operativo,
+                 prev/next context, limit clamping, text truncation
+  recall.py   — MemoryRecallRunner: búsqueda iterativa multi-query,
+                 evaluación de evidencia por novel token ratio
+  db.py       — engine SQLite compartido
 ```
 
 `routes_chat.py`: 757 → 543 líneas (−214) tras el refactor inicial; crece con nuevas features.
@@ -141,12 +157,26 @@ Pestañas disponibles: **Chat**, **Settings**, **Debug** (solo trazas), **Datase
 
 ---
 
-## Limitaciones conocidas
+## Limitaciones conocidas y bugs
 
+### Arquitectura
 - `routes_chat.py` todavía contiene la orquestación del flujo AI (planner → tool loop → after_tools) y los early returns. No hay aún `ChatOrchestrator`.
 - `ToolExecutor` todavía tiene demasiada lógica concentrada.
 - La primera llamada a Claude sigue siendo necesaria para interpretar muchas acciones.
 - `list_file_changes` puede seguir usando Claude para redactar resumen.
+- Provider Interface creada (`AITextProvider` Protocol) pero sin mover providers a `providers/` aún.
+
+### Sistema de memoria
+- La búsqueda proactiva solo se activa cuando `n_total > history_limit`. Las conversaciones cortas nunca disparan búsqueda proactiva aunque el tema sea relevante.
+- `_LIMIT_MAX = 10`: el tool puede devolver como máximo 10 resultados por llamada; para temas con mucha cobertura en el historial puede perder contexto relevante más antiguo.
+- La evaluación de novel token ratio usa solo tokens de longitud ≥ 4. Textos muy cortos o con vocabulario inusualmente breve pueden producir clasificaciones incorrectas.
+- FTS5 rebuild al arrancar es idempotente y rápido para el tamaño actual (~ms/1k mensajes), pero podría ralentizar arranque con historiales muy grandes.
+- `is_operational_guard_message` usa coincidencia textual simple; si cambian los patrones de mensajes operativos hay que actualizar la función.
+
+### Local flow
+- Si el usuario responde solo “sí”, “ok”, “vale” y no hay pending actions activas, `local_flow.py` responde localmente que no hay nada que confirmar. Puede sentirse raro en conversación normal.
+
+### Acceso a sistema
 - Sity todavía no tiene shell libre.
 - Sity no tiene acceso global a toda la Raspberry.
 - El acceso de archivos es principalmente repo-only.
@@ -154,7 +184,6 @@ Pestañas disponibles: **Chat**, **Settings**, **Debug** (solo trazas), **Datase
 - No hay confirmación múltiple real tipo “confirma todas”.
 - No hay perfiles `home-safe` o `system-careful`.
 - Cámara/audio siguen teniendo defaults específicos de Raspberry.
-- Provider Interface creada (`AITextProvider` Protocol) pero sin mover providers a `providers/` aún.
 
 ---
 
@@ -265,6 +294,7 @@ backend/app/tools/
     personality_tools.py
     propose_tools.py
     service_config_tools.py
+    memory_tools.py         — handler search_conversation_history → MemoryRecallRunner
 ```
 
 `ToolExecutor` conserva helpers privados reutilizados por algunos handlers, pero `_dispatch_tool_call` ya no contiene ramas por nombre de herramienta.
@@ -454,31 +484,55 @@ Así una confirmación pendiente sigue funcionando aunque el presupuesto esté a
 
 ## Memoria e historial
 
-Sity guarda conversación en SQLite.
+Sity guarda conversación en SQLite (tabla `chatmessage`, sesión única `"default"`).
 
-El historial enviado a Claude se construye mediante:
-
-```text
-PromptContextBuilder
-```
-
-Este módulo:
+El historial enviado a Claude se construye mediante `PromptContextBuilder` (`backend/app/chat/prompt_context.py`):
 
 ```text
-- carga recent_history
-- carga planner_history
+- carga recent_history y planner_history
 - renderiza historial
 - filtra mensajes operativos
+- inyecta contexto estructural de memoria en planner_user_message
+- ejecuta búsqueda proactiva cuando n_total > history_limit
 ```
 
-Mensajes operativos como estos no deben contaminar el contexto de Claude:
+Mensajes operativos (`Presupuesto diario de IA agotado...`, `Modo local-only activo...`) se filtran del historial enviado a Claude. Si se enviaran como historial normal, el modelo podría creerlos vigentes aunque el estado runtime haya cambiado.
+
+### FTS5 y búsqueda en historial
+
+`backend/app/memory/search.py` implementa `search_conversation_history(query, limit)`:
 
 ```text
-Modo local-only activo...
-Presupuesto diario de IA agotado...
+- tabla chatmessage_fts como content table FTS5 de chatmessage
+- 3 triggers SQLite (AFTER INSERT/DELETE/UPDATE) para sincronía automática
+- rebuild idempotente al arrancar
+- fallback a LIKE por token si FTS5 no disponible
+- operationals filtrados del match y de prev/next
+- limit clamped a [1, 10]
+- texto truncado a 1000 chars
+- prev/next context por mensaje (sin operationals)
 ```
 
-Si se envían a Claude, el modelo puede creer erróneamente que siguen vigentes aunque el estado runtime haya cambiado.
+La tool `search_conversation_history` está en `BASE_TOOLSET` (siempre disponible). El planner decide cuándo usarla.
+
+### MemoryRecallRunner
+
+`backend/app/memory/recall.py` ejecuta la búsqueda iterativa:
+
+```text
+- genera hasta 4 variantes de query algorítmicamente (no domain-specific)
+- busca con search_conversation_history en cada intento
+- deduplica fragmentos entre intentos
+- evalúa calidad de evidencia por novel token ratio
+- para cuando hay evidencia suficiente (max_novel ≥ 0.60) o se agotan intentos
+- devuelve MemoryRecallResult: status, fragments, confidence, queries_tried, truncated
+```
+
+El **novel token ratio** mide qué fracción de tokens del fragmento no están en la query original. Fragmentos que solo repiten la pregunta del usuario tienen ratio bajo; fragmentos con información nueva tienen ratio alto.
+
+### Búsqueda proactiva
+
+Cuando `n_total > history_limit`, `prompt_context.py` ejecuta búsqueda proactiva sobre el mensaje del usuario e inyecta los resultados como bloque `[MEMORIA RELEVANTE]...[FIN MEMORIA]` antes de llamar al planner.
 
 ---
 

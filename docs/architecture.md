@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-03.
+Última actualización: 2026-06-04.
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -154,12 +154,21 @@ Memoria local canónica.
 Capas:
 
 - ephemeral context;
-- session memory;
-- long-term local memory;
-- system/settings memory;
-- audit/trace memory.
+- session memory (SQLite `chatmessage`, timeline único `"default"`);
+- long-term local memory — FTS5 full-text search (`chatmessage_fts`) + MemoryRecallRunner;
+- system/settings memory (`Setting` table — dataset capture, personalidad);
+- audit/trace memory (`file_audit.jsonl`, backups, trace_id).
 
 Los modelos reciben fragmentos seleccionados; no son fuente canónica.
+
+Búsqueda de memoria implementada:
+
+- `backend/app/memory/search.py` — `search_conversation_history`: FTS5 + LIKE fallback, filtrado operativo, prev/next context.
+- `backend/app/memory/recall.py` — `MemoryRecallRunner`: búsqueda iterativa multi-query con evaluación de evidencia por novel token ratio.
+- `backend/app/chat/prompt_context.py` — inyección de contexto estructural de memoria y búsqueda proactiva.
+- `backend/app/tools/handlers/memory_tools.py` — handler `search_conversation_history` disponible en `BASE_TOOLSET`.
+
+El planner decide cuándo usar la tool. No hay listas de triggers ni detección de intención por frases.
 
 ### Trace
 

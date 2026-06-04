@@ -18,6 +18,8 @@ La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
 
 ## Módulos actuales
 
+> Última actualización: 2026-06-04.
+
 ### `budget_guard.py`
 
 Gestiona guards locales antes de llamar al proveedor IA:
@@ -164,8 +166,9 @@ recent_history
 planner_history
 renderizado de historial
 user_message_with_history
-planner_user_message
+planner_user_message (con contexto estructural de memoria)
 filtrado de mensajes operativos
+búsqueda proactiva de memoria
 ```
 
 Debe filtrar mensajes operativos como:
@@ -177,18 +180,30 @@ Presupuesto diario de IA agotado...
 
 Esos mensajes describen estados runtime antiguos. Si se mandan a Claude como historial normal, el modelo puede creer que siguen vigentes.
 
+Contexto de memoria inyectado en `planner_user_message`:
+
+```text
+Contexto estructural de memoria:
+- total_messages: N
+- visible_history_count: M
+- history_limit: K
+- long_memory_tool_available: true
+```
+
+Cuando `n_total > history_limit`, `_proactive_memory_search(message)` ejecuta búsqueda FTS5/LIKE sobre el mensaje del usuario e inyecta los resultados como bloque `[MEMORIA RELEVANTE]...[FIN MEMORIA]` antes de llamar al planner.
+
 No debe llamar a Claude, ejecutar tools, guardar mensajes ni decidir seguridad.
 
 ---
 
-### `claude_request_builder.py`
+### `ai_request_builder.py`
 
 Construye requests al provider:
 
 ```text
 AIRequest
 system prompt
-user message final
+user message final (con contexto de memoria estructural)
 tools seleccionadas
 max_tokens
 ```
@@ -382,8 +397,8 @@ budget_guard.py
 local_flow.py
 pending_action_runner.py
 toolset_selector.py
-prompt_context.py
-claude_request_builder.py
+prompt_context.py           — incluye memoria proactiva y contexto estructural
+ai_request_builder.py       — (renombrado desde claude_request_builder.py)
 response_guard.py
 artifacts.py
 ```
@@ -394,6 +409,7 @@ Tool handler registry migrado (`backend/app/tools/`):
 Todos los handlers viven en app/tools/handlers/*.py
 _dispatch_tool_call no tiene ramas if tool_name ==
 _cancel_pending_action eliminado de ToolExecutor (código muerto tras migración)
+memory_tools.py: handler search_conversation_history → MemoryRecallRunner
 ```
 
 Pendiente de extraer, pero no todavía:

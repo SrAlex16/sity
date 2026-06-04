@@ -1,12 +1,12 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-06-03.
+Última actualización: 2026-06-04.
 
 Este documento resume el estado operativo actual del proyecto y las decisiones que condicionan los siguientes pasos. No sustituye al `README.md`; sirve como foto rápida para retomar trabajo sin depender de conversaciones antiguas.
 
 ## Estado funcional
 
-Sity es una asistente local doméstica con backend FastAPI, frontend web, memoria local, personalidad parametrizable, herramientas controladas y soporte experimental para proveedores locales.
+Sity es una asistente local doméstica con backend FastAPI, frontend web, memoria local con búsqueda full-text, personalidad parametrizable, herramientas controladas y soporte experimental para proveedores locales.
 
 Principios activos:
 
@@ -20,31 +20,85 @@ Principios activos:
 
 El backend principal está en `backend/` y el frontend en `frontend/`.
 
-Estado reciente:
+Estado actual:
 
 - `ToolExecutor` migrado a registry.
 - `ToolsetSelector` estructural: evitar routing/intención con listas duras de lenguaje natural.
-- `BASE_TOOLSET` minimizado.
-- `cancel_pending_action` separado por señal estructural.
+- `BASE_TOOLSET` incluye file tools, `no_action_required` y `search_conversation_history`.
+- `cancel_pending_action` expuesto solo por señal estructural (`act_xxxxxxxx`).
 - `routes_chat.py` refactorizado en módulos de `backend/app/chat/`.
 - Frontend modularizado: shell `App.tsx`, hook `useChat`, tabs y APIs separadas.
 - AbortController añadido en frontend.
 - TimeContext añadido para que Sity pueda reaccionar al paso del tiempo por turno.
 - Provider abstraction activa mediante `AITextProvider`.
 - `OllamaProvider` implementado como chat-only, sin tools.
-- `local_provider_config.py`: `SITY_OLLAMA_MODEL` requerido explícitamente cuando `SITY_LOCAL_AI_ENABLED=true`; misconfiguration loggeada, error controlado.
-- `redact_tool_call_input`: inputs de tool calls redactados en logs (always-redact para write_file/apply_*).
+- `local_provider_config.py`: `SITY_OLLAMA_MODEL` requerido explícitamente; misconfiguration loggeada, error controlado.
+- `redact_tool_call_input`: inputs de tool calls redactados en logs.
 - Generador sintético `scripts/generate_sity_v1_with_claude_cache.py` con prompt caching explícito.
-- Metadata por mensaje en `ChatMessage`: proveniencia de hablante y contexto de captura de dataset. No se inyecta en el prompt.
-- Dataset Capture Mode: etiquetado de mensajes nuevos para dataset sin cambiar comportamiento conversacional. Persistido en `Setting` table. Endpoints `GET/PUT /debug/dataset-capture`, `POST /debug/dataset-capture/disable`.
-- DatasetStats: módulo puro de cómputo `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`. Buckets, tags y progreso hacia targets LoRA v1.
-- Pestaña Dataset en el frontend: Dataset Capture (formulario con presets) + DatasetStats (cobertura, desglose, últimos pares). Pestaña Debug separada: solo trazas y eventos recientes.
+- Metadata por mensaje en `ChatMessage`: proveniencia de hablante y contexto de captura de dataset.
+- Dataset Capture Mode: etiquetado de mensajes nuevos para dataset. Persistido en `Setting` table.
+- DatasetStats: módulo puro `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`.
+- Pestaña Dataset en el frontend: Dataset Capture + DatasetStats.
+
+## Sistema de memoria (2026-06-04)
+
+### FTS5 full-text search
+
+`backend/app/memory/search.py` — `search_conversation_history(query, limit)`:
+
+- Tabla virtual `chatmessage_fts` como content table FTS5 de `chatmessage`.
+- 3 triggers SQLite (AFTER INSERT/DELETE/UPDATE) para sincronía automática.
+- Rebuild idempotente al arrancar (necesario: COUNT en content table lee la fuente, no el índice).
+- Fallback a `_search_like_tokens` si FTS5 no disponible: búsqueda por token, no por OR literal.
+- OR queries no se envuelven en comillas en FTS5 (evita convertirlas en phrase search).
+- Mensajes operativos filtrados del match y del prev/next context.
+- `limit` clamped a `[1, 10]`. Texto truncado a 1000 chars. `message_id` expuesto en `SearchResult`.
+
+### MemoryRecallRunner
+
+`backend/app/memory/recall.py` — `MemoryRecallRunner`:
+
+- Genera hasta 4 variantes de query algorítmicamente (todo OR, longest-3 OR, primera mitad, longest-1).
+- Sin domain-specific hardcodes, sin listas de triggers.
+- Deduplica fragmentos entre intentos por prefijo de texto.
+- Evalúa evidencia por **novel token ratio**: fracción de tokens del fragmento no presentes en la query.
+  - `_NOVEL_THRESHOLD_SUFFICIENT = 0.60` → `max_novel ≥ 0.60` → status "sufficient" → "found"
+  - `_NOVEL_THRESHOLD_PARTIAL = 0.20` → `avg_novel ≥ 0.20` → "partial"
+  - Por debajo → "noise" o "not_found"
+- Para cuando `ev_status == "sufficient"` o se agotan `_MAX_ATTEMPTS = 4` intentos.
+- Evita falsos positivos por fragmentos que solo repiten la pregunta del usuario.
+
+### Tool handler
+
+`backend/app/tools/handlers/memory_tools.py` — handler `search_conversation_history`:
+
+- Llama a `MemoryRecallRunner().recall(query, trace_id)`.
+- Formatea `MemoryRecallResult` como texto legible con fragmentos, timestamps, prev/next, confidence.
+- Expuesto en `BASE_TOOLSET`: el planner decide cuándo usarlo.
+
+### Planner memory context
+
+`PromptContextBuilder` inyecta en `planner_user_message` cada turno:
+
+```text
+Contexto estructural de memoria:
+- total_messages: N
+- visible_history_count: M
+- history_limit: K
+- long_memory_tool_available: true
+```
+
+Y cuando `n_total > history_limit`, ejecuta búsqueda proactiva sobre el mensaje e inyecta bloque `[MEMORIA RELEVANTE]...[FIN MEMORIA]` antes del planner.
+
+### Tests de memoria
+
+- 24 unit tests en `tests/test_memory_recall.py` (mock de search, sin DB).
+- 13 integration tests en `scripts/test_memory_search_local.py` (DB temporal, sin Claude).
+- 630 tests totales en pytest.
 
 ## Tests
 
 La fuente principal de verdad es `pytest`.
-
-Usar:
 
 ```bash
 SITY_PROJECT_ROOT=$(pwd) backend/.venv/bin/python -m pytest -q tests/
@@ -64,6 +118,33 @@ Reglas de DB:
 - Los tests usan `SITY_DB_URL` y, cuando aplica, `SITY_TEST_DB_PATH`.
 - La integración mock usa `tests/.mock_integration.db`.
 
+## Bugs conocidos y limitaciones activas
+
+### Sistema de memoria
+
+- **Búsqueda proactiva no se activa en conversaciones cortas**: solo cuando `n_total > history_limit`. Antes de ese umbral, no se inyecta contexto de memoria aunque el tema sea relevante.
+- **`_LIMIT_MAX = 10` limita resultados**: para temas con muchas ocurrencias en el historial, puede perderse contexto relevante más antiguo.
+- **Novel token ratio con textos cortos**: fragmentos con muy pocos tokens pueden producir clasificaciones erróneas si el vocabulario coincide completamente con la query por azar.
+- **FTS5 rebuild al arrancar**: idempotente y rápido ahora (~ms/1k mensajes), pero podría ralentizar el arranque con historiales muy grandes (>100k mensajes).
+- **`is_operational_guard_message` es text-match simple**: si cambian los patrones de mensajes operativos, hay que actualizar la función manualmente.
+
+### Flujo local
+
+- **Respuesta local ante "sí"/"ok" sin pending actions**: `local_flow.py` responde localmente que no hay nada que confirmar cuando el usuario dice "sí", "ok", "vale" y no hay acciones pendientes. Puede sentirse raro en conversación casual.
+- **Confirmación exacta obligatoria**: una confirmación casi correcta (`confirmo ejecutar act_12345678\`` con backtick al final) se bloquea localmente y no llega a Claude. Es el comportamiento correcto pero puede confundir al usuario.
+
+### Arquitectura
+
+- **`routes_chat.py` aún contiene el tool loop**: no se ha extraído porque requiere diseño previo y tests de integración. Ver `backend/app/chat/README.md`.
+- **Sin `ChatOrchestrator`**: el endpoint `/chat/message` sigue siendo relativamente largo.
+- **No hay perfiles `home-safe` o `system-careful`**: acceso de archivos es solo `repo-only`.
+- **Multiarchivo no es transaccional**: si una ruta de un plan multiarchivo falla, las demás pueden haber aplicado.
+
+### Local AI
+
+- **`SITY_LOCAL_AI_ENABLED` permanece `false` en producción**: no hay aún un adapter LoRA de calidad suficiente para uso diario.
+- **Ollama en Raspberry es solo para emergencias**: la Pi no tiene potencia para servir LLMs útiles en tiempo real.
+
 ## Ollama y modelos locales
 
 Ollama queda como motor experimental/local.
@@ -71,7 +152,6 @@ Ollama queda como motor experimental/local.
 Conclusiones actuales:
 
 - Raspberry Pi no sirve como motor LLM principal.
-- Ollama en Raspberry queda para emergencia o experimentos.
 - El PC debe actuar como Local AI Worker en LAN.
 - Raspberry se mantiene como orquestador/backend/tools/pantalla.
 
@@ -79,26 +159,12 @@ Reglas importantes:
 
 - No activar routing híbrido sin medir modelos.
 - No usar `SITY_AI_PROVIDER=ollama` para flujo con tools/planner.
-- Para local chat, usar `SITY_LOCAL_AI_ENABLED=true` + `SITY_LOCAL_AI_PROVIDER=ollama`, cuando toque.
+- Para local chat, usar `SITY_LOCAL_AI_ENABLED=true` + `SITY_LOCAL_AI_PROVIDER=ollama`.
 - Tools y acciones siguen pasando por provider cloud/flujo seguro.
-
-El diagnóstico manual de modelos vive en:
-
-```text
-scripts/diag_ollama_models.py
-```
-
-Resultados locales en:
-
-```text
-reports/ollama/
-```
-
-`reports/` está ignorado por git.
 
 ## Modelo de datos: timeline única
 
-Sity usa un único timeline continuo (`DEFAULT_CHAT_SESSION_ID = "default"`). No hay sesiones separadas por modo, usuario o captura. La separación semántica para dataset se hace mediante **metadata por mensaje** en `ChatMessage`:
+Sity usa un único timeline continuo (`DEFAULT_CHAT_SESSION_ID = "default"`). La separación semántica para dataset se hace mediante **metadata por mensaje** en `ChatMessage`:
 
 - `tone_meta`: snapshot de personalidad en cada respuesta de Sity.
 - `dataset_source`, `dataset_eligible`, `dataset_tags_json`: proveniencia y elegibilidad para training.
@@ -109,10 +175,6 @@ Esta metadata no se inyecta en el prompt de Sity. Es invisible para el modelo en
 ## Dataset v1 — en captura activa
 
 Las conversaciones para dataset v1 se capturan desde **2026-05-31T20:09:13+02:00**. Los bugs de voseo y continuidad conversacional estaban corregidos antes de esa marca.
-
-La pestaña Dataset del frontend muestra en tiempo real el progreso de captura hacia los targets LoRA v1.
-
-Para sesiones con Claude-extension (`multi_persona`): activar preset `synthetic_claude_user` en Dataset Capture antes de iniciar, desactivar al terminar.
 
 Para exportar candidatos del timeline real:
 
@@ -127,49 +189,26 @@ Ver flujo completo: `docs/operations/dataset-capture.md`.
 
 ## Fine-tuning / LoRA
 
-Se validó pipeline LoRA en WSL con:
+Pipeline LoRA validado en WSL con `google/gemma-3-4b-it`, Unsloth, RTX 3060 Ti 8 GB.
 
-- WSL + Python venv `~/venv`.
-- Hugging Face login correcto.
-- Modelo gated de Google aceptado y accesible.
-- `google/gemma-3-4b-it` descargado en `~/models/hf/google-gemma-3-4b-it`.
-- RTX 3060 Ti visible desde WSL.
-- PyTorch CUDA OK.
-- Unsloth OK.
-- Entrenamiento LoRA smoke OK.
-- Entrenamiento LoRA overfit OK.
-- Inferencia con adapter OK.
+Resultado:
 
-Resultado validado:
-
-- Gemma 3 4B IT carga en 4-bit.
-- LoRA entrena en RTX 3060 Ti 8 GB.
-- El adapter puede modificar conducta.
-- El overfit logró identidad `Sity`, femenino gramatical y rechazo a tools inventadas.
-
-Esto no significa que exista aún un modelo Sity de calidad. Solo significa que el pipeline técnico es viable.
+- Carga en 4-bit OK, LoRA entrena en RTX 3060 Ti 8 GB.
+- Overfit logró identidad Sity, femenino gramatical y rechazo a tools inventadas.
+- No significa que exista aún un modelo Sity de calidad para uso diario.
 
 ## Qué no hacer todavía
 
-- No activar ChatRoutingDecision nuevo para local AI sin medir modelos.
+- No activar `SITY_LOCAL_AI_ENABLED=true` en producción sin adapter validado.
 - No tocar runtime backend para usar LoRA.
 - No subir `training/output/` a git.
 - No subir modelos descargados de Hugging Face.
-- No subir `unsloth_compiled_cache/`.
-- No convertir todavía el adapter a formato de serving hasta definir dataset v0.1.
+- No tocar Dataset tab / LoRA / embeddings / frontend salvo que sea imprescindible.
 
-## Próximo paso recomendado
+## Próximos pasos recomendados
 
-### Dataset v1 — en captura
-
-El generador sintético (`scripts/generate_sity_v1_with_claude_cache.py`) está disponible para completar buckets con poca cobertura real. Revisión manual obligatoria antes de incorporar al training set.
-
-### Cuándo activar hybrid local
-
-No activar `SITY_LOCAL_AI_ENABLED=true` en producción hasta que:
-- Exista un adapter LoRA validado con calidad Sity real (no solo overfit).
-- Se haya medido el modelo fine-tuned con `scripts/diag_ollama_models.py`.
-- `SITY_OLLAMA_MODEL` esté configurado explícitamente en el entorno.
-
-El provider cloud (Anthropic) sigue siendo el provider estable para tools y acciones.
-
+1. **Completar dataset v1**: captura de conversaciones reales + generación sintética para buckets con poca cobertura.
+2. **Fine-tune LoRA v1**: cuando dataset v1 tenga ≥ 80 ejemplos de calidad.
+3. **Validar modelo fine-tuned**: medir con `scripts/diag_ollama_models.py`, comparar con gemma3:4b-it-qat base.
+4. **Activar hybrid local**: solo cuando el modelo fine-tuned pase validación de calidad Sity.
+5. **ChatOrchestrator**: extraer orquestación de `routes_chat.py` cuando haya tests de integración suficientes.

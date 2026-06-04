@@ -1,6 +1,6 @@
 # Flujo de desarrollo y despliegue
 
-Última actualización: 2026-05-30.
+Última actualización: 2026-06-04.
 
 ## Entornos
 
