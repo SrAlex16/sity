@@ -90,6 +90,8 @@ class OllamaProvider:
         messages: list[dict[str, str]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
+        for m in request.prior_messages:
+            messages.append({"role": m["role"], "content": m["content"]})
         messages.append({"role": "user", "content": request.user_message})
 
         payload = {"model": model, "messages": messages, "stream": False}

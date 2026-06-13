@@ -8,17 +8,6 @@ from app.cortex.schemas import AIRequest, AIResponse, AIToolCall, AIUsageData
 
 _ACTION_ID_RE = re.compile(r"\bact_[a-fA-F0-9]{8}\b")
 
-# Separator injected by PromptContextBuilder.with_history when history is present.
-_CURRENT_MSG_MARKER = "Mensaje actual del usuario:"
-
-
-def _extract_current_message(planner_message: str) -> str:
-    """Return only the current user turn from a planner context string."""
-    idx = planner_message.rfind(_CURRENT_MSG_MARKER)
-    if idx >= 0:
-        return planner_message[idx + len(_CURRENT_MSG_MARKER):].strip()
-    return planner_message
-
 
 def _find_tool_name(text: str) -> str | None:
     """Return the rightmost known tool name that appears verbatim in text."""
@@ -79,8 +68,7 @@ class MockProvider:
         self.model = model
 
     def generate(self, request: AIRequest) -> AIResponse:
-        current = _extract_current_message(request.user_message)
-        tool_name = _find_tool_name(current)
+        tool_name = _find_tool_name(request.user_message)
 
         if tool_name and tool_name != "no_action_required":
             return AIResponse(
@@ -93,7 +81,7 @@ class MockProvider:
                 tool_calls=[AIToolCall(
                     id=f"mock_{uuid.uuid4().hex[:12]}",
                     name=tool_name,
-                    input=_build_tool_input(tool_name, current),
+                    input=_build_tool_input(tool_name, request.user_message),
                 )],
             )
 

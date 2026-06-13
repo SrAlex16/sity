@@ -1,8 +1,8 @@
 """Tests for PersonaEngine.build_local_persona_prompt.
 
 Invariants:
-1. No archetype labels visible to the model ("tsundere", "rolea", "personaje", "lore").
-2. Behavioral translation of reserva afectiva / afecto indirecto for high tsundere.
+1. No archetype labels visible to the model ("rolea", "personaje", "lore").
+2. Behavioral translation of reserva afectiva / afecto indirecto for high frialdad_afectiva.
 3. Slider controls are internal — explicit rule in the prompt.
 4. Provider context — local/offline capability stated clearly.
 5. Identity, grammar rules, safety rule present.
@@ -27,18 +27,18 @@ def engine() -> PersonaEngine:
 
 @pytest.fixture(scope="module")
 def default_local_prompt(engine: PersonaEngine) -> str:
-    """Prompt with default personality values (tsundere_level=0.75 → high)."""
+    """Prompt with default personality values (frialdad_afectiva_level=0.75 → high)."""
     return engine.build_local_persona_prompt({}, "hola")
 
 
 @pytest.fixture(scope="module")
-def high_tsundere_prompt(engine: PersonaEngine) -> str:
-    return engine.build_local_persona_prompt({"tsundere_level": 0.9}, "hola")
+def high_frialdad_afectiva_prompt(engine: PersonaEngine) -> str:
+    return engine.build_local_persona_prompt({"frialdad_afectiva_level": 0.9}, "hola")
 
 
 @pytest.fixture(scope="module")
-def low_tsundere_prompt(engine: PersonaEngine) -> str:
-    return engine.build_local_persona_prompt({"tsundere_level": 0.1}, "hola")
+def low_frialdad_afectiva_prompt(engine: PersonaEngine) -> str:
+    return engine.build_local_persona_prompt({"frialdad_afectiva_level": 0.1}, "hola")
 
 
 # ---------------------------------------------------------------------------
@@ -51,12 +51,12 @@ def test_no_tsundere_label_default(default_local_prompt: str) -> None:
     )
 
 
-def test_no_tsundere_label_high(high_tsundere_prompt: str) -> None:
-    assert "tsundere" not in high_tsundere_prompt.lower()
+def test_no_tsundere_label_high(high_frialdad_afectiva_prompt: str) -> None:
+    assert "tsundere" not in high_frialdad_afectiva_prompt.lower()
 
 
-def test_no_tsundere_label_low(low_tsundere_prompt: str) -> None:
-    assert "tsundere" not in low_tsundere_prompt.lower()
+def test_no_tsundere_label_low(low_frialdad_afectiva_prompt: str) -> None:
+    assert "tsundere" not in low_frialdad_afectiva_prompt.lower()
 
 
 @pytest.mark.parametrize("term", ["rolea", "roleplay", "personaje", "lore", "actúa como"])
@@ -67,12 +67,11 @@ def test_no_roleplay_framing(default_local_prompt: str, term: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Behavioral translation of reserva afectiva (tsundere slider)
+# 2. Behavioral translation of reserva afectiva (frialdad_afectiva slider)
 # ---------------------------------------------------------------------------
 
-def test_high_tsundere_behavioral_description(high_tsundere_prompt: str) -> None:
-    """High tsundere → behavioral traits, not the label."""
-    # At least one of the behavioral markers should be present
+def test_high_frialdad_afectiva_behavioral_description(high_frialdad_afectiva_prompt: str) -> None:
+    """High frialdad_afectiva → behavioral traits, not the label."""
     behavioral_markers = [
         "seca",
         "indirecta",
@@ -82,19 +81,19 @@ def test_high_tsundere_behavioral_description(high_tsundere_prompt: str) -> None
         "sentimentalismo",
         "sequedad",
     ]
-    found = [m for m in behavioral_markers if m in high_tsundere_prompt.lower()]
+    found = [m for m in behavioral_markers if m in high_frialdad_afectiva_prompt.lower()]
     assert found, (
-        f"Expected behavioral description of indirect affection for tsundere=0.9, "
+        f"Expected behavioral description of indirect affection for frialdad_afectiva=0.9, "
         f"none of {behavioral_markers!r} found in prompt"
     )
 
 
-def test_low_tsundere_open_warmth(low_tsundere_prompt: str) -> None:
-    """Low tsundere → can show closeness naturally."""
+def test_low_frialdad_afectiva_open_warmth(low_frialdad_afectiva_prompt: str) -> None:
+    """Low frialdad_afectiva → can show closeness naturally."""
     warmth_markers = ["cercanía", "naturalidad", "natural", "cuidado"]
-    found = [m for m in warmth_markers if m in low_tsundere_prompt.lower()]
+    found = [m for m in warmth_markers if m in low_frialdad_afectiva_prompt.lower()]
     assert found, (
-        f"Expected open-warmth description for tsundere=0.1, "
+        f"Expected open-warmth description for frialdad_afectiva=0.1, "
         f"none of {warmth_markers!r} found"
     )
 

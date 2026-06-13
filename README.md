@@ -144,7 +144,7 @@ frontend/src/
   hooks/useChat.ts        — estado y ciclo de vida del chat
   components/
     ChatTab.tsx           — presentacional
-    SettingsTab.tsx       — presentacional
+    PersonalityTab.tsx    — presentacional
     DebugTab.tsx          — trazas SSE y eventos recientes
     DatasetTab.tsx        — Dataset Capture + DatasetStats
   api/
@@ -872,7 +872,7 @@ warmth_level
 honesty_level
 initiative_level
 dry_humor_level
-tsundere_level
+frialdad_afectiva_level
 contrarian_level
 patience_level
 refusal_chance

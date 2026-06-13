@@ -70,10 +70,12 @@ def _make_getter(msgs: list[_Msg]):
 # 1. history_limit_for_message — regression on default value
 # ---------------------------------------------------------------------------
 
-def test_history_limit_default_is_at_least_ten() -> None:
-    """Default limit must cover at least 5 turns (10 messages)."""
+def test_history_limit_default_matches_config() -> None:
+    """Default limit must come from tokens.max_recent_turns in config (currently 4)."""
+    from app.settings.config_loader import load_default_config
+    base = int(load_default_config().get("tokens", {}).get("max_recent_turns", 4))
     limit = history_limit_for_message("qué opinas de esto?")
-    assert limit >= 10, f"Default history limit too low: {limit} (expected >= 10)"
+    assert limit == base, f"Default history limit {limit} doesn't match config base {base}"
 
 
 def test_history_limit_single_action_stays_small() -> None:
@@ -113,8 +115,7 @@ def test_multi_topic_history_includes_anime_and_music() -> None:
     Regression test for the continuity bug.
 
     Given a 10-message conversation (anime, music, fine-tuning in that order),
-    the context built for the next message must contain both 'anime' and 'música'
-    regardless of what the last few messages were about.
+    prior_messages must contain all topics regardless of what the last turns covered.
     """
     msgs = _make_conversation()
     builder = PromptContextBuilder(get_recent_messages=_make_getter(msgs))
@@ -122,23 +123,24 @@ def test_multi_topic_history_includes_anime_and_music() -> None:
     ctx = builder.build(
         session=None,
         message="¿de qué temas hemos hablado?",
-        history_limit=10,       # the new default
+        history_limit=10,
         planner_history_limit=4,
     )
 
-    assert "anime" in ctx.user_message_with_history, (
-        "Topic 'anime' missing from injected history — continuity bug not fixed"
+    all_prior = " ".join(m["content"] for m in ctx.prior_messages)
+    assert "anime" in all_prior, (
+        "Topic 'anime' missing from prior_messages — continuity bug not fixed"
     )
-    assert "música" in ctx.user_message_with_history, (
-        "Topic 'música' missing from injected history — continuity bug not fixed"
+    assert "música" in all_prior, (
+        "Topic 'música' missing from prior_messages — continuity bug not fixed"
     )
-    assert "fine-tuning" in ctx.user_message_with_history
+    assert "fine-tuning" in all_prior
 
 
-def test_old_limit_4_would_miss_anime() -> None:
+def test_small_limit_misses_early_topics() -> None:
     """
-    Documents the pre-fix behavior: limit=4 drops anime from context.
-    This test must PASS (documenting the broken state with limit=4).
+    With limit=4, only the 4 most recent messages go into prior_messages —
+    topics from 5+ turns ago are absent and require search_conversation_history.
     """
     msgs = _make_conversation()
     builder = PromptContextBuilder(get_recent_messages=_make_getter(msgs))
@@ -146,18 +148,18 @@ def test_old_limit_4_would_miss_anime() -> None:
     ctx = builder.build(
         session=None,
         message="¿de qué temas hemos hablado?",
-        history_limit=4,        # old broken default
+        history_limit=4,
         planner_history_limit=4,
     )
 
-    # With limit=4, only the last 4 messages (fine-tuning turns) are injected.
-    assert "anime" not in ctx.user_message_with_history, (
-        "Expected anime to be absent with limit=4 — this documents the bug"
+    all_prior = " ".join(m["content"] for m in ctx.prior_messages)
+    assert "anime" not in all_prior, (
+        "Expected anime to be absent from prior_messages with limit=4"
     )
 
 
 def test_history_injects_in_chronological_order() -> None:
-    """History must arrive oldest-first so the model sees the natural flow."""
+    """prior_messages must be ordered oldest-first so the model sees the natural flow."""
     msgs = _make_conversation()
     builder = PromptContextBuilder(get_recent_messages=_make_getter(msgs))
 
@@ -168,12 +170,12 @@ def test_history_injects_in_chronological_order() -> None:
         planner_history_limit=4,
     )
 
-    history_text = ctx.user_message_with_history
-    idx_anime = history_text.find("anime")
-    idx_finetuning = history_text.find("fine-tuning")
+    all_prior = " ".join(m["content"] for m in ctx.prior_messages)
+    idx_anime = all_prior.find("anime")
+    idx_finetuning = all_prior.find("fine-tuning")
 
     assert idx_anime < idx_finetuning, (
-        "anime should appear before fine-tuning in the injected history "
+        "anime should appear before fine-tuning in prior_messages "
         f"(anime at {idx_anime}, fine-tuning at {idx_finetuning})"
     )
 
@@ -210,7 +212,8 @@ def test_operational_messages_are_filtered() -> None:
         planner_history_limit=4,
     )
 
-    assert "Presupuesto diario" not in ctx.user_message_with_history
+    all_prior = " ".join(m["content"] for m in ctx.prior_messages)
+    assert "Presupuesto diario" not in all_prior
 
 
 def test_empty_history_builds_without_error() -> None:

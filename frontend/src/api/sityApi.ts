@@ -6,7 +6,7 @@ export type PersonalitySettings = {
   initiative_level: number;
   
   dry_humor_level: number;
-  tsundere_level: number;
+  frialdad_afectiva_level: number;
   contrarian_level: number;
   patience_level: number;
   refusal_chance: number;
@@ -60,6 +60,18 @@ export async function adjustPersonality(
 
   if (!response.ok) {
     throw new Error(`Failed to adjust personality: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function resetPersonality(): Promise<PersonalitySettings> {
+  const response = await fetch(`${API_BASE}/settings/personality/reset`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to reset personality: ${response.status}`);
   }
 
   return response.json();

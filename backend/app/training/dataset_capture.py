@@ -29,6 +29,7 @@ class DatasetCaptureContext:
     dataset_eligible: bool = True
     dataset_tags: list[str] = field(default_factory=list)
     updated_at: Optional[str] = None
+    demo_start_at: Optional[str] = None
 
 
 def _ctx_to_dict(ctx: DatasetCaptureContext) -> dict[str, Any]:
@@ -41,6 +42,7 @@ def _ctx_to_dict(ctx: DatasetCaptureContext) -> dict[str, Any]:
         "dataset_eligible": ctx.dataset_eligible,
         "dataset_tags": ctx.dataset_tags,
         "updated_at": ctx.updated_at,
+        "demo_start_at": ctx.demo_start_at,
     }
 
 
@@ -69,6 +71,7 @@ class DatasetCaptureService:
             dataset_eligible=bool(raw.get("dataset_eligible", True)),
             dataset_tags=list(raw.get("dataset_tags") or []),
             updated_at=raw.get("updated_at"),
+            demo_start_at=raw.get("demo_start_at"),
         )
 
     def save(self, ctx: DatasetCaptureContext) -> None:
@@ -105,6 +108,7 @@ class DatasetCaptureService:
             speaker_confidence=ctx.speaker_confidence,
             dataset_eligible=ctx.dataset_eligible,
             dataset_tags=ctx.dataset_tags,
+            demo_start_at=None,
         )
         self.save(disabled)
         return self.get()

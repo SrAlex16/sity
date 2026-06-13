@@ -296,3 +296,14 @@ def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list
                 break
 
     return results
+
+
+def rebuild_fts() -> None:
+    """Force a full rebuild of the FTS5 index. Call after bulk deletes."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(sa_text("INSERT INTO chatmessage_fts(chatmessage_fts) VALUES ('rebuild')"))
+            conn.commit()
+        log.info("FTS5 chatmessage_fts rebuilt (on-demand)")
+    except Exception as exc:
+        log.warning("FTS5 on-demand rebuild failed: %s", exc)

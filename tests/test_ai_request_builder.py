@@ -129,3 +129,13 @@ def test_after_tools_request_with_tools_kwarg() -> None:
         max_tokens=700, tools=fake_tools,
     )
     assert req.tools == fake_tools
+
+
+def test_after_tools_prompt_contains_memory_rules() -> None:
+    req = build_after_tools_ai_request(
+        trace_id="t", persona_prompt="Eres Sity.", user_message="x", max_tokens=700,
+    )
+    assert "search_conversation_history" in req.system_prompt
+    assert "evidencia interna" in req.system_prompt
+    assert "no narres" in req.system_prompt.lower() or "no narr" in req.system_prompt.lower()
+    assert "fragmento" in req.system_prompt

@@ -12,6 +12,7 @@ class AIRequest(BaseModel):
     tools_enabled: bool = True
     tool_choice: dict[str, Any] | None = None
     tools: list[dict[str, Any]] | None = None
+    prior_messages: list[dict[str, Any]] = []
 
 
 class AIUsageData(BaseModel):

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   adjustPersonality,
   getPersonality,
+  resetPersonality,
   type PersonalitySettings,
 } from "./api/sityApi";
 import {
@@ -18,12 +19,12 @@ import {
 } from "./api/debugApi";
 import { useChat } from "./hooks/useChat";
 import { ChatTab } from "./components/ChatTab";
-import { SettingsTab } from "./components/SettingsTab";
+import { PersonalityTab } from "./components/PersonalityTab";
 import { DebugTab } from "./components/DebugTab";
 import { DatasetTab } from "./components/DatasetTab";
 import "./App.css";
 
-type Tab = "chat" | "settings" | "debug" | "dataset";
+type Tab = "chat" | "personality" | "debug" | "dataset";
 
 function App() {
   const [tab, setTab] = useState<Tab>("chat");
@@ -73,7 +74,7 @@ function App() {
       ((personality.sarcasm_level +
         personality.rudeness_level +
         personality.dry_humor_level +
-        personality.tsundere_level +
+        personality.frialdad_afectiva_level +
         personality.contrarian_level) /
         5) *
         100,
@@ -90,6 +91,21 @@ function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
       setMessage("No he podido cargar mi personalidad. Qué forma tan elegante de empezar.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function restorePersonalityToDefaults() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await resetPersonality();
+      setPersonality(data);
+      setMessage("Valores canónicos restaurados. Sigues siendo igual de impredecible.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido");
+      setMessage("No he podido restaurar los valores. Para variar.");
     } finally {
       setLoading(false);
     }
@@ -205,13 +221,13 @@ function App() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            {(["chat", "settings", "debug", "dataset"] as Tab[]).map((item) => (
+            {(["chat", "personality", "debug", "dataset"] as Tab[]).map((item) => (
               <button
                 key={item}
                 onClick={() => {
                   setTab(item);
                   if (item === "chat") window.setTimeout(() => scrollChatToBottom("auto"), 50);
-                  if (item === "settings") refreshPersonality();
+                  if (item === "personality") refreshPersonality();
                   if (item === "debug") refreshTrace();
                   if (item === "dataset") refreshDataset();
                 }}
@@ -244,8 +260,8 @@ function App() {
           />
         )}
 
-        {tab === "settings" && (
-          <SettingsTab
+        {tab === "personality" && (
+          <PersonalityTab
             personality={personality}
             averageEdge={averageEdge}
             message={message}
@@ -253,6 +269,7 @@ function App() {
             loading={loading}
             savingKey={savingKey}
             onReload={refreshPersonality}
+            onRestoreDefaults={restorePersonalityToDefaults}
             onSliderChange={(key, value) =>
               setPersonality((cur) => (cur ? { ...cur, [key]: value } : cur))
             }
@@ -280,6 +297,7 @@ function App() {
             datasetCaptureError={datasetCaptureError}
             onSaveDatasetCapture={saveDatasetCapture}
             onDisableDatasetCapture={disableDatasetCaptureAsync}
+            onRestorePersonality={restorePersonalityToDefaults}
             onRefresh={refreshDataset}
           />
         )}

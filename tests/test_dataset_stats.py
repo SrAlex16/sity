@@ -171,10 +171,10 @@ def test_melancholy_high_tag() -> None:
     assert "melancholy_high" in tags
 
 
-def test_tsundere_high_tag() -> None:
-    tone = dict(BASE_VECTOR, tsundere=0.60)
+def test_frialdad_afectiva_high_tag() -> None:
+    tone = dict(BASE_VECTOR, frialdad_afectiva=0.60)
     tags = _compute_tags(tone, "normal_use", None)
-    assert "tsundere_high" in tags
+    assert "frialdad_afectiva_high" in tags
 
 
 def test_contrarian_high_tag() -> None:
@@ -197,7 +197,7 @@ def test_multi_persona_from_dataset_tags_json() -> None:
 def test_base_vector_no_variation_tags() -> None:
     tags = _compute_tags(BASE_VECTOR, "normal_use", None)
     variation_tags = {"sarcasm_high", "rudeness_high", "warmth_high",
-                      "brief", "melancholy_high", "tsundere_high",
+                      "brief", "melancholy_high", "frialdad_afectiva_high",
                       "contrarian_high", "multi_persona"}
     assert not variation_tags.intersection(tags)
 

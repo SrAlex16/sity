@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
 from sqlmodel import Session, select
@@ -13,6 +15,7 @@ from app.trace.trace_reader import (
 )
 from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureService
 from app.training.dataset_stats import compute_dataset_stats
+from app.training.demo_cleanup import run_demo_cleanup
 
 
 router = APIRouter(prefix="/debug", tags=["debug"])
@@ -62,7 +65,12 @@ def _ctx_to_response(ctx: DatasetCaptureContext) -> dict:
         "dataset_eligible": ctx.dataset_eligible,
         "dataset_tags": ctx.dataset_tags,
         "updated_at": ctx.updated_at,
+        "demo_start_at": ctx.demo_start_at,
     }
+
+
+def _is_demo_active(ctx: DatasetCaptureContext) -> bool:
+    return ctx.enabled and ctx.dataset_source == "demo_session"
 
 
 @router.get("/events/recent", response_model=RecentEventsResponse)
@@ -100,7 +108,32 @@ def put_dataset_capture(
     body: DatasetCaptureRequest,
     session: Session = Depends(get_session),
 ):
-    """Persist a new dataset capture context."""
+    """Persist a new dataset capture context.
+
+    Transitions out of demo_session trigger export + cleanup before saving.
+    Transitioning into demo_session records demo_start_at automatically.
+    """
+    svc = DatasetCaptureService(session)
+    old_ctx = svc.get()
+
+    activating_demo = body.enabled and body.dataset_source == "demo_session"
+    was_demo_active = _is_demo_active(old_ctx)
+    deactivating_demo = was_demo_active and (not body.enabled or body.dataset_source != "demo_session")
+
+    # Cleanup first — export then delete — before saving the new context
+    if deactivating_demo and old_ctx.demo_start_at:
+        result = run_demo_cleanup(old_ctx.demo_start_at)
+        if result.error:
+            raise HTTPException(status_code=500, detail=f"Demo cleanup failed: {result.error}")
+
+    # Determine demo_start_at for the new context
+    if activating_demo and not was_demo_active:
+        new_demo_start_at: Optional[str] = datetime.now(timezone.utc).isoformat()
+    elif activating_demo and was_demo_active:
+        new_demo_start_at = old_ctx.demo_start_at  # preserve — user re-saved without leaving demo
+    else:
+        new_demo_start_at = None
+
     ctx = DatasetCaptureContext(
         enabled=body.enabled,
         dataset_source=body.dataset_source,
@@ -109,16 +142,24 @@ def put_dataset_capture(
         speaker_confidence=body.speaker_confidence,
         dataset_eligible=body.dataset_eligible,
         dataset_tags=body.dataset_tags,
+        demo_start_at=new_demo_start_at,
     )
-    svc = DatasetCaptureService(session)
     svc.save(ctx)
     return _ctx_to_response(svc.get())
 
 
 @router.post("/dataset-capture/disable")
 def disable_dataset_capture(session: Session = Depends(get_session)):
-    """Disable capture mode while preserving the remaining context fields."""
-    ctx = DatasetCaptureService(session).disable()
+    """Disable capture mode. Triggers demo cleanup if demo_session was active."""
+    svc = DatasetCaptureService(session)
+    old_ctx = svc.get()
+
+    if _is_demo_active(old_ctx) and old_ctx.demo_start_at:
+        result = run_demo_cleanup(old_ctx.demo_start_at)
+        if result.error:
+            raise HTTPException(status_code=500, detail=f"Demo cleanup failed: {result.error}")
+
+    ctx = svc.disable()  # clears demo_start_at internally
     return _ctx_to_response(ctx)
 
 

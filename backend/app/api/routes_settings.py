@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
 from app.memory.db import get_session
-from app.settings.schemas import PersonalityAdjustRequest, PersonalityAdjustResponse
+from app.settings.schemas import PersonalityAdjustRequest, PersonalityAdjustResponse, PersonalitySettings
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
 
@@ -81,3 +81,10 @@ def adjust_personality(
         new_value=new_value,
         message=message,
     )
+
+
+@router.post("/personality/reset", response_model=PersonalitySettings)
+def reset_personality(session: Session = Depends(get_session)):
+    """Restore all personality parameters to canonical values."""
+    service = SettingsService(session)
+    return service.reset_personality(source="ui")

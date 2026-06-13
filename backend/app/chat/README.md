@@ -18,7 +18,7 @@ La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
 
 ## Módulos actuales
 
-> Última actualización: 2026-06-04.
+> Última actualización: 2026-06-13.
 
 ### `budget_guard.py`
 
@@ -95,6 +95,19 @@ detección conservadora de señales técnicas
 
 Esto no es NLU de acciones.
 
+#### `history_limit_for_message`
+
+Devuelve el número de turnos de historial a incluir en el contexto. Lee el valor base `tokens.max_recent_turns` desde `default_config.yaml` (actualmente 4) y aplica multiplicadores proporcionales:
+
+```text
+single_action   → base     (reinicia, saca foto, …)
+context_heavy   → base × 5 (hemos hablado, recuerdas, mencionaste, …)
+technical       → base × 2 (código, fichero, configuración, …)
+default         → base
+```
+
+El control del gasto de historial es exclusivamente desde la config, sin literales hardcodeados de valores absolutos.
+
 #### Dos capas de selección
 
 **1. Estructural** — `select_structural_toolsets_for_message`:
@@ -159,17 +172,23 @@ NLU de acciones en backend no.
 
 ### `prompt_context.py`
 
-Construye contexto textual para el proveedor IA:
+Construye el contexto para el proveedor IA:
 
 ```text
-recent_history
-planner_history
-renderizado de historial
-user_message_with_history
-planner_user_message (con contexto estructural de memoria)
+prior_messages            — historial estructurado como lista de dicts {role, content}
+planner_prior_messages    — ventana compacta de historial para el planner
+user_message_with_history — mensaje actual del usuario (tiempo + memoria estructural)
+planner_user_message      — mensaje para el planner (con contexto estructural de memoria)
 filtrado de mensajes operativos
-búsqueda proactiva de memoria
 ```
+
+El historial se expone como `prior_messages: list[dict]`, no como texto concatenado. Esto permite que el proveedor IA reciba los turnos anteriores como mensajes separados en el array `messages`:
+
+```python
+messages = [*prior_messages, {"role": "user", "content": user_message}]
+```
+
+Turnos consecutivos del mismo rol se fusionan con `\n` para cumplir el contrato `user/assistant` alternante de la API.
 
 Debe filtrar mensajes operativos como:
 
@@ -190,7 +209,7 @@ Contexto estructural de memoria:
 - long_memory_tool_available: true
 ```
 
-Cuando `n_total > history_limit`, `_proactive_memory_search(message)` ejecuta búsqueda FTS5/LIKE sobre el mensaje del usuario e inyecta los resultados como bloque `[MEMORIA RELEVANTE]...[FIN MEMORIA]` antes de llamar al planner.
+No hay búsqueda proactiva. La búsqueda de memoria es on-demand: el modelo llama a `search_conversation_history` cuando lo necesita.
 
 No debe llamar a Claude, ejecutar tools, guardar mensajes ni decidir seguridad.
 
@@ -204,9 +223,12 @@ Construye requests al provider:
 AIRequest
 system prompt
 user message final (con contexto de memoria estructural)
+prior_messages (historial estructurado, lista de dicts {role, content})
 tools seleccionadas
 max_tokens
 ```
+
+`prior_messages` es opcional (por defecto `[]`). Los cuatro builders (`build_chat_ai_request`, `build_planner_ai_request`, `build_forced_search_request`, `build_after_tools_ai_request`) lo aceptan y lo pasan al `AIRequest`.
 
 Debe ser side-effect-free.
 
@@ -397,7 +419,7 @@ budget_guard.py
 local_flow.py
 pending_action_runner.py
 toolset_selector.py
-prompt_context.py           — incluye memoria proactiva y contexto estructural
+prompt_context.py           — historial estructurado (prior_messages) + contexto de memoria estructural; sin búsqueda proactiva
 ai_request_builder.py       — (renombrado desde claude_request_builder.py)
 response_guard.py
 artifacts.py

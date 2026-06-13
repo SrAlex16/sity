@@ -356,12 +356,15 @@ def _chat_message_inner(
         message=request.message,
         history_limit=history_limit,
         planner_history_limit=4,
+        trace_id=trace_id,
     )
 
     recent_history = prompt_context.recent_history
     planner_history = prompt_context.planner_history
     user_message_with_history = prompt_context.user_message_with_history
     planner_user_message = prompt_context.planner_user_message
+    prior_messages = prompt_context.prior_messages
+    planner_prior_messages = prompt_context.planner_prior_messages
 
     write_log(
         level="INFO",
@@ -457,6 +460,7 @@ def _chat_message_inner(
                 persona_prompt=local_persona_prompt,
                 user_message=user_message_with_history,
                 max_tokens=max_tokens,
+                prior_messages=prior_messages,
             )
         )
     else:
@@ -465,6 +469,7 @@ def _chat_message_inner(
             trace_id=trace_id,
             user_message=planner_user_message,
             tools=selected_tools,
+            prior_messages=planner_prior_messages,
         )
 
         write_log(
@@ -513,6 +518,7 @@ def _chat_message_inner(
                     persona_prompt=persona_prompt,
                     user_message=user_message_with_history,
                     max_tokens=max_tokens,
+                    prior_messages=prior_messages,
                 )
             )
 
@@ -530,6 +536,7 @@ def _chat_message_inner(
                         trace_id=trace_id,
                         user_message=planner_user_message,
                         tools=selected_tools,
+                        prior_messages=planner_prior_messages,
                     )
                 )
                 if _forced_plan.ok and _forced_plan.tool_calls:
@@ -547,6 +554,7 @@ def _chat_message_inner(
                                 user_message=user_message_with_history,
                                 max_tokens=max(max_tokens, 700),
                                 tools=selected_tools,
+                                prior_messages=prior_messages,
                             ),
                             first_response_content=[
                                 {
@@ -675,6 +683,7 @@ def _chat_message_inner(
                 user_message=user_message_with_history,
                 max_tokens=max(max_tokens, 700),
                 tools=selected_tools,
+                prior_messages=prior_messages,
             ),
             first_response_content=[
                 {

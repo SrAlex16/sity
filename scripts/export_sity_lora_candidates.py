@@ -145,14 +145,15 @@ CATEGORY_DEFAULT = "general"
 
 @dataclass
 class RawPair:
-    pair_id:    str
-    session_id: str
-    user_text:  str
-    sity_text:  str
-    user_ts:    str
-    sity_ts:    str
-    user_trace: str | None
-    sity_trace: str | None
+    pair_id:       str
+    session_id:    str
+    user_text:     str
+    sity_text:     str
+    user_ts:       str
+    sity_ts:       str
+    user_trace:    str | None
+    sity_trace:    str | None
+    dataset_source: str | None = None
 
 
 @dataclass
@@ -168,14 +169,22 @@ class ScoredPair:
 
 # ─── Lectura de DB ────────────────────────────────────────────────────────────
 
-def iter_raw_pairs(db_path: Path) -> Iterator[RawPair]:
-    """Extrae pares user→sity consecutivos de la DB. Solo lectura."""
+def iter_raw_pairs(db_path: Path, *, exclude_sources: set[str] | None = None) -> Iterator[RawPair]:
+    """Extrae pares user→sity consecutivos de la DB. Solo lectura.
+
+    Args:
+        exclude_sources: dataset_source values to skip entirely (both messages of the pair).
+            Defaults to {"demo_session"} when None; pass set() to include everything.
+    """
+    if exclude_sources is None:
+        exclude_sources = {"demo_session"}
+
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
             """
-            SELECT id, session_id, role, text, trace_id, created_at
+            SELECT id, session_id, role, text, trace_id, created_at, dataset_source
             FROM chatmessage
             ORDER BY session_id, id ASC
             """
@@ -196,16 +205,21 @@ def iter_raw_pairs(db_path: Path) -> Iterator[RawPair]:
             curr = messages[i]
             nxt  = messages[i + 1]
             if curr["role"] == "user" and nxt["role"] == "sity":
+                src = curr.get("dataset_source") or nxt.get("dataset_source")
+                if src in exclude_sources:
+                    i += 2
+                    continue
                 pair_counter += 1
                 yield RawPair(
-                    pair_id    = f"pair_{pair_counter:05d}",
-                    session_id = session_id,
-                    user_text  = curr["text"] or "",
-                    sity_text  = nxt["text"]  or "",
-                    user_ts    = curr["created_at"] or "",
-                    sity_ts    = nxt["created_at"]  or "",
-                    user_trace = curr["trace_id"],
-                    sity_trace = nxt["trace_id"],
+                    pair_id        = f"pair_{pair_counter:05d}",
+                    session_id     = session_id,
+                    user_text      = curr["text"] or "",
+                    sity_text      = nxt["text"]  or "",
+                    user_ts        = curr["created_at"] or "",
+                    sity_ts        = nxt["created_at"]  or "",
+                    user_trace     = curr["trace_id"],
+                    sity_trace     = nxt["trace_id"],
+                    dataset_source = src,
                 )
                 i += 2
             else:
@@ -441,6 +455,7 @@ def main() -> None:
     parser.add_argument("--db",            default=str(DEFAULT_DB),  help="Ruta a data/app.db")
     parser.add_argument("--out-dir",       default=str(DEFAULT_OUT), help="Directorio de salida")
     parser.add_argument("--include-seeds", action="store_true",       help="Incluir manual_seed.jsonl en el output")
+    parser.add_argument("--include-demo",  action="store_true",       help="Incluir pares con dataset_source=demo_session (excluidos por defecto)")
     parser.add_argument("--min-assistant", type=int, default=MIN_ASSISTANT_LEN)
     parser.add_argument("--max-assistant", type=int, default=MAX_ASSISTANT_LEN)
     args = parser.parse_args()
@@ -457,7 +472,10 @@ def main() -> None:
     if extra_reject:
         print(f"[export] Patrones externos de rechazo: {len(extra_reject)}")
 
-    raw_pairs = list(iter_raw_pairs(db_path))
+    exclude_sources: set[str] = set() if args.include_demo else {"demo_session"}
+    if exclude_sources:
+        print(f"[export] Excluyendo dataset_source: {exclude_sources} (usa --include-demo para incluirlos)")
+    raw_pairs = list(iter_raw_pairs(db_path, exclude_sources=exclude_sources))
     print(f"[export] Pares brutos extraídos: {len(raw_pairs)}")
 
     scored: list[ScoredPair] = []

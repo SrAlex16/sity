@@ -31,6 +31,24 @@ function ProgressBar({ progress }: { progress: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// Shared form primitives
+// ---------------------------------------------------------------------------
+
+function FieldLabel({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-zinc-500">{label}</span>
+      <div className="relative group/tip">
+        <span className="cursor-default select-none text-xs text-zinc-600">ⓘ</span>
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-56 -translate-x-1/2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-300 shadow-lg group-hover/tip:block">
+          {tooltip}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Dataset Capture
 // ---------------------------------------------------------------------------
 
@@ -52,6 +70,12 @@ const PRESETS: Record<string, Partial<DatasetCaptureRequest>> = {
     speaker_source: "human_guest",
     dataset_eligible: true,
     dataset_tags: [],
+  },
+  demo_session: {
+    dataset_source: "demo_session",
+    speaker_source: "human_local",
+    dataset_eligible: true,
+    dataset_tags: ["demo"],
   },
   debug_test: {
     dataset_source: "debug_test",
@@ -108,12 +132,14 @@ function DatasetCaptureSection({
   error,
   onSave,
   onDisable,
+  onRestorePersonality,
 }: {
   capture: DatasetCaptureContext | null;
   loading: boolean;
   error: string | null;
   onSave: (payload: DatasetCaptureRequest) => Promise<void>;
   onDisable: () => Promise<void>;
+  onRestorePersonality: () => Promise<void>;
 }) {
   const [form, setForm] = useState<CaptureForm>(() => ctxToForm(capture));
   const [formError, setFormError] = useState<string | null>(null);
@@ -178,6 +204,12 @@ function DatasetCaptureSection({
         )}
       </div>
 
+      {isActive && capture?.dataset_source === "demo_session" && (
+        <div className="mt-3 rounded-xl border border-orange-700 bg-orange-950/40 px-4 py-2 text-sm text-orange-300">
+          Modo Demo activo — las conversaciones se guardan en <span className="font-mono">demo_session</span> y no entran en fine-tuning por defecto.
+        </div>
+      )}
+
       {(error || formError) && (
         <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-sm text-red-200">
           {error ?? formError}
@@ -211,27 +243,36 @@ function DatasetCaptureSection({
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500">dataset_source</label>
+          <FieldLabel
+            label="dataset_source"
+            tooltip="Origen o tipo de sesión. Define cómo se agrupa este dato en la exportación. Se establece con el preset."
+          />
           <input
             type="text"
+            readOnly
             value={form.dataset_source}
-            onChange={(e) => setForm((p) => ({ ...p, dataset_source: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            className="mt-1 w-full cursor-default rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-400 outline-none select-none"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500">speaker_source</label>
+          <FieldLabel
+            label="speaker_source"
+            tooltip="Indica si el input viene de una persona o de Claude. Se establece con el preset."
+          />
           <input
             type="text"
+            readOnly
             value={form.speaker_source}
-            onChange={(e) => setForm((p) => ({ ...p, speaker_source: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            className="mt-1 w-full cursor-default rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-400 outline-none select-none"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500">speaker_label</label>
+          <FieldLabel
+            label="speaker_label"
+            tooltip="Etiqueta libre para identificar quién habla. Útil cuando hay varios interlocutores."
+          />
           <input
             type="text"
             value={form.speaker_label}
@@ -242,7 +283,10 @@ function DatasetCaptureSection({
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500">speaker_confidence (0–1)</label>
+          <FieldLabel
+            label="speaker_confidence (0–1)"
+            tooltip="Confianza en la atribución del hablante. 1 = certeza absoluta."
+          />
           <input
             type="number"
             min="0"
@@ -256,7 +300,10 @@ function DatasetCaptureSection({
         </div>
 
         <div>
-          <label className="block text-xs text-zinc-500">dataset_tags (coma-separados)</label>
+          <FieldLabel
+            label="dataset_tags (coma-separados)"
+            tooltip="Etiquetas para clasificación posterior. Se usan en los buckets de entrenamiento."
+          />
           <input
             type="text"
             value={form.dataset_tags}
@@ -273,11 +320,14 @@ function DatasetCaptureSection({
             onChange={(e) => setForm((p) => ({ ...p, dataset_eligible: e.target.checked }))}
             className="h-4 w-4 accent-cyan-400"
           />
-          <span className="text-sm text-zinc-200">dataset_eligible</span>
+          <FieldLabel
+            label="dataset_eligible"
+            tooltip="Si este mensaje entra en el pool de candidatos para fine-tuning. Úsalo como override puntual."
+          />
         </label>
       </div>
 
-      <div className="mt-5 flex gap-3">
+      <div className="mt-5 flex flex-wrap gap-3">
         <button
           onClick={handleSave}
           disabled={loading}
@@ -294,6 +344,13 @@ function DatasetCaptureSection({
             Desactivar
           </button>
         )}
+        <button
+          onClick={onRestorePersonality}
+          disabled={loading}
+          className="rounded-xl border border-zinc-600 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+        >
+          Restaurar valores de personalidad
+        </button>
       </div>
     </div>
   );
@@ -473,6 +530,7 @@ export type DatasetTabProps = {
   datasetCaptureError: string | null;
   onSaveDatasetCapture: (payload: DatasetCaptureRequest) => Promise<void>;
   onDisableDatasetCapture: () => Promise<void>;
+  onRestorePersonality: () => Promise<void>;
   onRefresh: () => void;
 };
 
@@ -485,6 +543,7 @@ export function DatasetTab({
   datasetCaptureError,
   onSaveDatasetCapture,
   onDisableDatasetCapture,
+  onRestorePersonality,
   onRefresh,
 }: DatasetTabProps) {
   return (
@@ -505,6 +564,7 @@ export function DatasetTab({
         error={datasetCaptureError}
         onSave={onSaveDatasetCapture}
         onDisable={onDisableDatasetCapture}
+        onRestorePersonality={onRestorePersonality}
       />
 
       <DatasetStatsSection

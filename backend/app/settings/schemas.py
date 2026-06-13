@@ -9,7 +9,7 @@ class PersonalitySettings(BaseModel):
     honesty_level: float = Field(ge=0.0, le=1.0)
     initiative_level: float = Field(ge=0.0, le=1.0)
     dry_humor_level: float = Field(ge=0.0, le=1.0)
-    tsundere_level: float = Field(ge=0.0, le=1.0)
+    frialdad_afectiva_level: float = Field(ge=0.0, le=1.0)
     contrarian_level: float = Field(ge=0.0, le=1.0)
     patience_level: float = Field(ge=0.0, le=1.0)
     refusal_chance: float = Field(ge=0.0, le=1.0)

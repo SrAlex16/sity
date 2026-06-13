@@ -33,10 +33,8 @@ class ClaudeProvider:
             "max_tokens": request.max_tokens,
             "system": request.system_prompt,
             "messages": [
-                {
-                    "role": "user",
-                    "content": request.user_message,
-                }
+                *request.prior_messages,
+                {"role": "user", "content": request.user_message},
             ],
         }
 
@@ -70,18 +68,10 @@ class ClaudeProvider:
             system=request.system_prompt,
             tools=request.tools if request.tools is not None else TOOLS,
             messages=[
-                {
-                    "role": "user",
-                    "content": request.user_message,
-                },
-                {
-                    "role": "assistant",
-                    "content": first_response_content,
-                },
-                {
-                    "role": "user",
-                    "content": tool_results,
-                },
+                *request.prior_messages,
+                {"role": "user", "content": request.user_message},
+                {"role": "assistant", "content": first_response_content},
+                {"role": "user", "content": tool_results},
             ],
         )
 

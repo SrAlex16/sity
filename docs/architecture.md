@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-04.
+Última actualización: 2026-06-13.
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -164,11 +164,28 @@ Los modelos reciben fragmentos seleccionados; no son fuente canónica.
 Búsqueda de memoria implementada:
 
 - `backend/app/memory/search.py` — `search_conversation_history`: FTS5 + LIKE fallback, filtrado operativo, prev/next context.
-- `backend/app/memory/recall.py` — `MemoryRecallRunner`: búsqueda iterativa multi-query con evaluación de evidencia por novel token ratio.
-- `backend/app/chat/prompt_context.py` — inyección de contexto estructural de memoria y búsqueda proactiva.
+- `backend/app/memory/recall.py` — `MemoryRecallRunner`: búsqueda iterativa multi-query con evaluación de evidencia por novel token ratio. Siempre agota todas las variantes de query (sin parada temprana) y siempre expande ventanas alrededor de anclas con `message_id`.
+- `backend/app/chat/prompt_context.py` — inyección de contexto estructural de memoria (total de mensajes, visibles, límite, disponibilidad de tool). Sin búsqueda proactiva: la búsqueda es solo on-demand vía tool.
 - `backend/app/tools/handlers/memory_tools.py` — handler `search_conversation_history` disponible en `BASE_TOOLSET`.
 
-El planner decide cuándo usar la tool. No hay listas de triggers ni detección de intención por frases.
+La búsqueda de memoria es on-demand. El modelo llama a `search_conversation_history` cuando detecta que falta contexto. No hay inyección proactiva automática ni listas de triggers.
+
+### Historial estructurado
+
+El historial de conversación se envía al proveedor IA como mensajes estructurados (`prior_messages`), no como texto concatenado dentro del mensaje del usuario.
+
+```text
+messages = [
+  {role: "user", content: "..."},   <- historial
+  {role: "assistant", content: "..."},
+  ...
+  {role: "user", content: "<current_message>"},
+]
+```
+
+El mensaje actual del usuario contiene solo el turno presente más contexto temporal y de memoria estructural. Los turnos anteriores van en `AIRequest.prior_messages` y el proveedor los recibe como mensajes separados en el array `messages`.
+
+El número de turnos de historial visibles se controla con `tokens.max_recent_turns` en `config/default_config.yaml`. `history_limit_for_message()` en `toolset_selector.py` usa ese valor como base, con multiplicadores proporcionales para mensajes de contexto pesado.
 
 ### Trace
 
@@ -227,7 +244,7 @@ Parámetros relevantes:
 - honesty_level;
 - initiative_level;
 - dry_humor_level;
-- tsundere_level;
+- frialdad_afectiva_level;
 - contrarian_level;
 - patience_level;
 - refusal_chance;

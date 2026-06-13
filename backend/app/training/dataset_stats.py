@@ -6,7 +6,7 @@ objects and returns a stats dict suitable for JSON serialisation.
 
 tone_meta field names (from persona_engine.py tone_snapshot):
   sarcasm, mala_leche, warmth, honesty, initiative, dry_humor,
-  tsundere, contrarian, patience, verbosity, helpfulness, melancholy
+  frialdad_afectiva, contrarian, patience, verbosity, helpfulness, melancholy
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ BASE_VECTOR: dict[str, float] = {
     "honesty":     0.90,
     "initiative":  0.05,
     "dry_humor":   0.30,
-    "tsundere":    0.20,
+    "frialdad_afectiva": 0.20,
     "contrarian":  0.10,
     "patience":    0.65,
     "verbosity":   0.35,
@@ -43,7 +43,7 @@ TARGETS: dict[str, int] = {
     "variation_warm":          60,
     "variation_brief":         60,
     "variation_melancholy":    40,
-    "variation_tsundere":      40,
+    "variation_frialdad_afectiva": 40,
     "multi_persona":           50,
 }
 
@@ -57,7 +57,7 @@ _TAG_TO_BUCKET: list[tuple[str, str]] = [
     ("warmth_high",     "variation_warm"),
     ("brief",           "variation_brief"),
     ("melancholy_high", "variation_melancholy"),
-    ("tsundere_high",   "variation_tsundere"),
+    ("frialdad_afectiva_high", "variation_frialdad_afectiva"),
 ]
 
 #: Sity texts that are operational guards, not training data.
@@ -115,8 +115,8 @@ def _compute_tags(
         tags.append("brief")
     if tone.get("melancholy", 0.0) >= 0.50:
         tags.append("melancholy_high")
-    if tone.get("tsundere", 0.0) >= 0.50:
-        tags.append("tsundere_high")
+    if tone.get("frialdad_afectiva", 0.0) >= 0.50:
+        tags.append("frialdad_afectiva_high")
     if tone.get("contrarian", 0.0) >= 0.50:
         tags.append("contrarian_high")
 

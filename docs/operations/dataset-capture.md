@@ -34,7 +34,7 @@ Cada `ChatMessage` en la BD puede llevar los siguientes campos:
 | `speaker_source` | str \| null | Cómo se identificó al hablante: `manual`, `inferred`, `claude_extension`. |
 | `speaker_confidence` | float \| null | Confianza en la identificación, entre 0 y 1. |
 | `identity_evidence_json` | JSON \| null | Evidencias de identidad (reservado para reconocimiento futuro). |
-| `dataset_source` | str \| null | Origen del par: `normal_use`, `synthetic_claude_user`, `human_guest`, `debug_test`. |
+| `dataset_source` | str \| null | Origen del par: `normal_use`, `synthetic_claude_user`, `human_guest`, `demo_session`, `debug_test`. |
 | `dataset_eligible` | bool | Si el par es candidato a dataset de entrenamiento. Por defecto `true`. |
 | `dataset_tags_json` | JSON | Lista de tags semánticos. Por defecto `[]`. |
 
@@ -50,7 +50,7 @@ Cada `ChatMessage` en la BD puede llevar los siguientes campos:
   "honesty": 0.90,
   "initiative": 0.05,
   "dry_humor": 0.30,
-  "tsundere": 0.20,
+  "frialdad_afectiva": 0.20,
   "contrarian": 0.10,
   "patience": 0.65,
   "verbosity": 0.35,
@@ -97,7 +97,10 @@ Si Dataset Capture está desactivado, los mensajes entran con `dataset_source = 
 | `normal_use` | `normal_use` | Conversación normal. Capture desactivado o modo por defecto. |
 | `synthetic_claude_user` | `synthetic_claude_user` | Sesión donde Claude-extension simula un usuario humano. |
 | `human_guest` | `human_guest` | Persona real invitada que usa la interfaz. |
+| `demo_session` | `demo_session` | Demostración o prueba con audiencia. `dataset_eligible = true` pero excluido del fine-tuning por defecto. Ver nota abajo. |
 | `debug_test` | `debug_test` | Pruebas que no deben entrenarse. `dataset_eligible = false`. |
+
+> **Nota sobre `demo_session`**: las conversaciones se guardan normalmente y aparecen en `by_source` de DatasetStats. Sin embargo, el script de exportación (`export_sity_lora_candidates.py`) las excluye por defecto para no contaminar el dataset de fine-tuning con conversaciones de demostración. Para analizarlas o incluirlas manualmente, usar el flag `--include-demo`.
 
 ### Campos configurables
 
@@ -157,7 +160,7 @@ La unidad del dataset es un **par consecutivo user→Sity**. Un mensaje de usuar
 
 Los buckets son clasificaciones administrativas para estimar cobertura por tipo de personalidad. **No son clasificaciones emocionales absolutas**.
 
-Los tags son multi-label: un mismo par puede tener simultáneamente `sarcasm_high`, `brief` y `tsundere_high`.
+Los tags son multi-label: un mismo par puede tener simultáneamente `sarcasm_high`, `brief` y `frialdad_afectiva_high`.
 
 **Thresholds de tags** (desde `tone_meta`):
 
@@ -168,7 +171,7 @@ Los tags son multi-label: un mismo par puede tener simultáneamente `sarcasm_hig
 | `warmth_high` | `warmth >= 0.60` |
 | `brief` | `verbosity <= 0.20` |
 | `melancholy_high` | `melancholy >= 0.50` |
-| `tsundere_high` | `tsundere >= 0.50` |
+| `frialdad_afectiva_high` | `frialdad_afectiva >= 0.50` |
 | `contrarian_high` | `contrarian >= 0.50` |
 | `multi_persona` | `dataset_source = synthetic_claude_user` o tag `multi_persona` presente |
 
@@ -195,7 +198,7 @@ Targets actuales para el dataset de entrenamiento:
 | `variation_warm` | 60 | Variaciones con warmth alto. |
 | `variation_brief` | 60 | Variaciones con verbosidad muy baja. |
 | `variation_melancholy` | 40 | Variaciones con melancolía alta. |
-| `variation_tsundere` | 40 | Variaciones con tsundere alto. |
+| `variation_frialdad_afectiva` | 40 | Variaciones con frialdad afectiva alta. |
 | `multi_persona` | 50 | Sesiones con Claude-extension u otros hablantes. |
 
 Aclaraciones:

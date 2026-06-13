@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -23,20 +22,16 @@ def is_operational_guard_message(text: str) -> bool:
     )
 
 
-def render_history(items: list[ChatHistoryItem]) -> str:
-    return "\n".join(
-        f"{'Usuario' if item.role == 'user' else 'Sity'}: {item.text}"
-        for item in items
-    )
-
-
-def with_history(message: str, history_text: str) -> str:
-    if not history_text:
-        return message
-    return (
-        f"Historial reciente de esta conversación:\n{history_text}\n\n"
-        f"Mensaje actual del usuario:\n{message}"
-    )
+def _history_to_messages(items: list[ChatHistoryItem]) -> list[dict]:
+    """Convert history items to structured API messages, merging consecutive same-role turns."""
+    result: list[dict] = []
+    for item in items:
+        role = "user" if item.role == "user" else "assistant"
+        if result and result[-1]["role"] == role:
+            result[-1]["content"] += "\n" + item.text
+        else:
+            result.append({"role": role, "content": item.text})
+    return result
 
 
 def _count_total_messages() -> int:
@@ -46,23 +41,6 @@ def _count_total_messages() -> int:
             return conn.execute(sa_text("SELECT COUNT(*) FROM chatmessage")).scalar() or 0
     except Exception:
         return 0
-
-
-_ROLE_LABEL = {"user": "Usuario", "sity": "Sity"}
-
-
-def _render_memory_block(results: list) -> str:
-    lines = ["[MEMORIA RELEVANTE]"]
-    for i, r in enumerate(results, 1):
-        lines.append(f"Fragmento {i}:")
-        for label, ctx in [("anterior", r.prev), ("coincidencia", r.match), ("siguiente", r.next)]:
-            if ctx is None:
-                continue
-            ts = ctx.created_at.strftime("%Y-%m-%d %H:%M") if ctx.created_at else ""
-            who = _ROLE_LABEL.get(ctx.role, ctx.role)
-            lines.append(f"  {label} → {who} ({ts}): {ctx.text}")
-    lines.append("[FIN MEMORIA]")
-    return "\n".join(lines)
 
 
 def _build_planner_memory_ctx(n_total: int, history_limit: int, visible_count: int) -> str:
@@ -76,30 +54,14 @@ def _build_planner_memory_ctx(n_total: int, history_limit: int, visible_count: i
     )
 
 
-def _proactive_memory_search(message: str) -> str:
-    """Search history with the user message as query. Returns formatted block or ''."""
-    try:
-        clean = re.sub(r'[()\"?*^+~:-]', ' ', message)
-        words = [w for w in clean.split() if len(w) >= 4]
-        query = " OR ".join(words) if words else message
-        log.warning("proactive_memory_search query=%r", query)
-        # Lazy import to avoid circular dependency (search.py imports from this module)
-        from app.memory.search import search_conversation_history
-        results = search_conversation_history(query, limit=3)
-        log.warning("proactive_memory_search results=%d", len(results))
-        if results:
-            return _render_memory_block(results)
-    except Exception as e:
-        log.warning("memory search error: %s", e)
-    return ""
-
-
 @dataclass(frozen=True)
 class PromptContext:
     recent_history: list[ChatHistoryItem]
     planner_history: list[ChatHistoryItem]
     user_message_with_history: str
     planner_user_message: str
+    prior_messages: list[dict]
+    planner_prior_messages: list[dict]
 
 
 class PromptContextBuilder:
@@ -113,6 +75,7 @@ class PromptContextBuilder:
         message: str,
         history_limit: int,
         planner_history_limit: int = 4,
+        trace_id: str = "",
     ) -> PromptContext:
         recent_history = self._load_history(session=session, limit=history_limit)
         planner_history = self._load_history(session=session, limit=planner_history_limit)
@@ -128,30 +91,26 @@ class PromptContextBuilder:
             f"Solo ves los últimos {history_limit} mensajes en el historial de abajo."
         )
 
-        memory_block = ""
-        if n_total > history_limit:
-            memory_block = _proactive_memory_search(message)
-
-        base_user_message = with_history(message, render_history(recent_history))
-        parts = [time_block, memory_ctx]
-        if memory_block:
-            parts.append(memory_block)
-        parts.append(base_user_message)
+        parts = [time_block, memory_ctx, message]
         user_message_with_time = "\n\n".join(parts)
+
+        prior_messages = _history_to_messages(recent_history)
+        planner_prior_messages = _history_to_messages(planner_history)
 
         planner_mem_ctx = _build_planner_memory_ctx(
             n_total=n_total,
             history_limit=history_limit,
             visible_count=len(planner_history),
         )
-        planner_base = with_history(message, render_history(planner_history))
-        planner_user_message = f"{planner_mem_ctx}\n\n{planner_base}"
+        planner_user_message = f"{planner_mem_ctx}\n\n{message}"
 
         return PromptContext(
             recent_history=recent_history,
             planner_history=planner_history,
             user_message_with_history=user_message_with_time,
             planner_user_message=planner_user_message,
+            prior_messages=prior_messages,
+            planner_prior_messages=planner_prior_messages,
         )
 
     def _load_history(self, *, session, limit: int) -> list[ChatHistoryItem]:

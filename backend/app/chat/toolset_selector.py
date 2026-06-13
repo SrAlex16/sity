@@ -79,7 +79,7 @@ _DEBUG_RE = re.compile(
 )
 _PERSONALITY_FIELD_RE = re.compile(
     r"\bsarcasmo\b|\brudeza\b|\bcalidez\b|\bhonestidad\b|\bpaciencia\b"
-    r"|\bmelancolía\b|\bmelancolia\b|\btsundere\b|\bverbosidad\b"
+    r"|\bmelancolía\b|\bmelancolia\b|\btsundere\b|\bfrialdad afectiva\b|\bfrialdad\b|\bverbosidad\b"
     r"|\bpersonalidad\b|\bmala\s+leche\b",
     re.IGNORECASE,
 )
@@ -300,6 +300,9 @@ def select_toolset_with_metadata(message: str) -> ToolsetSelection:
 
 
 def history_limit_for_message(message: str) -> int:
+    from app.settings.config_loader import load_default_config
+    base = int(load_default_config().get("tokens", {}).get("max_recent_turns", 4))
+
     normalized = message.lower()
 
     # Explicit memory/continuity queries — need the deepest window.
@@ -326,14 +329,12 @@ def history_limit_for_message(message: str) -> int:
     ]
 
     if any(term in normalized for term in single_action_terms):
-        return 4
+        return base
 
     if any(term in normalized for term in context_heavy_terms):
-        return 20
+        return base * 5
 
     if any(term in normalized for term in technical_terms):
-        return 10
+        return base * 2
 
-    # Default: enough for a multi-topic session (5 turns × 2 = 10 messages).
-    # Raised from 4 to avoid losing topics discussed a few turns earlier.
-    return 10
+    return base

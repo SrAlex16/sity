@@ -16,7 +16,7 @@ PERSONALITY_PARAMETERS = [
     "honesty_level",
     "initiative_level",
     "dry_humor_level",
-    "tsundere_level",
+    "frialdad_afectiva_level",
     "contrarian_level",
     "patience_level",
     "refusal_chance",
@@ -918,9 +918,9 @@ SEARCH_CONVERSATION_HISTORY_TOOL = {
     "name": "search_conversation_history",
     "description": (
         "Busca en el historial completo de conversación almacenado en la base de datos. "
-        "Úsala cuando responder requiera información de conversación anterior que no aparece "
-        "en el historial visible del contexto. "
-        "Devuelve fragmentos con el mensaje coincidente y el contexto adyacente (anterior y siguiente). "
+        "Úsala cuando responder dependa de conversación anterior que no aparece en el historial visible. "
+        "Devuelve ventanas cronológicas alrededor de las coincidencias encontradas, no solo el mensaje adyacente. "
+        "No inventes ni pidas al usuario que repita algo antes de consultar esta herramienta. "
         "La búsqueda usa palabras clave; términos simples tienen mayor cobertura que frases largas."
     ),
     "input_schema": {

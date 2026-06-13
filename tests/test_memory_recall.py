@@ -1,7 +1,9 @@
 """Tests for MemoryRecallRunner.
 
-All tests mock search_conversation_history (and read_conversation_window where
-needed) so they run without a real DB.
+All tests mock search_conversation_history and read_conversation_window so they
+run without a real DB. Phase 2 (window expansion) now always runs when anchors
+have message_id, so every test that patches search to return fragments with
+message_id must also mock read_conversation_window.
 No domain-specific fixtures or intent-based assertions.
 """
 from __future__ import annotations
@@ -105,7 +107,8 @@ def test_found_or_partial_when_search_returns_informative_results() -> None:
         mock_s.return_value = [_make_search_result(
             "sistema almacena identificador único principal confirmado definitivo"
         )]
-        result = runner.recall(query="contenido relevante", trace_id="t2")
+        with patch("app.memory.recall.read_conversation_window", return_value=[]):
+            result = runner.recall(query="contenido relevante", trace_id="t2")
     assert result.status in ("found", "partial")
     assert len(result.fragments) >= 1
 
@@ -116,7 +119,8 @@ def test_found_status_when_sufficient_novel_tokens() -> None:
         "sistema almacena identificador único principal confirmado definitivo"
     )]
     with patch("app.memory.recall.search_conversation_history", return_value=hits):
-        result = runner.recall(query="contenido busca", trace_id="t3")
+        with patch("app.memory.recall.read_conversation_window", return_value=[]):
+            result = runner.recall(query="contenido busca", trace_id="t3")
     assert result.status == "found"
     assert result.result_confidence >= _NOVEL_THRESHOLD_SUFFICIENT
 
@@ -161,21 +165,24 @@ def test_no_duplicate_queries_tried() -> None:
     assert len(result.queries_tried) == len(set(result.queries_tried))
 
 
-def test_stops_early_when_sufficient_evidence() -> None:
-    """Runner makes only 1 search call when first result provides sufficient novel tokens."""
+def test_phase1_exhausts_all_queries_regardless_of_evidence() -> None:
+    """Phase 1 must run all query variants — no early exit on ev_status."""
     runner = _runner()
     calls: list[str] = []
 
     def mock_search(query, limit):
         calls.append(query)
+        # Return highly informative result — would have triggered early exit before
         return [_make_search_result(
             "sistema almacena identificador único principal confirmado definitivo", i
         ) for i in range(3)]
 
     with patch("app.memory.recall.search_conversation_history", side_effect=mock_search):
-        runner.recall(query="busca referencia clave", trace_id="t8")
+        with patch("app.memory.recall.read_conversation_window", return_value=[]):
+            runner.recall(query="busca referencia clave", trace_id="t8")
 
-    assert len(calls) == 1
+    # With 3+ distinct tokens, _generate_queries produces >= 2 variants
+    assert len(calls) >= 2, f"Expected ≥2 search calls (no early exit), got {len(calls)}"
 
 
 def test_continues_after_noise_fragments() -> None:
@@ -200,7 +207,8 @@ def test_deduplicates_across_attempts() -> None:
     same = _make_search_result("texto duplicado exacto en todos los intentos", msg_id=42)
 
     with patch("app.memory.recall.search_conversation_history", return_value=[same]):
-        result = runner.recall(query="uno dos tres cuatro cinco", trace_id="t9")
+        with patch("app.memory.recall.read_conversation_window", return_value=[]):
+            result = runner.recall(query="uno dos tres cuatro cinco", trace_id="t9")
 
     texts = [f.text for f in result.fragments]
     assert len(texts) == len(set(texts))
@@ -268,7 +276,8 @@ def test_informative_fragment_produces_found() -> None:
         "sistema almacena identificador único principal confirmado definitivo", msg_id=10
     )
     with patch("app.memory.recall.search_conversation_history", return_value=[informative]):
-        result = runner.recall(query="busca dato", trace_id="t14")
+        with patch("app.memory.recall.read_conversation_window", return_value=[]):
+            result = runner.recall(query="busca dato", trace_id="t14")
     assert result.status == "found"
 
 
@@ -300,15 +309,13 @@ def test_evaluate_evidence_not_found_on_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. Window expansion
+# 6. Window expansion — Phase 2 always runs when anchors have message_id
 # ---------------------------------------------------------------------------
 
 def test_window_expands_when_search_insufficient() -> None:
     """When search gives insufficient evidence, window expansion should upgrade status."""
     runner = _runner()
-    # Anchor with low novel ratio (echoes query)
     anchor = _make_search_result("busqué referencia clave resultado", msg_id=100)
-    # Window contains highly informative content
     informative = _make_ctx(
         "sistema almacena identificador único principal confirmado definitivo",
         msg_id=115,
@@ -323,10 +330,9 @@ def test_window_expands_when_search_insufficient() -> None:
     assert 100 in result.anchor_message_ids
 
 
-def test_window_not_called_when_search_sufficient() -> None:
-    """If search already gives sufficient evidence, window must not be called."""
+def test_window_called_even_when_search_sufficient() -> None:
+    """Window must be opened even when Phase 1 already gives sufficient evidence."""
     runner = _runner()
-    # Highly novel content → sufficient on first search call
     informative = _make_search_result(
         "sistema almacena identificador único principal confirmado definitivo", msg_id=10
     )
@@ -337,16 +343,31 @@ def test_window_not_called_when_search_sufficient() -> None:
             result = runner.recall(query="busca dato", trace_id="tw2")
 
     assert result.status == "found"
-    assert result.windows_read == 0
-    window_mock.assert_not_called()
+    window_mock.assert_called()
+    assert result.windows_read >= 1
+
+
+def test_window_always_runs_when_evidence_sufficient() -> None:
+    """Even with sufficient Phase 1 evidence, Phase 2 opens exactly one window."""
+    runner = _runner()
+    informative = _make_search_result(
+        "sistema almacena identificador único principal confirmado definitivo", msg_id=10
+    )
+    window_mock = MagicMock(return_value=[])
+
+    with patch("app.memory.recall.search_conversation_history", return_value=[informative]):
+        with patch("app.memory.recall.read_conversation_window", window_mock):
+            result = runner.recall(query="busca dato", trace_id="tw_always")
+
+    assert result.status == "found"
+    window_mock.assert_called_once()
+    assert result.windows_read == 1
 
 
 def test_windows_read_count_tracked() -> None:
     """windows_read reflects how many window reads were performed."""
     runner = _runner()
-    # Noise anchor (msg_id=50) → search insufficient → window runs
     anchor = _make_search_result("busqué referencia clave", msg_id=50)
-    # Window returns nothing either (no further evidence found)
     with patch("app.memory.recall.search_conversation_history", return_value=[anchor]):
         with patch("app.memory.recall.read_conversation_window", return_value=[]):
             result = runner.recall(query="referencia clave", trace_id="tw3")
@@ -369,7 +390,6 @@ def test_window_deduplicates_with_search_results() -> None:
     """Fragments already seen via search must not appear again from window."""
     runner = _runner()
     anchor = _make_search_result("busqué referencia clave resultado", msg_id=100)
-    # Window returns the same anchor text again
     same_ctx = _make_ctx("busqué referencia clave resultado", msg_id=100)
 
     with patch("app.memory.recall.search_conversation_history", return_value=[anchor]):
@@ -395,7 +415,11 @@ def test_window_adds_new_fragments_from_context() -> None:
 
 
 def test_windows_capped_at_max() -> None:
-    """Window expansion must not exceed _MAX_WINDOWS reads per recall."""
+    """Window expansion must not exceed _MAX_WINDOWS reads per recall.
+
+    Anchors are spaced 100 IDs apart — beyond overlap threshold (_WINDOW_BEFORE +
+    _WINDOW_AFTER = 5 + 50 = 55) — so _MAX_WINDOWS is the binding constraint.
+    """
     runner = _runner()
     window_calls: list[int] = []
 
@@ -403,8 +427,8 @@ def test_windows_capped_at_max() -> None:
         window_calls.append(center_id)
         return []
 
-    # Multiple anchors with different message_ids
-    anchors = [_make_search_result(f"referencia clave texto {i}", msg_id=i * 10) for i in range(1, 6)]
+    # 5 anchors far enough apart that overlap dedup doesn't fire; cap does
+    anchors = [_make_search_result(f"referencia clave texto {i}", msg_id=i * 100) for i in range(1, 6)]
 
     with patch("app.memory.recall.search_conversation_history", return_value=anchors):
         with patch("app.memory.recall.read_conversation_window", side_effect=mock_window):
@@ -416,7 +440,6 @@ def test_windows_capped_at_max() -> None:
 def test_window_not_attempted_when_no_anchor_ids() -> None:
     """If search returns fragments without message_ids, window must not be called."""
     runner = _runner()
-    # Fragment with message_id=None
     ctx = MessageContext(role="user", text="referencia clave texto largo", created_at=_NOW, message_id=None)
     hit = SearchResult(match=ctx, prev=None, next=None)
     window_mock = MagicMock(return_value=[])
@@ -426,3 +449,60 @@ def test_window_not_attempted_when_no_anchor_ids() -> None:
             runner.recall(query="referencia clave", trace_id="tw8")
 
     window_mock.assert_not_called()
+
+
+def test_overlap_dedup_skips_nearby_anchors() -> None:
+    """Anchors within _WINDOW_BEFORE + _WINDOW_AFTER of an already-opened anchor are skipped."""
+    from app.memory.recall import _WINDOW_BEFORE, _WINDOW_AFTER
+    runner = _runner()
+    window_calls: list[int] = []
+
+    def mock_window(center_id, before, after):
+        window_calls.append(center_id)
+        return []
+
+    # Two anchors close together (10 IDs apart, threshold = 5+50 = 55) → only first opened
+    close_anchors = [
+        _make_search_result("referencia clave texto alfa", msg_id=100),
+        _make_search_result("referencia clave texto beta", msg_id=110),
+    ]
+
+    with patch("app.memory.recall.search_conversation_history", return_value=close_anchors):
+        with patch("app.memory.recall.read_conversation_window", side_effect=mock_window):
+            runner.recall(query="referencia clave", trace_id="tw_overlap")
+
+    assert len(window_calls) == 1, f"Overlapping anchor should be skipped, got calls: {window_calls}"
+    assert window_calls[0] == 100
+
+
+def test_phase1_runs_all_attempts_then_opens_windows() -> None:
+    """Phase 1 exhausts all query variants; Phase 2 opens windows on non-redundant anchors."""
+    runner = _runner()
+    search_calls: list[str] = []
+    window_calls: list[int] = []
+
+    def mock_search(query, limit):
+        search_calls.append(query)
+        if len(search_calls) == 1:
+            # First call: high-novel anchor (would have triggered "sufficient" early exit before)
+            return [_make_search_result(
+                "sistema almacena identificador único principal confirmado definitivo", msg_id=100
+            )]
+        # Later calls: distinct far anchor
+        return [_make_search_result("fragmento distinto separado remoto otro", msg_id=500)]
+
+    def mock_window(center_id, before, after):
+        window_calls.append(center_id)
+        return []
+
+    with patch("app.memory.recall.search_conversation_history", side_effect=mock_search):
+        with patch("app.memory.recall.read_conversation_window", side_effect=mock_window):
+            result = runner.recall(query="busca marcador clave resultado", trace_id="t_all")
+
+    # Phase 1 must have made more than 1 search call (no early exit)
+    assert len(search_calls) >= 2, f"Expected ≥2 search calls, got {len(search_calls)}"
+    # Phase 2 must have opened at least one window
+    assert len(window_calls) >= 1, f"Expected ≥1 window call, got {len(window_calls)}"
+    # Anchors at 100 and 500 are 400 apart (> 55 threshold) → both should be opened if _MAX_WINDOWS >= 2
+    if _MAX_WINDOWS >= 2:
+        assert 100 in window_calls and 500 in window_calls

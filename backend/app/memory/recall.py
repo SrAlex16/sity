@@ -23,11 +23,11 @@ from app.memory.search import (
 log = logging.getLogger(__name__)
 
 _MAX_ATTEMPTS = 4
-_MAX_WINDOWS = 2        # max window reads per recall session
-_MAX_TOTAL_FRAGMENTS = 30
+_MAX_WINDOWS = 3        # max window reads per recall session
+_MAX_TOTAL_FRAGMENTS = 80
 _TOKEN_MIN_LEN = 4
 _WINDOW_BEFORE = 5
-_WINDOW_AFTER = 20
+_WINDOW_AFTER = 50      # matches _WINDOW_AFTER_MAX in search.py
 
 # Evidence quality thresholds (novel token ratio per fragment)
 _NOVEL_THRESHOLD_SUFFICIENT = 0.60   # max per-fragment novel ratio → "sufficient" → "found"
@@ -82,16 +82,11 @@ class MemoryRecallRunner:
         windows_read = 0
         anchor_message_ids: list[int] = []
 
-        # Phase 1: iterative search with query variants
+        # Phase 1: exhaust all query variants — no early exit on ev_status
         for attempt, q in enumerate(queries[:_MAX_ATTEMPTS], 1):
             if q in queries_tried:
                 continue
             queries_tried.append(q)
-
-            log.info(
-                "memory_recall_query trace_id=%s attempt=%d query=%r",
-                trace_id, attempt, q,
-            )
 
             results = search_conversation_history(q, limit=5)
             new_count = 0
@@ -114,60 +109,59 @@ class MemoryRecallRunner:
             ev_status, ev_confidence, ev_reason = self._evaluate_evidence(all_fragments, query)
 
             log.info(
-                "memory_recall_results trace_id=%s attempt=%d raw=%d accepted=%d "
+                "memory_recall_query trace_id=%s attempt=%d query=%r raw=%d accepted=%d "
                 "ev_status=%s confidence=%.2f reason=%s",
-                trace_id, attempt, len(results), new_count,
+                trace_id, attempt, q, len(results), new_count,
                 ev_status, ev_confidence, ev_reason,
             )
 
-            if ev_status == "sufficient":
-                break
+        # Phase 2: always open windows around anchors (structural, regardless of ev_status)
+        phase1_fragments = list(all_fragments)  # snapshot: only Phase 1 anchors as candidates
+        opened_anchor_ids: list[int] = []
 
-        # Phase 2: window expansion around promising anchors
-        if ev_status != "sufficient":
-            seen_anchors: set[int] = set()
-            for frag in all_fragments:
-                if frag.message_id is None or len(seen_anchors) >= _MAX_WINDOWS:
+        for frag in phase1_fragments:
+            if frag.message_id is None or len(opened_anchor_ids) >= _MAX_WINDOWS:
+                continue
+            anchor_id = frag.message_id
+            # Skip if within window span of an already-opened anchor (structural dedup by id)
+            if any(abs(anchor_id - a) <= (_WINDOW_BEFORE + _WINDOW_AFTER) for a in opened_anchor_ids):
+                continue
+            opened_anchor_ids.append(anchor_id)
+            anchor_message_ids.append(anchor_id)
+
+            window = read_conversation_window(
+                anchor_id, before=_WINDOW_BEFORE, after=_WINDOW_AFTER
+            )
+            new_from_window = 0
+            for ctx in window:
+                key = ctx.text[:120]
+                if key in seen_keys:
                     continue
-                anchor_id = frag.message_id
-                if anchor_id in seen_anchors:
-                    continue
-                seen_anchors.add(anchor_id)
-                anchor_message_ids.append(anchor_id)
+                seen_keys.add(key)
+                all_fragments.append(MemoryFragment(
+                    message_id=ctx.message_id,
+                    timestamp=ctx.created_at,
+                    role=ctx.role,
+                    text=ctx.text,
+                    prev=None,
+                    next=None,
+                ))
+                new_from_window += 1
 
-                window = read_conversation_window(
-                    anchor_id, before=_WINDOW_BEFORE, after=_WINDOW_AFTER
-                )
-                new_from_window = 0
-                for ctx in window:
-                    key = ctx.text[:120]
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    all_fragments.append(MemoryFragment(
-                        message_id=ctx.message_id,
-                        timestamp=ctx.created_at,
-                        role=ctx.role,
-                        text=ctx.text,
-                        prev=None,
-                        next=None,
-                    ))
-                    new_from_window += 1
+            windows_read += 1
+            log.info(
+                "memory_recall_window_read trace_id=%s anchor_id=%d "
+                "window_msgs=%d new_fragments=%d",
+                trace_id, anchor_id, len(window), new_from_window,
+            )
 
-                windows_read += 1
-                ev_status, ev_confidence, ev_reason = self._evaluate_evidence(
-                    all_fragments, query
-                )
-
-                log.info(
-                    "memory_recall_window_read trace_id=%s anchor_id=%d "
-                    "window_msgs=%d new_fragments=%d ev_status=%s confidence=%.2f",
-                    trace_id, anchor_id, len(window), new_from_window,
-                    ev_status, ev_confidence,
-                )
-
-                if ev_status == "sufficient":
-                    break
+        # Single evidence re-evaluation after all window expansion
+        if opened_anchor_ids:
+            ev_status, ev_confidence, ev_reason = self._evaluate_evidence(all_fragments, query)
+            log.info(
+                "memory_recall_after_windows trace_id=%s ev_status=%s confidence=%.2f",
+                trace_id, ev_status, ev_confidence,
+            )
 
         truncated = len(all_fragments) > _MAX_TOTAL_FRAGMENTS
         fragments = all_fragments[:_MAX_TOTAL_FRAGMENTS]

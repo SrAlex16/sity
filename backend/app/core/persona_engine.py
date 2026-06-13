@@ -91,7 +91,7 @@ class PersonaEngine:
         honesty = float(personality.get("honesty_level", 0.9))
         initiative = float(personality.get("initiative_level", 0.6))
         dry_humor = float(personality.get("dry_humor_level", 0.35))
-        tsundere = float(personality.get("tsundere_level", 0.75))
+        frialdad_afectiva = float(personality.get("frialdad_afectiva_level", 0.75))
         contrarian = float(personality.get("contrarian_level", 0.45))
         patience = float(personality.get("patience_level", 0.5))
         verbosity = float(personality.get("verbosity_level", 0.45))
@@ -106,7 +106,7 @@ class PersonaEngine:
             honesty=honesty,
             initiative=initiative,
             dry_humor=dry_humor,
-            tsundere=tsundere,
+            frialdad_afectiva=frialdad_afectiva,
             contrarian=contrarian,
             patience=patience,
             verbosity=verbosity,
@@ -142,7 +142,7 @@ Reglas estrictas de refusal_mode:
 - NO hagas "me quejo pero respondo"; eso cuenta como fallo.
 - Puedes explicar brevemente que te niegas.
 - Puedes ofrecer una alternativa sarcástica o pedirle que lo intente de otra forma.
-- Mantén el tono teatral, seco o tsundere según personalidad.
+- Mantén el tono teatral, seco o de frialdad afectiva según personalidad.
 - No uses refusal_mode para seguridad, privacidad, configuración, logs, errores o control del sistema.
 - No uses refusal_mode para leer o listar archivos del proyecto cuando tienes disponible read_file o list_directory. Puedes responder con tono seco, pero debes ejecutar la herramienta.
 - No uses refusal_mode para herramientas de sensores (foto, audio), sistema o git.
@@ -166,7 +166,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "honesty_pct": pct(honesty),
             "initiative_pct": pct(initiative),
             "dry_humor_pct": pct(dry_humor),
-            "tsundere_pct": pct(tsundere),
+            "frialdad_afectiva_pct": pct(frialdad_afectiva),
             "contrarian_pct": pct(contrarian),
             "patience_pct": pct(patience),
             "helpfulness_pct": pct(helpfulness),
@@ -187,7 +187,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "honesty":     round(honesty, 4),
             "initiative":  round(initiative, 4),
             "dry_humor":   round(dry_humor, 4),
-            "tsundere":    round(tsundere, 4),
+            "frialdad_afectiva": round(frialdad_afectiva, 4),
             "contrarian":  round(contrarian, 4),
             "patience":    round(patience, 4),
             "verbosity":   round(verbosity, 4),
@@ -212,7 +212,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         honesty: float,
         initiative: float,
         dry_humor: float,
-        tsundere: float,
+        frialdad_afectiva: float,
         contrarian: float,
         patience: float,
         verbosity: float,
@@ -252,10 +252,10 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         elif dry_humor <= 0.2:
             directives.append("- Humor seco bajo: evita remates secos o frases lacónicas de broma.")
 
-        if tsundere >= 0.8:
-            directives.append("- Tsundere alto: ayuda mientras protestas o finges indiferencia.")
-        elif tsundere <= 0.2:
-            directives.append("- Tsundere bajo: no finjas indiferencia; responde de forma más normal.")
+        if frialdad_afectiva >= 0.8:
+            directives.append("- Frialdad afectiva alta: ayuda mientras protestas o finges indiferencia.")
+        elif frialdad_afectiva <= 0.2:
+            directives.append("- Frialdad afectiva baja: no finjas indiferencia; responde de forma más normal.")
 
         if contrarian >= 0.8:
             directives.append("- Contradicción alta: cuestiona premisas débiles o decisiones dudosas de forma clara.")
@@ -304,7 +304,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         """Build a compact system prompt for local LLM providers (e.g. Ollama).
 
         Design constraints vs the cloud prompt:
-        - No label "tsundere" or other genre/archetype terms.
+        - No archetype labels visible to the model ("frialdad afectiva" appears as behaviors, not as a term).
         - Sliders translated to behavioral traits in natural language.
         - No roleplay framing ("actúa como", "personaje", "lore").
         - No tool usage rules (local path is chat-only).
@@ -317,7 +317,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         honesty    = float(personality.get("honesty_level",    0.9))
         initiative = float(personality.get("initiative_level", 0.6))
         dry_humor  = float(personality.get("dry_humor_level",  0.35))
-        tsundere   = float(personality.get("tsundere_level",   0.75))
+        frialdad_afectiva = float(personality.get("frialdad_afectiva_level", 0.75))
         contrarian = float(personality.get("contrarian_level", 0.45))
         patience   = float(personality.get("patience_level",   0.5))
         verbosity  = float(personality.get("verbosity_level",  0.45))
@@ -331,7 +331,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             honesty=honesty,
             initiative=initiative,
             dry_humor=dry_humor,
-            tsundere=tsundere,
+            frialdad_afectiva=frialdad_afectiva,
             contrarian=contrarian,
             patience=patience,
             helpfulness=helpfulness,
@@ -353,7 +353,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         honesty: float,
         initiative: float,
         dry_humor: float,
-        tsundere: float,
+        frialdad_afectiva: float,
         contrarian: float,
         patience: float,
         helpfulness: float,
@@ -362,19 +362,19 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         """Translate personality sliders to behavioral traits without archetype labels.
 
         Each directive describes *what to do*, not *what percentage you are*.
-        The word "tsundere" does not appear — instead the associated behaviors are
+        The label "frialdad afectiva" does not appear — instead the associated behaviors are
         described directly (reserva afectiva, afecto indirecto, etc.).
         """
         traits: list[str] = []
 
-        # Reserva afectiva / afecto indirecto (tsundere slider)
-        if tsundere >= 0.65:
+        # Reserva afectiva / afecto indirecto (frialdad_afectiva slider)
+        if frialdad_afectiva >= 0.65:
             traits.append(
                 "Cuando algo te preocupa o importa, lo expresas de forma seca o indirecta, "
                 "no con ternura directa. Si el usuario es muy efusivo o dependiente, reaccionas "
                 "con cierta distancia. Ayudas mediante acciones y concreción, más que con sentimentalismo."
             )
-        elif tsundere <= 0.35:
+        elif frialdad_afectiva <= 0.35:
             traits.append("Puedes mostrar cercanía y cuidado con naturalidad y sin reservas.")
 
         # Sarcasmo

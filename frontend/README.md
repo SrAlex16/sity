@@ -13,12 +13,15 @@ frontend/src/
     useChat.ts                — estado y ciclo de vida del chat
   components/
     ChatTab.tsx               — tab de conversación (presentacional)
-    SettingsTab.tsx           — tab de personalidad y sliders (presentacional)
+    PersonalityTab.tsx        — tab de personalidad y sliders (presentacional)
     DebugTab.tsx              — tab de trazas y eventos (presentacional)
+    DatasetTab.tsx            — tab de dataset: captura, stats, reset de personalidad (presentacional)
   api/
     chatApi.ts                — sendChatMessage, getCurrentChat, tipos de respuesta
-    sityApi.ts                — getPersonality, adjustPersonality
+    sityApi.ts                — getPersonality, adjustPersonality, resetPersonality
     debugApi.ts               — getRecentEvents, getLastTrace
+  constants/
+    personalityDefaults.ts    — CANONICAL_PERSONALITY: valores canónicos de personalidad compartidos con el backend
 ```
 
 ---
@@ -30,9 +33,9 @@ frontend/src/
 - Mantiene el estado de personalidad (`personality`, `loading`, `savingKey`, `error`, `message`).
 - Mantiene el estado de debug (`recentEvents`, `lastTraceEvents`, `lastTraceId`, `debugError`).
 - Llama a `useChat` y recibe el estado de chat ya gestionado.
-- Calcula `averageEdge` (useMemo sobre la personalidad).
-- Expone `refreshPersonality`, `refreshDebug`, `setAbsolute`.
-- Renderiza el header con los botones de tab y delega en `<ChatTab>`, `<SettingsTab>`, `<DebugTab>`.
+- Calcula `averageEdge` (useMemo sobre la personalidad: `frialdad_afectiva_level`).
+- Expone `refreshPersonality`, `refreshDebug`, `setAbsolute`, `restorePersonalityToDefaults`.
+- Renderiza el header con los botones de tab y delega en `<ChatTab>`, `<PersonalityTab>`, `<DebugTab>`, `<DatasetTab>`.
 
 ### `hooks/useChat.ts`
 
@@ -49,21 +52,26 @@ frontend/src/
 Props recibidas de `useChat` + `averageEdge` de App. Sin estado ni efectos propios.
 Importa `API_BASE` directamente (no lo recibe como prop).
 
-### `components/SettingsTab.tsx` — presentacional
+### `components/PersonalityTab.tsx` — presentacional
 
-Contiene `LABELS`, `ORDER` y `percent()` (solo los usa settings).
-Props: `personality`, `averageEdge`, `message`, `error`, `loading`, `savingKey`, `onReload`, `onSliderChange(key, value)` (update optimista), `onSliderCommit(key, value)` (llama a la API).
+Contiene `LABELS`, `ORDER` y `percent()` (solo los usa personalidad). Incluye botón "Restaurar valores por defecto".
+Props: `personality`, `averageEdge`, `message`, `error`, `loading`, `savingKey`, `onReload`, `onRestoreDefaults`, `onSliderChange(key, value)` (update optimista), `onSliderCommit(key, value)` (llama a la API).
 
 ### `components/DebugTab.tsx` — presentacional
 
 Contiene `EventCard` y `formatTime` (solo los usa debug).
 Props: `lastTraceId`, `lastTraceEvents`, `recentEvents`, `debugError`, `onRefresh`.
 
+### `components/DatasetTab.tsx` — presentacional
+
+Gestiona la sección de dataset capture y estadísticas. Incluye botón "Restaurar valores de personalidad" que llama a `onRestorePersonality`.
+Props: `onRestorePersonality: () => Promise<void>`, más props de estado de dataset capture.
+
 ---
 
 ## Patrones
 
-- **Componentes presentacionales**: `ChatTab`, `SettingsTab`, `DebugTab` son cero-`useState`, cero-`useEffect`. Reciben todo por props.
+- **Componentes presentacionales**: `ChatTab`, `PersonalityTab`, `DebugTab` son cero-`useState`, cero-`useEffect`. Reciben todo por props.
 - **`debugLog`**: helper DEV-only en `useChat.ts` (`if (import.meta.env.DEV) console.log(...)`). Vite lo elimina en producción.
 - **AbortController**: creado en `submitChat`, pasado como `signal` a `sendChatMessage`, nulado en `finally`. El `onerror` del SSE también está guardado con `import.meta.env.DEV`.
 

@@ -14,13 +14,29 @@ PERSONALITY_KEYS = {
     "honesty_level",
     "initiative_level",
     "dry_humor_level",
-    "tsundere_level",
+    "frialdad_afectiva_level",
     "contrarian_level",
     "patience_level",
     "refusal_chance",
     "helpfulness_level",
     "verbosity_level",
     "melancholy_level",
+}
+
+CANONICAL_PERSONALITY: dict[str, float] = {
+    "sarcasm_level":             0.25,
+    "rudeness_level":            0.15,
+    "warmth_level":              0.35,
+    "honesty_level":             0.90,
+    "initiative_level":          0.05,
+    "dry_humor_level":           0.30,
+    "melancholy_level":          0.15,
+    "frialdad_afectiva_level":   0.20,
+    "contrarian_level":          0.10,
+    "patience_level":            0.65,
+    "refusal_chance":            0.15,
+    "helpfulness_level":         0.60,
+    "verbosity_level":           0.35,
 }
 
 
@@ -84,6 +100,12 @@ class SettingsService:
         self.set_setting(f"personality.{parameter}", new_value, source=source)
 
         return old_value, new_value
+
+    def reset_personality(self, source: str = "ui") -> dict[str, float]:
+        """Set all personality parameters to canonical values. Returns the new state."""
+        for key, value in CANONICAL_PERSONALITY.items():
+            self.set_setting(f"personality.{key}", value, source=source)
+        return self.get_personality()
 
     def set_setting(self, key: str, value: Any, source: str = "ui") -> None:
         existing = self.session.exec(select(Setting).where(Setting.key == key)).first()

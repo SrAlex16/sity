@@ -37,7 +37,7 @@ No hay sesiones separadas. Toda la conversación es un único timeline. La separ
 | `variation_warm` | 60 |
 | `variation_brief` | 60 |
 | `variation_melancholy` | 40 |
-| `variation_tsundere` | 40 |
+| `variation_frialdad_afectiva` | 40 |
 | `multi_persona` | 50 |
 
 Los buckets se infieren automáticamente desde `tone_meta`. No requieren etiquetado manual salvo `multi_persona`, que requiere `dataset_source = synthetic_claude_user` o el tag `multi_persona`.

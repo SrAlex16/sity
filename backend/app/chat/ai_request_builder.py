@@ -68,6 +68,17 @@ No inventes resultados.
 """.strip()
 
 
+_MEMORY_RESULT_RESPONSE_RULES = """
+Si la herramienta ejecutada fue search_conversation_history:
+- Usa la memoria recuperada como evidencia interna para responder a la petición original del usuario.
+- Responde de forma directa y sintética cuando haya evidencia suficiente.
+- No narres el proceso de búsqueda.
+- No menciones "fragmento", "mensaje #", "query", "ventana", "base de datos", "herramienta" ni IDs internos salvo que el usuario pida explícitamente debug o trazas.
+- No preguntes al usuario si la memoria recuperada ya permite una conclusión razonable.
+- Si hay varias posibilidades, da la mejor conclusión y explica brevemente la incertidumbre.
+- Si la memoria recuperada no contiene evidencia suficiente, dilo con honestidad y pide una aclaración mínima.
+""".strip()
+
 _AFTER_TOOLS_PROMPT_SUFFIX = (
     "\n\nLa herramienta ya se ha ejecutado. Responde ahora a la petición original del usuario. "
     "No digas que no ves la pregunta original: está en el historial de esta llamada. "
@@ -76,6 +87,7 @@ _AFTER_TOOLS_PROMPT_SUFFIX = (
     "IMPORTANTE: Si el resultado de la herramienta contiene un campo 'diff', muéstralo completo "
     "al usuario en un bloque de código con lenguaje diff antes de pedir confirmación. "
     "Si contiene 'confirmation_phrase', indícala claramente para que el usuario sepa cómo confirmar."
+    f"\n\n{_MEMORY_RESULT_RESPONSE_RULES}"
 )
 
 
@@ -89,6 +101,7 @@ def build_chat_ai_request(
     persona_prompt: str,
     user_message: str,
     max_tokens: int,
+    prior_messages: list[dict[str, Any]] | None = None,
 ) -> AIRequest:
     """Plain conversational request — no tools, no tool choice."""
     return AIRequest(
@@ -98,6 +111,7 @@ def build_chat_ai_request(
         user_message=user_message,
         max_tokens=max_tokens,
         tools_enabled=False,
+        prior_messages=prior_messages or [],
     )
 
 
@@ -107,6 +121,7 @@ def build_planner_ai_request(
     user_message: str,
     tools: list[dict[str, Any]],
     max_tokens: int = 500,
+    prior_messages: list[dict[str, Any]] | None = None,
 ) -> AIRequest:
     """Action-planner request — tools required, tool_choice=any."""
     return AIRequest(
@@ -118,6 +133,7 @@ def build_planner_ai_request(
         tools_enabled=True,
         tool_choice={"type": "any"},
         tools=tools,
+        prior_messages=prior_messages or [],
     )
 
 
@@ -127,6 +143,7 @@ def build_forced_search_request(
     user_message: str,
     tools: list[dict[str, Any]],
     max_tokens: int = 500,
+    prior_messages: list[dict[str, Any]] | None = None,
 ) -> AIRequest:
     """Force a search_conversation_history call when narration without tool use was detected."""
     return AIRequest(
@@ -138,6 +155,7 @@ def build_forced_search_request(
         tools_enabled=True,
         tool_choice={"type": "tool", "name": "search_conversation_history"},
         tools=tools,
+        prior_messages=prior_messages or [],
     )
 
 
@@ -148,6 +166,7 @@ def build_after_tools_ai_request(
     user_message: str,
     max_tokens: int,
     tools: list[dict[str, Any]] | None = None,
+    prior_messages: list[dict[str, Any]] | None = None,
 ) -> AIRequest:
     """Follow-up request after tool results have been fed back to the model."""
     return AIRequest(
@@ -158,4 +177,5 @@ def build_after_tools_ai_request(
         max_tokens=max_tokens,
         tools_enabled=False,
         tools=tools,
+        prior_messages=prior_messages or [],
     )

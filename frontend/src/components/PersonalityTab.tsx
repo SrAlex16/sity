@@ -1,20 +1,19 @@
 import type { PersonalitySettings } from "../api/sityApi";
 
-// Moved from App.tsx — only used by SettingsTab.
 const LABELS: Record<keyof PersonalitySettings, string> = {
-  sarcasm_level: "Sarcasmo",
-  rudeness_level: "Mala leche",
-  warmth_level: "Calidez",
-  honesty_level: "Honestidad",
-  initiative_level: "Iniciativa",
-  dry_humor_level: "Humor seco",
-  melancholy_level: "Melancolía",
-  tsundere_level: "Modo tsundere",
-  contrarian_level: "Contradicción",
-  patience_level: "Paciencia",
-  refusal_chance: "Probabilidad de negarse",
-  helpfulness_level: "Nivel de ayuda",
-  verbosity_level: "Verbosidad",
+  sarcasm_level:           "Sarcasmo",
+  rudeness_level:          "Mala leche",
+  warmth_level:            "Calidez",
+  honesty_level:           "Honestidad",
+  initiative_level:        "Iniciativa",
+  dry_humor_level:         "Humor seco",
+  melancholy_level:        "Melancolía",
+  frialdad_afectiva_level: "Frialdad afectiva",
+  contrarian_level:        "Contradicción",
+  patience_level:          "Paciencia",
+  refusal_chance:          "Probabilidad de negarse",
+  helpfulness_level:       "Nivel de ayuda",
+  verbosity_level:         "Verbosidad",
 };
 
 const ORDER: Array<keyof PersonalitySettings> = [
@@ -25,7 +24,7 @@ const ORDER: Array<keyof PersonalitySettings> = [
   "initiative_level",
   "dry_humor_level",
   "melancholy_level",
-  "tsundere_level",
+  "frialdad_afectiva_level",
   "contrarian_level",
   "patience_level",
   "refusal_chance",
@@ -37,7 +36,7 @@ function percent(value: number): number {
   return Math.round(value * 100);
 }
 
-export type SettingsTabProps = {
+export type PersonalityTabProps = {
   personality: PersonalitySettings | null;
   averageEdge: number;
   message: string;
@@ -45,13 +44,14 @@ export type SettingsTabProps = {
   loading: boolean;
   savingKey: keyof PersonalitySettings | null;
   onReload: () => void;
+  onRestoreDefaults: () => Promise<void>;
   /** Optimistic update while the slider is being dragged. */
   onSliderChange: (key: keyof PersonalitySettings, value: number) => void;
   /** Committed value on mouseUp / touchEnd — triggers the API call. */
   onSliderCommit: (key: keyof PersonalitySettings, value: number) => void;
 };
 
-export function SettingsTab({
+export function PersonalityTab({
   personality,
   averageEdge,
   message,
@@ -59,9 +59,10 @@ export function SettingsTab({
   loading,
   savingKey,
   onReload,
+  onRestoreDefaults,
   onSliderChange,
   onSliderCommit,
-}: SettingsTabProps) {
+}: PersonalityTabProps) {
   return (
     <>
       <section className="grid gap-4 md:grid-cols-[1fr_280px]">
@@ -81,7 +82,7 @@ export function SettingsTab({
           <h2 className="text-xl font-semibold">Encabronamiento</h2>
           <p className="mt-4 text-5xl font-bold text-cyan-300">{averageEdge}%</p>
           <p className="mt-2 text-sm text-zinc-400">
-            Media de sarcasmo, mala leche, humor seco, tsundere y contradicción. Métrica científicamente dudosa, como casi todo lo divertido.
+            Media de sarcasmo, mala leche, humor seco, frialdad afectiva y contradicción. Métrica científicamente dudosa, como casi todo lo divertido.
           </p>
         </div>
       </section>
@@ -89,12 +90,21 @@ export function SettingsTab({
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-xl font-semibold">Parámetros</h2>
-          <button
-            onClick={onReload}
-            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
-          >
-            Recargar
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onRestoreDefaults}
+              disabled={loading}
+              className="rounded-xl border border-zinc-600 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+            >
+              Restaurar valores por defecto
+            </button>
+            <button
+              onClick={onReload}
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+            >
+              Recargar
+            </button>
+          </div>
         </div>
 
         {loading && <p className="mt-4 text-zinc-400">Cargando...</p>}
