@@ -64,6 +64,11 @@ debug:
   debug_logs_ttl_days: 7
   audit_logs_ttl_days: 60
 
+audio:
+  stt_model: base
+  stt_device: cpu
+  stt_language: es
+
 storage:
   tmp_dir: runtime/tmp
   data_dir: data

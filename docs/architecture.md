@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-13 (Telegram bot).
+Última actualización: 2026-06-13 (Audio STT + voice mode guard).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -45,6 +45,36 @@ Responsabilidades:
 - previews de cámara/audio;
 - cancelación de acciones;
 - interacción táctil futura.
+
+### Audio STT
+
+Transcripción de voz a texto vía `faster-whisper` (local, CPU, modelo `base`, español).
+
+- `POST /audio/transcribe` — recibe `multipart/form-data` con un archivo de audio, devuelve `{ transcript, duration_ms }`. No llama a servicios externos.
+- El modelo se carga de forma perezosa en el primer uso (`WhisperModel` dentro de `get_model()`). Singleton con lock por hilo.
+- `compute_type="int8"` para eficiencia en Raspberry Pi.
+- La ruta es origin-agnostic: la llaman frontend web, Telegram bot, o cualquier cliente futuro.
+
+Metadata de voz por mensaje:
+
+- `input_mode: "voice" | "text"` — guardado en `ChatMessage`, invisible al modelo.
+- `voice_transcript_original` — texto bruto de Whisper antes de edición de usuario, nunca en el prompt.
+- `edit_distance_pct` — `1 - SequenceMatcher.ratio()` entre original y texto enviado. Calculado en `routes_chat.py`.
+
+Archivos:
+
+```text
+backend/app/audio/transcriber.py       — WhisperModel singleton + transcribe_bytes()
+backend/app/audio/edit_distance.py     — compute_edit_distance_pct()
+backend/app/api/routes_audio.py        — POST /audio/transcribe
+config/default_config.yaml             — audio.stt_model / stt_device / stt_language
+frontend/src/hooks/useVoiceInput.ts    — MediaRecorder hook → POST /audio/transcribe
+frontend/src/api/chatApi.ts            — transcribeAudio() + voice options en sendChatMessage()
+```
+
+Tests: `tests/test_edit_distance.py`, `tests/test_audio_transcribe.py`, `tests/test_telegram_voice.py`. Sin llamadas reales a Whisper ni a Telegram.
+
+**Voice mode guard (restricción estructural):** cuando `input_mode == "voice"`, `toolset_selector.py` elimina todos los tools de `SENSES_TOOLSET` antes de devolver la selección. El dominio `senses` tampoco aparece en `activated_domains`. Esta restricción se aplica en el backend independientemente del criterio del modelo. Además, `PromptContextBuilder` inyecta `[input_mode: voice]` en el bloque de contexto del mensaje, y `persona_system.md` incluye una regla explícita para interpretar preguntas de confirmación de canal sin disparar tools de captura.
 
 ### Telegram Bot
 

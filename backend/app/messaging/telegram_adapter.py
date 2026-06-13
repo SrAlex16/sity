@@ -161,6 +161,8 @@ async def handle_chat_message(
     text: str,
     username: str,
     reply: Callable,
+    input_mode: str = "text",
+    voice_transcript_original: str | None = None,
 ) -> None:
     if chat_type != "private" or chat_id not in cfg.allowed_chat_ids:
         return
@@ -170,10 +172,14 @@ async def handle_chat_message(
     if cfg.log_incoming:
         write_log(
             level="AUDIT", module="telegram", event="incoming",
-            payload={"chat_id": chat_id, "user": username, "text": text},
+            payload={"chat_id": chat_id, "user": username, "text": text, "input_mode": input_mode},
         )
     try:
-        response = await gateway.send_message(text)
+        response = await gateway.send_message(
+            text,
+            input_mode=input_mode,
+            voice_transcript_original=voice_transcript_original,
+        )
     except Exception as exc:
         await reply("Error al contactar el backend de Sity.")
         write_log(
@@ -190,9 +196,58 @@ async def handle_chat_message(
                 "chat_id": chat_id,
                 "trace_id": response.get("trace_id"),
                 "tokens": usage.get("total_tokens", 0),
+                "input_mode": input_mode,
             },
         )
     await reply(reply_text)
+
+
+async def handle_voice_message(
+    *,
+    cfg: TelegramConfig,
+    gateway: SityGateway,
+    rate_buckets: dict[int, deque[float]],
+    chat_id: int,
+    chat_type: str,
+    username: str,
+    audio_bytes: bytes,
+    content_type: str = "audio/ogg",
+    reply: Callable,
+) -> None:
+    logging.info(
+        "[telegram] handle_voice_message: chat_id=%s chat_type=%s bytes=%d allowed=%s",
+        chat_id, chat_type, len(audio_bytes), chat_id in cfg.allowed_chat_ids,
+    )
+    if chat_type != "private" or chat_id not in cfg.allowed_chat_ids:
+        return
+    if is_rate_limited(rate_buckets, chat_id, cfg.rate_limit_per_minute):
+        await reply(_RATE_LIMIT_MSG)
+        return
+    try:
+        result = await gateway.transcribe_audio(audio_bytes, content_type)
+        transcript = result.get("transcript", "").strip()
+    except Exception as exc:
+        await reply("Error al transcribir el audio.")
+        write_log(
+            level="ERROR", module="telegram", event="transcription_error",
+            payload={"chat_id": chat_id, "error": str(exc)},
+        )
+        return
+    if not transcript:
+        await reply("No he entendido el audio. Intenta de nuevo.")
+        return
+    await handle_chat_message(
+        cfg=cfg,
+        gateway=gateway,
+        rate_buckets=rate_buckets,
+        chat_id=chat_id,
+        chat_type=chat_type,
+        text=transcript,
+        username=username,
+        reply=reply,
+        input_mode="voice",
+        voice_transcript_original=transcript,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +312,36 @@ def _build_app(cfg: TelegramConfig, gateway: SityGateway, token: str) -> Applica
             reply=update.message.reply_text,
         )
 
+    async def _voice(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        logging.info(
+            "[telegram] _voice handler fired: chat_id=%s has_message=%s "
+            "has_voice=%s has_audio=%s",
+            update.message.chat_id if update.message else "?",
+            update.message is not None,
+            update.message.voice is not None if update.message else False,
+            update.message.audio is not None if update.message else False,
+        )
+        if update.message is None:
+            return
+        voice = update.message.voice or update.message.audio
+        if voice is None:
+            logging.warning("[telegram] _voice: neither voice nor audio on message")
+            return
+        user = update.effective_user
+        tg_file = await voice.get_file()
+        raw = await tg_file.download_as_bytearray()
+        await handle_voice_message(
+            cfg=cfg,
+            gateway=gateway,
+            rate_buckets=rate_buckets,
+            chat_id=update.message.chat_id,
+            chat_type=update.message.chat.type,
+            username=(user.username if user else None) or str(update.message.chat_id),
+            audio_bytes=bytes(raw),
+            content_type="audio/ogg",
+            reply=update.message.reply_text,
+        )
+
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", _cmd_start))
     app.add_handler(CommandHandler("help", _cmd_help))
@@ -264,6 +349,10 @@ def _build_app(cfg: TelegramConfig, gateway: SityGateway, token: str) -> Applica
     app.add_handler(CommandHandler("defaults", _cmd_defaults))
     app.add_handler(CommandHandler("status", _cmd_status))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _msg))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, _voice))
+    logging.info(
+        "[telegram] handlers registered: text, voice|audio, start, help, preset, defaults, status"
+    )
     return app
 
 

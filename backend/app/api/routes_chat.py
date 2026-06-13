@@ -104,6 +104,9 @@ def save_chat_message(
     trace_id: Optional[str] = None,
     tone_meta: Optional[str] = None,
     metadata: Optional[MessageMetadata] = None,
+    input_mode: str = "text",
+    voice_transcript_original: Optional[str] = None,
+    edit_distance_pct: Optional[float] = None,
 ) -> None:
     if metadata is None:
         metadata = build_message_metadata(role=role)
@@ -125,6 +128,9 @@ def save_chat_message(
             dataset_source=metadata.dataset_source,
             dataset_eligible=metadata.dataset_eligible,
             dataset_tags_json=metadata.dataset_tags_json,
+            input_mode=input_mode,
+            voice_transcript_original=voice_transcript_original,
+            edit_distance_pct=edit_distance_pct,
         )
     )
 
@@ -183,6 +189,8 @@ class ChatMessageRequest(BaseModel):
     message: str
     history: list[ChatHistoryItem] = []
     client_turn_id: str | None = None
+    input_mode: str = "text"
+    voice_transcript_original: Optional[str] = None
 
 
 
@@ -259,11 +267,17 @@ def _chat_message_inner(
         trace_id: Optional[str] = None,
         tone_meta: Optional[str] = None,
         metadata: Optional[MessageMetadata] = None,
+        input_mode: str = "text",
+        voice_transcript_original: Optional[str] = None,
+        edit_distance_pct: Optional[float] = None,
     ) -> None:
         if metadata is None:
             metadata = _sity_metadata if role == "sity" else _user_metadata
         save_chat_message(s, role=role, text=text, trace_id=trace_id,
-                          tone_meta=tone_meta, metadata=metadata)
+                          tone_meta=tone_meta, metadata=metadata,
+                          input_mode=input_mode,
+                          voice_transcript_original=voice_transcript_original,
+                          edit_distance_pct=edit_distance_pct)
 
     write_log(
         level="INFO",
@@ -357,6 +371,7 @@ def _chat_message_inner(
         history_limit=history_limit,
         planner_history_limit=4,
         trace_id=trace_id,
+        input_mode=request.input_mode,
     )
 
     recent_history = prompt_context.recent_history
@@ -390,7 +405,34 @@ def _chat_message_inner(
         },
     )
 
-    _save_with_capture(session, role="user", text=request.message, trace_id=trace_id)
+    _voice_edit_pct: Optional[float] = None
+    if request.input_mode == "voice" and request.voice_transcript_original:
+        from app.audio.edit_distance import compute_edit_distance_pct
+        _voice_edit_pct = compute_edit_distance_pct(
+            request.voice_transcript_original, request.message
+        )
+        write_log(
+            level="INFO",
+            module="audio",
+            event="voice_input",
+            trace_id=trace_id,
+            payload={
+                "input_mode": "voice",
+                "edit_distance_pct": _voice_edit_pct,
+                "original_len": len(request.voice_transcript_original),
+                "final_len": len(request.message),
+            },
+        )
+
+    _save_with_capture(
+        session,
+        role="user",
+        text=request.message,
+        trace_id=trace_id,
+        input_mode=request.input_mode,
+        voice_transcript_original=request.voice_transcript_original,
+        edit_distance_pct=_voice_edit_pct,
+    )
 
     # Build local provider when SITY_LOCAL_AI_ENABLED=true.
     # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
@@ -417,7 +459,7 @@ def _chat_message_inner(
 
     runner = ProviderCallRunner(AIGateway(config=config), local_provider=_local_provider)
 
-    toolset_selection = select_toolset_with_metadata(request.message)
+    toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
     selected_tools = toolset_selection.tools
 
     routing_decision = build_chat_routing_decision(

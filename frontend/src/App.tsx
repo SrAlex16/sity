@@ -18,6 +18,7 @@ import {
   type TraceEvent,
 } from "./api/debugApi";
 import { useChat } from "./hooks/useChat";
+import { useVoiceInput } from "./hooks/useVoiceInput";
 import { ChatTab } from "./components/ChatTab";
 import { PersonalityTab } from "./components/PersonalityTab";
 import { DebugTab } from "./components/DebugTab";
@@ -61,11 +62,16 @@ function App() {
     scrollChatToBottom,
     submitChat,
     cancelActiveOperation,
+    setVoiceTranscript,
   } = useChat({
     onMessageSent: () => {
       refreshPersonality();
       refreshTrace();
     },
+  });
+
+  const { isRecording, isTranscribing, recordingError, toggleRecording } = useVoiceInput({
+    onTranscript: setVoiceTranscript,
   });
 
   const averageEdge = useMemo(() => {
@@ -257,6 +263,10 @@ function App() {
             cancelActiveOperation={cancelActiveOperation}
             chatBottomRef={chatBottomRef}
             averageEdge={averageEdge}
+            isRecording={isRecording}
+            isTranscribing={isTranscribing}
+            recordingError={recordingError}
+            onToggleRecording={toggleRecording}
           />
         )}
 

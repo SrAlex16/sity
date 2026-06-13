@@ -32,14 +32,17 @@ def _configure_sqlite() -> None:
 def _migrate_chatmessage() -> None:
     """Add metadata columns to chatmessage if absent (idempotent ALTER TABLE)."""
     new_columns = [
-        ("speaker_id",              "TEXT"),
-        ("speaker_label",           "TEXT"),
-        ("speaker_source",          "TEXT"),
-        ("speaker_confidence",      "REAL"),
-        ("identity_evidence_json",  "TEXT"),
-        ("dataset_source",          "TEXT"),
-        ("dataset_eligible",        "INTEGER NOT NULL DEFAULT 1"),
-        ("dataset_tags_json",       "TEXT"),
+        ("speaker_id",                  "TEXT"),
+        ("speaker_label",               "TEXT"),
+        ("speaker_source",              "TEXT"),
+        ("speaker_confidence",          "REAL"),
+        ("identity_evidence_json",      "TEXT"),
+        ("dataset_source",              "TEXT"),
+        ("dataset_eligible",            "INTEGER NOT NULL DEFAULT 1"),
+        ("dataset_tags_json",           "TEXT"),
+        ("input_mode",                  "TEXT NOT NULL DEFAULT 'text'"),
+        ("voice_transcript_original",   "TEXT"),
+        ("edit_distance_pct",           "REAL"),
     ]
     with engine.connect() as conn:
         result = conn.execute(text("PRAGMA table_info(chatmessage)"))

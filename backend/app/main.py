@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
+from app.api.routes_audio import router as audio_router
 from app.api.routes_captures import router as captures_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_debug import router as debug_router
@@ -56,5 +57,6 @@ def health():
 app.include_router(settings_router)
 app.include_router(debug_router)
 app.include_router(chat_router)
+app.include_router(audio_router)
 app.include_router(captures_router)
 app.include_router(events_router)

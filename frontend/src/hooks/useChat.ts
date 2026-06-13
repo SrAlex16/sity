@@ -50,6 +50,8 @@ export function useChat(options?: UseChatOptions) {
   const eventSourceRef = useRef<EventSource | null>(null);
   /** AbortController for the active sendChatMessage fetch. */
   const abortControllerRef = useRef<AbortController | null>(null);
+  /** Original voice transcript before user edits; cleared on submit. */
+  const voiceOriginalRef = useRef<string | null>(null);
 
   function scrollChatToBottom(behavior: ScrollBehavior = "smooth") {
     window.setTimeout(() => {
@@ -83,6 +85,11 @@ export function useChat(options?: UseChatOptions) {
     await fetch(`${API_BASE}/events/chat/${activeClientTurnId}/cancel`, { method: "POST" });
   }
 
+  function setVoiceTranscript(text: string, original: string) {
+    setChatInput(text);
+    voiceOriginalRef.current = original;
+  }
+
   async function submitChat() {
     debugLog("[Sity submit] called", { chatInput, chatLoading });
 
@@ -92,6 +99,9 @@ export function useChat(options?: UseChatOptions) {
       debugLog("[Sity submit] blocked", { trimmed, chatLoading });
       return;
     }
+
+    const voiceOriginal = voiceOriginalRef.current;
+    voiceOriginalRef.current = null;
 
     const clientTurnId = createClientTurnId();
     debugLog("[Sity submit] clientTurnId", clientTurnId);
@@ -150,6 +160,9 @@ export function useChat(options?: UseChatOptions) {
       debugLog("[Sity submit] sending chat message");
       const response = await sendChatMessage(trimmed, clientTurnId, {
         signal: abortControllerRef.current.signal,
+        ...(voiceOriginal != null
+          ? { inputMode: "voice", voiceTranscriptOriginal: voiceOriginal }
+          : {}),
       });
       debugLog("[Sity submit] response", response);
 
@@ -223,5 +236,6 @@ export function useChat(options?: UseChatOptions) {
     scrollChatToBottom,
     submitChat,
     cancelActiveOperation,
+    setVoiceTranscript,
   };
 }

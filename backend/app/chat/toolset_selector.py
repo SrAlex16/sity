@@ -91,6 +91,19 @@ _PERSONALITY_ACTION_RE = re.compile(
 _ACTION_ID_RE = re.compile(r"\bact_[a-fA-F0-9]{8}\b")
 
 
+# ── Voice-mode capture exclusion ──────────────────────────────────────────────
+# All tools in SENSES_TOOLSET are excluded when input_mode == "voice".
+# The user is already being heard through their own device; triggering sensor
+# capture tools in response to voice input is never correct.
+_VOICE_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
+    t["name"] for t in SENSES_TOOLSET
+)
+
+
+def _strip_sensor_tools(tools: list[dict]) -> list[dict]:
+    return [t for t in tools if t.get("name") not in _VOICE_EXCLUDED_TOOL_NAMES]
+
+
 # ── Structural signal helpers ──────────────────────────────────────────────────
 
 def _dedupe_tools(tools: list[dict]) -> list[dict]:
@@ -187,14 +200,17 @@ def select_structural_toolsets_for_message(message: str) -> list[dict]:
     return _dedupe_tools(selected)
 
 
-def select_toolset_for_message(message: str) -> list[dict]:
+def select_toolset_for_message(message: str, input_mode: str = "text") -> list[dict]:
     selected = select_structural_toolsets_for_message(message)
 
     # Legacy NL keyword fallback — see _legacy_keyword_toolsets docstring.
     for toolset in _legacy_keyword_toolsets(message):
         selected.extend(toolset)
 
-    return _dedupe_tools(selected)
+    result = _dedupe_tools(selected)
+    if input_mode == "voice":
+        result = _strip_sensor_tools(result)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -233,11 +249,11 @@ class ToolsetSelection:
     'action_id_detected', 'keyword:<domain>'."""
 
 
-def select_toolset_with_metadata(message: str) -> ToolsetSelection:
+def select_toolset_with_metadata(message: str, input_mode: str = "text") -> ToolsetSelection:
     """Select tools for a message and return structured metadata.
 
-    *tools* is identical to select_toolset_for_message(message) — callers that
-    only need the list should use that function instead.
+    *tools* is identical to select_toolset_for_message(message, input_mode) — callers
+    that only need the list should use that function instead.
 
     *activated_domains* is the set of non-base domains selected.  Use this
     (not len(tools)) to decide whether the turn requires cloud tool-calling.
@@ -245,7 +261,7 @@ def select_toolset_with_metadata(message: str) -> ToolsetSelection:
     *reasons* lists why each domain was added, in activation order.
     """
     # Delegate tool list to the existing implementation for exact compatibility.
-    tools = select_toolset_for_message(message)
+    tools = select_toolset_for_message(message, input_mode=input_mode)
 
     # Compute metadata independently (same logic, domain/reason tracking).
     activated_domains: set[str] = set()
@@ -285,12 +301,15 @@ def select_toolset_with_metadata(message: str) -> ToolsetSelection:
         _record(SERVICE_CONTROL_TOOLSET, "keyword:service_control")
     elif _SYSTEM_RE.search(message):
         _record(SYSTEM_TOOLSET, "keyword:system")
-    if _SENSE_RE.search(message):
+    if _SENSE_RE.search(message) and input_mode != "voice":
         _record(SENSES_TOOLSET, "keyword:senses")
     if _DEBUG_RE.search(message):
         _record(DEBUG_TOOLSET, "keyword:debug")
     if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
         _record(PERSONALITY_TOOLSET, "keyword:personality")
+
+    if input_mode == "voice":
+        activated_domains.discard("senses")
 
     return ToolsetSelection(
         tools=tools,

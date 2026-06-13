@@ -102,6 +102,11 @@ class ChatMessage(SQLModel, table=True):
     dataset_eligible: bool = Field(default=True)
     dataset_tags_json: Optional[str] = Field(default=None)
 
+    # Voice input metadata
+    input_mode: str = Field(default="text")
+    voice_transcript_original: Optional[str] = Field(default=None)
+    edit_distance_pct: Optional[float] = Field(default=None)
+
 
 class PendingAction(SQLModel, table=True):
     id: str = Field(primary_key=True)

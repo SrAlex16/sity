@@ -15,6 +15,10 @@ export type ChatTabProps = {
   cancelActiveOperation: () => Promise<void>;
   chatBottomRef: React.RefObject<HTMLDivElement | null>;
   averageEdge: number;
+  isRecording: boolean;
+  isTranscribing: boolean;
+  recordingError: string | null;
+  onToggleRecording: () => void;
 };
 
 export function ChatTab({
@@ -30,6 +34,10 @@ export function ChatTab({
   cancelActiveOperation,
   chatBottomRef,
   averageEdge,
+  isRecording,
+  isTranscribing,
+  recordingError,
+  onToggleRecording,
 }: ChatTabProps) {
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -141,6 +149,12 @@ export function ChatTab({
         </p>
       )}
 
+      {recordingError && (
+        <p className="mt-3 rounded-xl border border-red-900 bg-red-950/50 p-3 text-red-200">
+          {recordingError}
+        </p>
+      )}
+
       <div className="mt-4 flex gap-3">
         <input
           value={chatInput}
@@ -151,9 +165,32 @@ export function ChatTab({
               submitChat();
             }
           }}
-          placeholder="Habla con Sity..."
+          placeholder={isRecording ? "Grabando…" : isTranscribing ? "Transcribiendo…" : "Habla con Sity..."}
           className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100 outline-none focus:border-cyan-300"
         />
+        <button
+          type="button"
+          onClick={onToggleRecording}
+          disabled={isTranscribing || chatLoading}
+          title={isRecording ? "Detener grabación" : "Grabar audio"}
+          className={`rounded-xl px-4 py-3 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            isRecording
+              ? "bg-red-500 text-white hover:bg-red-600"
+              : "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          }`}
+        >
+          {isTranscribing ? (
+            "…"
+          ) : isRecording ? (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+              <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4Zm0 2a2 2 0 0 0-2 2v7a2 2 0 1 0 4 0V5a2 2 0 0 0-2-2Zm-7 9a1 1 0 0 1 1 1 6 6 0 0 0 12 0 1 1 0 1 1 2 0 8 8 0 0 1-7 7.938V22h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.062A8 8 0 0 1 4 13a1 1 0 0 1 1-1Z" />
+            </svg>
+          )}
+        </button>
         {activeClientTurnId && canCancel ? (
           <button
             type="button"
