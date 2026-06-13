@@ -2,12 +2,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 from typing import Optional
 
 from app.debug.schemas import LastTraceResponse, RecentEventsResponse, TraceEvent
 from app.memory.db import get_session
-from app.memory.models import ChatMessage
+from app.memory.models import AIUsage, ChatMessage
+from app.settings.config_loader import load_default_config
 from app.trace.trace_reader import (
     get_events_by_trace_id,
     get_last_trace_id,
@@ -161,6 +162,25 @@ def disable_dataset_capture(session: Session = Depends(get_session)):
 
     ctx = svc.disable()  # clears demo_start_at internally
     return _ctx_to_response(ctx)
+
+
+@router.get("/budget")
+def budget(session: Session = Depends(get_session)):
+    """Return today's token usage and the configured daily budget."""
+    today_start = (
+        datetime.now(timezone.utc)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .replace(tzinfo=None)
+    )
+    result = session.exec(
+        select(func.sum(AIUsage.input_tokens + AIUsage.output_tokens)).where(
+            AIUsage.created_at >= today_start
+        )
+    ).one()
+    used = int(result or 0)
+    cfg = load_default_config()
+    daily_budget = int(cfg.get("tokens", {}).get("daily_token_budget", 50000))
+    return {"daily_used": used, "daily_budget": daily_budget}
 
 
 @router.get("/dataset-stats")

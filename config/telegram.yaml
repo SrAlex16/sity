@@ -1,0 +1,6 @@
+telegram:
+  enabled: false
+  allowed_chat_ids: []
+  rate_limit_per_minute: 10
+  log_incoming: true
+  log_outgoing: true

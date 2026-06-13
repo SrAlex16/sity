@@ -1,0 +1,16 @@
+[Unit]
+Description=Sity Telegram Bot
+After=network.target sity-backend.service
+Wants=sity-backend.service
+
+[Service]
+Type=simple
+User=alex
+WorkingDirectory=/home/alex/projects/sity/backend
+EnvironmentFile=/home/alex/projects/sity/.env
+ExecStart=/home/alex/projects/sity/backend/.venv/bin/python -m app.messaging.telegram_adapter
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
