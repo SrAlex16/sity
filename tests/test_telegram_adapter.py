@@ -258,7 +258,7 @@ def test_chat_message_calls_gateway_and_replies() -> None:
         cfg=_cfg([10]), gateway=gw, rate_buckets=_buckets(),
         chat_id=10, chat_type="private", text="hola", username="user1", reply=reply,
     ))
-    gw.send_message.assert_called_once_with("hola")
+    gw.send_message.assert_called_once_with("hola", input_mode="text", voice_transcript_original=None)
     reply.assert_called_once_with("Respuesta de prueba.")
 
 
