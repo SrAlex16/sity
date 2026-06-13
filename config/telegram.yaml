@@ -1,6 +1,7 @@
 telegram:
-  enabled: false
-  allowed_chat_ids: []
+  enabled: true
+  allowed_chat_ids:
+    - 7791492910
   rate_limit_per_minute: 10
   log_incoming: true
   log_outgoing: true

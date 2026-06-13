@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-13.
+Última actualización: 2026-06-13 (Telegram bot).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -45,6 +45,30 @@ Responsabilidades:
 - previews de cámara/audio;
 - cancelación de acciones;
 - interacción táctil futura.
+
+### Telegram Bot
+
+Proceso independiente para acceso remoto desde fuera de la red local.
+
+- Long polling, sin webhooks.
+- Corre como servicio systemd (`sity-telegram.service`) con dependencia en `sity-backend.service`.
+- Llama al backend en `localhost:8000` vía HTTP.
+- Lista de `allowed_chat_ids` en `config/telegram.yaml` — mensajes de otros chat_ids se ignoran silenciosamente.
+- Rate limit por chat_id (ventana de 60 segundos).
+
+Comandos: `/start`, `/help`, `/preset <modo>`, `/defaults`, `/status`.
+
+Archivos:
+
+```text
+backend/app/messaging/models.py        — TelegramConfig + is_rate_limited()
+backend/app/messaging/gateway.py       — SityGateway (httpx async)
+backend/app/messaging/telegram_adapter.py — bot, handlers, _build_app(), main()
+config/telegram.yaml                   — config (token en .env)
+deploy/systemd/sity-telegram.service   — unidad systemd
+```
+
+No expone el backend a internet. El token se lee de `TELEGRAM_BOT_TOKEN` en `.env`.
 
 ### Tools
 
