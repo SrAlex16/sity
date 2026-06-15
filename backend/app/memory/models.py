@@ -107,6 +107,13 @@ class ChatMessage(SQLModel, table=True):
     voice_transcript_original: Optional[str] = Field(default=None)
     edit_distance_pct: Optional[float] = Field(default=None)
 
+    # Voice output metadata
+    output_mode: str = Field(default="text")          # "voice" | "text"
+    tts_fragments: Optional[int] = Field(default=None)  # fragments synthesized; None if no TTS
+
+    # Origin channel
+    source_channel: str = Field(default="web")        # "web" | "telegram"
+
 
 class PendingAction(SQLModel, table=True):
     id: str = Field(primary_key=True)

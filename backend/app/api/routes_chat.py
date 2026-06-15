@@ -107,6 +107,9 @@ def save_chat_message(
     input_mode: str = "text",
     voice_transcript_original: Optional[str] = None,
     edit_distance_pct: Optional[float] = None,
+    output_mode: str = "text",
+    tts_fragments: Optional[int] = None,
+    source_channel: str = "web",
 ) -> None:
     if metadata is None:
         metadata = build_message_metadata(role=role)
@@ -131,6 +134,9 @@ def save_chat_message(
             input_mode=input_mode,
             voice_transcript_original=voice_transcript_original,
             edit_distance_pct=edit_distance_pct,
+            output_mode=output_mode,
+            tts_fragments=tts_fragments,
+            source_channel=source_channel,
         )
     )
 
@@ -191,6 +197,7 @@ class ChatMessageRequest(BaseModel):
     client_turn_id: str | None = None
     input_mode: str = "text"
     voice_transcript_original: Optional[str] = None
+    source_channel: str = "web"
 
 
 
@@ -270,6 +277,9 @@ def _chat_message_inner(
         input_mode: str = "text",
         voice_transcript_original: Optional[str] = None,
         edit_distance_pct: Optional[float] = None,
+        output_mode: str = "text",
+        tts_fragments: Optional[int] = None,
+        source_channel: str = "web",
     ) -> None:
         if metadata is None:
             metadata = _sity_metadata if role == "sity" else _user_metadata
@@ -277,7 +287,10 @@ def _chat_message_inner(
                           tone_meta=tone_meta, metadata=metadata,
                           input_mode=input_mode,
                           voice_transcript_original=voice_transcript_original,
-                          edit_distance_pct=edit_distance_pct)
+                          edit_distance_pct=edit_distance_pct,
+                          output_mode=output_mode,
+                          tts_fragments=tts_fragments,
+                          source_channel=source_channel)
 
     write_log(
         level="INFO",
@@ -367,6 +380,11 @@ def _chat_message_inner(
     voice_settings = settings_service.get_voice_settings()
     _should_synth = _should_synthesize(voice_settings.voice_response_mode, request.input_mode)
     output_mode = "voice" if _should_synth else "text"
+    write_log(level="INFO", module="audio", event="tts_decision",
+              trace_id=trace_id,
+              payload={"voice_response_mode": voice_settings.voice_response_mode,
+                       "input_mode": request.input_mode,
+                       "should_synth": _should_synth})
 
     prompt_context = PromptContextBuilder(
         get_recent_messages=get_recent_db_messages,
@@ -438,6 +456,7 @@ def _chat_message_inner(
         input_mode=request.input_mode,
         voice_transcript_original=request.voice_transcript_original,
         edit_distance_pct=_voice_edit_pct,
+        source_channel=request.source_channel,
     )
 
     # Build local provider when SITY_LOCAL_AI_ENABLED=true.
@@ -766,16 +785,29 @@ def _chat_message_inner(
         updated_parameters=updated_parameters,
         artifacts=response_artifacts,
         tone_meta=json.dumps(persona_decision.tone_snapshot),
+        output_mode=output_mode,
+        source_channel=request.source_channel,
     )
 
     # TTS post-processing: reuse the decision already made before generation.
     if _should_synth and chat_result.ok and chat_result.text:
-        _attach_tts_artifacts(
+        n_fragments = _attach_tts_artifacts(
             result=chat_result,
             text=chat_result.text,
             voice_settings=voice_settings,
             trace_id=trace_id,
         )
+        if n_fragments is not None:
+            _tts_row = session.exec(
+                select(ChatMessage).where(
+                    ChatMessage.trace_id == trace_id,
+                    ChatMessage.role == "sity",
+                )
+            ).first()
+            if _tts_row is not None:
+                _tts_row.tts_fragments = n_fragments
+                session.add(_tts_row)
+                session.commit()
 
     return chat_result
 
@@ -789,8 +821,11 @@ def _should_synthesize(voice_response_mode: str, input_mode: str) -> bool:
     return input_mode == "voice"
 
 
-def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -> None:
-    """Synthesize TTS audio and attach as artifacts to result. Modifies result in place."""
+def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -> Optional[int]:
+    """Synthesize TTS audio and attach as artifacts to result. Modifies result in place.
+
+    Returns the number of fragments synthesized, or None if synthesis was skipped or failed.
+    """
     from app.api.routes_audio import synthesize_to_tmp
     from app.api.schemas import ChatArtifact
     from app.audio.synthesizer import load_tts_config
@@ -806,7 +841,7 @@ def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -
         else:
             write_log(level="INFO", module="audio", event="tts_skipped_long_response",
                       trace_id=trace_id, payload={"chars": len(text)})
-            return
+            return None
 
         for i, fragment in enumerate(fragments):
             url = synthesize_to_tmp(fragment)
@@ -820,6 +855,8 @@ def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -
         write_log(level="INFO", module="audio", event="tts_attached",
                   trace_id=trace_id,
                   payload={"fragments": len(fragments), "total_chars": len(text)})
+        return len(fragments)
     except Exception as exc:
         write_log(level="WARN", module="audio", event="tts_failed",
                   trace_id=trace_id, payload={"error": str(exc)})
+        return None

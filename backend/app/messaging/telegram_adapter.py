@@ -189,39 +189,88 @@ async def handle_chat_message(
         )
         return
 
+    _response_trace_id = response.get("trace_id", "")
     reply_text = response.get("text") or "…"
     audio_artifacts = [a for a in (response.get("artifacts") or []) if a.get("type") == "audio"]
+
+    logging.info(
+        "[telegram] artifacts_check: chat_id=%s trace_id=%s raw_artifacts=%d "
+        "audio_artifacts=%d reply_audio_is_none=%s",
+        chat_id, _response_trace_id,
+        len(response.get("artifacts") or []),
+        len(audio_artifacts),
+        reply_audio is None,
+    )
+    write_log(
+        level="INFO", module="telegram", event="artifacts_check",
+        trace_id=_response_trace_id,
+        payload={
+            "chat_id": chat_id,
+            "raw_artifacts": len(response.get("artifacts") or []),
+            "audio_artifacts": len(audio_artifacts),
+            "reply_audio_is_none": reply_audio is None,
+        },
+    )
 
     if cfg.log_outgoing:
         usage: dict[str, Any] = response.get("usage") or {}
         write_log(
             level="AUDIT", module="telegram", event="outgoing",
+            trace_id=_response_trace_id,
             payload={
                 "chat_id": chat_id,
-                "trace_id": response.get("trace_id"),
                 "tokens": usage.get("total_tokens", 0),
                 "input_mode": input_mode,
                 "audio_artifacts": len(audio_artifacts),
             },
         )
 
-    # Send text first (always — voice_include_text handled backend-side for frontend;
-    # for Telegram we always include the text alongside audio).
-    await reply(reply_text)
-
-    # Send audio artifacts if the bot has a reply_audio callable
+    # Decide whether to include text alongside audio.
+    voice_include_text = True
     if audio_artifacts and reply_audio is not None:
-        for artifact in audio_artifacts:
+        try:
+            vs = await gateway.get_voice_settings()
+            voice_include_text = bool(vs.get("voice_include_text", True))
+        except Exception:
+            pass  # default to include text on error
+
+    if voice_include_text or not audio_artifacts:
+        await reply(reply_text)
+
+    # Send audio artifacts sequentially.
+    if audio_artifacts and reply_audio is not None:
+        for idx, artifact in enumerate(audio_artifacts):
             url = artifact.get("url", "")
             if not url:
                 continue
+            logging.info(
+                "[telegram] tts_download_attempt: chat_id=%s trace_id=%s idx=%d url=%s",
+                chat_id, _response_trace_id, idx, url,
+            )
             try:
                 audio_bytes = await gateway.get_tts_artifact(url)
+                logging.info(
+                    "[telegram] tts_download_ok: chat_id=%s trace_id=%s idx=%d bytes=%d",
+                    chat_id, _response_trace_id, idx, len(audio_bytes),
+                )
+                write_log(
+                    level="INFO", module="telegram", event="tts_artifact_download",
+                    trace_id=_response_trace_id,
+                    payload={
+                        "chat_id": chat_id, "artifact_index": idx,
+                        "url": url, "bytes": len(audio_bytes),
+                    },
+                )
                 await reply_audio(audio_bytes, artifact.get("filename", "response.wav"))
             except Exception as exc:
+                logging.warning(
+                    "[telegram] tts_send_failed: chat_id=%s trace_id=%s idx=%d url=%s error=%r",
+                    chat_id, _response_trace_id, idx, url, str(exc),
+                )
                 write_log(
                     level="WARN", module="telegram", event="tts_send_failed",
-                    payload={"url": url, "error": str(exc)},
+                    trace_id=_response_trace_id,
+                    payload={"url": url, "artifact_index": idx, "error": str(exc)},
                 )
 
 

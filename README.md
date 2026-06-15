@@ -90,10 +90,16 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Pestaña Dataset en el frontend: Dataset Capture (formulario con presets) + DatasetStats (cobertura, targets, desglose por source/tag, últimos pares).
 - FTS5 full-text search sobre historial (`chatmessage_fts`): content table SQLite con triggers automáticos + fallback LIKE por token para instancias sin FTS5.
 - Tool `search_conversation_history` en `BASE_TOOLSET`: siempre disponible para que el planner decida cuándo buscar en el historial.
-- `MemoryRecallRunner`: búsqueda iterativa con hasta 4 variantes de query. Evalúa calidad de evidencia por **novel token ratio** (fracción de tokens del fragmento no presentes en la query original). Para cuando hay evidencia suficiente (max_novel ≥ 0.60) o se agotan intentos. Evita falsos positivos por fragmentos que solo repiten la pregunta del usuario.
+- `MemoryRecallRunner`: búsqueda iterativa con hasta 4 variantes de query. Evalúa calidad de evidencia por **novel token ratio** (fracción de tokens del fragmento no presentes en la query original). Agota siempre todos los intentos (sin parada temprana). Abre ventanas de contexto alrededor de cada ancla con `message_id` (hasta `_MAX_WINDOWS=3`). Evita falsos positivos por fragmentos que solo repiten la pregunta del usuario.
 - Contexto estructural de memoria inyectado en `planner_user_message` cada turno: `total_messages`, `visible_history_count`, `history_limit`, `long_memory_tool_available`.
 - Búsqueda proactiva de memoria cuando `n_total > history_limit`: inyecta bloque `[MEMORIA RELEVANTE]` antes de llamar al planner.
 - Filtrado de mensajes operativos en contexto prev/next de resultados de búsqueda.
+- Audio STT: `faster-whisper` local (modelo `base`, español, CPU). `POST /audio/transcribe`. Metadata `input_mode`, `voice_transcript_original`, `edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab. Soporte de mensajes de voz en Telegram.
+- Audio TTS: Piper TTS local. `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino por `_SPEAKER_NAME_MAP` + `--speaker` flag. `voice_response_mode`, `voice_include_text`, `voice_long_response_action` en tab Voice.
+- `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend (burbuja sin texto si hay audio y `voice_include_text == false`).
+- `output_mode` y `tts_fragments` en `ChatMessage`: modo de salida del turno y número de fragmentos TTS sintetizados.
+- `source_channel` en `ChatMessage`: `"web"` por defecto; `"telegram"` cuando el origen es el bot. Heredado por la respuesta de Sity.
+- Telegram bot: long polling, `sity-telegram.service`, allowlist por `chat_id`, rate limit, comandos `/preset /defaults /status`. Logs con `trace_id` en todas las fases de artifact. `SityGateway` incluye `"source_channel": "telegram"` en cada POST.
 
 ### Refactor reciente
 
@@ -1339,6 +1345,18 @@ Objetivo:
 reducir coste, latencia y errores
 ```
 
+### 6. CI/CD y testing
+
+Pendiente:
+
+```text
+- Integración mock en CI (ya corre integration-mock en GitHub Actions)
+- Test de smoke para Telegram bot (sin llamadas reales)
+- Test de smoke para TTS pipeline end-to-end con mock provider
+- Lint / type check automático del backend (mypy o pyright)
+- Cobertura de test para routes_chat.py tras extraer ChatOrchestrator
+```
+
 ---
 
 ## Roadmap modular / portability layer
@@ -1508,6 +1526,30 @@ Principios:
 - borrado automático de audios temporales
 ```
 
+Implementado:
+
+```text
+✓ faster-whisper STT local (POST /audio/transcribe)
+✓ Piper TTS local (POST /audio/synthesize, GET /audio/tts/{filename})
+✓ voice_response_mode / voice_include_text / voice_long_response_action
+✓ Botón de micrófono en ChatTab
+✓ Reproductor de audio en burbujas de Sity
+✓ voice_include_text respetado en frontend y Telegram
+✓ output_mode y tts_fragments persistidos en ChatMessage
+```
+
+Pendiente:
+
+```text
+- Resumen automático para TTS: cuando voice_long_response_action="split" y el texto es
+  muy largo, generar un resumen hablable antes de sintetizar en lugar de partir por frases.
+- Tool read_own_trace: permitir que el modelo lea su propia traza de reasoning/tool calls
+  para decidir si la respuesta necesita audio o solo texto.
+- Persistencia de artifacts: guardar URLs o regenerar audio bajo demanda al recargar historial.
+- VAD (Voice Activity Detection) para grabación continua sin botón.
+- Wake word local.
+```
+
 ---
 
 ## Roadmap Messaging Gateway
@@ -1563,6 +1605,22 @@ Seguridad:
 ---
 
 ## Roadmap Remote Access / Home Network
+
+### Acceso actual
+
+```text
+✓ Telegram bot: acceso remoto por texto y voz desde fuera de la red local.
+  Long polling, sity-telegram.service, allowlist por chat_id, rate limit.
+```
+
+Pendiente:
+
+```text
+- IP estática para la Pi: configurar IP fija en el router o via dhcpcd para que
+  la dirección no cambie entre reinicios (actualmente la Pi puede cambiar de IP local).
+- Acceso remoto a la UI web completa: actualmente solo el bot de Telegram da acceso
+  externo. La UI web en :5173 no es accesible fuera de la red local sin VPN.
+```
 
 ### Tailscale / WireGuard
 
@@ -1824,6 +1882,24 @@ commands:
     command: "sudo systemctl restart sity-backend"
     risk: safe_confirm
     timeout: 20
+```
+
+### Privacidad por perfil de hablante
+
+```text
+- speaker_source / speaker_label / speaker_confidence ya están en ChatMessage.
+- Futuro: reconocimiento de hablante por voz (embedding de audio → speaker_id).
+- speaker_id reservado en schema; identity_evidence_json para trazabilidad.
+- El modelo no recibe speaker_* — es metadata de backend invisible al prompt.
+```
+
+### Identidad de remitente por mensaje
+
+```text
+- source_channel ya está en ChatMessage ("web" | "telegram").
+- Futuro: permitir múltiples usuarios/contactos autorizados en Telegram con
+  speaker_label diferente por chat_id.
+- Historial filtrable por canal/remitente para dataset y análisis.
 ```
 
 ---

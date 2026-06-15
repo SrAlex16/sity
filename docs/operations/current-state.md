@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-06-04.
+Última actualización: 2026-06-15.
 
 Este documento resume el estado operativo actual del proyecto y las decisiones que condicionan los siguientes pasos. No sustituye al `README.md`; sirve como foto rápida para retomar trabajo sin depender de conversaciones antiguas.
 
@@ -39,6 +39,12 @@ Estado actual:
 - Dataset Capture Mode: etiquetado de mensajes nuevos para dataset. Persistido en `Setting` table.
 - DatasetStats: módulo puro `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`.
 - Pestaña Dataset en el frontend: Dataset Capture + DatasetStats.
+- Audio STT: `faster-whisper` local, `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y soporte de mensajes de voz en Telegram.
+- Audio TTS: Piper TTS con binario en el venv (`Path(sys.executable).parent / "piper"`). `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino vía `_SPEAKER_NAME_MAP` y flag `--speaker`. `voice_response_mode`, `voice_include_text`, `voice_long_response_action` persistidas en `Setting`.
+- `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend (burbuja sin texto si hay audio artifacts y `voice_include_text == false`).
+- `output_mode` y `tts_fragments` en `ChatMessage`: persisten el modo de salida y el número de fragmentos TTS sintetizados por turno.
+- `source_channel` en `ChatMessage`: `"web"` por defecto; `"telegram"` cuando el origen es el bot. Propagado desde `ChatMessageRequest` y heredado por la respuesta de Sity.
+- Telegram bot: proceso independiente con long polling, `sity-telegram.service`, allowlist por `chat_id`, rate limit, comandos `/preset` `/defaults` `/status`. Logs con `trace_id` para todas las fases de artifact (download, send). `SityGateway` incluye `"source_channel": "telegram"` en cada POST.
 
 ## Sistema de memoria (2026-06-04)
 
@@ -94,7 +100,7 @@ Y cuando `n_total > history_limit`, ejecuta búsqueda proactiva sobre el mensaje
 
 - 24 unit tests en `tests/test_memory_recall.py` (mock de search, sin DB).
 - 13 integration tests en `scripts/test_memory_search_local.py` (DB temporal, sin Claude).
-- 630 tests totales en pytest.
+- 768 tests totales en pytest (incluye test_tts.py ×36, test_chat_message_metadata.py ×30).
 
 ## Tests
 
@@ -119,6 +125,10 @@ Reglas de DB:
 - La integración mock usa `tests/.mock_integration.db`.
 
 ## Bugs conocidos y limitaciones activas
+
+### Audio TTS
+
+- **Artifacts de audio son efímeros**: los archivos `.wav` generados por `_attach_tts_artifacts` viven en `_TTS_TMP_DIR` solo mientras el proceso está en ejecución. Al recargar la historia vía `GET /chat/current`, los mensajes con `output_mode="voice"` no recuperan sus artifacts. El campo `tts_fragments` indica que hubo audio, pero las URLs ya no son válidas.
 
 ### Sistema de memoria
 

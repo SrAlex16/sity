@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-15 (TTS con Piper — audio de salida).
+Última actualización: 2026-06-15 (TTS Piper, Telegram bot, source_channel, output_mode/tts_fragments).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -90,9 +90,13 @@ audio:
   tts_voice: es_ES-sharvard-medium
   tts_voice_speaker: female
   tts_long_response_chars: 500
-  tts_piper_bin: piper
   tts_models_dir: data/tts_models
+  # tts_piper_bin: /ruta/opcional    # solo si piper no está en el venv
 ```
+
+`tts_piper_bin`: el binario `piper` se busca automáticamente como `Path(sys.executable).parent / "piper"` (relativo al venv activo). Solo es necesario configurarlo explícitamente si piper está en otra ubicación.
+
+`tts_voice_speaker`: acepta un nombre legible (`"female"`, `"male"`, `"f"`, `"m"`) o un entero numérico. El mapeo `_SPEAKER_NAME_MAP = {"female": 1, "f": 1, "male": 0, "m": 0}` convierte nombres a IDs de speaker para el flag `--speaker` de piper. Este mapeo es específico del modelo `es_ES-sharvard-medium`; con otros modelos los IDs pueden variar.
 
 Para cambiar de voz: sustituir `tts_voice` y los archivos `.onnx`/`.onnx.json` en `tts_models_dir`. Descargar desde `https://huggingface.co/rhasspy/piper-voices`.
 
@@ -110,14 +114,18 @@ Para cambiar de voz: sustituir `tts_voice` y los archivos `.onnx`/`.onnx.json` e
 
 **Voice settings** (persistidas en tabla `Setting`):
 - `voice_response_mode: "always" | "never" | "symmetric"` (default `symmetric`)
-- `voice_include_text: bool` (default `true`)
+- `voice_include_text: bool` (default `true`) — si es `false`, la respuesta se entrega solo como audio, sin texto visible.
 - `voice_long_response_action: "split" | "text_only"` (default `text_only`)
 
 Expuestas en `GET/PUT /settings/voice`. Configurables desde el tab "Voice" del frontend.
 
-**Frontend:** reproductor `<audio controls>` en mensajes de Sity con artifacts de audio (ya existente). Tab "Voice" con selector de modo, checkbox de texto y selector de respuestas largas.
+**`_attach_tts_artifacts`** devuelve `Optional[int]`: el número de fragmentos sintetizados, o `None` si se omitió TTS (texto largo con `text_only` o error de síntesis). Este valor se persiste en `ChatMessage.tts_fragments` tras la respuesta.
 
-**Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio (`reply_audio`). El texto se envía siempre.
+**Frontend:** reproductor `<audio controls>` en mensajes de Sity con artifacts de audio. Cuando `voice_include_text == false` y el mensaje tiene artifacts de audio, el texto de la burbuja se oculta (`hideText` en `ChatTab.tsx`) y solo se muestra el reproductor.
+
+**Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio vía `reply_audio`. Cuando `voice_include_text == false`, el texto no se envía (`reply(text)` se omite). El `SityGateway` incluye siempre `"source_channel": "telegram"` en el body del POST.
+
+**Limitación conocida:** los artifacts de audio son efímeros. Los archivos `.wav` se generan en `_TTS_TMP_DIR` y no se reconstruyen al recargar la sesión. Las URLs tipo `/audio/tts/{filename}` incluidas en `ChatMessageResponse.artifacts` son válidas solo mientras el proceso está en ejecución. Al recargar la historia vía `GET /chat/current`, los mensajes de voz no recuperan sus artifacts.
 
 Archivos:
 ```text
@@ -131,7 +139,7 @@ frontend/src/api/voiceApi.ts           — getVoiceSettings(), updateVoiceSettin
 frontend/src/components/VoiceSettingsTab.tsx — UI de configuración de voz
 ```
 
-Tests: `tests/test_tts.py` — 23 tests, sin llamadas reales a piper ni a Telegram.
+Tests: `tests/test_tts.py` — 36 tests, sin llamadas reales a piper ni a Telegram. `tests/test_chat_message_metadata.py` — 30 tests cubriendo output_mode, tts_fragments y source_channel.
 
 ### Telegram Bot
 
@@ -383,6 +391,13 @@ Campos de proveniencia:
 - `dataset_eligible`: si el par es candidato a entrenamiento.
 - `dataset_tags_json`: tags multi-label (`sarcasm_high`, `brief`, `multi_persona`, etc.).
 - `speaker_label`, `speaker_source`, `speaker_confidence`: identificación del hablante (para reconocimiento futuro).
+
+Campos de canal y modo de salida:
+
+- `input_mode: "text" | "voice"` — canal de entrada del turno.
+- `output_mode: "text" | "voice"` — modo de salida del turno. `"voice"` si se sintetizó TTS.
+- `tts_fragments: Optional[int]` — número de fragmentos de audio sintetizados. `None` si no hubo TTS (texto puro, `text_only` con respuesta larga, o error de síntesis).
+- `source_channel: "web" | "telegram"` — canal de origen del mensaje. Se propaga desde `ChatMessageRequest.source_channel` (default `"web"`). El bot de Telegram envía siempre `"telegram"`. La respuesta de Sity hereda el mismo valor del turno.
 
 Esta metadata **no se inyecta en el prompt de Sity**. Es invisible para el modelo en tiempo de inferencia.
 

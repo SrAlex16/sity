@@ -7,6 +7,7 @@ Model: es_ES-sharvard-medium (.onnx + .onnx.json) under data/tts_models/
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -16,11 +17,14 @@ from pathlib import Path
 from app.settings.config_loader import PROJECT_ROOT, load_default_config
 
 
+_SPEAKER_NAME_MAP = {"female": 1, "f": 1, "male": 0, "m": 0}
+
+
 @dataclass
 class TtsConfig:
     piper_bin: str
     model_path: str
-    speaker: str
+    speaker_id: int | None
     long_response_chars: int
 
 
@@ -35,10 +39,25 @@ def load_tts_config() -> TtsConfig:
     models_path = Path(models_dir)
     if not models_path.is_absolute():
         models_path = PROJECT_ROOT / models_path
+    default_piper_bin = str(Path(sys.executable).parent / "piper")
+    piper_bin = str(audio.get("tts_piper_bin", default_piper_bin))
+
+    raw_speaker = audio.get("tts_voice_speaker")
+    speaker_id: int | None = None
+    if raw_speaker is not None:
+        s = str(raw_speaker).strip().lower()
+        if s in _SPEAKER_NAME_MAP:
+            speaker_id = _SPEAKER_NAME_MAP[s]
+        else:
+            try:
+                speaker_id = int(raw_speaker)
+            except (ValueError, TypeError):
+                speaker_id = None
+
     return TtsConfig(
-        piper_bin=str(audio.get("tts_piper_bin", "piper")),
+        piper_bin=piper_bin,
         model_path=str(models_path / f"{voice}.onnx"),
-        speaker=str(audio.get("tts_voice_speaker", "female")),
+        speaker_id=speaker_id,
         long_response_chars=int(audio.get("tts_long_response_chars", 500)),
     )
 
@@ -61,11 +80,9 @@ def synthesize_text(text: str, cfg: TtsConfig) -> bytes:
 
     t0 = time.monotonic()
     try:
-        cmd = [
-            cfg.piper_bin,
-            "--model", cfg.model_path,
-            "--output_file", wav_path,
-        ]
+        cmd = [cfg.piper_bin, "--model", cfg.model_path, "--output_file", wav_path]
+        if cfg.speaker_id is not None:
+            cmd += ["--speaker", str(cfg.speaker_id)]
         result = subprocess.run(
             cmd,
             input=text.encode("utf-8"),

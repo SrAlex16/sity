@@ -1,6 +1,7 @@
 import type React from "react";
 import { type ChatEntry } from "../hooks/useChat";
 import { API_BASE } from "../api/chatApi";
+import { type VoiceSettings } from "../api/voiceApi";
 
 export type ChatTabProps = {
   chatInput: string;
@@ -19,6 +20,7 @@ export type ChatTabProps = {
   isTranscribing: boolean;
   recordingError: string | null;
   onToggleRecording: () => void;
+  voiceSettings: VoiceSettings | null;
 };
 
 export function ChatTab({
@@ -38,6 +40,7 @@ export function ChatTab({
   isTranscribing,
   recordingError,
   onToggleRecording,
+  voiceSettings,
 }: ChatTabProps) {
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -54,7 +57,13 @@ export function ChatTab({
       </div>
 
       <div className="mt-5 flex max-h-[560px] flex-col gap-4 overflow-auto rounded-2xl bg-zinc-950 p-4">
-        {chatEntries.map((entry, index) => (
+        {chatEntries.map((entry, index) => {
+          const hasAudio = (entry.artifacts ?? []).some((a) => a.type === "audio");
+          const hideText =
+            entry.role === "sity" &&
+            hasAudio &&
+            voiceSettings?.voice_include_text === false;
+          return (
           <div
             key={index}
             className={`max-w-[85%] rounded-2xl p-4 ${
@@ -63,7 +72,7 @@ export function ChatTab({
                 : "mr-auto border border-zinc-800 bg-zinc-900 text-zinc-100"
             }`}
           >
-            <p className="whitespace-pre-wrap">{entry.text}</p>
+            {!hideText && <p className="whitespace-pre-wrap">{entry.text}</p>}
             {entry.artifacts && entry.artifacts.length > 0 && (
               <div className="mt-3 space-y-3">
                 {entry.artifacts.map((artifact) => {
@@ -134,7 +143,8 @@ export function ChatTab({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
         {chatLoading && (
           <div className="mr-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-zinc-400">
             {pendingStatus ?? "Pensando…"}

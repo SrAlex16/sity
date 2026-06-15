@@ -43,6 +43,9 @@ def _migrate_chatmessage() -> None:
         ("input_mode",                  "TEXT NOT NULL DEFAULT 'text'"),
         ("voice_transcript_original",   "TEXT"),
         ("edit_distance_pct",           "REAL"),
+        ("output_mode",                 "TEXT NOT NULL DEFAULT 'text'"),
+        ("tts_fragments",               "INTEGER"),
+        ("source_channel",              "TEXT NOT NULL DEFAULT 'web'"),
     ]
     with engine.connect() as conn:
         result = conn.execute(text("PRAGMA table_info(chatmessage)"))

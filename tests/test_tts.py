@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections import defaultdict, deque
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -133,14 +135,35 @@ def test_voice_settings_persist_and_reload():
 # synthesize_text — mocked piper binary
 # ---------------------------------------------------------------------------
 
-from app.audio.synthesizer import TtsConfig, synthesize_text
+from app.audio.synthesizer import TtsConfig, load_tts_config, synthesize_text
+
+
+# ---------------------------------------------------------------------------
+# load_tts_config — default piper_bin resolution
+# ---------------------------------------------------------------------------
+
+def test_load_tts_config_default_piper_bin_is_venv_relative():
+    """Without tts_piper_bin in config, piper_bin must be Path(sys.executable).parent / 'piper'."""
+    expected = str(Path(sys.executable).parent / "piper")
+    with patch("app.audio.synthesizer.load_default_config", return_value={"audio": {}}):
+        cfg = load_tts_config()
+    assert cfg.piper_bin == expected
+
+
+def test_load_tts_config_explicit_piper_bin_overrides_default():
+    """tts_piper_bin in config takes priority over the venv-relative default."""
+    with patch("app.audio.synthesizer.load_default_config", return_value={
+        "audio": {"tts_piper_bin": "/usr/local/bin/piper"}
+    }):
+        cfg = load_tts_config()
+    assert cfg.piper_bin == "/usr/local/bin/piper"
 
 
 def _dummy_cfg() -> TtsConfig:
     return TtsConfig(
         piper_bin="piper",
         model_path="/fake/model.onnx",
-        speaker="female",
+        speaker_id=1,
         long_response_chars=500,
     )
 
@@ -170,8 +193,7 @@ def test_synthesize_returns_wav_bytes():
     completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
 
     def mock_run(cmd, input, capture_output, timeout):
-        # Write fake WAV to the output path (second-to-last arg is --output_file, last is path)
-        wav_path = cmd[-1]
+        wav_path = cmd[cmd.index("--output_file") + 1]
         import pathlib
         pathlib.Path(wav_path).write_bytes(fake_wav)
         return completed
@@ -218,6 +240,7 @@ def test_handle_chat_message_sends_audio_artifact():
         "usage": {"total_tokens": 10},
         "artifacts": [{"type": "audio", "url": "/audio/tts/abc.wav", "filename": "r.wav"}],
     })
+    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": True})
     gw.get_tts_artifact = AsyncMock(return_value=b"RIFF" + b"\x00" * 4)
 
     run(handle_chat_message(
@@ -282,6 +305,7 @@ def test_handle_chat_message_artifact_download_error_does_not_crash():
         "usage": {},
         "artifacts": [{"type": "audio", "url": "/audio/tts/x.wav", "filename": "x.wav"}],
     })
+    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": True})
     gw.get_tts_artifact = AsyncMock(side_effect=Exception("network error"))
 
     run(handle_chat_message(
@@ -371,3 +395,80 @@ def test_both_input_and_output_voice_both_injected():
         )
     assert "[input_mode: voice]" in ctx.user_message_with_history
     assert "[output_mode: voice]" in ctx.user_message_with_history
+
+
+# ---------------------------------------------------------------------------
+# synthesize_to_tmp — unique filenames per call
+# ---------------------------------------------------------------------------
+
+from app.api.routes_audio import synthesize_to_tmp
+
+
+def test_synthesize_to_tmp_unique_filenames():
+    """Two calls in the same turn must produce distinct URL paths."""
+    fake_wav = b"RIFF" + b"\x00" * 40
+    with patch("app.api.routes_audio.load_tts_config") as mock_cfg:
+        mock_cfg.return_value = _dummy_cfg()
+        with patch("app.api.routes_audio.synthesize_text", return_value=fake_wav):
+            with patch("app.api.routes_audio._TTS_TMP_DIR") as mock_dir:
+                mock_path = MagicMock()
+                mock_dir.__truediv__ = lambda self, name: mock_path
+                mock_dir.mkdir = MagicMock()
+                url1 = synthesize_to_tmp("primera frase")
+                url2 = synthesize_to_tmp("segunda frase")
+
+    assert url1.startswith("/audio/tts/tts_")
+    assert url2.startswith("/audio/tts/tts_")
+    assert url1 != url2, "Each call must generate a unique filename"
+
+
+# ---------------------------------------------------------------------------
+# voice_include_text: True/False in handle_chat_message
+# ---------------------------------------------------------------------------
+
+
+def _response_with_audio() -> dict:
+    return {
+        "text": "Respuesta.",
+        "ok": True,
+        "usage": {"total_tokens": 5},
+        "artifacts": [{"type": "audio", "url": "/audio/tts/abc.wav", "filename": "abc.wav"}],
+    }
+
+
+def test_voice_include_text_true_sends_text_and_audio():
+    """voice_include_text=True → both reply (text) and reply_audio are called."""
+    reply = AsyncMock()
+    reply_audio = AsyncMock()
+    gw = MagicMock(spec=SityGateway)
+    gw.send_message = AsyncMock(return_value=_response_with_audio())
+    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": True})
+    gw.get_tts_artifact = AsyncMock(return_value=b"RIFF" + b"\x00" * 4)
+
+    run(handle_chat_message(
+        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
+        chat_id=1, chat_type="private", text="hola", username="u",
+        reply=reply, reply_audio=reply_audio,
+    ))
+
+    reply.assert_called_once_with("Respuesta.")
+    reply_audio.assert_called_once()
+
+
+def test_voice_include_text_false_sends_audio_only():
+    """voice_include_text=False → reply_audio called, reply (text) NOT called."""
+    reply = AsyncMock()
+    reply_audio = AsyncMock()
+    gw = MagicMock(spec=SityGateway)
+    gw.send_message = AsyncMock(return_value=_response_with_audio())
+    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": False})
+    gw.get_tts_artifact = AsyncMock(return_value=b"RIFF" + b"\x00" * 4)
+
+    run(handle_chat_message(
+        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
+        chat_id=1, chat_type="private", text="hola", username="u",
+        reply=reply, reply_audio=reply_audio,
+    ))
+
+    reply.assert_not_called()
+    reply_audio.assert_called_once()

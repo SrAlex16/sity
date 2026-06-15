@@ -24,7 +24,7 @@ class SityGateway:
         input_mode: str = "text",
         voice_transcript_original: str | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"message": text}
+        body: dict[str, Any] = {"message": text, "source_channel": "telegram"}
         if input_mode == "voice":
             body["input_mode"] = "voice"
         if voice_transcript_original is not None:
@@ -75,6 +75,12 @@ class SityGateway:
             r.raise_for_status()
             data = r.json()
             return int(data.get("daily_used", 0))
+
+    async def get_voice_settings(self) -> dict:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"{self._base}/settings/voice")
+            r.raise_for_status()
+            return r.json()
 
     async def get_tts_artifact(self, url: str) -> bytes:
         """Download a TTS artifact by its relative URL path."""

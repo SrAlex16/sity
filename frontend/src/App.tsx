@@ -303,6 +303,7 @@ function App() {
             isTranscribing={isTranscribing}
             recordingError={recordingError}
             onToggleRecording={toggleRecording}
+            voiceSettings={voiceSettings}
           />
         )}
 

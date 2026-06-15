@@ -64,6 +64,12 @@ debug:
   debug_logs_ttl_days: 7
   audit_logs_ttl_days: 60
 
+storage:
+  tmp_dir: runtime/tmp
+  data_dir: data
+  export_dir: data/exports
+  tts_voice_speaker: female
+
 audio:
   stt_model: base
   stt_device: cpu
@@ -71,10 +77,3 @@ audio:
   tts_voice: es_ES-sharvard-medium
   tts_voice_speaker: female
   tts_long_response_chars: 500
-  tts_piper_bin: piper
-  tts_models_dir: data/tts_models
-
-storage:
-  tmp_dir: runtime/tmp
-  data_dir: data
-  export_dir: data/exports
