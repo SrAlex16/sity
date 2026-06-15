@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-15 (TTS Piper, Telegram bot, source_channel, output_mode/tts_fragments).
+Última actualización: 2026-06-16 (read_own_trace tool, debug_test mode).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -286,6 +286,7 @@ Búsqueda de memoria implementada:
 - `backend/app/memory/recall.py` — `MemoryRecallRunner`: búsqueda iterativa multi-query con evaluación de evidencia por novel token ratio. Siempre agota todas las variantes de query (sin parada temprana) y siempre expande ventanas alrededor de anclas con `message_id`.
 - `backend/app/chat/prompt_context.py` — inyección de contexto estructural de memoria (total de mensajes, visibles, límite, disponibilidad de tool). Sin búsqueda proactiva: la búsqueda es solo on-demand vía tool.
 - `backend/app/tools/handlers/memory_tools.py` — handler `search_conversation_history` disponible en `BASE_TOOLSET`.
+- `backend/app/tools/handlers/trace_tools.py` — handler `read_own_trace`: lee `data/logs/app-YYYY-MM-DD.jsonl` (hoy + ayer como fallback), agrupa por `trace_id`, devuelve resumen estructurado por turno (tokens, tools, modo de salida, búsqueda de memoria, fragmentos TTS). Disponible solo cuando `dataset_source == "debug_test"` (inyectado en `routes_chat.py`; fuera de ese modo no aparece en el toolset).
 
 La búsqueda de memoria es on-demand. El modelo llama a `search_conversation_history` cuando detecta que falta contexto. No hay inyección proactiva automática ni listas de triggers.
 

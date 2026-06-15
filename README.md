@@ -1541,10 +1541,10 @@ Implementado:
 Pendiente:
 
 ```text
+✓ Tool read_own_trace: el modelo puede leer su propia traza del día (tokens, tools,
+  modo de salida, búsqueda de memoria, fragmentos TTS). Solo disponible en debug_test.
 - Resumen automático para TTS: cuando voice_long_response_action="split" y el texto es
   muy largo, generar un resumen hablable antes de sintetizar en lugar de partir por frases.
-- Tool read_own_trace: permitir que el modelo lea su propia traza de reasoning/tool calls
-  para decidir si la respuesta necesita audio o solo texto.
 - Persistencia de artifacts: guardar URLs o regenerar audio bajo demanda al recargar historial.
 - VAD (Voice Activity Detection) para grabación continua sin botón.
 - Wake word local.

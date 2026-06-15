@@ -487,6 +487,12 @@ def _chat_message_inner(
     toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
     selected_tools = toolset_selection.tools
 
+    # Inject read_own_trace only when dataset_source == "debug_test".
+    if _capture_ctx.dataset_source == "debug_test":
+        from app.cortex.tool_schemas import READ_OWN_TRACE_TOOL
+        if not any(t.get("name") == "read_own_trace" for t in selected_tools):
+            selected_tools = list(selected_tools) + [READ_OWN_TRACE_TOOL]
+
     routing_decision = build_chat_routing_decision(
         message=request.message,
         selection=toolset_selection,

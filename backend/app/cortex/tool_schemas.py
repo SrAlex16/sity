@@ -93,6 +93,38 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
 }
 
 
+READ_OWN_TRACE_TOOL = {
+    "name": "read_own_trace",
+    "description": (
+        "Lee el log de hoy (o ayer si no hay datos hoy) y devuelve un resumen estructurado "
+        "de los turnos de conversación recientes: tokens usados, tools llamadas, modo de salida, "
+        "historial inyectado, búsqueda de memoria y fragmentos TTS. "
+        "Úsala cuando el usuario pregunta por el comportamiento interno de un turno reciente: "
+        "por qué se buscó en memoria, cuántos tokens consumió, qué tools se ejecutaron, etc. "
+        "Disponible solo en modo debug_test. No la uses para responder mensajes conversacionales."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "trace_id": {
+                "type": "string",
+                "description": (
+                    "trace_id exacto a consultar (ej. trc_abc123). "
+                    "Si se omite, devuelve los n_recent turnos más recientes."
+                ),
+            },
+            "n_recent": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "description": "Número de turnos recientes a devolver cuando no se da trace_id. Por defecto 1.",
+            },
+        },
+    },
+}
+
+
 READ_RECENT_DEBUG_EVENTS_TOOL = {
     "name": "read_recent_debug_events",
     "description": (
@@ -964,6 +996,11 @@ DEBUG_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+# Available only when dataset_source == "debug_test" (injected in routes_chat.py).
+TRACE_TOOLSET = [
+    READ_OWN_TRACE_TOOL,
+]
+
 SERVICE_CONFIG_TOOLSET = [
     LIST_ALLOWED_SERVICES_TOOL,
     ADD_ALLOWED_SERVICE_TOOL,
@@ -1016,6 +1053,7 @@ SENSES_TOOLSET = [
 
 ALL_TOOLS = [
     UPDATE_PERSONALITY_SETTINGS_TOOL,
+    READ_OWN_TRACE_TOOL,
     READ_RECENT_DEBUG_EVENTS_TOOL,
     READ_TRACE_EVENTS_TOOL,
     READ_SYSTEM_STATUS_TOOL,

@@ -14,6 +14,9 @@ from app.chat.toolset_selector import (
 SELECTOR_EXEMPT_TOOLS: set[str] = {
     # Intercepted in routes_chat.py before reaching the tool loop.
     "no_action_required",
+    # Injected in routes_chat.py conditionally (dataset_source == "debug_test").
+    # Not part of the normal toolset selector flow.
+    "read_own_trace",
 }
 
 _FILE_TOOLS: set[str] = {
