@@ -23,9 +23,15 @@ import { ChatTab } from "./components/ChatTab";
 import { PersonalityTab } from "./components/PersonalityTab";
 import { DebugTab } from "./components/DebugTab";
 import { DatasetTab } from "./components/DatasetTab";
+import { VoiceSettingsTab } from "./components/VoiceSettingsTab";
+import {
+  getVoiceSettings,
+  updateVoiceSettings,
+  type VoiceSettings,
+} from "./api/voiceApi";
 import "./App.css";
 
-type Tab = "chat" | "personality" | "debug" | "dataset";
+type Tab = "chat" | "personality" | "voice" | "debug" | "dataset";
 
 function App() {
   const [tab, setTab] = useState<Tab>("chat");
@@ -48,6 +54,10 @@ function App() {
   const [datasetCapture, setDatasetCapture] = useState<DatasetCaptureContext | null>(null);
   const [datasetCaptureLoading, setDatasetCaptureLoading] = useState(false);
   const [datasetCaptureError, setDatasetCaptureError] = useState<string | null>(null);
+
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings | null>(null);
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const {
     chatInput,
@@ -171,6 +181,30 @@ function App() {
     }
   }
 
+  async function refreshVoiceSettings() {
+    setVoiceLoading(true);
+    setVoiceError(null);
+    try {
+      setVoiceSettings(await getVoiceSettings());
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setVoiceLoading(false);
+    }
+  }
+
+  async function saveVoiceSettings(next: VoiceSettings) {
+    setVoiceLoading(true);
+    setVoiceError(null);
+    try {
+      setVoiceSettings(await updateVoiceSettings(next));
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : "Error guardando");
+    } finally {
+      setVoiceLoading(false);
+    }
+  }
+
   async function disableDatasetCaptureAsync(): Promise<void> {
     setDatasetCaptureLoading(true);
     setDatasetCaptureError(null);
@@ -206,6 +240,7 @@ function App() {
     refreshPersonality();
     refreshTrace();
     refreshDataset();
+    refreshVoiceSettings();
   }, []);
 
   return (
@@ -227,13 +262,14 @@ function App() {
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            {(["chat", "personality", "debug", "dataset"] as Tab[]).map((item) => (
+            {(["chat", "personality", "voice", "debug", "dataset"] as Tab[]).map((item) => (
               <button
                 key={item}
                 onClick={() => {
                   setTab(item);
                   if (item === "chat") window.setTimeout(() => scrollChatToBottom("auto"), 50);
                   if (item === "personality") refreshPersonality();
+                  if (item === "voice") refreshVoiceSettings();
                   if (item === "debug") refreshTrace();
                   if (item === "dataset") refreshDataset();
                 }}
@@ -284,6 +320,16 @@ function App() {
               setPersonality((cur) => (cur ? { ...cur, [key]: value } : cur))
             }
             onSliderCommit={setAbsolute}
+          />
+        )}
+
+        {tab === "voice" && (
+          <VoiceSettingsTab
+            settings={voiceSettings}
+            loading={voiceLoading}
+            error={voiceError}
+            onReload={refreshVoiceSettings}
+            onChange={saveVoiceSettings}
           />
         )}
 

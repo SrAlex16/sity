@@ -68,6 +68,11 @@ audio:
   stt_model: base
   stt_device: cpu
   stt_language: es
+  tts_voice: es_ES-sharvard-medium
+  tts_voice_speaker: female
+  tts_long_response_chars: 500
+  tts_piper_bin: piper
+  tts_models_dir: data/tts_models
 
 storage:
   tmp_dir: runtime/tmp

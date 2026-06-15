@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Literal, Optional
 
 
 class PersonalitySettings(BaseModel):
@@ -37,3 +37,9 @@ class PersonalityAdjustResponse(BaseModel):
     old_value: float
     new_value: float
     message: str
+
+
+class VoiceSettings(BaseModel):
+    voice_response_mode: Literal["always", "never", "symmetric"] = "symmetric"
+    voice_include_text: bool = True
+    voice_long_response_action: Literal["split", "text_only"] = "text_only"

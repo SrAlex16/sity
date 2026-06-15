@@ -278,7 +278,9 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         if verbosity <= 0.2:
             directives.append("- Verbosidad muy baja: máximo 2 frases completas. No hagas listas. No añadas cierre con pregunta.")
         elif verbosity >= 0.8:
-            directives.append("- Verbosidad alta: puedes desarrollar la respuesta con más matices.")
+            directives.append("- Verbosidad alta: puedes desarrollar la respuesta con más matices y detalle, pero evita alargar respuestas que no lo requieran.")
+        else:
+            directives.append("- La longitud de la respuesta depende del contenido, no de un mínimo. Si la pregunta es corta, de confirmación, o no requiere explicación, responde corto. Desarrolla solo cuando hay algo sustancial que aportar.")
 
         if melancholy >= 0.8:
             directives.append(

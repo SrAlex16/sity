@@ -75,3 +75,11 @@ class SityGateway:
             r.raise_for_status()
             data = r.json()
             return int(data.get("daily_used", 0))
+
+    async def get_tts_artifact(self, url: str) -> bytes:
+        """Download a TTS artifact by its relative URL path."""
+        full_url = url if url.startswith("http") else f"{self._base}{url}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(full_url)
+            r.raise_for_status()
+            return r.content

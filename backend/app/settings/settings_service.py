@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app.memory.models import Setting, utc_now
 from app.settings.config_loader import load_default_config
+from app.settings.schemas import VoiceSettings
 
 
 PERSONALITY_KEYS = {
@@ -128,6 +129,21 @@ class SettingsService:
             )
 
         self.session.commit()
+
+    def get_voice_settings(self) -> VoiceSettings:
+        defaults = VoiceSettings()
+        keys = ("voice_response_mode", "voice_include_text", "voice_long_response_action")
+        data: dict[str, Any] = {}
+        for key in keys:
+            row = self.session.exec(select(Setting).where(Setting.key == f"voice.{key}")).first()
+            if row is not None:
+                data[key] = json.loads(row.value_json)
+        return VoiceSettings(**{**defaults.model_dump(), **data})
+
+    def set_voice_settings(self, settings: VoiceSettings, source: str = "ui") -> VoiceSettings:
+        for key, value in settings.model_dump().items():
+            self.set_setting(f"voice.{key}", value, source=source)
+        return settings
 
     @staticmethod
     def _set_nested(target: dict[str, Any], dotted_key: str, value: Any) -> None:

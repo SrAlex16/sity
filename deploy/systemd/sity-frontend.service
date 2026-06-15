@@ -9,7 +9,7 @@ WorkingDirectory=/home/alex/projects/sity/frontend
 ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0
 Restart=on-failure
 RestartSec=3
-Environment=VITE_SITY_API_BASE=http://192.168.1.133:8000
+Environment=VITE_SITY_API_BASE=http://192.168.0.118:8000
 
 [Install]
 WantedBy=multi-user.target

@@ -363,6 +363,11 @@ def _chat_message_inner(
     if message_mentions_file_path(request.message):
         history_limit = 2
 
+    # Compute output_mode once — reused for prompt context AND TTS post-processing.
+    voice_settings = settings_service.get_voice_settings()
+    _should_synth = _should_synthesize(voice_settings.voice_response_mode, request.input_mode)
+    output_mode = "voice" if _should_synth else "text"
+
     prompt_context = PromptContextBuilder(
         get_recent_messages=get_recent_db_messages,
     ).build(
@@ -372,6 +377,7 @@ def _chat_message_inner(
         planner_history_limit=4,
         trace_id=trace_id,
         input_mode=request.input_mode,
+        output_mode=output_mode,
     )
 
     recent_history = prompt_context.recent_history
@@ -746,7 +752,7 @@ def _chat_message_inner(
         response.error_type = response_after_tools.error_type
         response.error_message = response_after_tools.error_message
 
-    return build_final_ai_response(
+    chat_result = build_final_ai_response(
         session=session,
         trace_id=trace_id,
         response=response,
@@ -761,3 +767,59 @@ def _chat_message_inner(
         artifacts=response_artifacts,
         tone_meta=json.dumps(persona_decision.tone_snapshot),
     )
+
+    # TTS post-processing: reuse the decision already made before generation.
+    if _should_synth and chat_result.ok and chat_result.text:
+        _attach_tts_artifacts(
+            result=chat_result,
+            text=chat_result.text,
+            voice_settings=voice_settings,
+            trace_id=trace_id,
+        )
+
+    return chat_result
+
+
+def _should_synthesize(voice_response_mode: str, input_mode: str) -> bool:
+    if voice_response_mode == "always":
+        return True
+    if voice_response_mode == "never":
+        return False
+    # symmetric: only when user input was voice
+    return input_mode == "voice"
+
+
+def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -> None:
+    """Synthesize TTS audio and attach as artifacts to result. Modifies result in place."""
+    from app.api.routes_audio import synthesize_to_tmp
+    from app.api.schemas import ChatArtifact
+    from app.audio.synthesizer import load_tts_config
+    from app.audio.tts_splitter import split_by_sentences
+
+    cfg = load_tts_config()
+
+    try:
+        if len(text) <= cfg.long_response_chars:
+            fragments = [text]
+        elif voice_settings.voice_long_response_action == "split":
+            fragments = split_by_sentences(text, cfg.long_response_chars)
+        else:
+            write_log(level="INFO", module="audio", event="tts_skipped_long_response",
+                      trace_id=trace_id, payload={"chars": len(text)})
+            return
+
+        for i, fragment in enumerate(fragments):
+            url = synthesize_to_tmp(fragment)
+            result.artifacts.append(ChatArtifact(
+                type="audio",
+                url=url,
+                filename=f"sity_response_{i + 1}.wav",
+                mime_type="audio/wav",
+            ))
+
+        write_log(level="INFO", module="audio", event="tts_attached",
+                  trace_id=trace_id,
+                  payload={"fragments": len(fragments), "total_chars": len(text)})
+    except Exception as exc:
+        write_log(level="WARN", module="audio", event="tts_failed",
+                  trace_id=trace_id, payload={"error": str(exc)})

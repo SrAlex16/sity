@@ -77,6 +77,7 @@ class PromptContextBuilder:
         planner_history_limit: int = 4,
         trace_id: str = "",
         input_mode: str = "text",
+        output_mode: str = "text",
     ) -> PromptContext:
         recent_history = self._load_history(session=session, limit=history_limit)
         planner_history = self._load_history(session=session, limit=planner_history_limit)
@@ -95,6 +96,8 @@ class PromptContextBuilder:
         parts = [time_block, memory_ctx]
         if input_mode == "voice":
             parts.append("[input_mode: voice]")
+        if output_mode == "voice":
+            parts.append("[output_mode: voice]")
         parts.append(message)
         user_message_with_time = "\n\n".join(parts)
 

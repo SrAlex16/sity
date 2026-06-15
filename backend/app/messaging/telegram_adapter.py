@@ -161,6 +161,7 @@ async def handle_chat_message(
     text: str,
     username: str,
     reply: Callable,
+    reply_audio: Callable | None = None,
     input_mode: str = "text",
     voice_transcript_original: str | None = None,
 ) -> None:
@@ -187,7 +188,10 @@ async def handle_chat_message(
             payload={"chat_id": chat_id, "error": str(exc)},
         )
         return
+
     reply_text = response.get("text") or "…"
+    audio_artifacts = [a for a in (response.get("artifacts") or []) if a.get("type") == "audio"]
+
     if cfg.log_outgoing:
         usage: dict[str, Any] = response.get("usage") or {}
         write_log(
@@ -197,9 +201,28 @@ async def handle_chat_message(
                 "trace_id": response.get("trace_id"),
                 "tokens": usage.get("total_tokens", 0),
                 "input_mode": input_mode,
+                "audio_artifacts": len(audio_artifacts),
             },
         )
+
+    # Send text first (always — voice_include_text handled backend-side for frontend;
+    # for Telegram we always include the text alongside audio).
     await reply(reply_text)
+
+    # Send audio artifacts if the bot has a reply_audio callable
+    if audio_artifacts and reply_audio is not None:
+        for artifact in audio_artifacts:
+            url = artifact.get("url", "")
+            if not url:
+                continue
+            try:
+                audio_bytes = await gateway.get_tts_artifact(url)
+                await reply_audio(audio_bytes, artifact.get("filename", "response.wav"))
+            except Exception as exc:
+                write_log(
+                    level="WARN", module="telegram", event="tts_send_failed",
+                    payload={"url": url, "error": str(exc)},
+                )
 
 
 async def handle_voice_message(
@@ -213,6 +236,7 @@ async def handle_voice_message(
     audio_bytes: bytes,
     content_type: str = "audio/ogg",
     reply: Callable,
+    reply_audio: Callable | None = None,
 ) -> None:
     logging.info(
         "[telegram] handle_voice_message: chat_id=%s chat_type=%s bytes=%d allowed=%s",
@@ -245,6 +269,7 @@ async def handle_voice_message(
         text=transcript,
         username=username,
         reply=reply,
+        reply_audio=reply_audio,
         input_mode="voice",
         voice_transcript_original=transcript,
     )
@@ -304,12 +329,20 @@ def _build_app(cfg: TelegramConfig, gateway: SityGateway, token: str) -> Applica
         if update.message is None or update.message.text is None:
             return
         user = update.effective_user
+        msg = update.message
+
+        async def _reply_audio(audio_bytes: bytes, filename: str) -> None:
+            import io
+            from telegram import InputFile
+            await msg.reply_audio(audio=InputFile(io.BytesIO(audio_bytes), filename=filename))
+
         await handle_chat_message(
             cfg=cfg, gateway=gateway, rate_buckets=rate_buckets,
-            chat_id=update.message.chat_id, chat_type=update.message.chat.type,
-            text=update.message.text,
-            username=(user.username if user else None) or str(update.message.chat_id),
-            reply=update.message.reply_text,
+            chat_id=msg.chat_id, chat_type=msg.chat.type,
+            text=msg.text,
+            username=(user.username if user else None) or str(msg.chat_id),
+            reply=msg.reply_text,
+            reply_audio=_reply_audio,
         )
 
     async def _voice(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -327,19 +360,27 @@ def _build_app(cfg: TelegramConfig, gateway: SityGateway, token: str) -> Applica
         if voice is None:
             logging.warning("[telegram] _voice: neither voice nor audio on message")
             return
+        msg = update.message
         user = update.effective_user
         tg_file = await voice.get_file()
         raw = await tg_file.download_as_bytearray()
+
+        async def _reply_audio(audio_bytes: bytes, filename: str) -> None:
+            import io
+            from telegram import InputFile
+            await msg.reply_audio(audio=InputFile(io.BytesIO(audio_bytes), filename=filename))
+
         await handle_voice_message(
             cfg=cfg,
             gateway=gateway,
             rate_buckets=rate_buckets,
-            chat_id=update.message.chat_id,
-            chat_type=update.message.chat.type,
-            username=(user.username if user else None) or str(update.message.chat_id),
+            chat_id=msg.chat_id,
+            chat_type=msg.chat.type,
+            username=(user.username if user else None) or str(msg.chat_id),
             audio_bytes=bytes(raw),
             content_type="audio/ogg",
-            reply=update.message.reply_text,
+            reply=msg.reply_text,
+            reply_audio=_reply_audio,
         )
 
     app = Application.builder().token(token).build()

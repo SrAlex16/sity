@@ -185,3 +185,23 @@ def test_no_voseo_rule_present(default_prompt: str) -> None:
 
 def test_no_vosotros_rule_present(default_prompt: str) -> None:
     assert "vosotros" in default_prompt, "Prompt must contain an explicit no-vosotros rule"
+
+
+# ------------------------------------------------------------------ #
+# 7. _build_style_directives — verbosity ranges                       #
+# ------------------------------------------------------------------ #
+
+@pytest.mark.parametrize("verbosity,expected_fragment", [
+    (0.0,  "máximo 2 frases"),
+    (0.2,  "máximo 2 frases"),
+    (0.35, "longitud de la respuesta depende del contenido"),
+    (0.5,  "longitud de la respuesta depende del contenido"),
+    (0.79, "longitud de la respuesta depende del contenido"),
+    (0.8,  "Verbosidad alta"),
+    (1.0,  "Verbosidad alta"),
+])
+def test_verbosity_directive_ranges(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
+    result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola")
+    assert expected_fragment in result.system_prompt, (
+        f"Expected {expected_fragment!r} in prompt for verbosity={verbosity}"
+    )

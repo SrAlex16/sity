@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-13 (Audio STT + voice mode guard).
+Última actualización: 2026-06-15 (TTS con Piper — audio de salida).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -75,6 +75,63 @@ frontend/src/api/chatApi.ts            — transcribeAudio() + voice options en 
 Tests: `tests/test_edit_distance.py`, `tests/test_audio_transcribe.py`, `tests/test_telegram_voice.py`. Sin llamadas reales a Whisper ni a Telegram.
 
 **Voice mode guard (restricción estructural):** cuando `input_mode == "voice"`, `toolset_selector.py` elimina todos los tools de `SENSES_TOOLSET` antes de devolver la selección. El dominio `senses` tampoco aparece en `activated_domains`. Esta restricción se aplica en el backend independientemente del criterio del modelo. Además, `PromptContextBuilder` inyecta `[input_mode: voice]` en el bloque de contexto del mensaje, y `persona_system.md` incluye una regla explícita para interpretar preguntas de confirmación de canal sin disparar tools de captura.
+
+### Audio TTS (salida de voz)
+
+Síntesis de voz con Piper TTS (binario nativo, sin wrapper Python). Modelo: `es_ES-sharvard-medium`, voz femenina, archivos `.onnx` y `.onnx.json` bajo `backend/data/tts_models/`.
+
+- `POST /audio/synthesize` — recibe `{ text: str }`, devuelve WAV. Devuelve 422 si `len(text) > tts_long_response_chars` (default 500).
+- `GET /audio/tts/{filename}` — sirve archivos TTS temporales generados por el pipeline de chat.
+- Piper se invoca como subproceso (`subprocess.run`). Sin dependencia Python adicional.
+
+Configuración en `config/default_config.yaml`:
+```yaml
+audio:
+  tts_voice: es_ES-sharvard-medium
+  tts_voice_speaker: female
+  tts_long_response_chars: 500
+  tts_piper_bin: piper
+  tts_models_dir: data/tts_models
+```
+
+Para cambiar de voz: sustituir `tts_voice` y los archivos `.onnx`/`.onnx.json` en `tts_models_dir`. Descargar desde `https://huggingface.co/rhasspy/piper-voices`.
+
+**Lógica de síntesis en el pipeline de chat (`routes_chat.py`):**
+
+`_should_synthesize(voice_response_mode, input_mode)` decide si sintetizar:
+- `always` → siempre
+- `never` → nunca
+- `symmetric` → solo cuando el usuario envió voz (`input_mode == "voice"`)
+
+`_attach_tts_artifacts` sintetiza y añade artifacts `type="audio"` a `ChatMessageResponse`. Para respuestas largas:
+- `voice_long_response_action == "split"` → `split_by_sentences()` divide en fragmentos ≤ `tts_long_response_chars`, un artifact por fragmento.
+- `voice_long_response_action == "text_only"` → no se sintetiza, solo texto.
+- Errores de síntesis se loguean como WARN sin romper la respuesta.
+
+**Voice settings** (persistidas en tabla `Setting`):
+- `voice_response_mode: "always" | "never" | "symmetric"` (default `symmetric`)
+- `voice_include_text: bool` (default `true`)
+- `voice_long_response_action: "split" | "text_only"` (default `text_only`)
+
+Expuestas en `GET/PUT /settings/voice`. Configurables desde el tab "Voice" del frontend.
+
+**Frontend:** reproductor `<audio controls>` en mensajes de Sity con artifacts de audio (ya existente). Tab "Voice" con selector de modo, checkbox de texto y selector de respuestas largas.
+
+**Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio (`reply_audio`). El texto se envía siempre.
+
+Archivos:
+```text
+backend/app/audio/synthesizer.py       — TtsConfig, synthesize_text() via subprocess piper
+backend/app/audio/tts_splitter.py      — split_by_sentences()
+backend/app/api/routes_audio.py        — POST /audio/synthesize, GET /audio/tts/{filename}, synthesize_to_tmp()
+backend/app/settings/schemas.py        — VoiceSettings
+backend/app/settings/settings_service.py — get/set_voice_settings()
+backend/app/api/routes_settings.py     — GET/PUT /settings/voice
+frontend/src/api/voiceApi.ts           — getVoiceSettings(), updateVoiceSettings()
+frontend/src/components/VoiceSettingsTab.tsx — UI de configuración de voz
+```
+
+Tests: `tests/test_tts.py` — 23 tests, sin llamadas reales a piper ni a Telegram.
 
 ### Telegram Bot
 
