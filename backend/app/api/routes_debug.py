@@ -14,14 +14,13 @@ from app.trace.trace_reader import (
     get_last_trace_id,
     get_recent_events,
 )
+from app.chat.chat_persistence import DEFAULT_CHAT_SESSION_ID
 from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureService
 from app.training.dataset_stats import compute_dataset_stats
 from app.training.demo_cleanup import run_demo_cleanup
 
 
 router = APIRouter(prefix="/debug", tags=["debug"])
-
-DEFAULT_CHAT_SESSION_ID = "default"
 
 
 class DatasetCaptureRequest(BaseModel):

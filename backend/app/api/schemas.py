@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -6,6 +7,28 @@ from pydantic import BaseModel, Field
 class ChatHistoryItem(BaseModel):
     role: str
     text: str
+
+
+class ChatMessageItem(BaseModel):
+    role: str
+    text: str
+    trace_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class CurrentChatResponse(BaseModel):
+    ok: bool
+    session_id: str
+    messages: list[ChatMessageItem]
+
+
+class ChatMessageRequest(BaseModel):
+    message: str
+    history: list[ChatHistoryItem] = []
+    client_turn_id: Optional[str] = None
+    input_mode: str = "text"
+    voice_transcript_original: Optional[str] = None
+    source_channel: str = "web"
 
 
 class ChatArtifact(BaseModel):

@@ -34,8 +34,8 @@ class PendingActionRunner:
     def run(self, pending_action: PendingAction, ctx: LocalFlowContext) -> ChatMessageResponse:
         result = self._execute(pending_action, ctx.trace_id)
 
-        ctx.save_message(ctx.session, role="user", text=ctx.message, trace_id=ctx.trace_id)
-        ctx.save_message(ctx.session, role="sity", text=result.text, trace_id=ctx.trace_id)
+        ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
+        ctx.save_message(role="sity", text=result.text, trace_id=ctx.trace_id)
 
         daily_used = ctx.get_usage(ctx.session)
         daily_ratio = daily_used / ctx.daily_budget if ctx.daily_budget > 0 else 0.0

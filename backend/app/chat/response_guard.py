@@ -14,6 +14,16 @@ from dataclasses import dataclass
 
 _VALID_ACTION_ID_RE = re.compile(r"\bact_[a-fA-F0-9]{8}\b")
 
+_NARRATED_SEARCH_RE = re.compile(
+    r"acabo de buscar|he buscado|busco en|intento buscar|no encuentro en",
+    re.IGNORECASE,
+)
+
+
+def has_narrated_search(text: str) -> bool:
+    """Return True if the model narrated a search instead of calling the tool."""
+    return bool(_NARRATED_SEARCH_RE.search(text or ""))
+
 _PSEUDO_TOOL_CALL_RE = re.compile(
     r"<function_calls>|</function_calls>|"
     r"<invoke\s+name=|</invoke>|"

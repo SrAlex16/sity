@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-16 (read_own_trace tool, debug_test mode).
+Última actualización: 2026-06-17 (QoL frontend, budget fix, refactor routes_chat).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -45,6 +45,29 @@ Responsabilidades:
 - previews de cámara/audio;
 - cancelación de acciones;
 - interacción táctil futura.
+
+#### Campo de texto del chat
+
+El campo de entrada del chat es un `<textarea>` (no `<input>`) con estas propiedades:
+
+- **Shift+Enter** inserta un salto de línea; **Enter** (solo) envía el mensaje.
+- **Auto-resize**: el área crece verticalmente línea a línea conforme se escribe, usando `useEffect` + `el.style.height = el.scrollHeight + "px"`. `maxHeight: 12rem` (~8 líneas); a partir de ahí aparece scroll vertical oculto. Al enviar (cuando `chatInput` se vacía), vuelve al tamaño inicial (`rows={1}`).
+- **Scrollbar nativa oculta** vía CSS global (`scrollbar-width: none` + `::-webkit-scrollbar { display: none }` en `index.css`).
+- El contenedor flex usa `items-end` para que los botones (micrófono, cancelar, enviar) se mantengan alineados al borde inferior cuando el textarea crece.
+
+#### Timestamps en mensajes
+
+Cada burbuja de mensaje muestra la hora/fecha de creación debajo del contenido, siempre visible (no solo en hover):
+
+| Caso | Formato | Ejemplo |
+|---|---|---|
+| Hoy | Solo hora | `14:32` |
+| Ayer | Prefijo + hora | `Ayer 14:32` |
+| Antes | Día + mes + hora | `15 jun 14:32` |
+
+Implementación: `formatTimestamp(iso: string)` en `ChatTab.tsx` (helper module-level). El campo `created_at` viene del backend en `GET /chat/current` (campo `ChatMessageItem.created_at`) y se guarda en `ChatEntry` del hook. Para mensajes nuevos enviados en la sesión actual, se asigna `new Date().toISOString()` al crear la entrada.
+
+`ChatHistoryItem` en `chatApi.ts` y `ChatEntry` en `useChat.ts` tienen `created_at?: string`. `ChatMessageItem` en `schemas.py` tiene `created_at: Optional[datetime]`, rellenado desde `row.created_at` en `GET /chat/current`.
 
 ### Audio STT
 
@@ -196,6 +219,58 @@ Se añade contexto temporal por turno:
 - categoría de gap temporal.
 
 Permite respuestas sensibles al paso del tiempo.
+
+### Presupuesto de tokens
+
+El gasto diario de tokens se controla con `daily_token_budget`, definido en la sección **`usage`** del config (`config/default_config.yaml`). **No** está en la sección `tokens`.
+
+```yaml
+usage:
+  daily_token_budget: 1000000   # presupuesto diario en tokens
+  warning_threshold: 0.80
+  critical_threshold: 0.95
+
+tokens:
+  max_recent_turns: 4           # historial inyectado al modelo
+  max_relevant_memories: 5
+  max_input_tokens_interactive: 6000
+```
+
+- **Hard cap**: `SITY_DAILY_TOKEN_HARD_CAP=true` (env var, default `false`). Cuando está activo, el backend rechaza peticiones si se ha superado el presupuesto.
+- **Reset del contador**: `get_today_token_usage()` en `chat_persistence.py` usa `datetime.now()` (hora local del sistema/Pi) para calcular el inicio del día. El reset ocurre a las 00:00 **hora española** (no UTC). El campo `AIUsage.created_at` se guarda en UTC, pero la comparación usa hora local naive para coherencia con el sistema operativo de la Pi.
+
+### Módulos `backend/app/chat/`
+
+El paquete `chat/` contiene lógica de orquestación extraída de `routes_chat.py`. `routes_chat.py` es una capa HTTP fina; toda la lógica de negocio va en módulos pequeños y testeables.
+
+```text
+budget_guard.py          — guards locales (SITY_LOCAL_ONLY, hard cap)
+local_flow.py            — respuestas locales pre-AI (confirmaciones, expirados, ambigüedad)
+pending_action_runner.py — ejecución de acciones pendientes confirmadas
+toolset_selector.py      — selección de toolset y history_limit
+prompt_context.py        — prior_messages, user_message_with_history, contexto de memoria
+ai_request_builder.py    — builders de AIRequest para chat, planner, after_tools
+provider_call_runner.py  — ProviderCallRunner: run_chat, run_planner, run_after_tools
+tool_loop_runner.py      — run_tool_loop → ToolLoopRunOutcome
+tool_loop_step.py        — run_tool_loop_step → ToolLoopStepOutcome
+final_response_builder.py — AIUsage + ResponseGuard + save + budget snapshot + respuesta
+response_factory.py      — constructores de ChatMessageResponse (local_tool_response, etc.)
+budget_snapshot.py       — BudgetSnapshot (daily_used, daily_ratio, warnings)
+response_guard.py        — ResponseGuard.validate_final_text() + has_narrated_search()
+artifacts.py             — helper ChatArtifact desde ruta de archivo
+routing_decision.py      — ProviderMode, build_chat_routing_decision()
+chat_persistence.py      — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages,
+                           get_today_token_usage, get_or_create_default_chat_session
+turn_persistence.py      — ChatTurnPersistence: encapsula save_chat_message con metadatos de
+                           capture por turno (reemplaza closure _save_with_capture)
+```
+
+**Pendiente de extraer** (requiere tests de integración previos):
+```text
+provider/tool loop completo
+final response assembly completo
+ChatOrchestrator
+```
 
 ## Arquitectura objetivo ampliada
 

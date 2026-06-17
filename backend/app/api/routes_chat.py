@@ -1,14 +1,25 @@
 import json
-import re
-from datetime import datetime
 from typing import Optional
 
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
-from sqlmodel import Session, func, select
+from sqlmodel import Session, select
 
-from app.api.schemas import ChatArtifact, ChatHistoryItem, ChatMessageResponse
+from app.api.schemas import (
+    ChatArtifact,
+    ChatHistoryItem,
+    ChatMessageItem,
+    ChatMessageRequest,
+    ChatMessageResponse,
+    CurrentChatResponse,
+)
+from app.chat.chat_persistence import (
+    DEFAULT_CHAT_SESSION_ID,
+    get_or_create_default_chat_session,
+    get_recent_db_messages,
+    get_today_token_usage,
+    save_chat_message,
+)
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.local_provider_config import resolve_local_provider_model
@@ -35,6 +46,7 @@ from app.chat.response_factory import (
     local_tool_response,
     micro_reaction_response,
 )
+from app.chat.response_guard import has_narrated_search
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
@@ -47,9 +59,9 @@ from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.providers.factory import build_ai_provider
 
+from app.chat.turn_persistence import ChatTurnPersistence
 from app.memory.db import get_session
-from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
-from app.memory.message_metadata import MessageMetadata, build_message_metadata
+from app.memory.models import AIUsage, ChatMessage
 from app.training.dataset_capture import DatasetCaptureService
 from app.settings.config_loader import load_default_config
 from app.settings.settings_service import SettingsService
@@ -58,106 +70,6 @@ from app.trace.redaction import redact_tool_call_input
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-_NARRATED_SEARCH_RE = re.compile(
-    r"acabo de buscar|he buscado|busco en|intento buscar|no encuentro en",
-    re.IGNORECASE,
-)
-
-
-def _has_narrated_search(text: str) -> bool:
-    return bool(_NARRATED_SEARCH_RE.search(text or ""))
-
-DEFAULT_CHAT_SESSION_ID = "default"
-
-
-class ChatMessageItem(BaseModel):
-    role: str
-    text: str
-    trace_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-
-
-class CurrentChatResponse(BaseModel):
-    ok: bool
-    session_id: str
-    messages: list[ChatMessageItem]
-
-
-def get_or_create_default_chat_session(session: Session) -> ChatSession:
-    chat_session = session.get(ChatSession, DEFAULT_CHAT_SESSION_ID)
-
-    if chat_session:
-        return chat_session
-
-    chat_session = ChatSession(id=DEFAULT_CHAT_SESSION_ID)
-    session.add(chat_session)
-    session.commit()
-    session.refresh(chat_session)
-    return chat_session
-
-
-def save_chat_message(
-    session: Session,
-    *,
-    role: str,
-    text: str,
-    trace_id: Optional[str] = None,
-    tone_meta: Optional[str] = None,
-    metadata: Optional[MessageMetadata] = None,
-    input_mode: str = "text",
-    voice_transcript_original: Optional[str] = None,
-    edit_distance_pct: Optional[float] = None,
-    output_mode: str = "text",
-    tts_fragments: Optional[int] = None,
-    source_channel: str = "web",
-) -> None:
-    if metadata is None:
-        metadata = build_message_metadata(role=role)
-
-    get_or_create_default_chat_session(session)
-
-    session.add(
-        ChatMessage(
-            session_id=DEFAULT_CHAT_SESSION_ID,
-            role=role,
-            text=text,
-            trace_id=trace_id,
-            tone_meta=tone_meta,
-            speaker_id=metadata.speaker_id,
-            speaker_label=metadata.speaker_label,
-            speaker_source=metadata.speaker_source,
-            speaker_confidence=metadata.speaker_confidence,
-            identity_evidence_json=metadata.identity_evidence_json,
-            dataset_source=metadata.dataset_source,
-            dataset_eligible=metadata.dataset_eligible,
-            dataset_tags_json=metadata.dataset_tags_json,
-            input_mode=input_mode,
-            voice_transcript_original=voice_transcript_original,
-            edit_distance_pct=edit_distance_pct,
-            output_mode=output_mode,
-            tts_fragments=tts_fragments,
-            source_channel=source_channel,
-        )
-    )
-
-    chat_session = session.get(ChatSession, DEFAULT_CHAT_SESSION_ID)
-    if chat_session:
-        chat_session.updated_at = utc_now()
-        session.add(chat_session)
-
-    session.commit()
-
-
-def get_recent_db_messages(session: Session, limit: int = 20) -> list[ChatMessage]:
-    statement = (
-        select(ChatMessage)
-        .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
-        .order_by(ChatMessage.id.desc())
-        .limit(limit)
-    )
-    rows = list(session.exec(statement))
-    return list(reversed(rows))
 
 
 @router.get("/current", response_model=CurrentChatResponse)
@@ -191,28 +103,6 @@ def current_chat(session: Session = Depends(get_session)):
     )
 
 
-
-
-class ChatMessageRequest(BaseModel):
-    message: str
-    history: list[ChatHistoryItem] = []
-    client_turn_id: str | None = None
-    input_mode: str = "text"
-    voice_transcript_original: Optional[str] = None
-    source_channel: str = "web"
-
-
-
-def get_today_token_usage(session: Session) -> int:
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-    result = session.exec(
-        select(func.sum(AIUsage.input_tokens + AIUsage.output_tokens)).where(
-            AIUsage.created_at >= today_start
-        )
-    ).one()
-
-    return int(result or 0)
 
 
 
@@ -263,34 +153,7 @@ def _chat_message_inner(
     # Read capture context once per turn; build role-specific metadata from it.
     _capture_svc = DatasetCaptureService(session)
     _capture_ctx = _capture_svc.get()
-    _user_metadata = _capture_svc.build_user_metadata(_capture_ctx)
-    _sity_metadata = _capture_svc.build_sity_metadata(_capture_ctx)
-
-    def _save_with_capture(
-        s: Session,
-        *,
-        role: str,
-        text: str,
-        trace_id: Optional[str] = None,
-        tone_meta: Optional[str] = None,
-        metadata: Optional[MessageMetadata] = None,
-        input_mode: str = "text",
-        voice_transcript_original: Optional[str] = None,
-        edit_distance_pct: Optional[float] = None,
-        output_mode: str = "text",
-        tts_fragments: Optional[int] = None,
-        source_channel: str = "web",
-    ) -> None:
-        if metadata is None:
-            metadata = _sity_metadata if role == "sity" else _user_metadata
-        save_chat_message(s, role=role, text=text, trace_id=trace_id,
-                          tone_meta=tone_meta, metadata=metadata,
-                          input_mode=input_mode,
-                          voice_transcript_original=voice_transcript_original,
-                          edit_distance_pct=edit_distance_pct,
-                          output_mode=output_mode,
-                          tts_fragments=tts_fragments,
-                          source_channel=source_channel)
+    persistence = ChatTurnPersistence(session, _capture_ctx, _capture_svc)
 
     write_log(
         level="INFO",
@@ -339,7 +202,7 @@ def _chat_message_inner(
         message=request.message,
         daily_budget=daily_budget,
         warnings=[],
-        save_message=_save_with_capture,
+        save_message=persistence.save,
         get_usage=get_today_token_usage,
     )
 
@@ -365,7 +228,7 @@ def _chat_message_inner(
             message=request.message,
             daily_budget=daily_budget,
             runtime_config=runtime_config,
-            save_message=_save_with_capture,
+            save_message=persistence.save,
             get_usage=get_today_token_usage,
         )
     )
@@ -448,8 +311,7 @@ def _chat_message_inner(
             },
         )
 
-    _save_with_capture(
-        session,
+    persistence.save(
         role="user",
         text=request.message,
         trace_id=trace_id,
@@ -596,7 +458,7 @@ def _chat_message_inner(
             )
 
             # Guard: Sity narrated a search without calling the tool — force the real call.
-            if response.ok and _has_narrated_search(response.text):
+            if response.ok and has_narrated_search(response.text):
                 write_log(
                     level="WARN",
                     module="chat",
@@ -689,8 +551,8 @@ def _chat_message_inner(
                     trace_id=trace_id,
                     payload={"tool": _loop.early_tool_name, "model": _loop.local_model},
                 )
-                _save_with_capture(session, role="sity", text=_loop.local_text, trace_id=trace_id,
-                                   tone_meta=json.dumps(persona_decision.tone_snapshot))
+                persistence.save(role="sity", text=_loop.local_text, trace_id=trace_id,
+                                 tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return local_tool_response(
                     trace_id=trace_id,
                     text=_loop.local_text,
@@ -719,8 +581,8 @@ def _chat_message_inner(
                     payload={"tool": _loop.early_tool_name},
                     audit=True,
                 )
-                _save_with_capture(session, role="sity", text=_react_text, trace_id=trace_id,
-                                   tone_meta=json.dumps(persona_decision.tone_snapshot))
+                persistence.save(role="sity", text=_react_text, trace_id=trace_id,
+                                 tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return micro_reaction_response(
                     trace_id=trace_id,
                     text=_react_text,
@@ -785,7 +647,7 @@ def _chat_message_inner(
         warning_threshold=warning_threshold,
         critical_threshold=critical_threshold,
         get_today_token_usage=get_today_token_usage,
-        save_message=_save_with_capture,
+        save_message=persistence.save,
         refusal_mode=persona_decision.refusal_mode,
         user_message=request.message,
         updated_parameters=updated_parameters,

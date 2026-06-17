@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-06-15.
+Última actualización: 2026-06-17.
 
 Este documento resume el estado operativo actual del proyecto y las decisiones que condicionan los siguientes pasos. No sustituye al `README.md`; sirve como foto rápida para retomar trabajo sin depender de conversaciones antiguas.
 
@@ -26,7 +26,7 @@ Estado actual:
 - `ToolsetSelector` estructural: evitar routing/intención con listas duras de lenguaje natural.
 - `BASE_TOOLSET` incluye file tools, `no_action_required` y `search_conversation_history`.
 - `cancel_pending_action` expuesto solo por señal estructural (`act_xxxxxxxx`).
-- `routes_chat.py` refactorizado en módulos de `backend/app/chat/`.
+- `routes_chat.py` refactorizado en módulos de `backend/app/chat/` (868 → 730 líneas, 801 tests). Últimos extraídos (2026-06-17): `has_narrated_search` → `response_guard.py`, `chat_persistence.py`, `turn_persistence.py`, esquemas de petición/respuesta → `schemas.py`.
 - Frontend modularizado: shell `App.tsx`, hook `useChat`, tabs y APIs separadas.
 - AbortController añadido en frontend.
 - TimeContext añadido para que Sity pueda reaccionar al paso del tiempo por turno.
@@ -45,6 +45,9 @@ Estado actual:
 - `output_mode` y `tts_fragments` en `ChatMessage`: persisten el modo de salida y el número de fragmentos TTS sintetizados por turno.
 - `source_channel` en `ChatMessage`: `"web"` por defecto; `"telegram"` cuando el origen es el bot. Propagado desde `ChatMessageRequest` y heredado por la respuesta de Sity.
 - Telegram bot: proceso independiente con long polling, `sity-telegram.service`, allowlist por `chat_id`, rate limit, comandos `/preset` `/defaults` `/status`. Logs con `trace_id` para todas las fases de artifact (download, send). `SityGateway` incluye `"source_channel": "telegram"` en cada POST.
+- Campo de texto del chat: `<textarea>` con auto-resize hasta 8 líneas (`maxHeight: 12rem`), Shift+Enter inserta salto de línea, Enter envía, scrollbar nativa oculta (Firefox y Chrome).
+- Timestamps en mensajes: cada burbuja muestra `created_at` como HH:MM (hoy), "Ayer HH:MM" (ayer) o "D mes HH:MM" (días anteriores).
+- Presupuesto diario de tokens: configurable en `config/default_config.yaml` sección `usage.daily_token_budget`. Override por env `SITY_DAILY_TOKEN_HARD_CAP`. Reset a medianoche hora local del servidor (no UTC). Fallback: 1 000 000 tokens/día.
 
 ## Sistema de memoria (2026-06-04)
 
@@ -100,7 +103,7 @@ Y cuando `n_total > history_limit`, ejecuta búsqueda proactiva sobre el mensaje
 
 - 24 unit tests en `tests/test_memory_recall.py` (mock de search, sin DB).
 - 13 integration tests en `scripts/test_memory_search_local.py` (DB temporal, sin Claude).
-- 768 tests totales en pytest (incluye test_tts.py ×36, test_chat_message_metadata.py ×30).
+- 801 tests totales en pytest (incluye test_tts.py ×36, test_chat_message_metadata.py ×30, test_response_guard.py ×14, test_turn_persistence.py ×5).
 
 ## Tests
 
@@ -132,6 +135,7 @@ Reglas de DB:
 
 ### Sistema de memoria
 
+- **Contaminación de contexto por términos inferidos**: `MemoryRecallRunner` puede buscar usando términos que Sity misma generó en turnos anteriores. Si esos términos se usaron como query interna, el resultado puede parecer relevante pero no serlo. Las reglas añadidas en `persona_system.md` (2026-06-17) reducen la frecuencia — contrastar con historial visible, cautela extra con términos no dichos por el usuario —, pero no eliminan el problema. Limitación activa.
 - **Búsqueda proactiva no se activa en conversaciones cortas**: solo cuando `n_total > history_limit`. Antes de ese umbral, no se inyecta contexto de memoria aunque el tema sea relevante.
 - **`_LIMIT_MAX = 10` limita resultados**: para temas con muchas ocurrencias en el historial, puede perderse contexto relevante más antiguo.
 - **Novel token ratio con textos cortos**: fragmentos con muy pocos tokens pueden producir clasificaciones erróneas si el vocabulario coincide completamente con la query por azar.

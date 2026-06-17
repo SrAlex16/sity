@@ -109,7 +109,7 @@ def build_final_ai_response(
     response.text = guard_result.text
 
     # 5. Persist assistant message
-    save_message(session, role="sity", text=response.text, trace_id=trace_id,
+    save_message(role="sity", text=response.text, trace_id=trace_id,
                  tone_meta=tone_meta, output_mode=output_mode, source_channel=source_channel)
 
     # 6. Track refusal if applicable

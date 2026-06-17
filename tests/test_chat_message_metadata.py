@@ -160,7 +160,7 @@ def test_chatmessage_nullable_metadata_fields_default_to_none(db_session: Sessio
 
 def test_save_chat_message_backward_compat_no_metadata(db_session: Session) -> None:
     """Calling save_chat_message without metadata must not raise."""
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(db_session, role="user", text="compat check")
 
@@ -174,7 +174,7 @@ def test_save_chat_message_backward_compat_no_metadata(db_session: Session) -> N
 
 
 def test_save_chat_message_with_explicit_metadata(db_session: Session) -> None:
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     meta = MessageMetadata(
         speaker_source="synthetic_claude_user",
@@ -195,7 +195,7 @@ def test_save_chat_message_with_explicit_metadata(db_session: Session) -> None:
 
 def test_save_chat_message_sity_role_defaults(db_session: Session) -> None:
     """Sity role without explicit metadata gets sity_local speaker_source."""
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     tone = json.dumps({"sarcasm": 0.6})
     save_chat_message(db_session, role="sity", text="respuesta Sity", tone_meta=tone)
@@ -240,7 +240,7 @@ def test_chatmessage_tts_fragments_multiple(db_session: Session) -> None:
 
 
 def test_save_chat_message_output_mode_voice(db_session: Session) -> None:
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(
         db_session, role="sity", text="voz test",
@@ -254,7 +254,7 @@ def test_save_chat_message_output_mode_voice(db_session: Session) -> None:
 
 def test_save_chat_message_output_mode_defaults(db_session: Session) -> None:
     """output_mode defaults to 'text', tts_fragments to None when not specified."""
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(db_session, role="sity", text="default mode test")
     row = db_session.exec(select(ChatMessage).where(ChatMessage.text == "default mode test")).first()
@@ -265,7 +265,7 @@ def test_save_chat_message_output_mode_defaults(db_session: Session) -> None:
 
 def test_save_chat_message_text_only_no_tts(db_session: Session) -> None:
     """When voice_long_response_action=text_only and response is long, tts_fragments is None."""
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(
         db_session, role="sity", text="respuesta larga text_only",
@@ -377,7 +377,7 @@ def test_chatmessage_source_channel_telegram(db_session: Session) -> None:
 
 
 def test_save_chat_message_source_channel_web(db_session: Session) -> None:
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(db_session, role="user", text="web test")
     row = db_session.exec(select(ChatMessage).where(ChatMessage.text == "web test")).first()
@@ -386,7 +386,7 @@ def test_save_chat_message_source_channel_web(db_session: Session) -> None:
 
 
 def test_save_chat_message_source_channel_telegram(db_session: Session) -> None:
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(db_session, role="user", text="telegram test", source_channel="telegram")
     row = db_session.exec(select(ChatMessage).where(ChatMessage.text == "telegram test")).first()
@@ -396,7 +396,7 @@ def test_save_chat_message_source_channel_telegram(db_session: Session) -> None:
 
 def test_save_chat_message_sity_inherits_source_channel(db_session: Session) -> None:
     """Sity message persisted with source_channel matches the turn channel."""
-    from app.api.routes_chat import save_chat_message
+    from app.chat.chat_persistence import save_chat_message
 
     save_chat_message(db_session, role="sity", text="respuesta telegram",
                       source_channel="telegram")

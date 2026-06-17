@@ -18,7 +18,7 @@ La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
 
 ## Módulos actuales
 
-> Última actualización: 2026-06-13.
+> Última actualización: 2026-06-17.
 
 ### `budget_guard.py`
 
@@ -421,8 +421,16 @@ pending_action_runner.py
 toolset_selector.py
 prompt_context.py           — historial estructurado (prior_messages) + contexto de memoria estructural; sin búsqueda proactiva
 ai_request_builder.py       — (renombrado desde claude_request_builder.py)
-response_guard.py
+response_guard.py           — guards de texto final + has_narrated_search (movida desde routes_chat 2026-06-17)
 artifacts.py
+chat_persistence.py         — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages, get_today_token_usage, get_or_create_default_chat_session (2026-06-17)
+turn_persistence.py         — ChatTurnPersistence: encapsula save_chat_message con metadatos de capture por turno (2026-06-17)
+```
+
+Esquemas extraídos a `backend/app/api/schemas.py` (2026-06-17):
+
+```text
+ChatMessageItem, CurrentChatResponse, ChatMessageRequest — antes en routes_chat.py
 ```
 
 Tool handler registry migrado (`backend/app/tools/`):

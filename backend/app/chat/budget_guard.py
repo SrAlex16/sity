@@ -53,8 +53,8 @@ class ChatBudgetGuard:
         model: str,
         daily_used_tokens: int,
     ) -> ChatMessageResponse:
-        ctx.save_message(ctx.session, role="user", text=ctx.message, trace_id=ctx.trace_id)
-        ctx.save_message(ctx.session, role="sity", text=text, trace_id=ctx.trace_id)
+        ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
+        ctx.save_message(role="sity", text=text, trace_id=ctx.trace_id)
 
         daily_ratio = round(daily_used_tokens / ctx.daily_budget, 4) if ctx.daily_budget > 0 else 0.0
 
