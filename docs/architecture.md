@@ -237,7 +237,7 @@ tokens:
 ```
 
 - **Hard cap**: `SITY_DAILY_TOKEN_HARD_CAP=true` (env var, default `false`). Cuando está activo, el backend rechaza peticiones si se ha superado el presupuesto.
-- **Reset del contador**: `get_today_token_usage()` en `chat_persistence.py` usa `datetime.now()` (hora local del sistema/Pi) para calcular el inicio del día. El reset ocurre a las 00:00 **hora española** (no UTC). El campo `AIUsage.created_at` se guarda en UTC, pero la comparación usa hora local naive para coherencia con el sistema operativo de la Pi.
+- **Reset del contador**: `get_today_token_usage()` en `chat_persistence.py` calcula `today_start_utc` con la secuencia `datetime.now().astimezone().replace(hour=0,...).astimezone(timezone.utc).replace(tzinfo=None)`. Esto convierte la medianoche hora local de la Pi (UTC+2 en verano) a su equivalente UTC naive antes de comparar contra `AIUsage.created_at`, que se almacena como UTC naive. El reset efectivo ocurre a las 00:00 **hora española** (= 22:00 UTC del día anterior en verano). **Invariante crítico**: `/debug/budget` y el hard cap en `routes_chat.py` deben usar exactamente la misma lógica de `today_start_utc` — si divergen, el contador visible en frontend y el corte real del hard cap no coinciden. Actualmente ambos delegan a `get_today_token_usage(session)`, lo que garantiza la consistencia.
 
 ### Módulos `backend/app/chat/`
 

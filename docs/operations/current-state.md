@@ -159,6 +159,10 @@ Reglas de DB:
 - **`SITY_LOCAL_AI_ENABLED` permanece `false` en producción**: no hay aún un adapter LoRA de calidad suficiente para uso diario.
 - **Ollama en Raspberry es solo para emergencias**: la Pi no tiene potencia para servir LLMs útiles en tiempo real.
 
+### Incidencias resueltas
+
+- **Contador de tokens diario devolvía 0 (commits `0677f0a` + `c126fec`)**: El commit `0677f0a` corrigió la lectura de `daily_token_budget` (sección `usage` en lugar de `tokens`), pero introdujo un bug en `get_today_token_usage`: cambió `datetime.now(timezone.utc)` por `datetime.now()` (hora local sin timezone), rompiendo la comparación contra `AIUsage.created_at`, que se almacena en UTC. La función devolvía 0 siempre, lo que desactivaba efectivamente el hard cap aunque `SITY_DAILY_TOKEN_HARD_CAP=true` estuviera configurado. Fix aplicado en `chat_persistence.py` (commit `c126fec`): `datetime.now().astimezone()` obtiene hora local con timezone implícita del sistema, se calcula medianoche local, se convierte a UTC naive y se compara correctamente contra la BD. El endpoint `/debug/budget` ahora delega a `get_today_token_usage` en lugar de mantener su propia query, garantizando que ambos valores sean siempre consistentes. Efecto colateral descubierto: el límite de 50 000 tokens que mostraba `/debug/budget` no era el valor del config sino el fallback hardcodeado — el config siempre tuvo `daily_token_budget: 1 000 000` en la sección `usage`, pero el código lo buscaba en `tokens` y nunca lo encontraba.
+
 ## Ollama y modelos locales
 
 Ollama queda como motor experimental/local.
