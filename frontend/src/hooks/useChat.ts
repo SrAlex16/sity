@@ -17,6 +17,7 @@ export type ChatEntry = {
   text: string;
   meta?: ChatMessageResponse;
   artifacts?: ChatArtifact[];
+  created_at?: string;
 };
 
 function createClientTurnId(): string {
@@ -67,6 +68,7 @@ export function useChat(options?: UseChatOptions) {
           response.messages.map((message) => ({
             role: message.role as "user" | "sity",
             text: message.text,
+            created_at: message.created_at,
           })),
         );
         window.setTimeout(() => scrollChatToBottom("auto"), 50);
@@ -112,7 +114,7 @@ export function useChat(options?: UseChatOptions) {
     setCanCancel(false);
     setPendingStatus("Sity está trabajando…");
     setActiveClientTurnId(clientTurnId);
-    setChatEntries((current) => [...current, { role: "user", text: trimmed }]);
+    setChatEntries((current) => [...current, { role: "user", text: trimmed, created_at: new Date().toISOString() }]);
     window.setTimeout(() => scrollChatToBottom("smooth"), 50);
 
     const eventSource = new EventSource(`${API_BASE}/events/chat/${clientTurnId}`);
@@ -173,6 +175,7 @@ export function useChat(options?: UseChatOptions) {
           text: response.text || "(sin respuesta)",
           meta: response,
           artifacts: response.artifacts ?? [],
+          created_at: new Date().toISOString(),
         },
       ]);
       window.setTimeout(() => scrollChatToBottom("smooth"), 50);

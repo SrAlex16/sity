@@ -179,7 +179,7 @@ def budget(session: Session = Depends(get_session)):
     ).one()
     used = int(result or 0)
     cfg = load_default_config()
-    daily_budget = int(cfg.get("tokens", {}).get("daily_token_budget", 50000))
+    daily_budget = int(cfg.get("usage", {}).get("daily_token_budget", 1000000))
     return {"daily_used": used, "daily_budget": daily_budget}
 
 

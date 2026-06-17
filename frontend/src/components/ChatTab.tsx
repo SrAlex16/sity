@@ -1,4 +1,18 @@
 import type React from "react";
+import { useRef, useEffect } from "react";
+
+const _MONTHS_ES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  if (d >= todayStart) return hhmm;
+  if (d >= yesterdayStart) return `Ayer ${hhmm}`;
+  return `${d.getDate()} ${_MONTHS_ES[d.getMonth()]} ${hhmm}`;
+}
 import { type ChatEntry } from "../hooks/useChat";
 import { API_BASE } from "../api/chatApi";
 import { type VoiceSettings } from "../api/voiceApi";
@@ -42,6 +56,15 @@ export function ChatTab({
   onToggleRecording,
   voiceSettings,
 }: ChatTabProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [chatInput]);
+
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
       <div className="flex items-center justify-between gap-4">
@@ -142,6 +165,11 @@ export function ChatTab({
                 ))}
               </div>
             )}
+            {entry.created_at && (
+              <p className={`mt-1 text-xs ${entry.role === "user" ? "text-right text-zinc-600" : "text-zinc-500"}`}>
+                {formatTimestamp(entry.created_at)}
+              </p>
+            )}
           </div>
           );
         })}
@@ -165,8 +193,10 @@ export function ChatTab({
         </p>
       )}
 
-      <div className="mt-4 flex gap-3">
-        <input
+      <div className="mt-4 flex items-end gap-3">
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={chatInput}
           onChange={(event) => setChatInput(event.target.value)}
           onKeyDown={(event) => {
@@ -176,7 +206,8 @@ export function ChatTab({
             }
           }}
           placeholder={isRecording ? "Grabando…" : isTranscribing ? "Transcribiendo…" : "Habla con Sity..."}
-          className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100 outline-none focus:border-cyan-300"
+          className="min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100 outline-none focus:border-cyan-300"
+          style={{ maxHeight: "12rem" }}
         />
         <button
           type="button"

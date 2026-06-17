@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 
@@ -75,6 +75,7 @@ class ChatMessageItem(BaseModel):
     role: str
     text: str
     trace_id: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 class CurrentChatResponse(BaseModel):
@@ -178,6 +179,7 @@ def current_chat(session: Session = Depends(get_session)):
             role=row.role,
             text=row.text,
             trace_id=row.trace_id,
+            created_at=row.created_at,
         )
         for row in rows
     ]
@@ -202,9 +204,7 @@ class ChatMessageRequest(BaseModel):
 
 
 def get_today_token_usage(session: Session) -> int:
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    ).replace(tzinfo=None)
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     result = session.exec(
         select(func.sum(AIUsage.input_tokens + AIUsage.output_tokens)).where(
@@ -326,7 +326,7 @@ def _chat_message_inner(
         verbosity_level=verbosity_level,
         configured_max_tokens=configured_max_tokens,
     )
-    daily_budget = int(usage_config.get("daily_token_budget", 50000))
+    daily_budget = int(usage_config.get("daily_token_budget", 1000000))
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))
     critical_threshold = float(usage_config.get("critical_threshold", 0.95))
 
