@@ -7,7 +7,7 @@ no HTTP, no AI calls, no prompt building.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import Session, func, select
@@ -95,11 +95,13 @@ def get_recent_db_messages(session: Session, limit: int = 20) -> list[ChatMessag
 
 
 def get_today_token_usage(session: Session) -> int:
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    now_local = datetime.now().astimezone()
+    today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = today_start_local.astimezone(timezone.utc).replace(tzinfo=None)
 
     result = session.exec(
         select(func.sum(AIUsage.input_tokens + AIUsage.output_tokens)).where(
-            AIUsage.created_at >= today_start
+            AIUsage.created_at >= today_start_utc
         )
     ).one()
 
