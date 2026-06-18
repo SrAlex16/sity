@@ -1359,6 +1359,27 @@ Pendiente:
 
 ---
 
+## Roadmap Portabilidad de Plataforma
+
+Sity deja de asumir la Raspberry Pi como premisa fija. La Pi sigue siendo el
+servidor de desarrollo y producción principal, pero la arquitectura no debe
+asumir que el hardware sensorial (cámara, micrófono) vive en la misma máquina
+que el backend.
+
+El patrón ya existe parcialmente: el STT actual ya funciona así — el audio se
+captura en el dispositivo del cliente (navegador, Telegram), se transcribe en
+el backend, y solo el texto resultante entra al flujo de Sity. El siguiente
+paso es generalizar ese mismo patrón a otras capacidades sensoriales
+(cámara) y de sistema (acceso a archivos), de forma que "el dispositivo
+desde el que se habla con Sity" y "el servidor donde corre Sity" sean
+conceptos explícitamente separados, no asumidos como la misma máquina.
+
+No es un cambio de arquitectura grande — es una cuestión de dirección: cada
+nueva capacidad sensorial o de sistema debe diseñarse pensando en "¿de qué
+dispositivo viene esto?" en lugar de asumir que es la Pi.
+
+---
+
 ## Roadmap modular / portability layer
 
 Objetivo:
@@ -1884,23 +1905,54 @@ commands:
     timeout: 20
 ```
 
-### Privacidad por perfil de hablante
+### Sistema de perfiles personales (muy a futuro)
 
-```text
-- speaker_source / speaker_label / speaker_confidence ya están en ChatMessage.
-- Futuro: reconocimiento de hablante por voz (embedding de audio → speaker_id).
-- speaker_id reservado en schema; identity_evidence_json para trazabilidad.
-- El modelo no recibe speaker_* — es metadata de backend invisible al prompt.
-```
+Cuando Sity pueda reconocer personas — por cómo se expresan, por
+reconocimiento de cámara, o ambos (la voz no aplica como canal propio: el
+audio ya se transcribe a texto antes de llegar al modelo) — además de
+`speaker_label` manual como ahora, podría mantener un perfil persistente por
+persona, en JSON, base de datos, o el formato que tenga más sentido cuando
+se diseñe.
 
-### Identidad de remitente por mensaje
+**Identidad y reconocimiento**
+Reconocimiento automático de quién está hablando, sin depender de que el
+usuario indique manualmente el speaker_label. Combinado con
+`source_channel`, da trazabilidad completa de origen + identidad por
+mensaje.
 
-```text
-- source_channel ya está en ChatMessage ("web" | "telegram").
-- Futuro: permitir múltiples usuarios/contactos autorizados en Telegram con
-  speaker_label diferente por chat_id.
-- Historial filtrable por canal/remitente para dataset y análisis.
-```
+**Pseudo-opiniones**
+Una impresión acumulada de cada persona basada en el trato — patrones
+observados a lo largo de las interacciones (temas que le interesan, tono
+habitual, comportamientos que Sity considera correctos o incorrectos).
+
+**Privacidad por perfil**
+Saber qué información es apropiada compartir con quién — similar a cómo una
+persona no repite algo que le contaron en confianza.
+
+**Confianza diferenciada por persona**
+Con `skepticism_level` como base de comportamiento general, el siguiente
+paso sería que la confianza se ajuste por persona según el historial de
+interacciones — si alguien ha dicho cosas que luego resultaron falsas,
+Sity podría cuestionar más sus afirmaciones futuras. No sería un parámetro
+configurable manualmente, sino un dato inferido de la interacción real,
+almacenado por perfil.
+
+**Libertad de trato — alcance preciso**
+Sity podría tener libertad de tono y disposición según el perfil — ser más
+fría, cortante o reservada con alguien que le cae mal, o más cálida con
+quien le cae bien. Incluye libertad de ironía, sarcasmo o exageración
+deliberada (ya presente hasta cierto punto vía el rasgo de "mala leche"),
+y libertad para elegir no contar algo o no hablar de un tema — extensión
+natural del `refusal_chance` ya existente, pero aplicado a "qué compartir"
+y no solo a "qué hacer".
+
+**Límite explícito:** esta libertad de trato NO incluye dar información
+objetivamente falsa de forma literal y dañina. La distinción es entre
+"mentir" en el sentido de ironía/exageración/tono (aceptable, ya parcialmente
+implementado) y desinformar deliberadamente sobre hechos (fuera de alcance).
+
+Todo este sistema depende de tener reconocimiento de personas funcionando
+primero. Explícitamente fuera de alcance hasta entonces.
 
 ---
 
