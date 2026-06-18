@@ -445,7 +445,8 @@ Parámetros relevantes:
 - refusal_chance;
 - helpfulness_level;
 - verbosity_level;
-- melancholy_level.
+- melancholy_level;
+- skepticism_level.
 
 Reglas no negociables:
 

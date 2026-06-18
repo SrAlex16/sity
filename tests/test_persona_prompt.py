@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.persona_engine import CRITICAL_KEYWORDS, PersonaEngine, _TEMPLATE_PATH
+from app.settings.settings_service import CANONICAL_PERSONALITY
 
 
 @pytest.fixture(scope="module")
@@ -205,3 +206,38 @@ def test_verbosity_directive_ranges(engine: PersonaEngine, verbosity: float, exp
     assert expected_fragment in result.system_prompt, (
         f"Expected {expected_fragment!r} in prompt for verbosity={verbosity}"
     )
+
+
+# ------------------------------------------------------------------ #
+# 8. _build_style_directives — skepticism ranges                      #
+# ------------------------------------------------------------------ #
+
+@pytest.mark.parametrize("skepticism,expected_fragment", [
+    # Texts unique to the dynamic directive (not in the static template interpretation section)
+    (0.0,  "beneficio de la duda por defecto"),
+    (0.2,  "beneficio de la duda por defecto"),
+    (0.8,  "cuestiona activamente"),
+    (1.0,  "cuestiona activamente"),
+])
+def test_skepticism_directive_ranges(engine: PersonaEngine, skepticism: float, expected_fragment: str) -> None:
+    result = engine.build_persona_prompt({"skepticism_level": skepticism}, "hola")
+    assert expected_fragment in result.system_prompt, (
+        f"Expected {expected_fragment!r} in prompt for skepticism={skepticism}"
+    )
+
+
+def test_skepticism_mid_range_no_directive(engine: PersonaEngine) -> None:
+    result = engine.build_persona_prompt({"skepticism_level": 0.5}, "hola")
+    assert "cuestiona activamente" not in result.system_prompt
+    assert "beneficio de la duda por defecto" not in result.system_prompt
+
+
+# ------------------------------------------------------------------ #
+# 9. CANONICAL_PERSONALITY completeness                               #
+# ------------------------------------------------------------------ #
+
+def test_canonical_personality_includes_skepticism() -> None:
+    assert "skepticism_level" in CANONICAL_PERSONALITY, (
+        "skepticism_level missing from CANONICAL_PERSONALITY — restore defaults will not apply it"
+    )
+    assert CANONICAL_PERSONALITY["skepticism_level"] == 0.2

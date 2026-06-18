@@ -22,6 +22,7 @@ PERSONALITY_KEYS = {
     "helpfulness_level",
     "verbosity_level",
     "melancholy_level",
+    "skepticism_level",
 }
 
 CANONICAL_PERSONALITY: dict[str, float] = {
@@ -38,6 +39,7 @@ CANONICAL_PERSONALITY: dict[str, float] = {
     "refusal_chance":            0.15,
     "helpfulness_level":         0.60,
     "verbosity_level":           0.35,
+    "skepticism_level":          0.20,
 }
 
 

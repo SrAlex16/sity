@@ -23,6 +23,7 @@ PERSONALITY_PARAMETERS = [
     "helpfulness_level",
     "verbosity_level",
     "melancholy_level",
+    "skepticism_level",
 ]
 
 ALL_PERSONALITY_PARAMETERS_TEXT = ", ".join(PERSONALITY_PARAMETERS)
@@ -47,10 +48,10 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
                 "type": "array",
                 "description": (
                     "Lista OBLIGATORIA de cambios. Nunca la omitas. "
-                    "Para 'todo al 50%' incluye los 12 parámetros permitidos."
+                    "Para 'todo al 50%' incluye los 13 parámetros permitidos."
                 ),
                 "minItems": 1,
-                "maxItems": 12,
+                "maxItems": 13,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,

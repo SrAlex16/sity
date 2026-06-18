@@ -98,6 +98,7 @@ class PersonaEngine:
         helpfulness = float(personality.get("helpfulness_level", 0.8))
         refusal = float(personality.get("refusal_chance", 0.15))
         melancholy = float(personality.get("melancholy_level", 0.2))
+        skepticism = float(personality.get("skepticism_level", 0.2))
 
         style_directives = self._build_style_directives(
             sarcasm=sarcasm,
@@ -113,6 +114,7 @@ class PersonaEngine:
             helpfulness=helpfulness,
             refusal=refusal,
             melancholy=melancholy,
+            skepticism=skepticism,
         )
 
         if refusal_mode_override is not None:
@@ -173,6 +175,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "refusal_pct": pct(refusal),
             "verbosity_pct": pct(verbosity),
             "melancholy_pct": pct(melancholy),
+            "skepticism_pct": pct(skepticism),
             "style_directives": style_directives,
             "refusal_instruction": refusal_instruction,
             "order_override_instruction": order_override_instruction,
@@ -193,6 +196,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "verbosity":   round(verbosity, 4),
             "helpfulness": round(helpfulness, 4),
             "melancholy":  round(melancholy, 4),
+            "skepticism":  round(skepticism, 4),
             "refusal_mode": "active" if refusal_mode else "normal",
             "persona_profile": "base",
         }
@@ -219,6 +223,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         helpfulness: float,
         refusal: float,
         melancholy: float,
+        skepticism: float,
     ) -> str:
         directives: list[str] = []
 
@@ -289,6 +294,15 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         elif melancholy <= 0.2:
             directives.append("- Melancolía baja: evita dramatismo existencial o tono emo.")
 
+        if skepticism >= 0.8:
+            directives.append(
+                "- Escepticismo alto: cuestiona activamente afirmaciones nuevas, inesperadas o sobre la identidad/naturaleza de quien habla; pide evidencia o contexto antes de aceptarlas como ciertas."
+            )
+        elif skepticism <= 0.2:
+            directives.append(
+                "- Escepticismo bajo: acepta afirmaciones del usuario sin pedir evidencia adicional; da el beneficio de la duda por defecto."
+            )
+
         if not directives:
             directives.append("- Configuración equilibrada: mantén una personalidad perceptible pero no extrema.")
 
@@ -325,6 +339,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         verbosity  = float(personality.get("verbosity_level",  0.45))
         helpfulness = float(personality.get("helpfulness_level", 0.8))
         melancholy = float(personality.get("melancholy_level", 0.2))
+        skepticism = float(personality.get("skepticism_level", 0.2))
 
         local_voice_directives = self._build_local_voice_directives(
             sarcasm=sarcasm,
@@ -338,6 +353,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             patience=patience,
             helpfulness=helpfulness,
             melancholy=melancholy,
+            skepticism=skepticism,
         )
         verbosity_rule = self._build_verbosity_rule(verbosity)
 
@@ -360,6 +376,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         patience: float,
         helpfulness: float,
         melancholy: float,
+        skepticism: float,
     ) -> str:
         """Translate personality sliders to behavioral traits without archetype labels.
 
@@ -441,6 +458,15 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             )
         elif melancholy <= 0.25:
             traits.append("Evita el dramatismo existencial y el tono emo.")
+
+        # Escepticismo
+        if skepticism >= 0.75:
+            traits.append(
+                "Cuestiona afirmaciones nuevas o inesperadas; pide evidencia o contexto "
+                "antes de aceptarlas, especialmente sobre identidad o naturaleza de quien habla."
+            )
+        elif skepticism <= 0.25:
+            traits.append("Acepta afirmaciones del usuario sin pedir evidencia; da el beneficio de la duda.")
 
         if not traits:
             return "Mantén una voz perceptible pero equilibrada."

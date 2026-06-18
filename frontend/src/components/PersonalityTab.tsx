@@ -8,6 +8,7 @@ const LABELS: Record<keyof PersonalitySettings, string> = {
   initiative_level:        "Iniciativa",
   dry_humor_level:         "Humor seco",
   melancholy_level:        "Melancolía",
+  skepticism_level:        "Escepticismo",
   frialdad_afectiva_level: "Frialdad afectiva",
   contrarian_level:        "Contradicción",
   patience_level:          "Paciencia",
@@ -30,6 +31,7 @@ const ORDER: Array<keyof PersonalitySettings> = [
   "refusal_chance",
   "helpfulness_level",
   "verbosity_level",
+  "skepticism_level",
 ];
 
 function percent(value: number): number {

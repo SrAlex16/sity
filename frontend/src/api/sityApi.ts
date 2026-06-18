@@ -13,6 +13,7 @@ export type PersonalitySettings = {
   helpfulness_level: number;
   verbosity_level: number;
   melancholy_level: number;
+  skepticism_level: number;
 };
 
 export type PersonalityAdjustResponse = {
