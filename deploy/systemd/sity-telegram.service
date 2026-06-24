@@ -1,7 +1,7 @@
 [Unit]
 Description=Sity Telegram Bot
-After=network.target sity-backend.service
-Wants=sity-backend.service
+After=network-online.target sity-backend.service
+Wants=network-online.target sity-backend.service
 
 [Service]
 Type=simple
