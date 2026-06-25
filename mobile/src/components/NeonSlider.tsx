@@ -3,12 +3,18 @@ import { motion } from 'framer-motion';
 import styles from './NeonSlider.module.css';
 
 interface NeonSliderProps {
-  value: number; // 0–1
-  onChange: (v: number) => void;
-  onChangeCommit: (v: number) => void;
+  value: number;
+  onChange: (value: number) => void;
+  onCommit: (value: number) => void;
+  color?: string;
 }
 
-export function NeonSlider({ value, onChange, onChangeCommit }: NeonSliderProps) {
+export function NeonSlider({
+  value,
+  onChange,
+  onCommit,
+  color = 'var(--neon-cyan)',
+}: NeonSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const pct = `${(value * 100).toFixed(1)}%`;
 
@@ -34,17 +40,26 @@ export function NeonSlider({ value, onChange, onChangeCommit }: NeonSliderProps)
       onPointerUp={(e) => {
         const v = compute(e.clientX);
         onChange(v);
-        onChangeCommit(v);
+        onCommit(v);
         e.currentTarget.releasePointerCapture(e.pointerId);
       }}
     >
-      <div className={styles.fill} style={{ width: pct }} />
-      <motion.div
-        className={styles.thumb}
-        style={{ left: pct }}
-        whileTap={{ scale: 1.4 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+      <div
+        className={styles.fill}
+        style={{ width: pct, background: color, boxShadow: `0 0 6px ${color}` }}
       />
+      {/* 28px transparent hit wrapper, 16px visual dot inside */}
+      <motion.div
+        className={styles.thumbWrap}
+        style={{ left: pct }}
+        whileTap={{ scale: 1.2 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+      >
+        <div
+          className={styles.thumbDot}
+          style={{ background: color, boxShadow: `0 0 8px ${color}, 0 0 2px #fff` }}
+        />
+      </motion.div>
     </div>
   );
 }

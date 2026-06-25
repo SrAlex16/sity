@@ -14,20 +14,27 @@
   left: 0;
   top: 0;
   height: 100%;
-  background: var(--neon-cyan);
   border-radius: 2px;
-  box-shadow: 0 0 6px var(--neon-cyan);
   pointer-events: none;
 }
 
-.thumb {
+/* 28×28 transparent touch target centered on the track */
+.thumbWrap {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--neon-cyan);
-  box-shadow: 0 0 8px var(--neon-cyan), 0 0 2px #fff;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
+}
+
+/* 16×16 visual neon dot */
+.thumbDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }

@@ -70,7 +70,7 @@ export const PersonalitySliderItem = memo(function PersonalitySliderItem({
       </div>
 
       <div className={styles.sliderWrap}>
-        <NeonSlider value={value} onChange={onDrag} onChangeCommit={onCommit} />
+        <NeonSlider value={value} onChange={onDrag} onCommit={onCommit} />
       </div>
 
       <span className={styles.pct}>{pct}%</span>
