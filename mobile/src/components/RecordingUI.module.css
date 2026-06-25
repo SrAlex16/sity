@@ -1,0 +1,72 @@
+.ui {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.cancelBtn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.cancelBtn:hover { color: #ff3333; }
+
+.timerWrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff3333;
+  box-shadow: 0 0 6px #ff3333;
+}
+
+.timer {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  letter-spacing: 0.05em;
+  min-width: 32px;
+}
+
+.waveformWrap {
+  flex: 1;
+  height: 36px;
+  overflow: hidden;
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sendBtn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--neon-magenta);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--glow-magenta);
+  -webkit-tap-highlight-color: transparent;
+}

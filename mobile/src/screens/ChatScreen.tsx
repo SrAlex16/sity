@@ -2,12 +2,14 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useChat } from '../hooks/useChat';
 import { MessageBubble } from '../components/MessageBubble';
+import { AudioMessageBubble } from '../components/AudioMessageBubble';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { StatusBadge } from '../components/StatusBadge';
 import { BackgroundPicker } from '../components/BackgroundPicker';
+import { RecordingUI } from '../components/RecordingUI';
 import styles from './ChatScreen.module.css';
 
-// ── Inline SVG icons ──────────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconRobot() {
   return (
@@ -57,24 +59,32 @@ function IconSend() {
   );
 }
 
+// ── Recording state ───────────────────────────────────────────────────────────
+
+interface RecordingCtx {
+  mediaRecorder: MediaRecorder;
+  analyserNode: AnalyserNode;
+  audioContext: AudioContext;
+  chunks: Blob[];
+  startTime: number;
+}
+
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
 export function ChatScreen() {
-  const { messages, status, sendMessage, clearMessages } = useChat();
+  const { messages, status, sendMessage, sendAudio, clearMessages } = useChat();
 
   const [inputText, setInputText] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [bgValue, setBgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
   const [avatarSrc] = useState<string>(() => localStorage.getItem('sity_avatar') ?? '');
-  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<RecordingCtx | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
 
-  // Scroll to bottom on new message or typing indicator
+  // Scroll to bottom on new content
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, status]);
@@ -82,7 +92,7 @@ export function ChatScreen() {
   // Auto-resize textarea
   const resizeTextarea = useCallback((el: HTMLTextAreaElement) => {
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 144)}px`; // 6 × 24px
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`;
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -94,66 +104,78 @@ export function ChatScreen() {
     const text = inputText.trim();
     if (!text || status === 'procesando') return;
     setInputText('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     void sendMessage(text);
   }, [inputText, status, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  // Microphone: record → transcribe → fill textarea
-  const handleMicToggle = async () => {
-    if (isRecording) {
-      mediaRecorderRef.current?.stop();
-      return;
-    }
+  // ── Recording ──────────────────────────────────────────────────────────────
+
+  const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyserNode = audioContext.createAnalyser();
+      analyserNode.fftSize = 256;
+      source.connect(analyserNode);
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
+      const chunks: Blob[] = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setIsRecording(false);
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const fd = new FormData();
-        fd.append('file', blob, 'recording.webm');
-        try {
-          const res = await fetch('/audio/transcribe', { method: 'POST', body: fd });
-          const data = await res.json() as { transcript: string };
-          if (data.transcript) {
-            setInputText((prev) => prev + data.transcript);
-            setTimeout(() => {
-              if (textareaRef.current) resizeTextarea(textareaRef.current);
-            }, 0);
-          }
-        } catch { /* ignore transcription error */ }
-      };
-
-      recorder.start();
-      setIsRecording(true);
-    } catch { /* mic permission denied or unavailable */ }
+      mediaRecorder.start();
+      setRecording({ mediaRecorder, analyserNode, audioContext, chunks, startTime: Date.now() });
+    } catch { /* mic unavailable or permission denied */ }
   };
 
-  // Background
+  const cancelRecording = () => {
+    if (!recording) return;
+    recording.mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    recording.mediaRecorder.stop();
+    void recording.audioContext.close();
+    setRecording(null);
+  };
+
+  const sendRecording = () => {
+    if (!recording) return;
+    const { mediaRecorder, audioContext, chunks, startTime } = recording;
+    const durationSecs = (Date.now() - startTime) / 1000;
+
+    mediaRecorder.onstop = async () => {
+      void audioContext.close();
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      setRecording(null);
+      await sendAudio(blob, durationSecs);
+    };
+
+    mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    mediaRecorder.stop();
+  };
+
+  // Stop recording on unmount
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        recording.mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+        void recording.audioContext.close();
+      }
+    };
+  }, [recording]);
+
+  // ── Background ─────────────────────────────────────────────────────────────
+
   const handleBgSelect = (bg: string) => {
     setBgValue(bg);
     localStorage.setItem('sity_bg', bg);
     setBgPickerOpen(false);
   };
 
-  // Context menu close on outside click
+  // ── Context menu close on outside click ───────────────────────────────────
+
   useEffect(() => {
     if (!menuOpen) return;
     const close = () => setMenuOpen(false);
@@ -170,7 +192,7 @@ export function ChatScreen() {
   return (
     <>
       <div className={styles.screen}>
-        {/* Background layer */}
+        {/* Background */}
         <AnimatePresence mode="sync">
           <motion.div
             key={bgValue || '__solid'}
@@ -217,16 +239,10 @@ export function ChatScreen() {
                   transition={{ duration: 0.14 }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <button
-                    className={styles.menuItem}
-                    onClick={() => { clearMessages(); setMenuOpen(false); }}
-                  >
+                  <button className={styles.menuItem} onClick={() => { clearMessages(); setMenuOpen(false); }}>
                     Borrar chat
                   </button>
-                  <button
-                    className={styles.menuItem}
-                    onClick={() => { setMenuOpen(false); setBgPickerOpen(true); }}
-                  >
+                  <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setBgPickerOpen(true); }}>
                     Cambiar fondo
                   </button>
                 </motion.div>
@@ -238,49 +254,77 @@ export function ChatScreen() {
         {/* Messages */}
         <div className={styles.messages}>
           <AnimatePresence initial={false}>
-            {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
-            ))}
+            {messages.map((msg) =>
+              msg.type === 'audio'
+                ? <AudioMessageBubble key={msg.id} message={msg} />
+                : <MessageBubble key={msg.id} message={msg} />
+            )}
           </AnimatePresence>
           {status === 'procesando' && <TypingIndicator />}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input area */}
+        {/* Input area — switches between normal input and RecordingUI */}
         <div className={styles.inputArea}>
-          <button className={styles.iconBtn} aria-label="Adjuntar">
-            <IconClip />
-          </button>
+          <AnimatePresence mode="wait">
+            {recording ? (
+              <motion.div
+                key="recording"
+                className={styles.inputRow}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <RecordingUI
+                  analyserNode={recording.analyserNode}
+                  onCancel={cancelRecording}
+                  onSend={sendRecording}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="input"
+                className={styles.inputRow}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <button className={styles.iconBtn} aria-label="Adjuntar">
+                  <IconClip />
+                </button>
 
-          <textarea
-            ref={textareaRef}
-            className={styles.textarea}
-            value={inputText}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="メッセージを入力..."
-            rows={1}
-          />
+                <textarea
+                  ref={textareaRef}
+                  className={styles.textarea}
+                  value={inputText}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="メッセージを入力..."
+                  rows={1}
+                />
 
-          <motion.button
-            className={`${styles.iconBtn} ${isRecording ? styles.recording : ''}`}
-            onClick={handleMicToggle}
-            animate={isRecording ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
-            transition={isRecording ? { repeat: Infinity, duration: 0.7 } : undefined}
-            aria-label={isRecording ? 'Detener grabación' : 'Grabar voz'}
-          >
-            <IconMic />
-          </motion.button>
+                <button
+                  className={styles.iconBtn}
+                  onClick={startRecording}
+                  aria-label="Grabar nota de voz"
+                >
+                  <IconMic />
+                </button>
 
-          <motion.button
-            className={styles.sendBtn}
-            onClick={handleSend}
-            disabled={!inputText.trim() || status === 'procesando'}
-            whileTap={{ scale: 0.88 }}
-            aria-label="Enviar"
-          >
-            <IconSend />
-          </motion.button>
+                <motion.button
+                  className={styles.sendBtn}
+                  onClick={handleSend}
+                  disabled={!inputText.trim() || status === 'procesando'}
+                  whileTap={{ scale: 0.88 }}
+                  aria-label="Enviar"
+                >
+                  <IconSend />
+                </motion.button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

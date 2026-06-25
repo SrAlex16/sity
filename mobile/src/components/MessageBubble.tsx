@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import type { ChatMessage } from '../hooks/useChat';
+import type { TextChatMessage } from '../hooks/useChat';
 import styles from './MessageBubble.module.css';
 
 function formatTimestamp(date: Date): string {
@@ -16,7 +16,7 @@ function formatTimestamp(date: Date): string {
 }
 
 interface MessageBubbleProps {
-  message: ChatMessage;
+  message: TextChatMessage;
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {

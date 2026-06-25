@@ -1,0 +1,158 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+  gap: 3px;
+}
+
+.wrapperUser  { align-self: flex-end;  align-items: flex-end; }
+.wrapperSity  { align-self: flex-start; align-items: flex-start; }
+
+.bubble {
+  padding: 10px 12px;
+  border-radius: 4px 12px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.bubbleUser {
+  background: rgba(0, 245, 255, 0.1);
+  border-left: 2px solid var(--neon-cyan);
+  border-radius: 12px 4px 4px 12px;
+}
+
+.bubbleSity {
+  background: rgba(255, 0, 128, 0.1);
+  border-left: 2px solid var(--neon-magenta);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waveIcon {
+  display: flex;
+  align-items: center;
+  opacity: 0.85;
+}
+
+.dur {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}
+
+/* ── Player ────────────────────────────────────────────────────────────── */
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.playBtn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.playBtn:hover { background: rgba(255,255,255,0.12); }
+
+.playerTrack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.seekBar {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.15);
+  outline: none;
+  cursor: pointer;
+}
+
+.seekBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent, var(--neon-cyan));
+  box-shadow: 0 0 4px var(--accent, var(--neon-cyan));
+  cursor: pointer;
+}
+
+.seekBar::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent, var(--neon-cyan));
+  cursor: pointer;
+}
+
+.playerTimes {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+/* ── Transcript ────────────────────────────────────────────────────────── */
+
+.transcriptToggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+  align-self: flex-start;
+}
+
+.transcriptToggle:hover { color: var(--text-primary); }
+
+.transcriptText {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+  font-style: italic;
+}
+
+/* ── Timestamp ─────────────────────────────────────────────────────────── */
+
+.timestamp {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  padding: 0 2px;
+}
