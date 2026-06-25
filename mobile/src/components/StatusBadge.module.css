@@ -1,0 +1,23 @@
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotCyan    { background: var(--neon-cyan);    box-shadow: 0 0 6px var(--neon-cyan); }
+.dotMagenta { background: var(--neon-magenta); box-shadow: 0 0 6px var(--neon-magenta); }
+.dotRed     { background: #ff3333;             box-shadow: 0 0 6px #ff3333; }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}

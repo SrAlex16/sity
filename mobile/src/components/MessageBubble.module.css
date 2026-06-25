@@ -1,0 +1,55 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 78%;
+  gap: 3px;
+}
+
+.wrapperUser {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.wrapperSity {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.bubble {
+  padding: 10px 14px;
+  border-radius: 4px 12px 12px 4px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.bubbleUser {
+  background: rgba(0, 245, 255, 0.1);
+  border-left: 2px solid var(--neon-cyan);
+  border-radius: 12px 4px 4px 12px;
+}
+
+.bubbleSity {
+  background: rgba(255, 0, 128, 0.1);
+  border-left: 2px solid var(--neon-magenta);
+}
+
+.bubbleError {
+  background: rgba(255, 51, 51, 0.1);
+  border-left-color: #ff3333;
+}
+
+.text {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.timestamp {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  padding: 0 2px;
+}

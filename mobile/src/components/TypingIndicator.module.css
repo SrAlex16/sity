@@ -1,0 +1,25 @@
+.wrapper {
+  display: flex;
+  justify-content: flex-start;
+  padding: 2px 0;
+}
+
+.bubble {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 0, 128, 0.1);
+  border-left: 2px solid var(--neon-magenta);
+  border-radius: 4px 12px 12px 4px;
+  padding: 10px 14px;
+  min-width: 52px;
+}
+
+.dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--neon-magenta);
+  box-shadow: 0 0 4px var(--neon-magenta);
+}
