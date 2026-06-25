@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export interface PersonalitySettings {
   sarcasm_level: number;
@@ -21,18 +21,46 @@ export function usePersonality() {
   const [settings, setSettings] = useState<PersonalitySettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const updateSetting = async (_key: keyof PersonalitySettings, _value: number): Promise<void> => {
-    // TODO: implement
-  };
+  useEffect(() => { void load(); }, []);
 
-  const resetPersonality = async (): Promise<void> => {
+  async function load() {
     setIsLoading(true);
     try {
-      // TODO: implement
+      const res = await fetch('/settings/personality');
+      if (!res.ok) throw new Error('fetch');
+      setSettings(await res.json() as PersonalitySettings);
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
-  return { settings, isLoading, updateSetting, resetPersonality };
+  async function adjust(parameter: keyof PersonalitySettings, value: number) {
+    // Optimistic update
+    setSettings((prev) => prev ? { ...prev, [parameter]: value } : prev);
+    try {
+      const res = await fetch('/settings/personality/adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parameter, operation: 'set_absolute', amount: value }),
+      });
+      if (!res.ok) throw new Error('adjust');
+      const data = await res.json() as { new_value: number };
+      setSettings((prev) => prev ? { ...prev, [parameter]: data.new_value } : prev);
+    } catch {
+      void load(); // revert via reload
+    }
+  }
+
+  async function reset() {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/settings/personality/reset', { method: 'POST' });
+      if (!res.ok) throw new Error('reset');
+      setSettings(await res.json() as PersonalitySettings);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return { settings, isLoading, adjust, reset, reload: load };
 }

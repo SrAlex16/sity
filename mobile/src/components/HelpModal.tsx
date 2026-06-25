@@ -4,9 +4,11 @@ import styles from './HelpModal.module.css';
 interface HelpModalProps {
   open: boolean;
   onClose: () => void;
+  title?: string;
+  children?: React.ReactNode;
 }
 
-export function HelpModal({ open, onClose }: HelpModalProps) {
+export function HelpModal({ open, onClose, title = 'Ayuda', children }: HelpModalProps) {
   return (
     <AnimatePresence>
       {open && (
@@ -25,8 +27,10 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className={styles.title}>Ayuda</h2>
-            <p className={styles.placeholder}>Pendiente de implementar.</p>
+            <h2 className={styles.title}>{title}</h2>
+            <div className={styles.body}>
+              {children ?? <p className={styles.placeholder}>Pendiente de implementar.</p>}
+            </div>
             <button className={styles.close} onClick={onClose}>Cerrar</button>
           </motion.div>
         </motion.div>

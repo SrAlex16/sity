@@ -7,7 +7,7 @@ export interface DatasetStatus {
 }
 
 export function useDataset() {
-  const [status, setStatus] = useState<DatasetStatus | null>(null);
+  const [status, _setStatus] = useState<DatasetStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchStatus = async (): Promise<void> => {
