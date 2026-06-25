@@ -885,6 +885,7 @@ refusal_chance
 helpfulness_level
 verbosity_level
 melancholy_level
+skepticism_level
 ```
 
 Sity debe hablar de sí misma en femenino y en castellano de España.
@@ -1345,6 +1346,15 @@ Objetivo:
 reducir coste, latencia y errores
 ```
 
+### Traducción de entrada/salida al inglés para LLM local
+
+Para mejorar la calidad de los modelos locales (que rinden mejor en inglés) y
+potencialmente ahorrar tokens, explorar traducir la entrada del usuario al inglés
+antes de enviársela al modelo local, y traducir la respuesta de vuelta al español
+antes de mostrarla. Requiere un modelo de traducción local o un paso ligero que
+no dispare safeguards. Añade latencia; el coste-beneficio depende del modelo
+final elegido para LoRA.
+
 ### 6. CI/CD y testing
 
 Pendiente:
@@ -1377,6 +1387,23 @@ conceptos explícitamente separados, no asumidos como la misma máquina.
 No es un cambio de arquitectura grande — es una cuestión de dirección: cada
 nueva capacidad sensorial o de sistema debe diseñarse pensando en "¿de qué
 dispositivo viene esto?" en lugar de asumir que es la Pi.
+
+### Presencia y proximidad (requiere cliente con acceso a ubicación)
+
+Detectar cuándo el usuario está cerca — por conexión del móvil a la red local,
+por ubicación GPS compartida desde la app cliente, o por cualquier señal de
+proximidad que el dispositivo cliente pueda aportar — y disparar un evento en
+Sity. El servidor no detecta esto por sí solo: es el cliente (móvil, app) quien
+tiene que comunicarlo. Pendiente de que exista un cliente móvil o app con
+capacidad de enviar esa señal.
+
+### Salida multimedia en el cliente (requiere cliente con capacidades de salida)
+
+Mostrar imágenes por pantalla y reproducir audio por los altavoces del dispositivo
+desde el que se habla con Sity — no necesariamente en la Pi. Siguiendo el mismo
+patrón que STT (el audio se captura en el cliente), la salida también debería
+ocurrir en el cliente cuando sea posible. La Pi puede actuar como fallback de
+salida cuando el cliente no tenga capacidades o no esté activo.
 
 ---
 
@@ -1623,6 +1650,14 @@ Seguridad:
 - audit log
 ```
 
+### Quote-reply (responder a mensajes anteriores)
+
+Seleccionar un mensaje anterior de la conversación (no el último) e indicarle a
+Sity explícitamente a qué mensaje se responde, igual que en WhatsApp o Telegram.
+Es un cambio principalmente visual en el frontend, pero requiere pasar a Sity
+información de contexto sobre el mensaje al que se responde. Baja prioridad
+mientras el canal principal sea voz.
+
 ---
 
 ## Roadmap Remote Access / Home Network
@@ -1711,6 +1746,14 @@ No debe:
 - tocar base de datos del vault
 - tener admin token
 ```
+
+### App móvil dedicada
+
+Una app nativa o PWA como cliente principal para hablar con Sity desde el móvil,
+con cifrado extremo a extremo y separada de la UI web de administración. Podría
+aprovechar el dominio existente si ya se dispone de uno, sin interferir con lo
+que ya aloje. Abierto: si la app mobile es la que lleva STT/cámara/ubicación,
+es también el cliente sensorial principal bajo el nuevo enfoque de portabilidad.
 
 ---
 
