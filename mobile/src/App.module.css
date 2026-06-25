@@ -1,0 +1,21 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+.screenContainer {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+
+.screenWrapper {
+  min-height: 100%;
+}

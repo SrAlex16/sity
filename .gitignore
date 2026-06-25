@@ -20,6 +20,7 @@ reports/
 *.sqlite3
 
 node_modules/
+mobile/node_modules/
 dist/
 build/
 coverage/

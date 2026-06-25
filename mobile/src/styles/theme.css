@@ -1,0 +1,40 @@
+:root {
+  /* Colores */
+  --color-bg: #0a0a0f;
+  --color-surface: #0f0f1a;
+  --color-border: #1a1a2e;
+
+  --neon-cyan: #00f5ff;
+  --neon-magenta: #ff00ff;
+  --neon-pink: #ff0080;
+  --neon-purple: #8000ff;
+
+  --glow-cyan: 0 0 10px #00f5ff, 0 0 20px #00f5ff40;
+  --glow-magenta: 0 0 10px #ff00ff, 0 0 20px #ff00ff40;
+  --glow-pink: 0 0 10px #ff0080, 0 0 20px #ff008040;
+
+  --text-primary: #e0e0ff;
+  --text-secondary: #8080aa;
+  --text-neon: var(--neon-cyan);
+
+  /* Fuente activa — cambia esto para cambiar toda la app */
+  --font-display: 'Orbitron', sans-serif;
+  --font-body: 'Orbitron', sans-serif;
+  --font-japanese: 'Noto Sans JP', sans-serif;
+  --font-mono: 'Share Tech Mono', monospace;
+}
+
+[data-font="orbitron"] {
+  --font-display: 'Orbitron', sans-serif;
+  --font-body: 'Orbitron', sans-serif;
+}
+
+[data-font="sharetech"] {
+  --font-display: 'Share Tech Mono', monospace;
+  --font-body: 'Share Tech Mono', monospace;
+}
+
+[data-font="rajdhani"] {
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'Rajdhani', sans-serif;
+}
