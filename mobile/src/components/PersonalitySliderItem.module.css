@@ -1,15 +1,15 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .icon {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -22,15 +22,15 @@
 
 .names {
   flex-shrink: 0;
-  width: 68px;
+  width: 72px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .nameJp {
   font-family: var(--font-japanese);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--text-primary);
   line-height: 1.2;
 }
@@ -44,15 +44,15 @@
 
 .sliderWrap {
   flex: 1;
-  padding: 8px 0;
+  padding: 18px 0;
 }
 
 .pct {
   flex-shrink: 0;
-  width: 36px;
+  width: 38px;
   text-align: right;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--neon-cyan);
   text-shadow: 0 0 6px var(--neon-cyan);
   letter-spacing: 0.04em;

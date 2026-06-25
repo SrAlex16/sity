@@ -48,16 +48,16 @@ export function NeonSlider({
         className={styles.fill}
         style={{ width: pct, background: color, boxShadow: `0 0 6px ${color}` }}
       />
-      {/* 28px transparent hit wrapper, 16px visual dot inside */}
+      {/* 44×44 transparent touch target, 28×28 visual dot inside */}
       <motion.div
         className={styles.thumbWrap}
         style={{ left: pct }}
-        whileTap={{ scale: 1.2 }}
+        whileTap={{ scale: 1.15 }}
         transition={{ type: 'spring', stiffness: 500, damping: 20 }}
       >
         <div
           className={styles.thumbDot}
-          style={{ background: color, boxShadow: `0 0 8px ${color}, 0 0 2px #fff` }}
+          style={{ background: color, boxShadow: `0 0 10px ${color}, 0 0 3px #fff` }}
         />
       </motion.div>
     </div>
