@@ -3,10 +3,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import styles from './BackgroundPicker.module.css';
 
 export const PRESET_BACKGROUNDS = [
-  'linear-gradient(135deg, #0a0a0f 0%, #001a2e 50%, #003366 100%)',
-  'linear-gradient(135deg, #0a0a0f 0%, #1a0030 50%, #3300aa 100%)',
-  'linear-gradient(135deg, #0a0a0f 0%, #1a0020 50%, #660033 100%)',
-  'linear-gradient(135deg, #0a0a0f 0%, #001a0a 50%, #005533 100%)',
+  '/backgrounds/wallpaper1.png',
+  '/backgrounds/wallpaper2.png',
+  '/backgrounds/wallpaper3.png',
+  '/backgrounds/wallpaper4.png',
 ];
 
 interface BackgroundPickerProps {
@@ -76,7 +76,7 @@ export function BackgroundPicker({ open, onClose, onSelect }: BackgroundPickerPr
                   <button
                     key={i}
                     className={styles.presetThumb}
-                    style={{ background: bg }}
+                    style={{ backgroundImage: `url(${bg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
                     onClick={() => onSelect(bg)}
                     aria-label={`Fondo ${i + 1}`}
                   />

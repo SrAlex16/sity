@@ -184,7 +184,7 @@ export function ChatScreen() {
   }, [menuOpen]);
 
   const backgroundStyle: React.CSSProperties = bgValue
-    ? bgValue.startsWith('data:')
+    ? (bgValue.startsWith('/') || bgValue.startsWith('data:') || bgValue.startsWith('http'))
       ? { backgroundImage: `url(${bgValue})`, backgroundSize: 'cover', backgroundPosition: 'center' }
       : { background: bgValue }
     : {};
