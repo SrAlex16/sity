@@ -55,13 +55,6 @@ export function VoiceScreen() {
     try { await save(form); } catch { /* error shown via hook */ } finally { setSaving(false); }
   };
 
-  const handleDisable = async () => {
-    const next: VoiceSettings = { ...(form ?? VOICE_DEFAULTS), voice_response_mode: 'never' };
-    setForm(next);
-    setSaving(true);
-    try { await save(next); } catch { /* error shown via hook */ } finally { setSaving(false); }
-  };
-
   const handleRestore = async () => {
     setForm(VOICE_DEFAULTS);
     setSaving(true);
@@ -164,9 +157,6 @@ export function VoiceScreen() {
       <div className={styles.footer}>
         <button className={`${styles.btn} ${styles.btnCyan}`} onClick={handleSave} disabled={busy || !form}>
           {saving ? '…' : 'Guardar'}
-        </button>
-        <button className={`${styles.btn} ${styles.btnMagenta}`} onClick={handleDisable} disabled={busy}>
-          Desactivar
         </button>
         <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={handleRestore} disabled={busy}>
           Restaurar valores de voz
