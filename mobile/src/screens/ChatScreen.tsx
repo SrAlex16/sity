@@ -78,7 +78,7 @@ export function ChatScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [bgValue, setBgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
-  const [avatarSrc] = useState<string>(() => localStorage.getItem('sity_avatar') ?? '');
+  const [avatarSrc] = useState<string>(() => localStorage.getItem('sity_avatar') ?? '/icons/sity_icon.jpg');
   const [recording, setRecording] = useState<RecordingCtx | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
