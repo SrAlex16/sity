@@ -6,6 +6,7 @@ import { AudioMessageBubble } from '../components/AudioMessageBubble';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { StatusBadge } from '../components/StatusBadge';
 import { BackgroundPicker } from '../components/BackgroundPicker';
+import { FontPicker } from '../components/FontPicker';
 import { RecordingUI } from '../components/RecordingUI';
 import styles from './ChatScreen.module.css';
 
@@ -77,6 +78,10 @@ export function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [activeFont, setActiveFont] = useState<'orbitron' | 'sharetech' | 'rajdhani'>(
+    () => (localStorage.getItem('sity_font') ?? 'orbitron') as 'orbitron' | 'sharetech' | 'rajdhani'
+  );
   const [bgValue, setBgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
   const [avatarSrc] = useState<string>(() => localStorage.getItem('sity_avatar') ?? '/icons/sity_icon.jpg');
   const [recording, setRecording] = useState<RecordingCtx | null>(null);
@@ -245,6 +250,9 @@ export function ChatScreen() {
                   <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setBgPickerOpen(true); }}>
                     Cambiar fondo
                   </button>
+                  <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setFontPickerOpen(true); }}>
+                    Cambiar fuente
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -332,6 +340,12 @@ export function ChatScreen() {
         open={bgPickerOpen}
         onClose={() => setBgPickerOpen(false)}
         onSelect={handleBgSelect}
+      />
+      <FontPicker
+        open={fontPickerOpen}
+        activeFont={activeFont}
+        onClose={() => setFontPickerOpen(false)}
+        onSelect={setActiveFont}
       />
     </>
   );
