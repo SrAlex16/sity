@@ -16,6 +16,11 @@ Principios activos:
 - El acceso a cámara, micrófono y PC vision debe ser explícito, trazable y cancelable.
 - No se debe exponer backend/frontend directamente a internet.
 
+Infraestructura activa:
+
+- PWA móvil en mobile/ con diseño cyberpunk, acceso via Tailscale.
+- Tailscale instalado en Pi (IP: 100.73.248.0) para acceso remoto.
+
 ## Backend y frontend
 
 El backend principal está en `backend/` y el frontend en `frontend/`.

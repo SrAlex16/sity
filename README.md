@@ -100,6 +100,15 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - `output_mode` y `tts_fragments` en `ChatMessage`: modo de salida del turno y número de fragmentos TTS sintetizados.
 - `source_channel` en `ChatMessage`: `"web"` por defecto; `"telegram"` cuando el origen es el bot. Heredado por la respuesta de Sity.
 - Telegram bot: long polling, `sity-telegram.service`, allowlist por `chat_id`, rate limit, comandos `/preset /defaults /status`. Logs con `trace_id` en todas las fases de artifact. `SityGateway` incluye `"source_channel": "telegram"` en cada POST.
+- PWA móvil (mobile/) con diseño cyberpunk/neón.
+- Chat funcional conectado al backend real.
+- Grabación y envío de audio como nota de voz desde móvil.
+- Sliders de personalidad táctiles con widget de encabronamiento animado.
+- Pantalla de Voice y Dataset conectadas al backend.
+- Fondo de pantalla elegible (galería + predefinidos).
+- Selector de fuente (Orbitron / Share Tech Mono / Rajdhani).
+- Acceso remoto via Tailscale desde cualquier red.
+- Navegación entre pantallas con animaciones Framer Motion.
 
 ### Refactor reciente
 
@@ -1650,6 +1659,12 @@ Seguridad:
 - audit log
 ```
 
+### Completado
+
+```text
+✓ PWA móvil: cliente web instalable con diseño cyberpunk, accesible via Tailscale.
+```
+
 ### Quote-reply (responder a mensajes anteriores)
 
 Seleccionar un mensaje anterior de la conversación (no el último) e indicarle a
@@ -1996,6 +2011,46 @@ implementado) y desinformar deliberadamente sobre hechos (fuera de alcance).
 
 Todo este sistema depende de tener reconocimiento de personas funcionando
 primero. Explícitamente fuera de alcance hasta entonces.
+
+---
+
+## Roadmap PWA móvil
+
+### Estado actual (2026-06)
+
+Stack: React 18 + TypeScript + Vite + Framer Motion. Puerto 5174.
+Acceso local: https://192.168.0.118:5174
+Acceso remoto: https://100.73.248.0:5174 via Tailscale (certificado autofirmado,
+aviso de seguridad en Chrome — pendiente de resolver con dominio propio).
+
+Pantallas implementadas:
+- Chat: mensajes texto y audio, historial, estado de conexión dinámico,
+  fondo elegible, avatar de Sity, menú contextual.
+- Rasgos (Personality): sliders táctiles, widget de encabronamiento con emoji
+  animado, restaurar/recargar.
+- Voz (Voice): modo de respuesta, transcripción, respuestas largas.
+- Datos (Dataset): preset, source, speaker, tags, eligible.
+
+Pendiente:
+- HTTPS sin aviso de seguridad: requiere dominio propio con certificado real
+  (Let's Encrypt) o configurar Caddy con subdominio apuntando a Tailscale IP.
+- Instalable sin aviso: Chrome no muestra banner de instalación con certificado
+  autofirmado. Se resolverá con HTTPS real.
+- Respuestas de audio de Sity: comportamiento incorrecto cuando el usuario
+  envía audio — pendiente de investigar.
+- Botón clip (adjuntar archivos): placeholder sin funcionalidad.
+- Notificaciones push: avisar cuando Sity responde con app en segundo plano.
+- Selector de fondos predefinidos: sustituir los 4 wallpapers actuales cuando
+  se generen imágenes definitivas.
+- Quote-reply: responder a mensajes anteriores (ver roadmap Messaging Gateway).
+
+### Arrancar en desarrollo
+
+En la Pi:
+cd mobile && npm run dev -- --host
+
+Acceder desde móvil: https://192.168.0.118:5174 (misma red)
+Acceder desde fuera: https://100.73.248.0:5174 (Tailscale activo en ambos dispositivos)
 
 ---
 

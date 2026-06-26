@@ -531,3 +531,25 @@ Testing debe cubrir:
 - limpieza de temporales;
 - LoRA scripts como smoke/manual, no CI obligatorio.
 
+## PWA móvil
+
+Ubicación: `mobile/` — proyecto independiente, no comparte build con `frontend/`.
+
+Stack: React 18 + TypeScript + Vite 5 + Framer Motion + CSS custom (sin Tailwind).
+Puerto: 5174. Proxy a backend en :8000 configurado en vite.config.ts.
+HTTPS: vite-plugin-mkcert (certificado autofirmado, válido en red local y Tailscale).
+
+Acceso remoto: Tailscale (WireGuard). IP Tailscale de la Pi: 100.73.248.0.
+El móvil y la Pi deben tener Tailscale activo para acceso fuera de red local.
+
+Sistema de temas:
+- Variables CSS en theme.css (colores neón, glow, superficies).
+- Fuente activa controlada por data-font en <html>, persistida en localStorage.
+- Tres fuentes: Orbitron (defecto), Share Tech Mono, Rajdhani + Noto Sans JP
+  para texto japonés/katakana.
+- Fondo de pantalla: URL en localStorage (base64 para galería,
+  ruta relativa para predefinidos).
+
+Comunicación con backend: mismos endpoints que el frontend web.
+Campo adicional source_channel: 'mobile' en POST /chat/message.
+

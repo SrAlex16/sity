@@ -187,6 +187,20 @@ dejó aprendizajes:
 - El bot de mensajería no arrancaba tras un reinicio si la red aún no estaba lista;
   se resolvió añadiendo una dependencia de red al servicio.
 
+## PWA móvil
+
+Para mejorar la experiencia en móvil más allá del bot de mensajería,
+se desarrolló una PWA con diseño cyberpunk/neón: fondos de ciudad nocturna,
+neones en cian y magenta, tipografía geométrica futurista, y elementos
+decorativos en japonés/katakana. El diseño se puede personalizar: fondo
+elegible desde galería o predefinidos, fuente seleccionable entre tres opciones.
+
+La app tiene cuatro pantallas (Chat, Rasgos, Voz, Datos) con navegación
+animada. El chat soporta texto y notas de voz, conectado al mismo backend
+que el frontend web y el bot de mensajería. El acceso remoto se resolvió
+con Tailscale, que crea una red privada entre la Pi y el móvil sin necesidad
+de abrir puertos ni tocar el router.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen
