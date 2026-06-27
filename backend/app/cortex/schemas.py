@@ -18,6 +18,8 @@ class AIRequest(BaseModel):
 class AIUsageData(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
 
 
 class AIToolCall(BaseModel):

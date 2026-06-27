@@ -14,6 +14,19 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
 
+def _tools_with_cache(tools: list[dict]) -> list[dict]:
+    """Return a copy of tools with cache_control appended to the last entry."""
+    if not tools:
+        return tools
+    result = [dict(t) for t in tools]
+    result[-1] = {**result[-1], "cache_control": {"type": "ephemeral"}}
+    return result
+
+
+def _system_with_cache(text: str) -> list[dict]:
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
 class ClaudeProvider:
     name = "anthropic"
 
@@ -31,7 +44,7 @@ class ClaudeProvider:
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": request.max_tokens,
-            "system": request.system_prompt,
+            "system": _system_with_cache(request.system_prompt),
             "messages": [
                 *request.prior_messages,
                 {"role": "user", "content": request.user_message},
@@ -40,7 +53,7 @@ class ClaudeProvider:
 
         effective_tools = request.tools if request.tools is not None else TOOLS
         if request.tools_enabled and effective_tools:
-            kwargs["tools"] = effective_tools
+            kwargs["tools"] = _tools_with_cache(effective_tools)
             if request.tool_choice:
                 kwargs["tool_choice"] = request.tool_choice
 
@@ -62,11 +75,12 @@ class ClaudeProvider:
     ) -> AIResponse:
         started = time.perf_counter()
 
+        effective_tools = request.tools if request.tools is not None else TOOLS
         message = self.client.messages.create(
             model=self.model,
             max_tokens=request.max_tokens,
-            system=request.system_prompt,
-            tools=request.tools if request.tools is not None else TOOLS,
+            system=_system_with_cache(request.system_prompt),
+            tools=_tools_with_cache(effective_tools),
             messages=[
                 *request.prior_messages,
                 {"role": "user", "content": request.user_message},
@@ -132,6 +146,9 @@ class ClaudeProvider:
 
         text = "\n".join(text_parts).strip()
 
+        cache_creation = getattr(message.usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(message.usage, "cache_read_input_tokens", 0) or 0
+
         return AIResponse(
             ok=True,
             provider="anthropic",
@@ -140,6 +157,8 @@ class ClaudeProvider:
             usage=AIUsageData(
                 input_tokens=getattr(message.usage, "input_tokens", 0),
                 output_tokens=getattr(message.usage, "output_tokens", 0),
+                cache_creation_tokens=cache_creation,
+                cache_read_tokens=cache_read,
             ),
             latency_ms=latency_ms,
             fallback_used=False,
