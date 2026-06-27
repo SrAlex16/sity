@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_URL="${SITY_TEST_BASE_URL:-http://localhost:8000}"
 DB_PATH="${SITY_TEST_DB_PATH:-data/app.db}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -289,7 +290,7 @@ assert_ok_response "$MULTI_OUT"
 ok "Tool loop completed in ${ELAPSED}s (within 30s limit)"
 
 log "Testing critical action requires confirmation — file not created before confirm"
-TEST_FILE_CRITICAL="$TMP_DIR/critical_guard_$(date +%s).txt"
+TEST_FILE_CRITICAL="$ROOT/tests/critical_guard_$(date +%s).txt"
 CRITICAL_OUT="$TMP_DIR/critical_guard.json"
 post_chat "usa write_file para escribir 'guard test' en $TEST_FILE_CRITICAL" "$CRITICAL_OUT"
 assert_ok_response "$CRITICAL_OUT"
