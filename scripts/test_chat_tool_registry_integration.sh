@@ -290,7 +290,7 @@ assert_ok_response "$MULTI_OUT"
 ok "Tool loop completed in ${ELAPSED}s (within 30s limit)"
 
 log "Testing critical action requires confirmation — file not created before confirm"
-TEST_FILE_CRITICAL="$ROOT/tests/critical_guard_$(date +%s).txt"
+TEST_FILE_CRITICAL="$ROOT/scripts/critical_guard_$(date +%s).txt"
 CRITICAL_OUT="$TMP_DIR/critical_guard.json"
 post_chat "usa write_file para escribir 'guard test' en $TEST_FILE_CRITICAL" "$CRITICAL_OUT"
 assert_ok_response "$CRITICAL_OUT"
@@ -298,6 +298,7 @@ assert_contains "$CRITICAL_OUT" "Acción pendiente creada"
 [[ ! -f "$TEST_FILE_CRITICAL" ]] || fail "Critical file was created without confirmation"
 ok "Critical write_file blocked correctly before confirmation"
 expire_pending_actions
+rm -f "$TEST_FILE_CRITICAL"
 
 log "Tool registry integration test completed"
 ok "All checks passed"
