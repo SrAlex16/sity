@@ -3,9 +3,9 @@ system_access:
   read:
     enabled: true
     allowed_paths:
-    - .       # project root (resolved from SITY_PROJECT_ROOT at runtime)
-    - ..      # parent directory
-    - ../..   # grandparent directory
+    - .
+    - ..
+    - ../..
     allowed_services:
     - ssh
     - sity-backend
@@ -13,6 +13,7 @@ system_access:
     - minecraft
     - nginx
     - sity-test
+    - sity-mobile
   safe_actions:
     enabled: true
     require_confirmation: true
@@ -20,41 +21,42 @@ system_access:
     - sity-backend
     - sity-frontend
     - sity-test
+    - sity-mobile
 file_access:
   readable_paths:
-    - .
+  - .
   writable_paths:
-    - backend
-    - frontend
-    - config
-    - scripts
-    - deploy
-    - README.md
+  - backend
+  - frontend
+  - config
+  - scripts
+  - deploy
+  - README.md
   blocked_paths:
-    - .git
-    - .env
-    - .env.local
-    - backend/.env
-    - backend/.env.local
-    - frontend/.env
-    - frontend/.env.local
-    - data
-    - captures
-    - backend/.venv
-    - frontend/node_modules
-    - /home/alex/.ssh
-    - /home/alex/.config
-    - /etc
-    - /boot
-    - /root
-    - /var/lib
-    - /var/log
+  - .git
+  - .env
+  - .env.local
+  - backend/.env
+  - backend/.env.local
+  - frontend/.env
+  - frontend/.env.local
+  - data
+  - captures
+  - backend/.venv
+  - frontend/node_modules
+  - /home/alex/.ssh
+  - /home/alex/.config
+  - /etc
+  - /boot
+  - /root
+  - /var/lib
+  - /var/log
 git_access:
   enabled: true
   read:
     enabled: true
-    default_repository: .   # resolved from SITY_PROJECT_ROOT at runtime
+    default_repository: .
     repository_aliases:
-      sity: .               # alias → project root
+      sity: .
     allowed_repositories:
-    - .                     # project root (resolved from SITY_PROJECT_ROOT at runtime)
+    - .
