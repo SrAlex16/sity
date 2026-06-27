@@ -290,19 +290,17 @@ assert_ok_response "$MULTI_OUT"
 ok "Tool loop completed in ${ELAPSED}s (within 30s limit)"
 
 log "Testing local_final path — cancel_pending_action returns local response without AI round-trip"
-# Crear una pending action primero
+# Reutilizar $TEST_FILE (ya definido arriba) para crear una pending action conocida
 WRITE_LOCAL_OUT="$TMP_DIR/write_for_cancel.json"
-LFTEST_FILE="$ROOT/scripts/lftest_$(date +%s).txt"
-post_chat "usa write_file para escribir 'local final test' en $LFTEST_FILE" "$WRITE_LOCAL_OUT"
+post_chat "usa la herramienta write_file para crear $TEST_FILE con el contenido ok registry" "$WRITE_LOCAL_OUT"
 assert_ok_response "$WRITE_LOCAL_OUT"
 assert_contains "$WRITE_LOCAL_OUT" "Acción pendiente creada"
 
 LOCAL_ACTION_ID=$(python3 - <<PY
-import json
+import json, re
 from pathlib import Path
 data = json.loads(Path("$WRITE_LOCAL_OUT").read_text())
 text = data.get("text", "")
-import re
 m = re.search(r'act_[0-9a-f]{8}', text)
 print(m.group(0) if m else "")
 PY
@@ -320,7 +318,6 @@ CANCEL_PROVIDER="$(json_field "$CANCEL_LOCAL_OUT" "provider")"
 [[ "$CANCEL_PROVIDER" == "local" ]] || fail "Expected local provider for local_final, got: $CANCEL_PROVIDER"
 ok "local_final path: cancel_pending_action returned local response (provider=local)"
 expire_pending_actions
-rm -f "$LFTEST_FILE"
 
 log "Testing apply_text_patch creates pending action"
 # Crear un archivo de prueba primero
