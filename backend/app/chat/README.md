@@ -18,7 +18,7 @@ La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
 
 ## Módulos actuales
 
-> Última actualización: 2026-06-27 (model_router añadido).
+> Última actualización: 2026-06-28 (model_router documentado, skip_history_turns, upgrade_context).
 
 ### `budget_guard.py`
 
@@ -378,18 +378,6 @@ No tocar tool loop salvo cambios pequeños y muy controlados.
 
 ## Próximos módulos probables
 
-### `provider_call_runner.py`
-
-Futuro módulo para encapsular llamadas al proveedor IA.
-
-Debe esperar a tener tests de integración.
-
-### `tool_loop_runner.py`
-
-Futuro módulo para el bucle de tools.
-
-Debe esperar a tener tests de integración.
-
 ### `chat_orchestrator.py`
 
 Objetivo final:
@@ -465,6 +453,7 @@ response_guard.py           — guards de texto final + has_narrated_search (mov
 artifacts.py
 chat_persistence.py         — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages, get_today_token_usage, get_or_create_default_chat_session (2026-06-17)
 turn_persistence.py         — ChatTurnPersistence: encapsula save_chat_message con metadatos de capture por turno (2026-06-17)
+model_router.py             — singleton ModelUpgradeProposal, propuesta de upgrade de modelo (2026-06-28)
 ```
 
 Esquemas extraídos a `backend/app/api/schemas.py` (2026-06-17):

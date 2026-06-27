@@ -228,6 +228,26 @@ no infiere el dispositivo ni la identidad del usuario salvo que el contexto
 lo indique, y la transcripción de respuestas de audio largas divididas en
 fragmentos ya no se repite en cada fragmento.
 
+## Model Router y optimización de costes
+
+Para optimizar el gasto en tokens sin sacrificar calidad, se implementó un
+sistema de selección de modelo semi-automático. Haiku (el modelo rápido y
+barato) actúa como modelo por defecto para toda la conversación normal. Cuando
+detecta que una tarea supera su capacidad — análisis de arquitectura, debugging
+complejo, refactors — propone cambiar a Sonnet y espera confirmación del usuario.
+
+El usuario decide con un simple "sí" o "no", lo que permite entender la
+diferencia entre modelos y controlar el gasto consciente. Las respuestas
+generadas con Sonnet se etiquetan automáticamente como `sonnet_response` en el
+dataset, permitiendo filtrarlas al exportar datos de fine-tuning — ya que
+incluir respuestas de Sonnet en el dataset de Haiku podría introducir un estilo
+que Haiku no puede replicar.
+
+Paralelamente se mejoraron dos aspectos de la síntesis de voz: Piper ya no
+lee los asteriscos de markdown literalmente (se limpian antes de la síntesis),
+y Sity escribe palabras técnicas en inglés con pronunciación fonética en
+español cuando el output es voz.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

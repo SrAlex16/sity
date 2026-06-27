@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-06-27.
+Última actualización: 2026-06-28.
 
 Este documento resume el estado operativo actual del proyecto y las decisiones que condicionan los siguientes pasos. No sustituye al `README.md`; sirve como foto rápida para retomar trabajo sin depender de conversaciones antiguas.
 
@@ -46,6 +46,10 @@ Estado actual:
 - DatasetStats: módulo puro `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`.
 - Pestaña Dataset en el frontend: Dataset Capture + DatasetStats.
 - Audio STT: `faster-whisper` local, modelo `small` (mejorado desde `base`), `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y soporte de mensajes de voz en Telegram.
+- Model Router semi-automático: Haiku propone cambiar a Sonnet para tareas complejas; el usuario confirma con sí/no. Activado con `ai.claude.model_router_enabled: true`.
+- Etiquetado automático `sonnet_response` en `dataset_tags_json` cuando el modelo usado es Sonnet.
+- Limpieza de markdown antes de síntesis TTS (`_clean_text_for_tts`).
+- Draft persistente en textarea de la PWA móvil.
 - Audio TTS: Piper TTS con binario en el venv (`Path(sys.executable).parent / "piper"`). `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino vía `_SPEAKER_NAME_MAP` y flag `--speaker`. `voice_response_mode`, `voice_include_text`, `voice_long_response_action`, `audio_cleanup_days` persistidas en `Setting`.
 - Audio TTS persistido: con `persist_tts: true` en config, los archivos `.wav` se guardan en `data/audio/` con nombre estable. `ChatMessage.audio_filename` guarda el nombre del primer fragmento. `GET /audio/stored/{filename}` los sirve. `POST /audio/cleanup` borra archivos más viejos que `cleanup_days` días (se ejecuta al arrancar). `GET /chat/current` devuelve `audio_filename` en cada `ChatMessageItem`; la PWA reconstruye burbujas de audio históricas sin recargar desde URLs efímeras.
 - `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend/PWA (burbuja sin texto si hay audio artifacts y `voice_include_text == false`).

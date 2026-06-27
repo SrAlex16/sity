@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-27 (audio TTS persistente, reproducción secuencial, PWA móvil QoL).
+Última actualización: 2026-06-28 (model router semi-automático, limpieza TTS markdown, pronunciación fonética en voz).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -161,6 +161,20 @@ Endpoints adicionales en `routes_audio.py`:
 **Frontend:** reproductor `<audio controls>` en mensajes de Sity con artifacts de audio. Cuando `voice_include_text == false` y el mensaje tiene artifacts de audio, el texto de la burbuja se oculta (`hideText` en `ChatTab.tsx`) y solo se muestra el reproductor.
 
 **PWA móvil:** burbujas `AudioMessageBubble` con player de seek, progreso y duración. Al recargar la historia, los mensajes con `audio_filename` se reconstruyen como burbujas de audio (`audioUrl: /audio/stored/{filename}`). Reproducción coordinada entre fragmentos del mismo turno: `isActive`/`nextAudioId` propagados desde `ChatScreen`; el `useEffect([isActive])` en `AudioPlayer` usa `a.paused` (DOM real-time) para evitar closures obsoletos. `handleAudioEnded` usa forma funcional del setter para protegerse de eventos `ended` tardíos de la burbuja anterior.
+
+### Limpieza de texto antes de síntesis
+
+`_clean_text_for_tts(text)` en `routes_chat.py` elimina marcadores markdown
+(**negrita**, *cursiva*, `código`, ## encabezados) antes de pasar el texto a
+Piper. El texto que se guarda en BD y se devuelve al cliente conserva el
+formato original.
+
+### Pronunciación de palabras en inglés
+
+Cuando `output_mode: voice`, `persona_system.md` instruye a Sity a escribir
+palabras técnicas en inglés con su pronunciación fonética en español
+(pipeline → "paip lain", deploy → "diploi", etc.) para que Piper las
+pronuncie correctamente.
 
 **Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio vía `reply_audio`. Cuando `voice_include_text == false`, el texto no se envía (`reply(text)` se omite). El `SityGateway` incluye siempre `"source_channel": "telegram"` en el body del POST.
 
@@ -571,4 +585,34 @@ Sistema de temas:
 
 Comunicación con backend: mismos endpoints que el frontend web.
 Campo adicional source_channel: 'mobile' en POST /chat/message.
+
+## Model Router
+
+Cuando `ai.claude.model_router_enabled: true`, Haiku tiene disponible la tool
+`propose_model_upgrade` en su toolset. Si considera que la tarea supera su
+capacidad, la llama con una razón y el sistema guarda un `ModelUpgradeProposal`
+en memoria (singleton, expira en 5 minutos).
+
+En el siguiente turno, si el usuario responde afirmativamente ("sí", "vale",
+"ok", "adelante"), `local_flow` detecta la propuesta activa y devuelve un
+`LocalFlowSignal(kind="model_upgrade_accepted")`. `routes_chat` relanza
+`_chat_message_inner` con:
+- `message = original_message` (el mensaje original, no el "sí")
+- `_strong_model = claude-sonnet-4-6`
+- `_skip_history_turns = 2` (omite el intercambio "sí"/propuesta del historial)
+- Contexto de upgrade inyectado en el persona_prompt para que Sonnet ejecute
+  directamente sin volver a proponer
+
+Si el usuario responde negativamente ("no", "usa haiku"), la propuesta se descarta
+y el mensaje original se ejecuta con Haiku.
+
+Etiquetado de dataset: cuando el modelo usado es Sonnet, `turn_persistence`
+añade `sonnet_response` a `dataset_tags_json` del mensaje de Sity
+automáticamente. Permite filtrar por modelo al exportar el dataset de fine-tuning.
+
+Módulos relevantes:
+- `backend/app/chat/model_router.py` — singleton `ModelUpgradeProposal`
+- `backend/app/cortex/tool_schemas.py` — `PROPOSE_MODEL_UPGRADE_TOOL`
+- `backend/app/chat/local_flow.py` — detección de propuesta activa
+- `backend/app/chat/turn_persistence.py` — etiquetado `sonnet_response`
 

@@ -1281,63 +1281,24 @@ Reducir helpers privados restantes de ToolExecutor moviendo lógica por dominio,
 cuando haya tests de integración suficientes.
 ```
 
-### 3. Provider Interface
+### 3. Provider Interface ✓
 
-Objetivo:
+Completado. `backend/app/cortex/providers/` contiene:
+- `base.py` — Protocol `AITextProvider` (interfaz estructural)
+- `factory.py` — `build_ai_provider(provider_name, model)` con providers conocidos
+- Providers concretos: `ClaudeProvider`, `OllamaProvider`, `MockProvider`
 
-```text
-backend/app/providers/
-  base.py
-  anthropic_provider.py
-  local_llm_provider.py
-  mock_provider.py
-  hybrid_provider.py
-```
+### 4. Model Router ✓ (semi-automático)
 
-Variables:
+Completado. Haiku propone cambiar a Sonnet cuando la tarea supera su capacidad,
+el usuario confirma con “sí/no”, y el rerun usa Sonnet con el mensaje original.
 
-```env
-SITY_AI_PROVIDER=anthropic
-SITY_AI_PROVIDER=local_llm
-SITY_AI_PROVIDER=hybrid
-```
+Variables de config:
+- `ai.claude.strong_model: claude-sonnet-4-6`
+- `ai.claude.model_router_enabled: true/false` (default: false)
 
-### 4. Model Router
-
-Selección previa de modelo según tarea.
-
-No es “probar barato y si falla usar caro”, sino:
-
-```text
-Sity analiza la tarea.
-Escoge modelo adecuado antes de ejecutarla.
-```
-
-Política inicial:
-
-```text
-Haiku:
-  conversación normal, micro-reacciones, tools sencillas, resumen simple
-
-Sonnet:
-  arquitectura, debugging complicado, refactors, README largo, patches complejos
-
-Opus:
-  manual o excepcional, con límite fuerte
-
-Local LLM futuro:
-  charla normal, tareas simples, offline
-```
-
-Variables futuras:
-
-```env
-SITY_MODEL_ROUTER=true
-SITY_CLAUDE_FAST_MODEL=...
-SITY_CLAUDE_BALANCED_MODEL=...
-SITY_CLAUDE_STRONG_MODEL=...
-SITY_ALLOW_AUTO_OPUS=false
-```
+Las respuestas de Sonnet reciben el tag `sonnet_response` en `dataset_tags_json`
+automáticamente — permite filtrar por modelo al exportar el dataset.
 
 ### 5. Prompt caching / Claude API optimization
 
@@ -1360,15 +1321,6 @@ Objetivo:
 reducir coste, latencia y errores
 ```
 
-### Traducción de entrada/salida al inglés para LLM local
-
-Para mejorar la calidad de los modelos locales (que rinden mejor en inglés) y
-potencialmente ahorrar tokens, explorar traducir la entrada del usuario al inglés
-antes de enviársela al modelo local, y traducir la respuesta de vuelta al español
-antes de mostrarla. Requiere un modelo de traducción local o un paso ligero que
-no dispare safeguards. Añade latencia; el coste-beneficio depende del modelo
-final elegido para LoRA.
-
 ### 6. CI/CD y testing
 
 Pendiente:
@@ -1383,6 +1335,15 @@ Pendiente:
   el hardware, o cuantización `int8` del modelo `small` para reducir latencia
   en Pi manteniendo precisión
 ```
+
+### 7. Traducción entrada/salida al inglés para LLM local
+
+Para mejorar la calidad de los modelos locales (que rinden mejor en inglés) y
+potencialmente ahorrar tokens, explorar traducir la entrada del usuario al inglés
+antes de enviársela al modelo local, y traducir la respuesta de vuelta al español
+antes de mostrarla. Requiere un modelo de traducción local o un paso ligero que
+no dispare safeguards. Añade latencia; el coste-beneficio depende del modelo
+final elegido para LoRA.
 
 ---
 
@@ -2047,16 +2008,13 @@ Completado recientemente:
 - Transcripción respeta `voice_include_text`: burbujas de audio-only sin texto paralelo.
 - Fragmentos TTS vacíos omitidos (guard contra WAV de 0 segundos).
 - Servicio systemd `sity-mobile.service`.
+- Draft persistente en textarea — el texto no enviado se conserva al cambiar de pantalla.
 
 Pendiente:
 - HTTPS sin aviso de seguridad: requiere dominio propio con certificado real
   (Let's Encrypt) o configurar Caddy con subdominio apuntando a Tailscale IP.
 - Instalable sin aviso: Chrome no muestra banner de instalación con certificado
   autofirmado. Se resolverá con HTTPS real.
-- Pronunciación de palabras en inglés: Sity debería escribir palabras en inglés
-  con su pronunciación fonética en español para que Piper las pronuncie
-  correctamente (ej: "pipeline" → "paip lain"). Pendiente de implementar en
-  `persona_system.md`.
 - Acotaciones con asteriscos (`**texto**`): Piper lee los asteriscos literalmente.
   Decidir si eliminar en post-procesado antes de síntesis o si Sity debe
   evitarlos cuando `voice_response_mode != nunca`. Requiere evaluar impacto en
