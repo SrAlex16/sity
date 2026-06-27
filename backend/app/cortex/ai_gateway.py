@@ -9,10 +9,10 @@ from app.cortex.schemas import AIRequest, AIResponse, AIUsageData
 class AIGateway:
     provider: AITextProvider
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], *, model_override: str | None = None):
         ai_config = config.get("ai", {})
         claude_config = ai_config.get("claude", {})
-        model = claude_config.get("model", "claude-haiku-4-5-20251001")
+        model = model_override or claude_config.get("model", "claude-haiku-4-5-20251001")
 
         provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
         self.provider = build_ai_provider(provider_name, model=model)

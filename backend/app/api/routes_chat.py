@@ -164,10 +164,6 @@ def _chat_message_inner(
 ):
     trace_id = new_trace_id()
     config = load_default_config()
-    if _strong_model:
-        import copy
-        config = copy.deepcopy(config)
-        config.setdefault("ai", {}).setdefault("claude", {})["model"] = _strong_model
     settings_service = SettingsService(session)
     personality = settings_service.get_personality()
 
@@ -365,7 +361,10 @@ def _chat_message_inner(
                 model=_ollama_model,
             )
 
-    runner = ProviderCallRunner(AIGateway(config=config), local_provider=_local_provider)
+    runner = ProviderCallRunner(
+        AIGateway(config=config, model_override=_strong_model),
+        local_provider=_local_provider,
+    )
 
     toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
     selected_tools = toolset_selection.tools
@@ -442,6 +441,7 @@ def _chat_message_inner(
             trace_id=trace_id,
             payload={
                 "provider": "anthropic",
+                "model": runner._gateway.provider.model,
                 "task_type": "action_planner",
                 "max_tokens": 500,
                 "verbosity_level": verbosity_level,
