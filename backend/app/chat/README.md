@@ -18,7 +18,7 @@ La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
 
 ## Módulos actuales
 
-> Última actualización: 2026-06-27.
+> Última actualización: 2026-06-27 (model_router añadido).
 
 ### `budget_guard.py`
 
@@ -49,6 +49,7 @@ acciones fallidas
 confirmación genérica sin pending actions
 ambigüedad con varias pending actions
 confirmaciones mal formateadas con ID válido
+respuesta afirmativa/negativa a propuesta de model upgrade (→ model_router.py)
 ```
 
 Ejemplo protegido:
@@ -62,6 +63,45 @@ Debe responder localmente pidiendo confirmación exacta, no caer a Claude.
 No debe ejecutar acciones, llamar a Claude, crear acciones nuevas ni hacer tool selection.
 
 Limitación conocida: si el usuario responde solo `sí`, `vale`, `ok` o similar y no hay pending actions activas, Sity responde localmente que no hay nada que confirmar. Esto ahorra tokens y evita confirmaciones ambiguas, pero puede sentirse raro en conversación normal.
+
+---
+
+### `model_router.py`
+
+Model router semi-automático. Haiku puede proponer cambiar al modelo más potente (Sonnet) cuando considera que la tarea lo requiere.
+
+**Flujo completo:**
+
+```text
+1. Haiku llama a propose_model_upgrade (tool en BASE_TOOLSET cuando model_router_enabled: true)
+2. routes_chat intercepta la llamada (igual que no_action_required):
+   - Crea ModelUpgradeProposal en memoria (original_message, strong_model, reason)
+   - Devuelve respuesta local preguntando al usuario si quiere usar Sonnet
+3. En el siguiente turno, local_flow.py comprueba si hay propuesta activa:
+   - Afirmativo (sí/vale/ok/adelante...) → devuelve LocalFlowSignal(kind="model_upgrade_accepted")
+   - Negativo (no/no gracias...) → limpia propuesta, responde localmente
+   - Cualquier otro mensaje → descarta propuesta silenciosamente
+4. routes_chat detecta LocalFlowSignal y re-llama a _chat_message_inner
+   con el mensaje original y _strong_model=strong_model
+5. La respuesta de Sonnet queda guardada con tag sonnet_response en dataset_tags
+```
+
+**Configuración** (`config/default_config.yaml`):
+
+```yaml
+ai:
+  claude:
+    model: claude-haiku-4-5-20251001
+    strong_model: claude-sonnet-4-6
+    model_router_enabled: false
+```
+
+**Límites del módulo:**
+
+- Solo estado en memoria — no persiste propuestas en BD
+- Una propuesta activa a la vez (la nueva reemplaza a la anterior)
+- Expiración automática a los 5 minutos
+- La tool no tiene handler en el registry — se intercepta en routes_chat.py igual que no_action_required
 
 ---
 

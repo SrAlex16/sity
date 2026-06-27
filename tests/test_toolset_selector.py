@@ -17,6 +17,9 @@ SELECTOR_EXEMPT_TOOLS: set[str] = {
     # Injected in routes_chat.py conditionally (dataset_source == "debug_test").
     # Not part of the normal toolset selector flow.
     "read_own_trace",
+    # Injected in routes_chat.py conditionally (model_router_enabled: true).
+    # Handled at the planner-response level, never reaches the toolset selector.
+    "propose_model_upgrade",
 }
 
 _FILE_TOOLS: set[str] = {

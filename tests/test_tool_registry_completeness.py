@@ -20,6 +20,10 @@ SCHEMA_ONLY_TOOLS: set[str] = {
     # model calls this tool the planner loop makes a second Claude call for
     # the conversational response. It never reaches ToolExecutor.
     "no_action_required",
+    # Handled in routes_chat.py at the planner-response level (same as
+    # no_action_required). Stores a ModelUpgradeProposal and returns a local
+    # response; never reaches ToolExecutor.
+    "propose_model_upgrade",
 }
 
 

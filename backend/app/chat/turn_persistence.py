@@ -8,6 +8,8 @@ _save_with_capture closure that previously lived inside _chat_message_inner.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 from typing import Optional
 
 from sqlmodel import Session
@@ -29,6 +31,18 @@ class ChatTurnPersistence:
         self._session = session
         self._user_metadata = capture_svc.build_user_metadata(capture_ctx)
         self._sity_metadata = capture_svc.build_sity_metadata(capture_ctx)
+
+    def tag_sity_with_model(self, model: str) -> None:
+        """If model contains 'sonnet', add sonnet_response tag to sity metadata."""
+        if "sonnet" not in (model or "").lower():
+            return
+        base = self._sity_metadata
+        existing: list[str] = json.loads(base.dataset_tags_json) if base.dataset_tags_json else []
+        if "sonnet_response" not in existing:
+            existing.append("sonnet_response")
+        self._sity_metadata = dataclasses.replace(
+            base, dataset_tags_json=json.dumps(existing)
+        )
 
     def save(
         self,

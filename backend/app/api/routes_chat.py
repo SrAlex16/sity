@@ -22,6 +22,7 @@ from app.chat.chat_persistence import (
 )
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
+from app.chat.model_router import LocalFlowSignal, ModelUpgradeProposal, set_proposal
 from app.chat.local_provider_config import resolve_local_provider_model
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.ai_request_builder import (
@@ -131,7 +132,13 @@ def chat_message(
         register_operation(cid)
 
     try:
-        return _chat_message_inner(request=request, session=session)
+        result = _chat_message_inner(request=request, session=session)
+        if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
+            upgraded = request.model_copy(update={"message": result.original_message})
+            result = _chat_message_inner(
+                request=upgraded, session=session, _strong_model=result.strong_model
+            )
+        return result
     except Exception:
         publish_event_sync(cid, {"type": "error", "label": "Error procesando la petición."})
         raise
@@ -145,9 +152,14 @@ def _chat_message_inner(
     *,
     request: ChatMessageRequest,
     session: Session,
+    _strong_model: str | None = None,
 ):
     trace_id = new_trace_id()
     config = load_default_config()
+    if _strong_model:
+        import copy
+        config = copy.deepcopy(config)
+        config.setdefault("ai", {}).setdefault("claude", {})["model"] = _strong_model
     settings_service = SettingsService(session)
     personality = settings_service.get_personality()
 
@@ -356,6 +368,12 @@ def _chat_message_inner(
         if not any(t.get("name") == "read_own_trace" for t in selected_tools):
             selected_tools = list(selected_tools) + [READ_OWN_TRACE_TOOL]
 
+    # Inject propose_model_upgrade when model_router_enabled.
+    if ai_config.get("claude", {}).get("model_router_enabled", False):
+        from app.cortex.tool_schemas import PROPOSE_MODEL_UPGRADE_TOOL
+        if not any(t.get("name") == "propose_model_upgrade" for t in selected_tools):
+            selected_tools = list(selected_tools) + [PROPOSE_MODEL_UPGRADE_TOOL]
+
     routing_decision = build_chat_routing_decision(
         message=request.message,
         selection=toolset_selection,
@@ -512,6 +530,56 @@ def _chat_message_inner(
             response.usage.input_tokens += planner_response.usage.input_tokens
             response.usage.output_tokens += planner_response.usage.output_tokens
             response.latency_ms += planner_response.latency_ms
+        elif first_tool.name == "propose_model_upgrade":
+            _reason = str(first_tool.input.get("reason", "")).strip()
+            _strong = ai_config.get("claude", {}).get("strong_model", "claude-sonnet-4-6")
+            set_proposal(ModelUpgradeProposal(
+                original_message=request.message,
+                strong_model=_strong,
+                reason=_reason,
+            ))
+            _proposal_text = (
+                f"Esta tarea se beneficiaría del modelo más potente ({_strong}). "
+                f"{_reason}. ¿Quieres que lo use?"
+            )
+            _snap = build_budget_snapshot(
+                daily_used=get_today_token_usage(session),
+                daily_budget=daily_budget,
+                warning_threshold=warning_threshold,
+                critical_threshold=critical_threshold,
+            )
+            _usage_row = AIUsage(
+                trace_id=trace_id,
+                session_id=None,
+                provider=planner_response.provider,
+                model=planner_response.model,
+                task_type="action_planner",
+                input_tokens=planner_response.usage.input_tokens,
+                output_tokens=planner_response.usage.output_tokens,
+                estimated_cost=0.0,
+                latency_ms=planner_response.latency_ms,
+                fallback_used=planner_response.fallback_used,
+                success=planner_response.ok,
+                error_type=planner_response.error_type,
+            )
+            session.add(_usage_row)
+            session.commit()
+            write_log(level="INFO", module="chat", event="model_upgrade_proposed",
+                      trace_id=trace_id,
+                      payload={"reason": _reason, "strong_model": _strong})
+            persistence.save(role="sity", text=_proposal_text, trace_id=trace_id,
+                             tone_meta=json.dumps(persona_decision.tone_snapshot))
+            return local_tool_response(
+                trace_id=trace_id,
+                text=_proposal_text,
+                model="model-router",
+                planner_input_tokens=planner_response.usage.input_tokens,
+                planner_output_tokens=planner_response.usage.output_tokens,
+                daily_used=_snap.daily_used,
+                daily_budget=_snap.daily_budget,
+                daily_ratio=_snap.daily_ratio,
+                warnings=_snap.warnings,
+            )
         else:
             executor = ToolExecutor(session)
             _loop = run_tool_loop(
@@ -640,6 +708,7 @@ def _chat_message_inner(
         response.error_type = response_after_tools.error_type
         response.error_message = response_after_tools.error_message
 
+    persistence.tag_sity_with_model(response.model)
     chat_result = build_final_ai_response(
         session=session,
         trace_id=trace_id,

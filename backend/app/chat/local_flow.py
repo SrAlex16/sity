@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
 from sqlmodel import Session
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.api.schemas import ChatMessageResponse, UsageSummary
+from app.chat.model_router import LocalFlowSignal, clear_proposal, get_proposal
 
 
 @dataclass
@@ -24,7 +25,27 @@ class ChatLocalFlow:
     def __init__(self, confirmation_manager: ConfirmationManager):
         self.confirmation_manager = confirmation_manager
 
-    def try_handle(self, ctx: LocalFlowContext) -> ChatMessageResponse | None:
+    def try_handle(
+        self, ctx: LocalFlowContext
+    ) -> Union[ChatMessageResponse, LocalFlowSignal, None]:
+        proposal = get_proposal()
+        if proposal and not proposal.is_expired():
+            msg_lower = ctx.message.strip().lower()
+            affirmative = {"sí", "si", "vale", "ok", "adelante", "sí, úsalo", "usa sonnet"}
+            negative = {"no", "no gracias", "usa haiku", "quédate en haiku", "no hace falta"}
+            if any(msg_lower.startswith(w) for w in affirmative):
+                clear_proposal()
+                return LocalFlowSignal(
+                    kind="model_upgrade_accepted",
+                    original_message=proposal.original_message,
+                    strong_model=proposal.strong_model,
+                )
+            elif any(msg_lower.startswith(w) for w in negative):
+                clear_proposal()
+                return self._response(ctx=ctx, text="Vale, lo intento con el modelo actual.")
+            else:
+                clear_proposal()
+
         response = self._handle_referenced_action_id(ctx)
         if response:
             return response

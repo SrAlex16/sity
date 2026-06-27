@@ -774,6 +774,28 @@ APPLY_TEXT_PATCH_TOOL = {
     },
 }
 
+PROPOSE_MODEL_UPGRADE_TOOL = {
+    "name": "propose_model_upgrade",
+    "description": (
+        "Propón cambiar al modelo más potente para esta tarea cuando consideres "
+        "que requiere más capacidad de la que tienes disponible. Úsala solo cuando "
+        "la tarea sea claramente compleja: debugging con trazas largas, refactors "
+        "de arquitectura, análisis de múltiples archivos, o diseño con muchas "
+        "restricciones. NO la uses para conversación normal, preguntas cortas, "
+        "tools simples o cualquier tarea que puedas resolver bien."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": "Explica brevemente por qué esta tarea se beneficiaría del modelo más potente.",
+            }
+        },
+        "required": ["reason"],
+    },
+}
+
 FILE_READ_TOOLSET = [
     READ_FILE_TOOL,
     LIST_DIRECTORY_TOOL,
