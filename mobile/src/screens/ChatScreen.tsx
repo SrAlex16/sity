@@ -77,7 +77,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState(() => localStorage.getItem('sity_draft_message') ?? '');
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
@@ -108,6 +108,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputText(e.target.value);
+    localStorage.setItem('sity_draft_message', e.target.value);
     resizeTextarea(e.target);
   };
 
@@ -115,6 +116,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     const text = inputText.trim();
     if (!text || status === 'procesando') return;
     setInputText('');
+    localStorage.removeItem('sity_draft_message');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     void sendMessage(text);
   }, [inputText, status, sendMessage]);
@@ -160,6 +162,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
       void audioContext.close();
       const blob = new Blob(chunks, { type: 'audio/webm' });
       setRecording(null);
+      localStorage.removeItem('sity_draft_message');
       await sendAudio(blob, durationSecs);
     };
 
