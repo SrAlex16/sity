@@ -94,7 +94,7 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Contexto estructural de memoria inyectado en `planner_user_message` cada turno: `total_messages`, `visible_history_count`, `history_limit`, `long_memory_tool_available`.
 - Búsqueda proactiva de memoria cuando `n_total > history_limit`: inyecta bloque `[MEMORIA RELEVANTE]` antes de llamar al planner.
 - Filtrado de mensajes operativos en contexto prev/next de resultados de búsqueda.
-- Audio STT: `faster-whisper` local (modelo `base`, español, CPU). `POST /audio/transcribe`. Metadata `input_mode`, `voice_transcript_original`, `edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab. Soporte de mensajes de voz en Telegram.
+- Audio STT: `faster-whisper` local (modelo `small`, español, CPU). `POST /audio/transcribe`. Metadata `input_mode`, `voice_transcript_original`, `edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab. Soporte de mensajes de voz en Telegram.
 - Audio TTS: Piper TTS local. `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino por `_SPEAKER_NAME_MAP` + `--speaker` flag. `voice_response_mode`, `voice_include_text`, `voice_long_response_action` en tab Voice.
 - `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend (burbuja sin texto si hay audio y `voice_include_text == false`).
 - `output_mode` y `tts_fragments` en `ChatMessage`: modo de salida del turno y número de fragmentos TTS sintetizados.
@@ -1379,6 +1379,9 @@ Pendiente:
 - Test de smoke para TTS pipeline end-to-end con mock provider
 - Lint / type check automático del backend (mypy o pyright)
 - Cobertura de test para routes_chat.py tras extraer ChatOrchestrator
+- STT: evaluar modelos faster-whisper `medium` o `large-v3` cuando se mejore
+  el hardware, o cuantización `int8` del modelo `small` para reducir latencia
+  en Pi manteniendo precisión
 ```
 
 ---
@@ -2050,9 +2053,14 @@ Pendiente:
   (Let's Encrypt) o configurar Caddy con subdominio apuntando a Tailscale IP.
 - Instalable sin aviso: Chrome no muestra banner de instalación con certificado
   autofirmado. Se resolverá con HTTPS real.
-- Pronunciación de inglés: palabras en inglés en respuestas de Sity suenan
-  con acento español en Piper — pendiente de explorar multi-idioma en TTS.
-- Acotaciones con asteriscos: cuando Sity usa `*acción*`, el TTS las lee literalmente.
+- Pronunciación de palabras en inglés: Sity debería escribir palabras en inglés
+  con su pronunciación fonética en español para que Piper las pronuncie
+  correctamente (ej: "pipeline" → "paip lain"). Pendiente de implementar en
+  `persona_system.md`.
+- Acotaciones con asteriscos (`**texto**`): Piper lee los asteriscos literalmente.
+  Decidir si eliminar en post-procesado antes de síntesis o si Sity debe
+  evitarlos cuando `voice_response_mode != nunca`. Requiere evaluar impacto en
+  el dataset antes de implementar.
 - Botón clip (adjuntar archivos): placeholder sin funcionalidad.
 - Notificaciones push: avisar cuando Sity responde con app en segundo plano.
 - Selector de fondos predefinidos: sustituir los wallpapers actuales cuando

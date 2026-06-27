@@ -45,7 +45,7 @@ Estado actual:
 - Dataset Capture Mode: etiquetado de mensajes nuevos para dataset. Persistido en `Setting` table.
 - DatasetStats: módulo puro `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`.
 - Pestaña Dataset en el frontend: Dataset Capture + DatasetStats.
-- Audio STT: `faster-whisper` local, `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y soporte de mensajes de voz en Telegram.
+- Audio STT: `faster-whisper` local, modelo `small` (mejorado desde `base`), `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y soporte de mensajes de voz en Telegram.
 - Audio TTS: Piper TTS con binario en el venv (`Path(sys.executable).parent / "piper"`). `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino vía `_SPEAKER_NAME_MAP` y flag `--speaker`. `voice_response_mode`, `voice_include_text`, `voice_long_response_action`, `audio_cleanup_days` persistidas en `Setting`.
 - Audio TTS persistido: con `persist_tts: true` en config, los archivos `.wav` se guardan en `data/audio/` con nombre estable. `ChatMessage.audio_filename` guarda el nombre del primer fragmento. `GET /audio/stored/{filename}` los sirve. `POST /audio/cleanup` borra archivos más viejos que `cleanup_days` días (se ejecuta al arrancar). `GET /chat/current` devuelve `audio_filename` en cada `ChatMessageItem`; la PWA reconstruye burbujas de audio históricas sin recargar desde URLs efímeras.
 - `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend/PWA (burbuja sin texto si hay audio artifacts y `voice_include_text == false`).
@@ -136,6 +136,12 @@ Reglas de DB:
 - La integración mock usa `tests/.mock_integration.db`.
 
 ## Bugs conocidos y limitaciones activas
+
+### Audio STT / TTS
+
+- **Transcripción STT**: el modelo `small` mejora la precisión pero sigue cometiendo errores con acentos andaluces fuertes, elisiones y encadenamiento de palabras. Limitación del modelo, no del código.
+- **Pronunciación de palabras en inglés en TTS**: Piper pronuncia palabras en inglés con acento inglés. Pendiente añadir instrucción en `persona_system.md` para que Sity transcriba fonéticamente las palabras en inglés.
+- **Acotaciones con asteriscos (`**texto**`)**: Piper lee los asteriscos literalmente en modo voz. Pendiente decidir si eliminar en post-procesado o instruir a Sity para evitarlos cuando `voice_response_mode != nunca`.
 
 ### Sistema de memoria
 

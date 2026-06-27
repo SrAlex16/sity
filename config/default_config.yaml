@@ -72,7 +72,7 @@ storage:
   tts_voice_speaker: female
 
 audio:
-  stt_model: base
+  stt_model: small
   stt_device: cpu
   stt_language: es
   tts_voice: es_ES-sharvard-medium

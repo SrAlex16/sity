@@ -71,7 +71,9 @@ Implementación: `formatTimestamp(iso: string)` en `ChatTab.tsx` (helper module-
 
 ### Audio STT
 
-Transcripción de voz a texto vía `faster-whisper` (local, CPU, modelo `base`, español).
+Transcripción de voz a texto vía `faster-whisper` (local, CPU, modelo `small`, español).
+
+Modelo STT: `small` (cambiado desde `base` para mejorar precisión con acentos regionales, especialmente andaluz). Mayor consumo de CPU (~100% durante transcripción) con latencia de 10-20s en Pi — asumible para el uso previsto.
 
 - `POST /audio/transcribe` — recibe `multipart/form-data` con un archivo de audio, devuelve `{ transcript, duration_ms }`. No llama a servicios externos.
 - El modelo se carga de forma perezosa en el primer uso (`WhisperModel` dentro de `get_model()`). Singleton con lock por hilo.

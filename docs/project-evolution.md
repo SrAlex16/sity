@@ -216,6 +216,18 @@ volátil, se guarda el momento exacto del borrado y el historial filtra por
 ese timestamp al cargar. Estos arreglos convierten la PWA en un cliente
 utilizable como canal diario, no solo como demo.
 
+## Mejoras de calidad en voz y comportamiento
+
+El modelo STT se actualizó de `base` a `small` para mejorar la precisión de
+transcripción, especialmente con acentos regionales. La latencia aumentó
+(10-20s en Pi) pero es asumible para el uso previsto.
+
+Se refinaron varias instrucciones en el prompt de sistema: Sity ya no narra
+los resultados de búsqueda en memoria salvo que se le pida explícitamente,
+no infiere el dispositivo ni la identidad del usuario salvo que el contexto
+lo indique, y la transcripción de respuestas de audio largas divididas en
+fragmentos ya no se repite en cada fragmento.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

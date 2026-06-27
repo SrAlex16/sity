@@ -206,13 +206,15 @@ function buildAssistantMessages(data: ApiChatResponse): ChatMessage[] {
     msgs.push({ id: uid(), type: 'text', role: 'assistant', text: data.text, timestamp: new Date(), trace_id: traceId });
   }
 
+  let firstAudio = true;
   for (const artifact of data.artifacts ?? []) {
     if (artifact.type === 'audio') {
       msgs.push({
         id: uid(), type: 'audio', role: 'assistant',
-        audioUrl: artifact.url, transcript: data.text || undefined,
+        audioUrl: artifact.url, transcript: firstAudio ? (data.text || undefined) : undefined,
         timestamp: new Date(), trace_id: traceId,
       });
+      firstAudio = false;
     }
   }
 
