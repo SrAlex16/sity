@@ -136,3 +136,32 @@ def test_empty_tool_calls_produces_normal_outcome() -> None:
     assert outcome.updated_parameters == []
     assert outcome.artifacts == []
     assert executor.execute_tool_call.call_count == 0
+
+
+def test_loop_respects_max_iterations() -> None:
+    """Executor is called exactly once per tool_call — no extra iterations."""
+    n = 5
+    planner = _make_planner_response(*[f"tool_{i}" for i in range(n)])
+    executor = _make_executor(*[({"result": {}}, True, []) for _ in range(n)])
+    outcome = run_tool_loop(
+        planner_response=planner, executor=executor,
+        trace_id="trc_test", client_turn_id=None,
+    )
+    assert outcome.early_kind is None
+    assert executor.execute_tool_call.call_count == n
+    assert len(outcome.tool_results_for_claude) == n
+
+
+def test_loop_handles_executor_error() -> None:
+    """If executor raises, the exception propagates from run_tool_loop."""
+    import pytest
+
+    planner = _make_planner_response("read_file")
+    executor = MagicMock()
+    executor.execute_tool_call.side_effect = RuntimeError("executor exploded")
+
+    with pytest.raises(RuntimeError, match="executor exploded"):
+        run_tool_loop(
+            planner_response=planner, executor=executor,
+            trace_id="trc_test", client_turn_id=None,
+        )

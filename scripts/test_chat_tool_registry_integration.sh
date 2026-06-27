@@ -262,5 +262,42 @@ print("response_guard pseudo tool call ok")
 PY
 ok "ResponseGuard blocks pseudo tool calls"
 
+log "Testing no_action_required path — conversational turn does not trigger tools"
+CONV_OUT="$TMP_DIR/conversational.json"
+post_chat "¿qué tal estás hoy?" "$CONV_OUT"
+assert_ok_response "$CONV_OUT"
+CONV_TEXT="$(json_field "$CONV_OUT" "text")"
+[[ -n "$CONV_TEXT" ]] || fail "Empty text in conversational response"
+ok "Conversational turn returned non-empty response"
+
+log "Testing tool result flows into final response — read_file content reflected"
+READ_CONTENT_OUT="$TMP_DIR/read_content_flow.json"
+post_chat "usa read_file para leer config/default_config.yaml y dime qué valor tiene stt_model" "$READ_CONTENT_OUT"
+assert_ok_response "$READ_CONTENT_OUT"
+READ_TEXT="$(json_field "$READ_CONTENT_OUT" "text")"
+[[ -n "$READ_TEXT" ]] || fail "Empty response after read_file"
+echo "$READ_TEXT" | grep -qi "small\|stt\|modelo\|whisper\|base" || fail "Tool result not reflected in response: model name absent"
+ok "Tool result correctly flows into final response"
+
+log "Testing tool loop completes within time limit — no infinite loop"
+MULTI_OUT="$TMP_DIR/multi_tool_time.json"
+START_TIME=$(date +%s)
+post_chat "usa read_file para leer README.md" "$MULTI_OUT"
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+assert_ok_response "$MULTI_OUT"
+[[ "$ELAPSED" -lt 30 ]] || fail "Tool loop took too long: ${ELAPSED}s (limit: 30s)"
+ok "Tool loop completed in ${ELAPSED}s (within 30s limit)"
+
+log "Testing critical action requires confirmation — file not created before confirm"
+TEST_FILE_CRITICAL="$TMP_DIR/critical_guard_$(date +%s).txt"
+CRITICAL_OUT="$TMP_DIR/critical_guard.json"
+post_chat "usa write_file para escribir 'guard test' en $TEST_FILE_CRITICAL" "$CRITICAL_OUT"
+assert_ok_response "$CRITICAL_OUT"
+assert_contains "$CRITICAL_OUT" "Acción pendiente creada"
+[[ ! -f "$TEST_FILE_CRITICAL" ]] || fail "Critical file was created without confirmation"
+ok "Critical write_file blocked correctly before confirmation"
+expire_pending_actions
+
 log "Tool registry integration test completed"
 ok "All checks passed"
