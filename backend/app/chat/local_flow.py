@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Union
 
@@ -8,6 +9,8 @@ from sqlmodel import Session
 from app.actions.confirmation_manager import ConfirmationManager
 from app.api.schemas import ChatMessageResponse, UsageSummary
 from app.chat.model_router import LocalFlowSignal, clear_proposal, get_proposal
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,18 +32,28 @@ class ChatLocalFlow:
         self, ctx: LocalFlowContext
     ) -> Union[ChatMessageResponse, LocalFlowSignal, None]:
         proposal = get_proposal()
+        log.info(
+            "model_router_check trace_id=%s proposal_active=%s msg=%r",
+            ctx.trace_id, proposal is not None, ctx.message[:60],
+        )
         if proposal and not proposal.is_expired():
             msg_lower = ctx.message.strip().lower()
             affirmative = {"sí", "si", "vale", "ok", "adelante", "sí, úsalo", "usa sonnet"}
             negative = {"no", "no gracias", "usa haiku", "quédate en haiku", "no hace falta"}
-            if any(msg_lower.startswith(w) for w in affirmative):
+            is_affirmative = any(msg_lower.startswith(w) for w in affirmative)
+            is_negative = any(msg_lower.startswith(w) for w in negative)
+            log.info(
+                "model_router_response trace_id=%s msg_lower=%r is_affirmative=%s is_negative=%s",
+                ctx.trace_id, msg_lower, is_affirmative, is_negative,
+            )
+            if is_affirmative:
                 clear_proposal()
                 return LocalFlowSignal(
                     kind="model_upgrade_accepted",
                     original_message=proposal.original_message,
                     strong_model=proposal.strong_model,
                 )
-            elif any(msg_lower.startswith(w) for w in negative):
+            elif is_negative:
                 clear_proposal()
                 return self._response(ctx=ctx, text="Vale, lo intento con el modelo actual.")
             else:

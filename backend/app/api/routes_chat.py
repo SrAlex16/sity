@@ -134,7 +134,15 @@ def chat_message(
     try:
         result = _chat_message_inner(request=request, session=session)
         if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
+            write_log(level="INFO", module="chat", event="model_upgrade_accepted",
+                      trace_id="outer",
+                      payload={"original_message": result.original_message[:80],
+                               "strong_model": result.strong_model})
             upgraded = request.model_copy(update={"message": result.original_message})
+            write_log(level="INFO", module="chat", event="model_upgrade_rerun",
+                      trace_id="outer",
+                      payload={"strong_model": result.strong_model,
+                               "message_len": len(result.original_message)})
             result = _chat_message_inner(
                 request=upgraded, session=session, _strong_model=result.strong_model
             )
@@ -368,8 +376,9 @@ def _chat_message_inner(
         if not any(t.get("name") == "read_own_trace" for t in selected_tools):
             selected_tools = list(selected_tools) + [READ_OWN_TRACE_TOOL]
 
-    # Inject propose_model_upgrade when model_router_enabled.
-    if ai_config.get("claude", {}).get("model_router_enabled", False):
+    # Inject propose_model_upgrade when model_router_enabled, but NOT on strong-model re-runs
+    # (_strong_model is set) to prevent Sonnet from proposing a further upgrade.
+    if ai_config.get("claude", {}).get("model_router_enabled", False) and not _strong_model:
         from app.cortex.tool_schemas import PROPOSE_MODEL_UPGRADE_TOOL
         if not any(t.get("name") == "propose_model_upgrade" for t in selected_tools):
             selected_tools = list(selected_tools) + [PROPOSE_MODEL_UPGRADE_TOOL]
