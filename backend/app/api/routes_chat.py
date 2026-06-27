@@ -22,7 +22,7 @@ from app.chat.chat_persistence import (
 )
 from app.chat.prompt_context import PromptContextBuilder
 from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
-from app.chat.model_router import LocalFlowSignal, ModelUpgradeProposal, set_proposal
+from app.chat.model_router import LocalFlowSignal, ModelUpgradeProposal, clear_proposal, set_proposal
 from app.chat.local_provider_config import resolve_local_provider_model
 from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
 from app.chat.ai_request_builder import (
@@ -134,17 +134,26 @@ def chat_message(
     try:
         result = _chat_message_inner(request=request, session=session)
         if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
+            original_message = result.original_message
+            strong_model = result.strong_model
             write_log(level="INFO", module="chat", event="model_upgrade_accepted",
                       trace_id="outer",
-                      payload={"original_message": result.original_message[:80],
-                               "strong_model": result.strong_model})
-            upgraded = request.model_copy(update={"message": result.original_message})
+                      payload={"original_message": original_message[:80],
+                               "strong_model": strong_model})
+            upgraded = request.model_copy(update={"message": original_message})
+            clear_proposal()
             write_log(level="INFO", module="chat", event="model_upgrade_rerun",
                       trace_id="outer",
-                      payload={"strong_model": result.strong_model,
-                               "message_len": len(result.original_message)})
+                      payload={"strong_model": strong_model,
+                               "message_len": len(original_message)})
+            _upgrade_ctx = (
+                "CONTEXTO DE UPGRADE: El usuario ya confirmó usar el modelo más potente para esta tarea. "
+                "Ejecuta la tarea directamente sin volver a preguntar ni proponer cambios de modelo. "
+                "No menciones el cambio de modelo — simplemente responde a la tarea."
+            )
             result = _chat_message_inner(
-                request=upgraded, session=session, _strong_model=result.strong_model
+                request=upgraded, session=session, _strong_model=strong_model,
+                _skip_history_turns=2, _upgrade_context=_upgrade_ctx,
             )
         return result
     except Exception:
@@ -161,6 +170,8 @@ def _chat_message_inner(
     request: ChatMessageRequest,
     session: Session,
     _strong_model: str | None = None,
+    _skip_history_turns: int = 0,
+    _upgrade_context: str | None = None,
 ):
     trace_id = new_trace_id()
     config = load_default_config()
@@ -185,6 +196,9 @@ def _chat_message_inner(
 
     persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
     persona_prompt = persona_decision.system_prompt
+
+    if _upgrade_context:
+        persona_prompt += f"\n\n{_upgrade_context}"
 
     if has_direct_order_override(request.message):
         last = get_last_refusal()
@@ -276,6 +290,7 @@ def _chat_message_inner(
         trace_id=trace_id,
         input_mode=request.input_mode,
         output_mode=output_mode,
+        skip_last_turns=_skip_history_turns,
     )
 
     recent_history = prompt_context.recent_history

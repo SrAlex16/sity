@@ -44,7 +44,7 @@ ai:
   claude:
     model: claude-haiku-4-5-20251001
     strong_model: claude-sonnet-4-6
-    model_router_enabled: false
+    model_router_enabled: true
     max_tokens: 1500
 
 usage:

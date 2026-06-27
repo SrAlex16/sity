@@ -78,9 +78,10 @@ class PromptContextBuilder:
         trace_id: str = "",
         input_mode: str = "text",
         output_mode: str = "text",
+        skip_last_turns: int = 0,
     ) -> PromptContext:
-        recent_history = self._load_history(session=session, limit=history_limit)
-        planner_history = self._load_history(session=session, limit=planner_history_limit)
+        recent_history = self._load_history(session=session, limit=history_limit, skip_last=skip_last_turns)
+        planner_history = self._load_history(session=session, limit=planner_history_limit, skip_last=skip_last_turns)
 
         # Time context uses the raw DB rows (need created_at).
         # Separate call with a small fixed limit — cheap SQLite query.
@@ -120,9 +121,12 @@ class PromptContextBuilder:
             planner_prior_messages=planner_prior_messages,
         )
 
-    def _load_history(self, *, session, limit: int) -> list[ChatHistoryItem]:
-        return [
+    def _load_history(self, *, session, limit: int, skip_last: int = 0) -> list[ChatHistoryItem]:
+        rows = [
             ChatHistoryItem(role=row.role, text=row.text)
-            for row in self.get_recent_messages(session, limit=limit)
+            for row in self.get_recent_messages(session, limit=limit + skip_last)
             if not (row.role == "sity" and is_operational_guard_message(row.text))
         ]
+        if skip_last > 0:
+            rows = rows[:-skip_last] if len(rows) > skip_last else []
+        return rows
