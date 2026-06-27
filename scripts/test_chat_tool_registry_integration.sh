@@ -289,5 +289,68 @@ assert_ok_response "$MULTI_OUT"
 [[ "$ELAPSED" -lt 30 ]] || fail "Tool loop took too long: ${ELAPSED}s (limit: 30s)"
 ok "Tool loop completed in ${ELAPSED}s (within 30s limit)"
 
+log "Testing local_final path — cancel_pending_action returns local response without AI round-trip"
+# Crear una pending action primero
+WRITE_LOCAL_OUT="$TMP_DIR/write_for_cancel.json"
+TEST_FILE_LOCAL="$ROOT/scripts/local_final_test_$(date +%s).txt"
+post_chat "usa write_file para escribir 'local final test' en $TEST_FILE_LOCAL" "$WRITE_LOCAL_OUT"
+assert_ok_response "$WRITE_LOCAL_OUT"
+assert_contains "$WRITE_LOCAL_OUT" "Acción pendiente creada"
+
+LOCAL_ACTION_ID=$(python3 - <<PY
+import json
+from pathlib import Path
+data = json.loads(Path("$WRITE_LOCAL_OUT").read_text())
+text = data.get("text", "")
+import re
+m = re.search(r'act_[0-9a-f]{8}', text)
+print(m.group(0) if m else "")
+PY
+)
+[[ -n "$LOCAL_ACTION_ID" ]] || fail "No action ID found for local_final test"
+
+# Cancelar — esto debe devolver local_final (sin llamada a Claude)
+CANCEL_LOCAL_OUT="$TMP_DIR/cancel_local_final.json"
+post_chat "usa la herramienta cancel_pending_action para cancelar $LOCAL_ACTION_ID" "$CANCEL_LOCAL_OUT"
+assert_ok_response "$CANCEL_LOCAL_OUT"
+assert_contains "$CANCEL_LOCAL_OUT" "cancelada"
+
+# Verificar que fue local (provider=local, no anthropic)
+CANCEL_PROVIDER="$(json_field "$CANCEL_LOCAL_OUT" "provider")"
+[[ "$CANCEL_PROVIDER" == "local" ]] || fail "Expected local provider for local_final, got: $CANCEL_PROVIDER"
+ok "local_final path: cancel_pending_action returned local response (provider=local)"
+expire_pending_actions
+rm -f "$TEST_FILE_LOCAL"
+
+log "Testing apply_text_patch creates pending action"
+# Crear un archivo de prueba primero
+PATCH_TARGET="$ROOT/scripts/patch_target_$(date +%s).txt"
+echo "linea original" > "$PATCH_TARGET"
+
+PATCH_OUT="$TMP_DIR/apply_patch.json"
+post_chat "usa apply_text_patch para modificar $PATCH_TARGET cambiando 'linea original' por 'linea modificada'" "$PATCH_OUT"
+assert_ok_response "$PATCH_OUT"
+assert_contains "$PATCH_OUT" "Acción pendiente creada"
+
+# Verificar que el archivo NO se modificó todavía
+grep -q "linea original" "$PATCH_TARGET" || fail "File was modified before confirmation"
+ok "apply_text_patch correctly blocked pending confirmation — file unchanged"
+expire_pending_actions
+rm -f "$PATCH_TARGET"
+
+log "Testing token accumulation — planner + after_tools tokens sum correctly"
+TOKEN_OUT="$TMP_DIR/token_accumulation.json"
+post_chat "usa read_file para leer README.md y luego dime cuántas líneas tiene aproximadamente" "$TOKEN_OUT"
+assert_ok_response "$TOKEN_OUT"
+
+# El total de tokens debe ser > 0 y reflejar planner + segunda llamada
+TOTAL_TOKENS="$(json_field "$TOKEN_OUT" "usage.total_tokens")"
+[[ -n "$TOTAL_TOKENS" && "$TOTAL_TOKENS" -gt 0 ]] || fail "Expected non-zero total_tokens, got: $TOTAL_TOKENS"
+
+# El daily_used debe ser > 0
+DAILY_USED="$(json_field "$TOKEN_OUT" "usage.daily_used_tokens")"
+[[ -n "$DAILY_USED" && "$DAILY_USED" -gt 0 ]] || fail "Expected non-zero daily_used_tokens, got: $DAILY_USED"
+ok "Token accumulation: total_tokens=$TOTAL_TOKENS daily_used=$DAILY_USED"
+
 log "Tool registry integration test completed"
 ok "All checks passed"
