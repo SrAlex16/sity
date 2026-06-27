@@ -14,4 +14,5 @@ export const CANONICAL_PERSONALITY: PersonalitySettings = {
   refusal_chance:           0.15,
   helpfulness_level:        0.60,
   verbosity_level:          0.35,
+  skepticism_level:         0.20,
 };

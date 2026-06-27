@@ -328,11 +328,13 @@ def test_attach_tts_returns_fragment_count() -> None:
                     mock_dir.__truediv__ = lambda s, n: mock_path
                     mock_dir.mkdir = MagicMock()
                     with patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg):
-                        n = _attach_tts_artifacts(
+                        tts_result = _attach_tts_artifacts(
                             result=result, text="hola", voice_settings=vs, trace_id="t"
                         )
 
-    assert n == 1
+    assert tts_result is not None
+    fragments, _filename = tts_result
+    assert fragments == 1
 
 
 def test_attach_tts_returns_none_on_exception() -> None:
