@@ -18,7 +18,7 @@ La lógica de negocio del chat debe vivir en módulos pequeños y testeables.
 
 ## Módulos actuales
 
-> Última actualización: 2026-06-17.
+> Última actualización: 2026-06-27.
 
 ### `budget_guard.py`
 
@@ -315,17 +315,17 @@ Extraerlo requiere diseño de interfaz, no solo mover código.
 Antes de refactorizarlo, crear tests de integración que cubran:
 
 ```text
-tool call normal
-tool call con local_final
-write_file pending action
-apply_text_patch pending action
-sense tool con artifact
-micro-reaction
-tool error
-segunda llamada a Claude
-uso de tokens acumulado
-respuesta final con artifacts
-response_guard bloqueando confirmaciones falsas
+✓ tool call normal (cubierto por test_chat_tool_registry_integration.sh)
+✓ write_file pending action (cubierto)
+✓ response_guard bloqueando confirmaciones falsas (cubierto)
+✓ tool error — excepción propagada al caller (cubierto por test_tool_loop_runner.py)
+✓ segunda llamada a Claude tras tool results (cubierto por integration shell)
+- tool call con local_final (pendiente)
+- apply_text_patch pending action (pendiente)
+- sense tool con artifact (pendiente)
+- micro-reaction (pendiente)
+- uso de tokens acumulado correctamente (pendiente)
+- respuesta final con artifacts (pendiente)
 ```
 
 Hasta entonces:
