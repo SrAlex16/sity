@@ -98,7 +98,6 @@ export function useChat() {
   }
 
   async function sendMessage(text: string) {
-    localStorage.removeItem('sity_chat_cleared');
     const userMsg: TextChatMessage = { id: uid(), type: 'text', role: 'user', text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setStatus('procesando');
@@ -124,7 +123,6 @@ export function useChat() {
    * Flow: /audio/transcribe → add user audio bubble → /chat/message (voice mode)
    */
   async function sendAudio(blob: Blob, durationSecs: number) {
-    localStorage.removeItem('sity_chat_cleared');
     setStatus('procesando');
 
     // 1. Transcribe
@@ -182,6 +180,8 @@ export function useChat() {
 
   return { messages, status, sendMessage, sendAudio, clearMessages };
 }
+
+export type UseChatResult = ReturnType<typeof useChat>;
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 

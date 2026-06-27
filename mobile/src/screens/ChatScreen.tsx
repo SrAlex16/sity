@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useChat } from '../hooks/useChat';
+import type { UseChatResult } from '../hooks/useChat';
 import { useVoice } from '../hooks/useVoice';
 import { MessageBubble } from '../components/MessageBubble';
 import { AudioMessageBubble } from '../components/AudioMessageBubble';
@@ -73,8 +73,7 @@ interface RecordingCtx {
 
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
-export function ChatScreen() {
-  const { messages, status, sendMessage, sendAudio, clearMessages } = useChat();
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages }: UseChatResult) {
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 

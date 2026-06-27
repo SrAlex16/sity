@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useChat } from './hooks/useChat';
 import { BottomNav } from './components/BottomNav';
 import { ChatScreen } from './screens/ChatScreen';
 import { PersonalityScreen } from './screens/PersonalityScreen';
@@ -15,17 +16,18 @@ const screenVariants = {
   exit: { opacity: 0, y: -16 },
 };
 
-function renderScreen(screen: Screen) {
-  switch (screen) {
-    case 'chat': return <ChatScreen />;
-    case 'personality': return <PersonalityScreen />;
-    case 'voice': return <VoiceScreen />;
-    case 'dataset': return <DatasetScreen />;
-  }
-}
-
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>('chat');
+  const chat = useChat();
+
+  function renderScreen(screen: Screen) {
+    switch (screen) {
+      case 'chat':        return <ChatScreen {...chat} />;
+      case 'personality': return <PersonalityScreen />;
+      case 'voice':       return <VoiceScreen />;
+      case 'dataset':     return <DatasetScreen />;
+    }
+  }
 
   return (
     <div className={styles.app}>
