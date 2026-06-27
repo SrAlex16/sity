@@ -27,6 +27,39 @@ def _system_with_cache(text: str) -> list[dict]:
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
 
+def _messages_with_history_cache(
+    prior_messages: list[dict],
+    user_message: str,  # noqa: ARG001 — reserved for future use
+) -> list[dict]:
+    """Mark the last block of the last prior_message with cache_control.
+
+    This lets the Anthropic API cache the conversation history incrementally:
+    each new turn reads prior turns from cache and only writes the new one.
+    The current user message is NOT marked — it changes every turn.
+    """
+    if not prior_messages:
+        return prior_messages
+
+    result = [dict(m) for m in prior_messages]
+    last = dict(result[-1])
+
+    if isinstance(last.get("content"), list) and last["content"]:
+        content = [dict(b) for b in last["content"]]
+        content[-1] = {**content[-1], "cache_control": {"type": "ephemeral"}}
+        last["content"] = content
+    elif isinstance(last.get("content"), str):
+        last["content"] = [
+            {
+                "type": "text",
+                "text": last["content"],
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+    result[-1] = last
+    return result
+
+
 class ClaudeProvider:
     name = "anthropic"
 
@@ -46,7 +79,7 @@ class ClaudeProvider:
             "max_tokens": request.max_tokens,
             "system": _system_with_cache(request.system_prompt),
             "messages": [
-                *request.prior_messages,
+                *_messages_with_history_cache(request.prior_messages, request.user_message),
                 {"role": "user", "content": request.user_message},
             ],
         }
@@ -82,7 +115,7 @@ class ClaudeProvider:
             system=_system_with_cache(request.system_prompt),
             tools=_tools_with_cache(effective_tools),
             messages=[
-                *request.prior_messages,
+                *_messages_with_history_cache(request.prior_messages, request.user_message),
                 {"role": "user", "content": request.user_message},
                 {"role": "assistant", "content": first_response_content},
                 {"role": "user", "content": tool_results},

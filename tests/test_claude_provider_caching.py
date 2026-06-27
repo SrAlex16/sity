@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.cortex.claude_provider import ClaudeProvider, _tools_with_cache
+from app.cortex.claude_provider import ClaudeProvider, _messages_with_history_cache, _tools_with_cache
 from app.cortex.schemas import AIRequest
 
 
@@ -150,6 +150,65 @@ def test_cache_tokens_extracted_into_usage(monkeypatch: pytest.MonkeyPatch) -> N
 
     assert response.usage.cache_creation_tokens == 100
     assert response.usage.cache_read_tokens == 50
+
+
+# ---------------------------------------------------------------------------
+# _messages_with_history_cache
+# ---------------------------------------------------------------------------
+
+def test_history_cache_empty_returns_empty() -> None:
+    assert _messages_with_history_cache([], "hello") == []
+
+
+def test_history_cache_string_content_converted_to_block() -> None:
+    prior = [{"role": "user", "content": "previous message"}]
+    result = _messages_with_history_cache(prior, "new")
+    last_content = result[-1]["content"]
+    assert isinstance(last_content, list)
+    assert last_content[-1]["type"] == "text"
+    assert last_content[-1]["text"] == "previous message"
+    assert last_content[-1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_history_cache_list_content_marks_last_block() -> None:
+    prior = [
+        {"role": "user", "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}
+    ]
+    result = _messages_with_history_cache(prior, "new")
+    content = result[-1]["content"]
+    assert "cache_control" not in content[0]
+    assert content[-1]["cache_control"] == {"type": "ephemeral"}
+    assert content[-1]["text"] == "b"
+
+
+def test_history_cache_only_last_message_marked() -> None:
+    prior = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "second"},
+        {"role": "user", "content": "third"},
+    ]
+    result = _messages_with_history_cache(prior, "new")
+    # First two messages untouched (string content preserved as-is)
+    assert result[0]["content"] == "first"
+    assert result[1]["content"] == "second"
+    # Only last is converted and marked
+    assert isinstance(result[2]["content"], list)
+    assert result[2]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_history_cache_does_not_mutate_original() -> None:
+    prior = [{"role": "user", "content": "original"}]
+    _messages_with_history_cache(prior, "new")
+    assert prior[0]["content"] == "original"
+
+
+def test_history_cache_preserves_list_block_fields() -> None:
+    prior = [{"role": "user", "content": [{"type": "text", "text": "hello", "extra": "field"}]}]
+    result = _messages_with_history_cache(prior, "new")
+    block = result[-1]["content"][-1]
+    assert block["text"] == "hello"
+    assert block["extra"] == "field"
+    assert block["cache_control"] == {"type": "ephemeral"}
 
 
 def test_cache_tokens_default_to_zero_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
