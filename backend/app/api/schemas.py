@@ -14,6 +14,7 @@ class ChatMessageItem(BaseModel):
     text: str
     trace_id: Optional[str] = None
     created_at: Optional[datetime] = None
+    audio_filename: Optional[str] = None
 
 
 class CurrentChatResponse(BaseModel):

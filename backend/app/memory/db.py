@@ -45,6 +45,7 @@ def _migrate_chatmessage() -> None:
         ("edit_distance_pct",           "REAL"),
         ("output_mode",                 "TEXT NOT NULL DEFAULT 'text'"),
         ("tts_fragments",               "INTEGER"),
+        ("audio_filename",              "TEXT"),
         ("source_channel",              "TEXT NOT NULL DEFAULT 'web'"),
     ]
     with engine.connect() as conn:

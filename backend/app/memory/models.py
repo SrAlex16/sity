@@ -110,6 +110,7 @@ class ChatMessage(SQLModel, table=True):
     # Voice output metadata
     output_mode: str = Field(default="text")          # "voice" | "text"
     tts_fragments: Optional[int] = Field(default=None)  # fragments synthesized; None if no TTS
+    audio_filename: Optional[str] = Field(default=None)  # persistent audio file in data/audio/
 
     # Origin channel
     source_channel: str = Field(default="web")        # "web" | "telegram"

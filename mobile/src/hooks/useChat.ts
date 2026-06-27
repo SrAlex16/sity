@@ -9,6 +9,7 @@ interface BaseMsg {
   role: 'user' | 'assistant';
   timestamp: Date;
   isError?: boolean;
+  trace_id?: string;
 }
 
 export interface TextChatMessage extends BaseMsg {
@@ -39,6 +40,8 @@ interface ApiHistoryMessage {
   role: string;
   text: string;
   created_at?: string;
+  audio_filename?: string;
+  trace_id?: string;
 }
 
 interface ApiArtifact {
@@ -51,6 +54,7 @@ interface ApiArtifact {
 interface ApiChatResponse {
   ok: boolean;
   text: string;
+  trace_id?: string;
   artifacts?: ApiArtifact[];
 }
 
@@ -73,23 +77,31 @@ export function useChat() {
       if (!res.ok) throw new Error('network');
       const data = await res.json() as { messages: ApiHistoryMessage[] };
 
-      const clearedRaw = localStorage.getItem('sity_chat_cleared');
-      const clearedMs = clearedRaw ? Number(clearedRaw) : 0;
+      const clearedAt = localStorage.getItem('sity_chat_cleared');
 
       setMessages(
         data.messages
           .filter((m) => {
-            if (!clearedMs) return true;
+            if (!clearedAt) return true;
             if (!m.created_at) return true;
-            return new Date(m.created_at).getTime() >= clearedMs;
+            return m.created_at > clearedAt;
           })
-          .map((m) => ({
-            id: uid(),
-            type: 'text' as const,
-            role: m.role === 'user' ? 'user' : 'assistant',
-            text: m.text,
-            timestamp: m.created_at ? new Date(m.created_at) : new Date(),
-          })),
+          .map((m): ChatMessage => {
+            const ts = m.created_at ? new Date(m.created_at) : new Date();
+            const role = m.role === 'user' ? 'user' : 'assistant';
+            if (m.audio_filename && role === 'assistant') {
+              return {
+                id: uid(),
+                type: 'audio',
+                role,
+                audioUrl: `/audio/stored/${m.audio_filename}`,
+                transcript: m.text || undefined,
+                timestamp: ts,
+                trace_id: m.trace_id,
+              };
+            }
+            return { id: uid(), type: 'text', role, text: m.text, timestamp: ts, trace_id: m.trace_id };
+          }),
       );
       setStatus('conectado');
     } catch {
@@ -174,8 +186,8 @@ export function useChat() {
   }
 
   function clearMessages() {
+    localStorage.setItem('sity_chat_cleared', new Date().toISOString());
     setMessages([]);
-    localStorage.setItem('sity_chat_cleared', Date.now().toString());
   }
 
   return { messages, status, sendMessage, sendAudio, clearMessages };
@@ -187,9 +199,11 @@ export type UseChatResult = ReturnType<typeof useChat>;
 
 function buildAssistantMessages(data: ApiChatResponse): ChatMessage[] {
   const msgs: ChatMessage[] = [];
+  const hasAudio = (data.artifacts ?? []).some((a) => a.type === 'audio');
+  const traceId = data.trace_id;
 
-  if (data.text) {
-    msgs.push({ id: uid(), type: 'text', role: 'assistant', text: data.text, timestamp: new Date() });
+  if (data.text && !hasAudio) {
+    msgs.push({ id: uid(), type: 'text', role: 'assistant', text: data.text, timestamp: new Date(), trace_id: traceId });
   }
 
   for (const artifact of data.artifacts ?? []) {
@@ -197,13 +211,13 @@ function buildAssistantMessages(data: ApiChatResponse): ChatMessage[] {
       msgs.push({
         id: uid(), type: 'audio', role: 'assistant',
         audioUrl: artifact.url, transcript: data.text || undefined,
-        timestamp: new Date(),
+        timestamp: new Date(), trace_id: traceId,
       });
     }
   }
 
   if (msgs.length === 0) {
-    msgs.push({ id: uid(), type: 'text', role: 'assistant', text: data.text ?? '', timestamp: new Date() });
+    msgs.push({ id: uid(), type: 'text', role: 'assistant', text: data.text ?? '', timestamp: new Date(), trace_id: traceId });
   }
 
   return msgs;

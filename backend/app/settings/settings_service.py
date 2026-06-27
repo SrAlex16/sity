@@ -134,7 +134,7 @@ class SettingsService:
 
     def get_voice_settings(self) -> VoiceSettings:
         defaults = VoiceSettings()
-        keys = ("voice_response_mode", "voice_include_text", "voice_long_response_action")
+        keys = ("voice_response_mode", "voice_include_text", "voice_long_response_action", "audio_cleanup_days")
         data: dict[str, Any] = {}
         for key in keys:
             row = self.session.exec(select(Setting).where(Setting.key == f"voice.{key}")).first()

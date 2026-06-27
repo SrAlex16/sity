@@ -103,12 +103,17 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - PWA móvil (mobile/) con diseño cyberpunk/neón.
 - Chat funcional conectado al backend real.
 - Grabación y envío de audio como nota de voz desde móvil.
+- Respuestas de audio de Sity: burbujas con player (seek, progreso, duración). Historial de audio reconstituido desde `audio_filename` al recargar. Reproducción secuencial automática entre fragmentos del mismo turno (`trace_id`).
+- Borrado de chat persistente: `clearMessages()` guarda timestamp; el historial filtra mensajes anteriores al borrado.
+- Fondo por defecto: wallpaper1.png cuando no hay preferencia guardada.
+- Transcripción de respuestas de voz respeta `voice_include_text`: burbujas de audio-only sin texto visible paralelo.
 - Sliders de personalidad táctiles con widget de encabronamiento animado.
-- Pantalla de Voice y Dataset conectadas al backend.
+- Pantalla de Voice y Dataset conectadas al backend. Periodicidad de borrado de audio editable desde pantalla de Voz.
 - Fondo de pantalla elegible (galería + predefinidos).
 - Selector de fuente (Orbitron / Share Tech Mono / Rajdhani).
 - Acceso remoto via Tailscale desde cualquier red.
 - Navegación entre pantallas con animaciones Framer Motion.
+- Servicio systemd `sity-mobile.service`.
 
 ### Refactor reciente
 
@@ -1602,7 +1607,6 @@ Pendiente:
   modo de salida, búsqueda de memoria, fragmentos TTS). Solo disponible en debug_test.
 - Resumen automático para TTS: cuando voice_long_response_action="split" y el texto es
   muy largo, generar un resumen hablable antes de sintetizar en lugar de partir por frases.
-- Persistencia de artifacts: guardar URLs o regenerar audio bajo demanda al recargar historial.
 - VAD (Voice Activity Detection) para grabación continua sin botón.
 - Wake word local.
 ```
@@ -2028,19 +2032,30 @@ Pantallas implementadas:
   fondo elegible, avatar de Sity, menú contextual.
 - Rasgos (Personality): sliders táctiles, widget de encabronamiento con emoji
   animado, restaurar/recargar.
-- Voz (Voice): modo de respuesta, transcripción, respuestas largas.
+- Voz (Voice): modo de respuesta, transcripción, respuestas largas, periodicidad
+  de borrado de audio.
 - Datos (Dataset): preset, source, speaker, tags, eligible.
+
+Completado recientemente:
+- Audio TTS persistido: `data/audio/` con nombre estable, reconstituido al recargar historial.
+- Reproducción secuencial automática entre fragmentos del mismo turno (`trace_id`).
+- Borrado de chat persistente entre sesiones (filtro por timestamp en `loadHistory`).
+- Fondo por defecto (wallpaper1.png) cuando no hay preferencia guardada.
+- Transcripción respeta `voice_include_text`: burbujas de audio-only sin texto paralelo.
+- Fragmentos TTS vacíos omitidos (guard contra WAV de 0 segundos).
+- Servicio systemd `sity-mobile.service`.
 
 Pendiente:
 - HTTPS sin aviso de seguridad: requiere dominio propio con certificado real
   (Let's Encrypt) o configurar Caddy con subdominio apuntando a Tailscale IP.
 - Instalable sin aviso: Chrome no muestra banner de instalación con certificado
   autofirmado. Se resolverá con HTTPS real.
-- Respuestas de audio de Sity: comportamiento incorrecto cuando el usuario
-  envía audio — pendiente de investigar.
+- Pronunciación de inglés: palabras en inglés en respuestas de Sity suenan
+  con acento español en Piper — pendiente de explorar multi-idioma en TTS.
+- Acotaciones con asteriscos: cuando Sity usa `*acción*`, el TTS las lee literalmente.
 - Botón clip (adjuntar archivos): placeholder sin funcionalidad.
 - Notificaciones push: avisar cuando Sity responde con app en segundo plano.
-- Selector de fondos predefinidos: sustituir los 4 wallpapers actuales cuando
+- Selector de fondos predefinidos: sustituir los wallpapers actuales cuando
   se generen imágenes definitivas.
 - Quote-reply: responder a mensajes anteriores (ver roadmap Messaging Gateway).
 

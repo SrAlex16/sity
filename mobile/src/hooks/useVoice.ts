@@ -7,12 +7,14 @@ export interface VoiceSettings {
   voice_response_mode: VoiceResponseMode;
   voice_include_text: boolean;
   voice_long_response_action: VoiceLongResponseAction;
+  audio_cleanup_days: number;
 }
 
 export const VOICE_DEFAULTS: VoiceSettings = {
   voice_response_mode: 'symmetric',
   voice_include_text: true,
   voice_long_response_action: 'text_only',
+  audio_cleanup_days: 7,
 };
 
 export function useVoice() {

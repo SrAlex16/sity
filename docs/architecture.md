@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-17 (QoL frontend, budget fix, refactor routes_chat).
+Última actualización: 2026-06-27 (audio TTS persistente, reproducción secuencial, PWA móvil QoL).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -133,36 +133,53 @@ Para cambiar de voz: sustituir `tts_voice` y los archivos `.onnx`/`.onnx.json` e
 `_attach_tts_artifacts` sintetiza y añade artifacts `type="audio"` a `ChatMessageResponse`. Para respuestas largas:
 - `voice_long_response_action == "split"` → `split_by_sentences()` divide en fragmentos ≤ `tts_long_response_chars`, un artifact por fragmento.
 - `voice_long_response_action == "text_only"` → no se sintetiza, solo texto.
+- Fragmentos vacíos se omiten (guard contra WAV de 0 segundos).
 - Errores de síntesis se loguean como WARN sin romper la respuesta.
 
 **Voice settings** (persistidas en tabla `Setting`):
 - `voice_response_mode: "always" | "never" | "symmetric"` (default `symmetric`)
 - `voice_include_text: bool` (default `true`) — si es `false`, la respuesta se entrega solo como audio, sin texto visible.
 - `voice_long_response_action: "split" | "text_only"` (default `text_only`)
+- `audio_cleanup_days: int` (default `7`) — días de retención de archivos TTS persistidos.
 
-Expuestas en `GET/PUT /settings/voice`. Configurables desde el tab "Voice" del frontend.
+Expuestas en `GET/PUT /settings/voice`. Configurables desde el tab "Voice" del frontend y de la PWA móvil.
 
-**`_attach_tts_artifacts`** devuelve `Optional[int]`: el número de fragmentos sintetizados, o `None` si se omitió TTS (texto largo con `text_only` o error de síntesis). Este valor se persiste en `ChatMessage.tts_fragments` tras la respuesta.
+**`_attach_tts_artifacts`** devuelve `Optional[tuple[int, Optional[str]]]`: `(n_fragmentos, audio_filename_del_primero)`, o `None` si se omitió TTS. El caller persiste `audio_filename` en `ChatMessage` y hace `session.commit()` explícito — sin mutación del modelo Pydantic de respuesta.
+
+### Audio persistente
+
+Cuando `persist_tts: true` en `config/default_config.yaml` (sección `audio`), los archivos `.wav` se escriben en `data/audio/` con nombre `tts_{YYYYMMDDTHHMMSS}_{trace_id[:16]}.wav`. Esta ruta es estable entre reinicios. Al recargar la historia vía `GET /chat/current`, `ChatMessageItem.audio_filename` permite reconstituir la URL `/audio/stored/{filename}`.
+
+Endpoints adicionales en `routes_audio.py`:
+- `GET /audio/stored/{filename}` — sirve archivos TTS persistidos. Valida nombre sin traversal.
+- `POST /audio/cleanup` — elimina archivos en `data/audio/` con mtime > N días (default 7). Se llama en `on_startup()`.
+
+`ChatMessage.audio_filename: Optional[str]` — campo añadido vía migración idempotente en `_migrate_chatmessage()`. Contiene el nombre de archivo del primer fragmento TTS del turno, o `None` si no hubo síntesis persistida.
 
 **Frontend:** reproductor `<audio controls>` en mensajes de Sity con artifacts de audio. Cuando `voice_include_text == false` y el mensaje tiene artifacts de audio, el texto de la burbuja se oculta (`hideText` en `ChatTab.tsx`) y solo se muestra el reproductor.
 
-**Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio vía `reply_audio`. Cuando `voice_include_text == false`, el texto no se envía (`reply(text)` se omite). El `SityGateway` incluye siempre `"source_channel": "telegram"` en el body del POST.
+**PWA móvil:** burbujas `AudioMessageBubble` con player de seek, progreso y duración. Al recargar la historia, los mensajes con `audio_filename` se reconstruyen como burbujas de audio (`audioUrl: /audio/stored/{filename}`). Reproducción coordinada entre fragmentos del mismo turno: `isActive`/`nextAudioId` propagados desde `ChatScreen`; el `useEffect([isActive])` en `AudioPlayer` usa `a.paused` (DOM real-time) para evitar closures obsoletos. `handleAudioEnded` usa forma funcional del setter para protegerse de eventos `ended` tardíos de la burbuja anterior.
 
-**Limitación conocida:** los artifacts de audio son efímeros. Los archivos `.wav` se generan en `_TTS_TMP_DIR` y no se reconstruyen al recargar la sesión. Las URLs tipo `/audio/tts/{filename}` incluidas en `ChatMessageResponse.artifacts` son válidas solo mientras el proceso está en ejecución. Al recargar la historia vía `GET /chat/current`, los mensajes de voz no recuperan sus artifacts.
+**Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio vía `reply_audio`. Cuando `voice_include_text == false`, el texto no se envía (`reply(text)` se omite). El `SityGateway` incluye siempre `"source_channel": "telegram"` en el body del POST.
 
 Archivos:
 ```text
 backend/app/audio/synthesizer.py       — TtsConfig, synthesize_text() via subprocess piper
 backend/app/audio/tts_splitter.py      — split_by_sentences()
-backend/app/api/routes_audio.py        — POST /audio/synthesize, GET /audio/tts/{filename}, synthesize_to_tmp()
-backend/app/settings/schemas.py        — VoiceSettings
+backend/app/api/routes_audio.py        — POST /audio/synthesize, GET /audio/tts/{filename},
+                                         synthesize_to_tmp(), synthesize_to_persistent(),
+                                         GET /audio/stored/{filename}, POST /audio/cleanup
+backend/app/settings/schemas.py        — VoiceSettings (incl. audio_cleanup_days)
 backend/app/settings/settings_service.py — get/set_voice_settings()
 backend/app/api/routes_settings.py     — GET/PUT /settings/voice
 frontend/src/api/voiceApi.ts           — getVoiceSettings(), updateVoiceSettings()
 frontend/src/components/VoiceSettingsTab.tsx — UI de configuración de voz
+mobile/src/screens/VoiceScreen.tsx     — UI móvil de voz (incl. audio_cleanup_days)
+mobile/src/components/AudioMessageBubble.tsx — burbuja de audio con player y coordinación
+config/default_config.yaml             — audio.persist_tts, audio.cleanup_days
 ```
 
-Tests: `tests/test_tts.py` — 36 tests, sin llamadas reales a piper ni a Telegram. `tests/test_chat_message_metadata.py` — 30 tests cubriendo output_mode, tts_fragments y source_channel.
+Tests: `tests/test_tts.py` — 36 tests, sin llamadas reales a piper ni a Telegram. `tests/test_chat_message_metadata.py` — 30 tests cubriendo output_mode, tts_fragments y source_channel. `tests/test_audio_persistence.py` — 11 tests cubriendo audio_filename DB field, endpoints stored/cleanup, synthesize_to_persistent().
 
 ### Telegram Bot
 

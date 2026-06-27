@@ -48,14 +48,30 @@ interface AudioPlayerProps {
   src: string;
   knownDuration?: number;
   isUser: boolean;
+  isActive: boolean;
+  onPlayRequest: () => void;
+  onNaturalEnd: () => void;
 }
 
-function AudioPlayer({ src, knownDuration, isUser }: AudioPlayerProps) {
+function AudioPlayer({ src, knownDuration, isUser, isActive, onPlayRequest, onNaturalEnd }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(knownDuration ?? 0);
+
+  // Respond to external activation/deactivation
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (isActive) {
+      void a.play().catch(() => {});
+      setIsPlaying(true);
+    } else {
+      if (!a.paused) a.pause();
+      setIsPlaying(false);
+    }
+  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const a = audioRef.current;
@@ -65,7 +81,12 @@ function AudioPlayer({ src, knownDuration, isUser }: AudioPlayerProps) {
       setCurrentTime(a.currentTime);
       setProgress(a.duration ? (a.currentTime / a.duration) * 100 : 0);
     };
-    const onEnded = () => { setIsPlaying(false); setProgress(0); setCurrentTime(0); };
+    const onEnded = () => {
+      setIsPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+      onNaturalEnd();
+    };
     a.addEventListener('loadedmetadata', onLoaded);
     a.addEventListener('timeupdate', onTimeUpdate);
     a.addEventListener('ended', onEnded);
@@ -74,13 +95,19 @@ function AudioPlayer({ src, knownDuration, isUser }: AudioPlayerProps) {
       a.removeEventListener('timeupdate', onTimeUpdate);
       a.removeEventListener('ended', onEnded);
     };
-  }, []);
+  }, [onNaturalEnd]);
 
   const togglePlay = () => {
     const a = audioRef.current;
     if (!a) return;
-    if (isPlaying) { a.pause(); setIsPlaying(false); }
-    else { void a.play(); setIsPlaying(true); }
+    if (isPlaying) {
+      a.pause();
+      setIsPlaying(false);
+    } else {
+      onPlayRequest();
+      void a.play().catch(() => {});
+      setIsPlaying(true);
+    }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,14 +151,35 @@ interface AudioMessageBubbleProps {
   message: AudioChatMessage;
   /** When false, hides transcript for assistant messages (voice_include_text=false) */
   showText?: boolean;
+  /** Coordination props — omit for standalone (uncoordinated) use */
+  isActive?: boolean;
+  onPlay?: (id: string) => void;
+  onEnded?: (id: string) => void;
+  /** id of the next audio message with the same trace_id, if any */
+  nextAudioId?: string;
 }
 
-export function AudioMessageBubble({ message, showText = true }: AudioMessageBubbleProps) {
+export function AudioMessageBubble({
+  message,
+  showText = true,
+  isActive = false,
+  onPlay,
+  onEnded,
+  nextAudioId,
+}: AudioMessageBubbleProps) {
   const isUser = message.role === 'user';
   const [showTranscript, setShowTranscript] = useState(false);
   const src = message.audioBlobUrl ?? message.audioUrl ?? '';
-  // For assistant messages respect voice_include_text; user transcripts always show
   const transcriptVisible = isUser || showText;
+
+  const handlePlayRequest = () => {
+    onPlay?.(message.id);
+  };
+
+  const handleNaturalEnd = () => {
+    onEnded?.(message.id);
+    if (nextAudioId) onPlay?.(nextAudioId);
+  };
 
   return (
     <motion.div
@@ -151,7 +199,16 @@ export function AudioMessageBubble({ message, showText = true }: AudioMessageBub
           )}
         </div>
 
-        {src && <AudioPlayer src={src} knownDuration={message.durationSecs} isUser={isUser} />}
+        {src && (
+          <AudioPlayer
+            src={src}
+            knownDuration={message.durationSecs}
+            isUser={isUser}
+            isActive={isActive}
+            onPlayRequest={handlePlayRequest}
+            onNaturalEnd={handleNaturalEnd}
+          />
+        )}
 
         {message.transcript && transcriptVisible && (
           <>

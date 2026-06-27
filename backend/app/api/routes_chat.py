@@ -92,6 +92,7 @@ def current_chat(session: Session = Depends(get_session)):
             text=row.text,
             trace_id=row.trace_id,
             created_at=row.created_at,
+            audio_filename=row.audio_filename,
         )
         for row in rows
     ]
@@ -659,13 +660,14 @@ def _chat_message_inner(
 
     # TTS post-processing: reuse the decision already made before generation.
     if _should_synth and chat_result.ok and chat_result.text:
-        n_fragments = _attach_tts_artifacts(
+        tts_result = _attach_tts_artifacts(
             result=chat_result,
             text=chat_result.text,
             voice_settings=voice_settings,
             trace_id=trace_id,
         )
-        if n_fragments is not None:
+        if tts_result is not None:
+            n_fragments, audio_filename = tts_result
             _tts_row = session.exec(
                 select(ChatMessage).where(
                     ChatMessage.trace_id == trace_id,
@@ -674,8 +676,13 @@ def _chat_message_inner(
             ).first()
             if _tts_row is not None:
                 _tts_row.tts_fragments = n_fragments
+                _tts_row.audio_filename = audio_filename
                 session.add(_tts_row)
                 session.commit()
+                write_log(level="INFO", module="audio", event="tts_db_committed",
+                          trace_id=trace_id,
+                          payload={"audio_filename": _tts_row.audio_filename,
+                                   "tts_fragments": _tts_row.tts_fragments})
 
     return chat_result
 
@@ -689,17 +696,23 @@ def _should_synthesize(voice_response_mode: str, input_mode: str) -> bool:
     return input_mode == "voice"
 
 
-def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -> Optional[int]:
-    """Synthesize TTS audio and attach as artifacts to result. Modifies result in place.
+def _attach_tts_artifacts(
+    *, result, text: str, voice_settings, trace_id: str
+) -> Optional[tuple[int, Optional[str]]]:
+    """Synthesize TTS audio and attach as artifacts to result. Modifies result.artifacts in place.
 
-    Returns the number of fragments synthesized, or None if synthesis was skipped or failed.
+    Returns (n_fragments, audio_filename) where audio_filename is the persistent file written to
+    data/audio/ (or None if persistence is disabled). Returns None if synthesis was skipped/failed.
     """
-    from app.api.routes_audio import synthesize_to_tmp
+    from app.api.routes_audio import synthesize_to_tmp, synthesize_to_persistent
     from app.api.schemas import ChatArtifact
     from app.audio.synthesizer import load_tts_config
     from app.audio.tts_splitter import split_by_sentences
+    from app.settings.config_loader import load_default_config
 
     cfg = load_tts_config()
+    raw_audio_cfg = load_default_config().get("audio", {})
+    persist_tts: bool = bool(raw_audio_cfg.get("persist_tts", False))
 
     try:
         if len(text) <= cfg.long_response_chars:
@@ -711,20 +724,36 @@ def _attach_tts_artifacts(*, result, text: str, voice_settings, trace_id: str) -
                       trace_id=trace_id, payload={"chars": len(text)})
             return None
 
+        first_persistent_filename: Optional[str] = None
+        artifact_index = 0
         for i, fragment in enumerate(fragments):
-            url = synthesize_to_tmp(fragment)
+            if not fragment.strip():
+                write_log(level="INFO", module="audio", event="tts_fragment_skipped",
+                          trace_id=trace_id, payload={"fragment_index": i, "reason": "empty"})
+                continue
+            if persist_tts:
+                url, filename = synthesize_to_persistent(fragment, trace_id=trace_id)
+                write_log(level="INFO", module="audio", event="tts_fragment_persisted",
+                          trace_id=trace_id,
+                          payload={"fragment_index": i, "filename": filename})
+                if first_persistent_filename is None:
+                    first_persistent_filename = filename
+            else:
+                url = synthesize_to_tmp(fragment)
             result.artifacts.append(ChatArtifact(
                 type="audio",
                 url=url,
-                filename=f"sity_response_{i + 1}.wav",
+                filename=f"sity_response_{artifact_index + 1}.wav",
                 mime_type="audio/wav",
             ))
+            artifact_index += 1
 
         write_log(level="INFO", module="audio", event="tts_attached",
                   trace_id=trace_id,
-                  payload={"fragments": len(fragments), "total_chars": len(text)})
-        return len(fragments)
+                  payload={"fragments": len(fragments), "total_chars": len(text),
+                           "first_persistent_filename": first_persistent_filename})
+        return len(fragments), first_persistent_filename
     except Exception as exc:
         write_log(level="WARN", module="audio", event="tts_failed",
-                  trace_id=trace_id, payload={"error": str(exc)})
+                  trace_id=trace_id, payload={"error": str(exc), "error_type": type(exc).__name__})
         return None

@@ -44,3 +44,4 @@ class VoiceSettings(BaseModel):
     voice_response_mode: Literal["always", "never", "symmetric"] = "symmetric"
     voice_include_text: bool = True
     voice_long_response_action: Literal["split", "text_only"] = "text_only"
+    audio_cleanup_days: int = 7

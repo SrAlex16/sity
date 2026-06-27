@@ -201,6 +201,21 @@ que el frontend web y el bot de mensajería. El acceso remoto se resolvió
 con Tailscale, que crea una red privada entre la Pi y el móvil sin necesidad
 de abrir puertos ni tocar el router.
 
+Con el tiempo se fueron resolviendo varios problemas de experiencia que
+surgieron en uso real. Los audios de respuesta de Sity eran efímeros —
+al recargar la app desaparecían porque las URLs dependían del proceso en
+ejecución. Se implementó almacenamiento persistente en `data/audio/` con
+nombres de archivo estables, un campo `audio_filename` en la base de datos
+y un endpoint `GET /audio/stored/{filename}` que los sirve. Ahora el
+historial de audio se reconstituye al recargar la sesión. Para respuestas
+con varios fragmentos de audio (texto largo partido por frases), se añadió
+reproducción secuencial coordinada: los fragmentos del mismo turno comparten
+`trace_id`, y al terminar uno arranca automáticamente el siguiente. El
+borrado de chat entre sesiones también se corrigió: en lugar de un contador
+volátil, se guarda el momento exacto del borrado y el historial filtra por
+ese timestamp al cargar. Estos arreglos convierten la PWA en un cliente
+utilizable como canal diario, no solo como demo.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

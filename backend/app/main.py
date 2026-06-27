@@ -35,6 +35,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     import asyncio
+    from app.api.routes_audio import cleanup_stored_audio
     set_event_loop(asyncio.get_running_loop())
     init_db()
     write_log(
@@ -43,6 +44,7 @@ async def on_startup():
         event="startup",
         payload={"service": "sity-backend", "version": "0.1.0"},
     )
+    await cleanup_stored_audio()
 
 
 @app.get("/health")

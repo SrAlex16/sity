@@ -78,3 +78,5 @@ audio:
   tts_voice: es_ES-sharvard-medium
   tts_voice_speaker: female
   tts_long_response_chars: 500
+  persist_tts: true
+  cleanup_days: 7

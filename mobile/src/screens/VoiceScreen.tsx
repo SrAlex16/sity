@@ -149,6 +149,27 @@ export function VoiceScreen() {
                 ))}
               </div>
             </div>
+
+            {/* Periodicidad de borrado */}
+            <div className={styles.section}>
+              <p className={styles.sectionJp}>保存期間</p>
+              <p className={styles.sectionEs}>Periodicidad de borrado</p>
+              <p className={styles.sectionHint}>
+                Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.
+              </p>
+              <div className={styles.cleanupRow}>
+                <input
+                  type="number"
+                  className={styles.cleanupInput}
+                  min={0}
+                  max={365}
+                  value={form.audio_cleanup_days}
+                  onChange={(e) => patch({ audio_cleanup_days: Math.max(0, Math.min(365, Number(e.target.value))) })}
+                />
+                <span className={styles.cleanupUnit}>días</span>
+                <span className={styles.cleanupHint}>(0 = nunca borrar)</span>
+              </div>
+            </div>
           </>
         )}
       </div>
