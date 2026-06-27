@@ -338,7 +338,7 @@ def test_attach_tts_returns_fragment_count() -> None:
 
 
 def test_attach_tts_returns_none_on_exception() -> None:
-    """If synthesize_to_tmp raises, returns None."""
+    """If synthesis raises (both persist and tmp paths), returns None."""
     from unittest.mock import MagicMock, patch
     from app.api.routes_chat import _attach_tts_artifacts
     from app.settings.schemas import VoiceSettings
@@ -352,7 +352,8 @@ def test_attach_tts_returns_none_on_exception() -> None:
     fake_cfg = TtsConfig(piper_bin="p", model_path="/m.onnx", speaker_id=None, long_response_chars=500)
     with patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg):
         with patch("app.api.routes_audio.synthesize_to_tmp", side_effect=RuntimeError("boom")):
-            n = _attach_tts_artifacts(result=result, text="hola", voice_settings=vs, trace_id="t")
+            with patch("app.api.routes_audio.synthesize_to_persistent", side_effect=RuntimeError("boom")):
+                n = _attach_tts_artifacts(result=result, text="hola", voice_settings=vs, trace_id="t")
 
     assert n is None
 
