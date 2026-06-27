@@ -292,8 +292,8 @@ ok "Tool loop completed in ${ELAPSED}s (within 30s limit)"
 log "Testing local_final path — cancel_pending_action returns local response without AI round-trip"
 # Crear una pending action primero
 WRITE_LOCAL_OUT="$TMP_DIR/write_for_cancel.json"
-TEST_FILE_LOCAL="$ROOT/scripts/local_final_test_$(date +%s).txt"
-post_chat "usa write_file para escribir 'local final test' en $TEST_FILE_LOCAL" "$WRITE_LOCAL_OUT"
+LFTEST_FILE="$ROOT/scripts/lftest_$(date +%s).txt"
+post_chat "usa write_file para escribir 'local final test' en $LFTEST_FILE" "$WRITE_LOCAL_OUT"
 assert_ok_response "$WRITE_LOCAL_OUT"
 assert_contains "$WRITE_LOCAL_OUT" "Acción pendiente creada"
 
@@ -320,23 +320,23 @@ CANCEL_PROVIDER="$(json_field "$CANCEL_LOCAL_OUT" "provider")"
 [[ "$CANCEL_PROVIDER" == "local" ]] || fail "Expected local provider for local_final, got: $CANCEL_PROVIDER"
 ok "local_final path: cancel_pending_action returned local response (provider=local)"
 expire_pending_actions
-rm -f "$TEST_FILE_LOCAL"
+rm -f "$LFTEST_FILE"
 
 log "Testing apply_text_patch creates pending action"
 # Crear un archivo de prueba primero
-PATCH_TARGET="$ROOT/scripts/patch_target_$(date +%s).txt"
-echo "linea original" > "$PATCH_TARGET"
+PATCH_TARGET_FILE="$ROOT/scripts/patch_target_$(date +%s).txt"
+echo "linea original" > "$PATCH_TARGET_FILE"
 
 PATCH_OUT="$TMP_DIR/apply_patch.json"
-post_chat "usa apply_text_patch para modificar $PATCH_TARGET cambiando 'linea original' por 'linea modificada'" "$PATCH_OUT"
+post_chat "usa apply_text_patch para modificar $PATCH_TARGET_FILE cambiando 'linea original' por 'linea modificada'" "$PATCH_OUT"
 assert_ok_response "$PATCH_OUT"
 assert_contains "$PATCH_OUT" "Acción pendiente creada"
 
 # Verificar que el archivo NO se modificó todavía
-grep -q "linea original" "$PATCH_TARGET" || fail "File was modified before confirmation"
+grep -q "linea original" "$PATCH_TARGET_FILE" || fail "File was modified before confirmation"
 ok "apply_text_patch correctly blocked pending confirmation — file unchanged"
 expire_pending_actions
-rm -f "$PATCH_TARGET"
+rm -f "$PATCH_TARGET_FILE"
 
 log "Testing token accumulation — planner + after_tools tokens sum correctly"
 TOKEN_OUT="$TMP_DIR/token_accumulation.json"
