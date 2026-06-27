@@ -72,14 +72,24 @@ export function useChat() {
       const res = await fetch('/chat/current');
       if (!res.ok) throw new Error('network');
       const data = await res.json() as { messages: ApiHistoryMessage[] };
+
+      const clearedRaw = localStorage.getItem('sity_chat_cleared');
+      const clearedMs = clearedRaw ? Number(clearedRaw) : 0;
+
       setMessages(
-        data.messages.map((m) => ({
-          id: uid(),
-          type: 'text' as const,
-          role: m.role === 'user' ? 'user' : 'assistant',
-          text: m.text,
-          timestamp: m.created_at ? new Date(m.created_at) : new Date(),
-        })),
+        data.messages
+          .filter((m) => {
+            if (!clearedMs) return true;
+            if (!m.created_at) return true;
+            return new Date(m.created_at).getTime() >= clearedMs;
+          })
+          .map((m) => ({
+            id: uid(),
+            type: 'text' as const,
+            role: m.role === 'user' ? 'user' : 'assistant',
+            text: m.text,
+            timestamp: m.created_at ? new Date(m.created_at) : new Date(),
+          })),
       );
       setStatus('conectado');
     } catch {
@@ -88,6 +98,7 @@ export function useChat() {
   }
 
   async function sendMessage(text: string) {
+    localStorage.removeItem('sity_chat_cleared');
     const userMsg: TextChatMessage = { id: uid(), type: 'text', role: 'user', text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setStatus('procesando');
@@ -113,6 +124,7 @@ export function useChat() {
    * Flow: /audio/transcribe → add user audio bubble → /chat/message (voice mode)
    */
   async function sendAudio(blob: Blob, durationSecs: number) {
+    localStorage.removeItem('sity_chat_cleared');
     setStatus('procesando');
 
     // 1. Transcribe
@@ -165,6 +177,7 @@ export function useChat() {
 
   function clearMessages() {
     setMessages([]);
+    localStorage.setItem('sity_chat_cleared', Date.now().toString());
   }
 
   return { messages, status, sendMessage, sendAudio, clearMessages };

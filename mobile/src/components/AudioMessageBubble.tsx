@@ -122,12 +122,16 @@ function AudioPlayer({ src, knownDuration, isUser }: AudioPlayerProps) {
 
 interface AudioMessageBubbleProps {
   message: AudioChatMessage;
+  /** When false, hides transcript for assistant messages (voice_include_text=false) */
+  showText?: boolean;
 }
 
-export function AudioMessageBubble({ message }: AudioMessageBubbleProps) {
+export function AudioMessageBubble({ message, showText = true }: AudioMessageBubbleProps) {
   const isUser = message.role === 'user';
   const [showTranscript, setShowTranscript] = useState(false);
   const src = message.audioBlobUrl ?? message.audioUrl ?? '';
+  // For assistant messages respect voice_include_text; user transcripts always show
+  const transcriptVisible = isUser || showText;
 
   return (
     <motion.div
@@ -149,7 +153,7 @@ export function AudioMessageBubble({ message }: AudioMessageBubbleProps) {
 
         {src && <AudioPlayer src={src} knownDuration={message.durationSecs} isUser={isUser} />}
 
-        {message.transcript && (
+        {message.transcript && transcriptVisible && (
           <>
             <button
               className={styles.transcriptToggle}

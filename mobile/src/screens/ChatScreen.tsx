@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useChat } from '../hooks/useChat';
+import { useVoice } from '../hooks/useVoice';
 import { MessageBubble } from '../components/MessageBubble';
 import { AudioMessageBubble } from '../components/AudioMessageBubble';
 import { TypingIndicator } from '../components/TypingIndicator';
@@ -74,6 +75,8 @@ interface RecordingCtx {
 
 export function ChatScreen() {
   const { messages, status, sendMessage, sendAudio, clearMessages } = useChat();
+  const { settings: voiceSettings } = useVoice();
+  const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
   const [inputText, setInputText] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -264,7 +267,7 @@ export function ChatScreen() {
           <AnimatePresence initial={false}>
             {messages.map((msg) =>
               msg.type === 'audio'
-                ? <AudioMessageBubble key={msg.id} message={msg} />
+                ? <AudioMessageBubble key={msg.id} message={msg} showText={msg.role === 'user' || voiceIncludeText} />
                 : <MessageBubble key={msg.id} message={msg} />
             )}
           </AnimatePresence>
