@@ -696,6 +696,15 @@ def _should_synthesize(voice_response_mode: str, input_mode: str) -> bool:
     return input_mode == "voice"
 
 
+def _clean_text_for_tts(text: str) -> str:
+    import re
+    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
+    text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    return text.strip()
+
+
 def _attach_tts_artifacts(
     *, result, text: str, voice_settings, trace_id: str
 ) -> Optional[tuple[int, Optional[str]]]:
@@ -715,10 +724,11 @@ def _attach_tts_artifacts(
     persist_tts: bool = bool(raw_audio_cfg.get("persist_tts", False))
 
     try:
-        if len(text) <= cfg.long_response_chars:
-            fragments = [text]
+        tts_text = _clean_text_for_tts(text)
+        if len(tts_text) <= cfg.long_response_chars:
+            fragments = [tts_text]
         elif voice_settings.voice_long_response_action == "split":
-            fragments = split_by_sentences(text, cfg.long_response_chars)
+            fragments = split_by_sentences(tts_text, cfg.long_response_chars)
         else:
             write_log(level="INFO", module="audio", event="tts_skipped_long_response",
                       trace_id=trace_id, payload={"chars": len(text)})

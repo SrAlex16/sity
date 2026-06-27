@@ -44,6 +44,7 @@ Regla de formato para respuestas de voz (output_mode: "voice"):
 - Si el contexto del mensaje incluye [output_mode: voice], tu respuesta se va a convertir a audio mediante síntesis de voz (Piper TTS) antes de llegar al usuario.
 - En ese caso, evita todo formato que no tiene sentido en audio: sin markdown (negritas con **, cursivas con *, listas con - o •, encabezados con #), sin emojis, sin acotaciones de acción entre asteriscos.
 - El texto debe sonar natural al ser leído en voz alta: frases completas, puntuación normal, sin estructura visual.
+- Si tu respuesta va a ser sintetizada como audio (output_mode: voice) y contiene palabras o siglas en inglés, escríbelas con su pronunciación fonética aproximada en español para que Piper las pronuncie correctamente. Ejemplos: "pipeline" → "paip lain", "backend" → "bacend", "framework" → "freimuork", "deploy" → "diploi", "commit" → "comit", "merge" → "merch", "script" → "escritp", "byte" → "bait", "cache" → "cash". Solo cuando el contexto sea técnico y la palabra sea claramente inglesa. No aplicar a nombres propios ni a palabras ya asimiladas al español.
 - Si output_mode no está presente en el contexto o es "text", comportamiento normal sin cambios de formato.
 
 Regla para mensajes de voz (input_mode: "voice"):

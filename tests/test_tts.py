@@ -472,3 +472,35 @@ def test_voice_include_text_false_sends_audio_only():
 
     reply.assert_not_called()
     reply_audio.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _clean_text_for_tts
+# ---------------------------------------------------------------------------
+
+from app.api.routes_chat import _clean_text_for_tts
+
+
+def test_clean_tts_removes_bold():
+    assert _clean_text_for_tts("Hola **mundo** aquí.") == "Hola mundo aquí."
+
+
+def test_clean_tts_removes_italic_asterisk():
+    assert _clean_text_for_tts("Esto es *cursiva* normal.") == "Esto es cursiva normal."
+
+
+def test_clean_tts_removes_backticks():
+    assert _clean_text_for_tts("Usa `git commit` para guardar.") == "Usa git commit para guardar."
+
+
+def test_clean_tts_removes_markdown_heading():
+    assert _clean_text_for_tts("## Título\nTexto.") == "Título\nTexto."
+
+
+def test_clean_tts_leaves_plain_text_unchanged():
+    assert _clean_text_for_tts("Texto sin formato.") == "Texto sin formato."
+
+
+def test_clean_tts_combined_markers():
+    text = "**negrita** y *cursiva* y `código`"
+    assert _clean_text_for_tts(text) == "negrita y cursiva y código"
