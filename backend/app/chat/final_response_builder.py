@@ -89,6 +89,8 @@ def build_final_ai_response(
             "latency_ms": response.latency_ms,
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens,
+            "cache_creation_tokens": response.usage.cache_creation_tokens,
+            "cache_read_tokens": response.usage.cache_read_tokens,
             "fallback_used": response.fallback_used,
             "error_type": response.error_type,
             "daily_used_tokens": snap.daily_used,
