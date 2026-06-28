@@ -1,0 +1,30 @@
+{
+    email tu_email@ejemplo.com
+    acme_dns porkbun {
+        api_key {env.PORKBUN_API_KEY}
+        api_secret_key {env.PORKBUN_API_SECRET_KEY}
+    }
+}
+
+sity.tudominio.com {
+    handle /chat/* {
+        reverse_proxy localhost:8000
+    }
+    handle /audio/* {
+        reverse_proxy localhost:8000
+    }
+    handle /settings/* {
+        reverse_proxy localhost:8000
+    }
+    handle /debug/* {
+        reverse_proxy localhost:8000
+    }
+    handle /health {
+        reverse_proxy localhost:8000
+    }
+    handle {
+        root * /home/TU_USUARIO/projects/sity/mobile/dist
+        file_server
+        try_files {path} /index.html
+    }
+}

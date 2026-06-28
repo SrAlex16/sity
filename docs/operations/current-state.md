@@ -18,9 +18,12 @@ Principios activos:
 
 Infraestructura activa:
 
-- PWA móvil en mobile/ con diseño cyberpunk, acceso via Tailscale.
+- PWA móvil en `mobile/` con diseño cyberpunk, acceso via Tailscale.
+- HTTPS real con certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
+- Dominio: `sity.aletm.com` (Tailscale requerido, sin abrir puertos en router).
+- PWA servida como build estático (`mobile/dist/`) por Caddy.
+- `sity-mobile` (Vite dev server) desactivado en producción.
 - Tailscale instalado en Pi (IP: 100.73.248.0) para acceso remoto.
-- Servicio systemd `sity-mobile.service` para la PWA (Vite dev + `--host`).
 
 ## Backend y frontend
 

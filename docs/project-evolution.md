@@ -285,6 +285,27 @@ Resultado: `routes_chat.py` pasó de 862 a 164 líneas. La lógica vive ahora
 en módulos con responsabilidades claras, cubiertos por tests, y con tipos
 verificados por mypy en CI.
 
+## HTTPS real y dominio propio
+
+Durante el desarrollo, la PWA móvil se servía con Vite en modo desarrollo
+con un certificado autofirmado de mkcert — funcional pero con aviso de
+seguridad en Chrome y sin posibilidad de instalarse como PWA real.
+
+Para resolverlo sin abrir puertos en el router (sin acceso al mismo),
+se configuró Caddy como reverse proxy con DNS-01 challenge via la API
+de Porkbun. Este método verifica el dominio añadiendo un registro TXT
+temporal en el DNS en lugar de recibir una petición HTTP desde internet —
+lo que lo hace compatible con redes sin puertos abiertos.
+
+El dominio `sity.aletm.com` apunta a la IP de Tailscale de la Pi
+(`100.73.248.0`), por lo que el acceso requiere Tailscale activo en el
+dispositivo. El certificado es real y válido — Chrome no muestra ningún
+aviso de seguridad.
+
+La PWA pasó de servirse con Vite dev server a un build estático de
+producción (`npm run build`) servido directamente por Caddy. El servicio
+`sity-mobile` quedó desactivado.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

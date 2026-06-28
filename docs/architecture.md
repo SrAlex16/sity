@@ -585,16 +585,63 @@ Testing debe cubrir:
 - limpieza de temporales;
 - LoRA scripts como smoke/manual, no CI obligatorio.
 
+## Infraestructura de red
+
+### Acceso y HTTPS
+
+La Pi es accesible desde cualquier dispositivo con Tailscale activo mediante
+el dominio `sity.aletm.com` (registro A apuntando a `100.73.248.0`).
+
+**Caddy** actúa como reverse proxy y gestor de certificados:
+- Certificado TLS real de Let's Encrypt via DNS-01 challenge
+- El challenge DNS se resuelve automáticamente via Porkbun API
+  (sin necesidad de abrir puertos en el router)
+- Renovación automática gestionada por Caddy
+- Configuración: `/etc/caddy/Caddyfile`
+- Variables de entorno (API keys): `/etc/caddy/caddy.env` (chmod 600)
+- Servicio: `caddy.service` (systemd, arranca con la Pi)
+
+### Routing de Caddy
+
+```
+sity.aletm.com
+├── /chat/*      → proxy → localhost:8000 (FastAPI backend)
+├── /audio/*     → proxy → localhost:8000
+├── /settings/*  → proxy → localhost:8000
+├── /debug/*     → proxy → localhost:8000
+├── /health      → proxy → localhost:8000
+└── /*           → file_server → /home/alex/projects/sity/mobile/dist/
+```
+
+### Servicios systemd activos
+
+| Servicio       | Puerto | Descripción                        |
+|----------------|--------|------------------------------------|
+| sity-backend   | 8000   | FastAPI + uvicorn                  |
+| sity-telegram  | —      | Bot Telegram (long polling)        |
+| caddy          | 443/80 | Reverse proxy + TLS                |
+
+`sity-mobile` (Vite dev server, puerto 5174) está desactivado en producción.
+La PWA se sirve como build estático desde `mobile/dist/`.
+
+### Actualizar la PWA tras cambios
+
+```bash
+cd ~/projects/sity/mobile && npm run build
+sudo systemctl reload caddy
+```
+
+---
+
 ## PWA móvil
 
 Ubicación: `mobile/` — proyecto independiente, no comparte build con `frontend/`.
 
 Stack: React 18 + TypeScript + Vite 5 + Framer Motion + CSS custom (sin Tailwind).
-Puerto: 5174. Proxy a backend en :8000 configurado en vite.config.ts.
-HTTPS: vite-plugin-mkcert (certificado autofirmado, válido en red local y Tailscale).
+Build de producción en `mobile/dist/`, servido por Caddy.
 
 Acceso remoto: Tailscale (WireGuard). IP Tailscale de la Pi: 100.73.248.0.
-El móvil y la Pi deben tener Tailscale activo para acceso fuera de red local.
+Dominio: `sity.aletm.com`. El móvil y la Pi deben tener Tailscale activo.
 
 Sistema de temas:
 - Variables CSS en theme.css (colores neón, glow, superficies).

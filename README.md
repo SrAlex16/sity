@@ -1697,16 +1697,19 @@ Uso posible:
 
 No exponer DNS públicamente.
 
-### Caddy
+### Caddy ✓
 
-Uso posible:
+Implementado. Caddy actúa como reverse proxy y gestor de certificados TLS:
 
 ```text
-- reverse proxy interno
-- HTTPS
-- URLs limpias
-- no exponer Uvicorn/Vite directamente
+✓ Certificado Let's Encrypt via DNS-01 challenge (Porkbun API)
+✓ Renovación automática
+✓ Proxy a FastAPI backend (puerto 8000)
+✓ Serve estático de mobile/dist/
+✓ Sin puertos abiertos en el router
 ```
+
+Ver `deploy/caddy/Caddyfile.example` para la configuración de referencia.
 
 ### Vaultwarden
 
@@ -1991,10 +1994,23 @@ primero. Explícitamente fuera de alcance hasta entonces.
 
 ### Estado actual (2026-06)
 
-Stack: React 18 + TypeScript + Vite + Framer Motion. Puerto 5174.
-Acceso local: https://192.168.0.118:5174
-Acceso remoto: https://100.73.248.0:5174 via Tailscale (certificado autofirmado,
-aviso de seguridad en Chrome — pendiente de resolver con dominio propio).
+Stack: React 18 + TypeScript + Vite + Framer Motion.
+Acceso local: https://sity.aletm.com (misma red, Tailscale activo)
+Acceso remoto: https://sity.aletm.com (datos móviles, Tailscale activo)
+HTTPS: certificado real de Let's Encrypt via Caddy + DNS challenge con Porkbun API.
+Sin aviso de seguridad en Chrome.
+
+Infraestructura de producción:
+- Caddy sirve el build estático de `mobile/dist/` (`npm run build`)
+- Caddy hace proxy de `/chat/*`, `/audio/*`, `/settings/*`, `/debug/*`, `/health` al backend
+- `sity-mobile` (Vite dev server) desactivado — no necesario en producción
+- Renovación automática del certificado gestionada por Caddy
+
+Para actualizar la PWA después de cambios:
+```bash
+cd ~/projects/sity/mobile && npm run build
+sudo systemctl reload caddy
+```
 
 Pantallas implementadas:
 - Chat: mensajes texto y audio, historial, estado de conexión dinámico,
@@ -2012,14 +2028,11 @@ Completado recientemente:
 - Fondo por defecto (wallpaper1.png) cuando no hay preferencia guardada.
 - Transcripción respeta `voice_include_text`: burbujas de audio-only sin texto paralelo.
 - Fragmentos TTS vacíos omitidos (guard contra WAV de 0 segundos).
-- Servicio systemd `sity-mobile.service`.
 - Draft persistente en textarea — el texto no enviado se conserva al cambiar de pantalla.
+- ✓ HTTPS sin aviso de seguridad: certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
+- ✓ Dominio propio: `sity.aletm.com` apunta a `100.73.248.0` (Tailscale IP de la Pi).
 
 Pendiente:
-- HTTPS sin aviso de seguridad: requiere dominio propio con certificado real
-  (Let's Encrypt) o configurar Caddy con subdominio apuntando a Tailscale IP.
-- Instalable sin aviso: Chrome no muestra banner de instalación con certificado
-  autofirmado. Se resolverá con HTTPS real.
 - Acotaciones con asteriscos (`**texto**`): Piper lee los asteriscos literalmente.
   Decidir si eliminar en post-procesado antes de síntesis o si Sity debe
   evitarlos cuando `voice_response_mode != nunca`. Requiere evaluar impacto en
@@ -2033,9 +2046,11 @@ Pendiente:
 ### Arrancar en desarrollo
 
 En la Pi:
+```bash
 cd mobile && npm run dev -- --host
+```
 
-Acceder desde móvil: https://192.168.0.118:5174 (misma red)
+Acceder desde móvil: https://192.168.0.118:5174 (misma red, mkcert)
 Acceder desde fuera: https://100.73.248.0:5174 (Tailscale activo en ambos dispositivos)
 
 ---
