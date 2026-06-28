@@ -31,6 +31,11 @@ jobs:
       - name: Run pytest local tests
         run: pytest -q tests
 
+      - name: Type check (mypy)
+        run: |
+          cd backend
+          python -m mypy app/ --ignore-missing-imports
+
   integration-mock:
     runs-on: ubuntu-latest
     env:

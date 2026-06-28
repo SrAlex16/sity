@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlmodel import Session, func, select
+from sqlmodel import Session, col, func, select
 
 from app.memory.message_metadata import MessageMetadata, build_message_metadata
 from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
@@ -87,7 +87,7 @@ def get_recent_db_messages(session: Session, limit: int = 20) -> list[ChatMessag
     statement = (
         select(ChatMessage)
         .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
-        .order_by(ChatMessage.id.desc())
+        .order_by(col(ChatMessage.id).desc())
         .limit(limit)
     )
     rows = list(session.exec(statement))

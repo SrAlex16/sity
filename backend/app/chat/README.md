@@ -360,19 +360,17 @@ Antes de refactorizarlo, crear tests de integración que cubran:
 ✓ response_guard bloqueando confirmaciones falsas (cubierto)
 ✓ tool error — excepción propagada al caller (cubierto por test_tool_loop_runner.py)
 ✓ segunda llamada a Claude tras tool results (cubierto por integration shell)
-- tool call con local_final (pendiente)
-- apply_text_patch pending action (pendiente)
-- sense tool con artifact (pendiente)
-- micro-reaction (pendiente)
-- uso de tokens acumulado correctamente (pendiente)
-- respuesta final con artifacts (pendiente)
+✓ tool call con local_final (cubierto por test_chat_tool_registry_integration.sh)
+✓ apply_text_patch pending action (cubierto por tests/test_apply_text_patch.py)
+✓ sense tool con artifact (cubierto por tests/test_tool_loop_sensor_cases.py)
+✓ micro-reaction (cubierto por tests/test_tool_loop_sensor_cases.py)
+✓ uso de tokens acumulado (cubierto por test_chat_tool_registry_integration.sh)
+✓ respuesta final con artifacts (cubierto por tests/test_tool_loop_sensor_cases.py)
 ```
 
-Hasta entonces:
-
-```text
-No tocar tool loop salvo cambios pequeños y muy controlados.
-```
+Todos los casos edge están cubiertos. El tool loop puede extraerse a un módulo
+propio cuando se quiera — el diseño de interfaz es el siguiente paso antes de
+mover el código.
 
 ---
 

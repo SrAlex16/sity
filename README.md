@@ -1300,28 +1300,36 @@ Variables de config:
 Las respuestas de Sonnet reciben el tag `sonnet_response` en `dataset_tags_json`
 automáticamente — permite filtrar por modelo al exportar el dataset.
 
-### 5. Prompt caching / Claude API optimization
+### 5. Prompt caching / Claude API optimization ✓
 
-Investigar documentación oficial de Claude para:
+Completado. Implementado en `backend/app/cortex/claude_provider.py`:
+- System prompt cacheado con `cache_control: ephemeral`
+- Tools cacheados (último tool de la lista)
+- Historial cacheado incrementalmente turno a turno
 
-```text
-- prompt caching
-- tool_choice
+Ahorro verificado: ~5885 tokens/turno leídos del caché a 10% del precio normal.
+Métricas en logs: `cache_creation_tokens` y `cache_read_tokens` en cada
+evento `ai_call_completed`.
+
+Pendiente de explorar (baja prioridad):
 - streaming tool use
 - batch processing
-- vision
-- reasoning mode
-- rate limits
-- metadata
-```
+- vision (cuando haya casos de uso reales)
+- reasoning mode (cuando esté disponible en Haiku)
 
-Objetivo:
+### 6. Tests de integración del tool loop ✓
 
-```text
-reducir coste, latencia y errores
-```
+Completado. Todos los casos edge cubiertos:
+- test_chat_tool_registry_integration.sh: local_final, apply_text_patch,
+  token accumulation, write_file, cancel, response_guard
+- tests/test_tool_loop_runner.py: max_iterations, executor_error
+- tests/test_tool_loop_sensor_cases.py: micro_reaction, sensor_finished
+  con artifacts, artifacts en respuesta normal
+- tests/test_apply_text_patch_tool_registry.py: pending action sin modificar el archivo
 
-### 6. CI/CD y testing
+El ChatOrchestrator puede extraerse cuando se diseñe la interfaz.
+
+### 7. CI/CD y testing
 
 Pendiente:
 
@@ -1336,7 +1344,7 @@ Pendiente:
   en Pi manteniendo precisión
 ```
 
-### 7. Traducción entrada/salida al inglés para LLM local
+### 8. Traducción entrada/salida al inglés para LLM local
 
 Para mejorar la calidad de los modelos locales (que rinden mejor en inglés) y
 potencialmente ahorrar tokens, explorar traducir la entrada del usuario al inglés

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 from typing import Optional
 
 from app.debug.schemas import LastTraceResponse, RecentEventsResponse, TraceEvent
@@ -182,7 +182,7 @@ def dataset_stats(session: Session = Depends(get_session)):
     messages = list(session.exec(
         select(ChatMessage)
         .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
-        .order_by(ChatMessage.id)
+        .order_by(col(ChatMessage.id))
     ))
     stats = compute_dataset_stats(messages)
     return {"ok": True, **stats}

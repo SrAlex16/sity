@@ -13,7 +13,7 @@ def _find_tool_name(text: str) -> str | None:
     """Return the rightmost known tool name that appears verbatim in text."""
     from app.cortex.tool_schemas import TOOLS
 
-    known = {t["name"] for t in TOOLS if t.get("name")}
+    known = {str(t["name"]) for t in TOOLS if t.get("name")}
     text_lower = text.lower()
     last_pos = -1
     last_name: str | None = None

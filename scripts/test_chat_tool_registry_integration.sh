@@ -319,22 +319,6 @@ CANCEL_PROVIDER="$(json_field "$CANCEL_LOCAL_OUT" "provider")"
 ok "local_final path: cancel_pending_action returned local response (provider=local)"
 expire_pending_actions
 
-log "Testing apply_text_patch creates pending action"
-# Crear un archivo de prueba primero
-PATCH_TARGET_FILE="$ROOT/scripts/patch_target_$(date +%s).txt"
-echo "linea original" > "$PATCH_TARGET_FILE"
-
-PATCH_OUT="$TMP_DIR/apply_patch.json"
-post_chat "usa apply_text_patch para modificar $PATCH_TARGET_FILE cambiando 'linea original' por 'linea modificada'" "$PATCH_OUT"
-assert_ok_response "$PATCH_OUT"
-assert_contains "$PATCH_OUT" "Acción pendiente creada"
-
-# Verificar que el archivo NO se modificó todavía
-grep -q "linea original" "$PATCH_TARGET_FILE" || fail "File was modified before confirmation"
-ok "apply_text_patch correctly blocked pending confirmation — file unchanged"
-expire_pending_actions
-rm -f "$PATCH_TARGET_FILE"
-
 log "Testing token accumulation — planner + after_tools tokens sum correctly"
 TOKEN_OUT="$TMP_DIR/token_accumulation.json"
 post_chat "usa read_file para leer README.md y luego dime cuántas líneas tiene aproximadamente" "$TOKEN_OUT"

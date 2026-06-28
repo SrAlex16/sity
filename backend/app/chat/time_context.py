@@ -241,13 +241,17 @@ def render_time_context(snapshot: TimeContextSnapshot) -> str:
         lines.append("Sin mensajes previos en esta sesión.")
     else:
         if not no_user:
-            cat = f" ({snapshot.user_gap_category.value})" if snapshot.user_gap_category else ""
-            lines.append(
-                f"Último mensaje del usuario: hace {_format_delta(snapshot.secs_since_last_user)}{cat}."
-            )
+            secs_user = snapshot.secs_since_last_user
+            if secs_user is not None:
+                cat = f" ({snapshot.user_gap_category.value})" if snapshot.user_gap_category else ""
+                lines.append(
+                    f"Último mensaje del usuario: hace {_format_delta(secs_user)}{cat}."
+                )
         if not no_sity:
-            lines.append(
-                f"Última respuesta de Sity: hace {_format_delta(snapshot.secs_since_last_sity)}."
-            )
+            secs_sity = snapshot.secs_since_last_sity
+            if secs_sity is not None:
+                lines.append(
+                    f"Última respuesta de Sity: hace {_format_delta(secs_sity)}."
+                )
 
     return "\n".join(lines)

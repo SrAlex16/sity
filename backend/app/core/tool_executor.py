@@ -124,7 +124,7 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name="update_personality_settings",
                 ok=False,
-                message=result["message"],
+                message=str(result["message"]),
                 updated_parameters=[],
                 raw_result=result,
             )
@@ -151,7 +151,7 @@ class ToolExecutor:
                 continue
 
             try:
-                amount = float(value)
+                amount = float(value)  # type: ignore[arg-type]
             except (TypeError, ValueError):
                 errors.append(f"Valor inválido para {parameter}: {value}")
                 continue
@@ -206,7 +206,7 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name="update_personality_settings",
                 ok=False,
-                message=result["message"],
+                message=str(result["message"]),
                 updated_parameters=[],
                 raw_result=result,
             )
@@ -236,7 +236,7 @@ class ToolExecutor:
         return ToolExecutionResult(
             tool_name="update_personality_settings",
             ok=True,
-            message=result["message"],
+            message=str(result["message"]),
             updated_parameters=updated_parameters,
             raw_result=result,
         )
@@ -316,7 +316,7 @@ class ToolExecutor:
         return ToolExecutionResult(
             tool_name="read_recent_debug_events",
             ok=True,
-            message=result["message"],
+            message=str(result["message"]),
             updated_parameters=[],
             raw_result=result,
         )
@@ -339,7 +339,7 @@ class ToolExecutor:
             return ToolExecutionResult(
                 tool_name="read_trace_events",
                 ok=False,
-                message=result["message"],
+                message=str(result["message"]),
                 updated_parameters=[],
                 raw_result=result,
             )
@@ -367,7 +367,7 @@ class ToolExecutor:
         return ToolExecutionResult(
             tool_name="read_trace_events",
             ok=True,
-            message=result["message"],
+            message=str(result["message"]),
             updated_parameters=[],
             raw_result=result,
         )

@@ -109,17 +109,18 @@ class ClaudeProvider:
         started = time.perf_counter()
 
         effective_tools = request.tools if request.tools is not None else TOOLS
+        _msgs: list[Any] = [
+            *_messages_with_history_cache(request.prior_messages, request.user_message),
+            {"role": "user", "content": request.user_message},
+            {"role": "assistant", "content": first_response_content},
+            {"role": "user", "content": tool_results},
+        ]
         message = self.client.messages.create(
             model=self.model,
             max_tokens=request.max_tokens,
-            system=_system_with_cache(request.system_prompt),
-            tools=_tools_with_cache(effective_tools),
-            messages=[
-                *_messages_with_history_cache(request.prior_messages, request.user_message),
-                {"role": "user", "content": request.user_message},
-                {"role": "assistant", "content": first_response_content},
-                {"role": "user", "content": tool_results},
-            ],
+            system=_system_with_cache(request.system_prompt),  # type: ignore[arg-type]
+            tools=_tools_with_cache(effective_tools),  # type: ignore[arg-type]
+            messages=_msgs,
         )
 
         latency_ms = round((time.perf_counter() - started) * 1000)

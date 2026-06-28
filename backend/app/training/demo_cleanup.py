@@ -38,7 +38,7 @@ def run_demo_cleanup(
     from app.memory.db import engine
     from app.memory.models import ChatMessage
     from app.memory.search import rebuild_fts
-    from sqlmodel import Session, select
+    from sqlmodel import Session, col, select
 
     if demo_dir is None:
         demo_dir = _DEFAULT_DEMO_DIR
@@ -63,7 +63,7 @@ def run_demo_cleanup(
             select(ChatMessage)
             .where(ChatMessage.created_at >= start_dt)
             .where(ChatMessage.created_at <= end_dt)
-            .order_by(ChatMessage.id)
+            .order_by(col(ChatMessage.id))
         ))
 
         if not messages:

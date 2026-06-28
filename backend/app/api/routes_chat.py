@@ -3,7 +3,7 @@ from typing import Optional
 
 
 from fastapi import APIRouter, Depends
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.api.schemas import (
     ChatArtifact,
@@ -80,7 +80,7 @@ def current_chat(session: Session = Depends(get_session)):
     statement = (
         select(ChatMessage)
         .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
-        .order_by(ChatMessage.id.desc())
+        .order_by(col(ChatMessage.id).desc())
         .limit(200)
     )
 
@@ -247,8 +247,8 @@ def _chat_message_inner(
         pending_action = confirmation_manager.find_pending_action_by_context(request.message)
 
     if pending_action:
-        runner = PendingActionRunner(confirmation_manager)
-        return runner.run(pending_action, _local_ctx)
+        _par = PendingActionRunner(confirmation_manager)
+        return _par.run(pending_action, _local_ctx)
 
     runtime_config = get_runtime_config()
 

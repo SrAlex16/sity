@@ -248,6 +248,25 @@ lee los asteriscos de markdown literalmente (se limpian antes de la síntesis),
 y Sity escribe palabras técnicas en inglés con pronunciación fonética en
 español cuando el output es voz.
 
+## Optimización de costes y cobertura de tests
+
+Se implementó prompt caching explícito en tres capas (system prompt, tools,
+historial), reduciendo el coste de tokens de input en conversaciones largas.
+El ahorro es inmediato: desde el segundo turno, ~5885 tokens se leen del caché
+a 10% del precio normal en lugar de procesarse completos.
+
+Paralelamente se completó la cobertura de tests del tool loop — el componente
+más crítico del backend. Los 11 casos edge documentados tienen ahora tests
+concretos, lo que despeja el camino para extraer el ChatOrchestrator a su
+propio módulo cuando se quiera refactorizar sin riesgo.
+
+También se reforzaron dos instrucciones del prompt de sistema: Sity ya no
+narra que ha buscado en memoria (listando frases prohibidas explícitamente),
+y el etiquetado de mensajes generados con Sonnet permite filtrar el dataset
+por modelo al exportar datos de fine-tuning — ya que incluir respuestas de
+Sonnet en el dataset de Haiku podría introducir un estilo que Haiku no puede
+replicar.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta, timezone
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.memory.models import ChatMessage, PendingAction, utc_now
 from app.trace.logger import write_log
@@ -178,7 +178,7 @@ class ConfirmationManager:
             select(ChatMessage)
             .where(ChatMessage.session_id == "default")
             .where(ChatMessage.role == "sity")
-            .order_by(ChatMessage.id.desc())
+            .order_by(col(ChatMessage.id).desc())
             .limit(1)
         )
         last_message = self.session.exec(statement).first()

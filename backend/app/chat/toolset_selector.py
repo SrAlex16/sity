@@ -96,7 +96,7 @@ _ACTION_ID_RE = re.compile(r"\bact_[a-fA-F0-9]{8}\b")
 # The user is already being heard through their own device; triggering sensor
 # capture tools in response to voice input is never correct.
 _VOICE_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
-    t["name"] for t in SENSES_TOOLSET
+    str(t["name"]) for t in SENSES_TOOLSET
 )
 
 

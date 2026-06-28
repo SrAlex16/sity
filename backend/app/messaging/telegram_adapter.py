@@ -388,7 +388,7 @@ def _build_app(cfg: TelegramConfig, gateway: SityGateway, token: str) -> Applica
         await handle_chat_message(
             cfg=cfg, gateway=gateway, rate_buckets=rate_buckets,
             chat_id=msg.chat_id, chat_type=msg.chat.type,
-            text=msg.text,
+            text=msg.text or "",
             username=(user.username if user else None) or str(msg.chat_id),
             reply=msg.reply_text,
             reply_audio=_reply_audio,

@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-28 (model router semi-automático, limpieza TTS markdown, pronunciación fonética en voz).
+Última actualización: 2026-06-28 (model router semi-automático, limpieza TTS markdown, pronunciación fonética en voz, prompt caching).
 
 Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
 
@@ -615,4 +615,33 @@ Módulos relevantes:
 - `backend/app/cortex/tool_schemas.py` — `PROPOSE_MODEL_UPGRADE_TOOL`
 - `backend/app/chat/local_flow.py` — detección de propuesta activa
 - `backend/app/chat/turn_persistence.py` — etiquetado `sonnet_response`
+
+---
+
+## Prompt Caching
+
+Implementado en `backend/app/cortex/claude_provider.py`. Tres capas de caché
+en cada llamada a la API de Anthropic:
+
+1. **System prompt** — `_system_with_cache()`: el prompt de sistema completo
+   se marca con `cache_control: {type: ephemeral}`. ~5885 tokens cacheados.
+2. **Tools** — `_tools_with_cache()`: `cache_control` en el último tool de la
+   lista. Cachea todo el toolset en cada llamada.
+3. **Historial** — `_messages_with_history_cache()`: `cache_control` en el
+   último bloque del último `prior_message`. El historial se cachea
+   incrementalmente turno a turno.
+
+Métricas expuestas en `AIUsageData`: `cache_creation_tokens` y
+`cache_read_tokens`. Aparecen en el evento `ai_call_completed` de cada turno.
+
+Ahorro verificado en producción:
+- Primer turno: `cache_creation: 5885, cache_read: 0`
+- Turnos siguientes: `cache_creation: 0, cache_read: 5885`
+
+Los tokens cacheados cuestan 10% del precio de input normal. En conversaciones
+largas el ahorro es significativo — en una sesión de 20 turnos, ~112.000 tokens
+de input se procesan a coste reducido.
+
+Mínimo de tokens para cachear en Haiku 4.5: 4096. El system prompt + tools de
+Sity supera ese mínimo, así que el caché siempre se activa.
 

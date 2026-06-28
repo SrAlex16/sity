@@ -47,6 +47,9 @@ Estado actual:
 - Pestaña Dataset en el frontend: Dataset Capture + DatasetStats.
 - Audio STT: `faster-whisper` local, modelo `small` (mejorado desde `base`), `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y soporte de mensajes de voz en Telegram.
 - Model Router semi-automático: Haiku propone cambiar a Sonnet para tareas complejas; el usuario confirma con sí/no. Activado con `ai.claude.model_router_enabled: true`.
+- Prompt caching: system prompt + tools + historial cacheados (cache_read:
+  ~5885 tokens/turno). Campos `cache_creation_tokens` y `cache_read_tokens`
+  en logs `ai_call_completed`.
 - Etiquetado automático `sonnet_response` en `dataset_tags_json` cuando el modelo usado es Sonnet.
 - Limpieza de markdown antes de síntesis TTS (`_clean_text_for_tts`).
 - Draft persistente en textarea de la PWA móvil.
