@@ -1,17 +1,32 @@
-"""Tool handler para búsqueda web via DuckDuckGo."""
+"""Tool handler para búsqueda web via DuckDuckGo HTML."""
 from __future__ import annotations
 
 import re
+from urllib.parse import unquote
 
 import httpx
 
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
-_DDG_API_URL = "https://api.duckduckgo.com/"
 _DDG_HTML_URL = "https://html.duckduckgo.com/html/"
+_DDG_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36",
+    "Content-Type": "application/x-www-form-urlencoded",
+}
+_TITLE_RE = re.compile(r'class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>', re.DOTALL)
 _SNIPPET_RE = re.compile(r'class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
+_DDG_URL_RE = re.compile(r"uddg=([^&]+)")
+
+
+def _clean(text: str) -> str:
+    return _TAG_RE.sub("", text).strip()
+
+
+def _decode_ddg_url(raw: str) -> str:
+    m = _DDG_URL_RE.search(raw)
+    return unquote(m.group(1)) if m else raw
 
 
 @tool_handler("web_search")
@@ -27,42 +42,41 @@ def handle_web_search(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.get(
-                _DDG_API_URL,
-                params={
-                    "q": query,
-                    "format": "json",
-                    "no_html": "1",
-                    "skip_disambig": "1",
-                },
-                headers={"User-Agent": "Sity/1.0"},
+        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+            resp = client.post(
+                _DDG_HTML_URL,
+                data={"q": query, "kl": "es-es"},
+                headers=_DDG_HEADERS,
             )
             resp.raise_for_status()
-            data = resp.json()
+            html = resp.text
 
-            results: list[str] = []
+        titles = _TITLE_RE.findall(html)
+        snippets = _SNIPPET_RE.findall(html)
 
-            if data.get("AbstractText"):
-                results.append(f"Resumen: {data['AbstractText']}")
-                if data.get("AbstractURL"):
-                    results.append(f"Fuente: {data['AbstractURL']}")
+        results: list[str] = []
+        for i, raw_snippet in enumerate(snippets[:5]):
+            snippet = _clean(raw_snippet)
+            if not snippet:
+                continue
+            title = _clean(titles[i][1]) if i < len(titles) else ""
+            url = _decode_ddg_url(titles[i][0]) if i < len(titles) else ""
+            entry = f"{len(results) + 1}. {title}\n   {snippet}"
+            if url:
+                entry += f"\n   {url}"
+            results.append(entry)
 
-            for item in data.get("RelatedTopics", [])[:3]:
-                if isinstance(item, dict) and item.get("Text"):
-                    results.append(f"- {item['Text']}")
+        if not results:
+            text = "No se encontraron resultados para esa búsqueda."
+            return ToolExecutionResult(
+                tool_name=ctx.tool_name,
+                ok=True,
+                message="web_search ok: 0 resultados",
+                updated_parameters=[],
+                raw_result={"success": True, "query": query, "text": text},
+            )
 
-            if not results:
-                resp2 = client.get(
-                    _DDG_HTML_URL,
-                    params={"q": query},
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                snippets = _SNIPPET_RE.findall(resp2.text)
-                snippets = [_TAG_RE.sub("", s).strip() for s in snippets[:3]]
-                results = snippets if snippets else ["No se encontraron resultados."]
-
-        text = "\n".join(results)
+        text = f"Resultados de búsqueda para '{query}':\n\n" + "\n\n".join(results)
         return ToolExecutionResult(
             tool_name=ctx.tool_name,
             ok=True,
