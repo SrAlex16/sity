@@ -1633,7 +1633,7 @@ Seguridad:
 ### Completado
 
 ```text
-✓ PWA móvil: cliente web instalable con diseño cyberpunk, accesible via Tailscale.
+✓ PWA móvil: cliente web instalable con diseño cyberpunk, accesible via https://sity.aletm.com.
 ```
 
 ### Quote-reply (responder a mensajes anteriores)
@@ -1660,25 +1660,14 @@ Pendiente:
 ```text
 - IP estática para la Pi: configurar IP fija en el router o via dhcpcd para que
   la dirección no cambie entre reinicios (actualmente la Pi puede cambiar de IP local).
-- Acceso remoto a la UI web completa: actualmente solo el bot de Telegram da acceso
-  externo. La UI web en :5173 no es accesible fuera de la red local sin VPN.
+- Acceso remoto a la UI web completa: resuelto via Cloudflare Tunnel (`sity.aletm.com`).
 ```
 
-### Tailscale / WireGuard
+### Cloudflare Tunnel ✓
 
-Objetivo:
-
-```text
-Acceder a Sity desde fuera de casa sin exponer backend/frontend a internet.
-```
-
-Prioridad:
-
-```text
-1. Tailscale primero.
-2. WireGuard manual como alternativa avanzada.
-3. Evitar port forwarding público.
-```
+Implementado. `cloudflared` mantiene una conexión saliente Pi → Cloudflare.
+El tráfico llega a `sity.aletm.com` desde cualquier red sin abrir puertos.
+Ver `deploy/cloudflared/config.yml.example` y `deploy/caddy/Caddyfile.example`.
 
 ### AdGuard Home
 
@@ -1993,8 +1982,7 @@ primero. Explícitamente fuera de alcance hasta entonces.
 ### Estado actual (2026-06)
 
 Stack: React 18 + TypeScript + Vite + Framer Motion.
-Acceso sin VPN: https://sity.aletm.com (cualquier red, sin Tailscale)
-Acceso con VPN: https://sity.aletm.com (Tailscale activo)
+Acceso: https://sity.aletm.com (cualquier red, sin VPN)
 HTTPS: certificado real de Let's Encrypt via Caddy + DNS challenge Porkbun.
 Túnel: Cloudflare Tunnel (`cloudflared`) — sin abrir puertos en el router.
 
@@ -2029,8 +2017,7 @@ Completado recientemente:
 - Fragmentos TTS vacíos omitidos (guard contra WAV de 0 segundos).
 - Draft persistente en textarea — el texto no enviado se conserva al cambiar de pantalla.
 - ✓ HTTPS sin aviso de seguridad: certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
-- ✓ Dominio propio: `sity.aletm.com` apunta a `100.73.248.0` (Tailscale IP de la Pi).
-- ✓ Acceso sin VPN: Cloudflare Tunnel conecta la Pi con Cloudflare sin abrir puertos.
+- ✓ Dominio propio: `sity.aletm.com` — acceso desde cualquier red via Cloudflare Tunnel.
 - ✓ Acotaciones con asteriscos (`**texto**`): eliminadas en `_clean_text_for_tts` antes de Piper.
 - ✓ Instalable como PWA: "Añadir a pantalla de inicio" en Chrome Android instala
   la app en modo standalone (sin barra de Chrome). Chrome moderno no distingue
@@ -2051,7 +2038,7 @@ cd mobile && npm run dev -- --host
 ```
 
 Acceder desde móvil: https://192.168.0.118:5174 (misma red, mkcert)
-Acceder desde fuera: https://100.73.248.0:5174 (Tailscale activo en ambos dispositivos)
+Acceder desde fuera: https://sity.aletm.com (Cloudflare Tunnel, sin configuración adicional)
 
 ---
 

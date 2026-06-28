@@ -19,11 +19,10 @@ Principios activos:
 Infraestructura activa:
 
 - PWA móvil en `mobile/` con diseño cyberpunk.
-- Acceso sin VPN: Cloudflare Tunnel (`cloudflared`) + `sity.aletm.com`.
+- Acceso: https://sity.aletm.com sin VPN via Cloudflare Tunnel.
 - HTTPS real con certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
 - PWA servida como build estático (`mobile/dist/`) por Caddy.
 - `sity-mobile` (Vite dev server) desactivado en producción.
-- Tailscale instalado en Pi (IP: 100.73.248.0) para acceso local/VPN.
 - Servicios systemd activos: `sity-backend`, `sity-telegram`, `caddy`, `cloudflared`.
 - TTS: asteriscos y markdown eliminados antes de síntesis (`_clean_text_for_tts`).
 

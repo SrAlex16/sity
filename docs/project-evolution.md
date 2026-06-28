@@ -297,9 +297,9 @@ de Porkbun. Este método verifica el dominio añadiendo un registro TXT
 temporal en el DNS en lugar de recibir una petición HTTP desde internet —
 lo que lo hace compatible con redes sin puertos abiertos.
 
-El dominio `sity.aletm.com` apunta a la IP de Tailscale de la Pi
-(`100.73.248.0`), por lo que el acceso requiere Tailscale activo en el
-dispositivo. El certificado es real y válido — Chrome no muestra ningún
+El dominio `sity.aletm.com` se configuró inicialmente con la IP de Tailscale
+de la Pi (`100.73.248.0`), por lo que el acceso requería Tailscale activo en
+el dispositivo. El certificado es real y válido — Chrome no muestra ningún
 aviso de seguridad.
 
 La PWA pasó de servirse con Vite dev server a un build estático de
@@ -315,6 +315,13 @@ del túnel sin necesidad de abrir ningún puerto.
 El DNS de `aletm.com` se migró de los nameservers de Porkbun a Cloudflare,
 manteniendo Porkbun como registrador. Los registros de Vercel (web principal)
 se importaron automáticamente sin interrupción del servicio.
+
+Inicialmente el acceso remoto se implementó con Tailscale, que creaba una red
+privada entre la Pi y el móvil. Funcionaba pero requería tener Tailscale activo
+en el dispositivo — una fricción innecesaria. Al implementar Cloudflare Tunnel,
+Tailscale quedó obsoleto para este caso de uso y se desinstalò. El acceso ahora
+es completamente transparente: https://sity.aletm.com funciona desde cualquier
+red sin configuración adicional en el dispositivo.
 
 ## Mantenimiento de este documento
 

@@ -596,7 +596,7 @@ hacia los servidores de Cloudflare — sin abrir puertos en el router ni necesit
 IP fija. El tráfico fluye: usuario → Cloudflare → túnel → Pi.
 
 **Caddy** actúa como reverse proxy local recibiendo el tráfico del túnel:
-- Puerto 443: HTTPS con certificado Let's Encrypt (para acceso local/Tailscale)
+- Puerto 443: HTTPS con certificado Let's Encrypt (para acceso local directo)
 - Puerto 80: HTTP (para tráfico del túnel de Cloudflare)
 - Renovación automática del certificado via Porkbun DNS challenge
 
@@ -634,8 +634,7 @@ Ubicación: `mobile/` — proyecto independiente, no comparte build con `fronten
 Stack: React 18 + TypeScript + Vite 5 + Framer Motion + CSS custom (sin Tailwind).
 Build de producción en `mobile/dist/`, servido por Caddy.
 
-Acceso remoto: Tailscale (WireGuard). IP Tailscale de la Pi: 100.73.248.0.
-Dominio: `sity.aletm.com`. El móvil y la Pi deben tener Tailscale activo.
+Dominio: `sity.aletm.com`. Accesible desde cualquier red via Cloudflare Tunnel.
 
 Sistema de temas:
 - Variables CSS en theme.css (colores neón, glow, superficies).
