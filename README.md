@@ -2034,6 +2034,9 @@ Completado recientemente:
 - ✓ Dominio propio: `sity.aletm.com` apunta a `100.73.248.0` (Tailscale IP de la Pi).
 - ✓ Acceso sin VPN: Cloudflare Tunnel conecta la Pi con Cloudflare sin abrir puertos.
 - ✓ Acotaciones con asteriscos (`**texto**`): eliminadas en `_clean_text_for_tts` antes de Piper.
+- ✓ Instalable como PWA: "Añadir a pantalla de inicio" en Chrome Android instala
+  la app en modo standalone (sin barra de Chrome). Chrome moderno no distingue
+  entre "Instalar app" y "Añadir a pantalla de inicio" — ambos son equivalentes.
 
 Pendiente:
 - Botón clip (adjuntar archivos): placeholder sin funcionalidad.
