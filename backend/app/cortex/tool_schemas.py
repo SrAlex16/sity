@@ -969,6 +969,29 @@ PERSONALITY_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+WEB_SEARCH_TOOL = {
+    "name": "web_search",
+    "description": (
+        "Busca información actualizada en internet. Úsala cuando el usuario pregunte "
+        "por algo que puede haber cambiado recientemente (noticias, precios, eventos, "
+        "tiempo, personas públicas, software), cuando necesites datos actuales que no "
+        "están en tu historial de conversación, o cuando el usuario lo pida "
+        "explícitamente. NO la uses para conversación general, conocimiento estable "
+        "o cosas que ya sabes con certeza."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "La consulta de búsqueda en español o inglés según convenga."
+            }
+        },
+        "required": ["query"]
+    }
+}
+
+
 SEARCH_CONVERSATION_HISTORY_TOOL = {
     "name": "search_conversation_history",
     "description": (
@@ -1005,6 +1028,7 @@ BASE_TOOLSET: list[dict] = [
     # FILE_AGENT_TOOLSET is added structurally by toolset_selector:
     #   - explicit tool name detected from schemas/registry
     #   - file path detected by message_mentions_file_path
+    WEB_SEARCH_TOOL,
     SEARCH_CONVERSATION_HISTORY_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
@@ -1075,6 +1099,7 @@ SENSES_TOOLSET = [
 ]
 
 ALL_TOOLS = [
+    WEB_SEARCH_TOOL,
     UPDATE_PERSONALITY_SETTINGS_TOOL,
     READ_OWN_TRACE_TOOL,
     READ_RECENT_DEBUG_EVENTS_TOOL,
