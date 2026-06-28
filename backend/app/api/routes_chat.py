@@ -7,7 +7,6 @@ from sqlmodel import Session, col, select
 
 from app.api.schemas import (
     ChatArtifact,
-    ChatHistoryItem,
     ChatMessageItem,
     ChatMessageRequest,
     ChatMessageResponse,
@@ -16,29 +15,20 @@ from app.api.schemas import (
 from app.chat.chat_persistence import (
     DEFAULT_CHAT_SESSION_ID,
     get_or_create_default_chat_session,
-    get_recent_db_messages,
     get_today_token_usage,
-    save_chat_message,
 )
-from app.chat.prompt_context import PromptContextBuilder
 from app.chat.model_router import LocalFlowSignal, ModelUpgradeProposal, clear_proposal, set_proposal
-from app.chat.local_provider_config import resolve_local_provider_model
 from app.chat.pre_ai_flow import ChatPreAIFlow
+from app.chat.ai_turn_prep import build_ai_turn_prep, _should_synthesize  # noqa: F401
 from app.chat.ai_request_builder import (
     build_after_tools_ai_request,
     build_chat_ai_request,
     build_forced_search_request,
     build_planner_ai_request,
 )
-from app.chat.toolset_selector import (
-    history_limit_for_message,
-    message_mentions_file_path,
-    select_toolset_with_metadata,
-)
-from app.chat.routing_decision import build_chat_routing_decision, ProviderMode
+from app.chat.routing_decision import ProviderMode
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.tool_loop_runner import run_tool_loop
-from app.chat.provider_call_runner import ProviderCallRunner
 from app.chat.final_response_builder import build_final_ai_response
 from app.chat.response_factory import (
     local_tool_response,
@@ -52,8 +42,6 @@ from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
 from app.core.refusal_tracker import get_last_refusal
 from app.core.tool_executor import ToolExecutor
-from app.cortex.ai_gateway import AIGateway
-from app.cortex.providers.factory import build_ai_provider
 
 from app.chat.turn_context import build_turn_context
 from app.memory.db import get_session
@@ -189,52 +177,14 @@ def _chat_message_inner(
     if pre_ai_response:
         return pre_ai_response
 
-    runtime_config = pre_ai.runtime_config
-
-    history_limit = history_limit_for_message(request.message)
-    if message_mentions_file_path(request.message):
-        history_limit = 2
-
-    # Compute output_mode once — reused for prompt context AND TTS post-processing.
-    _should_synth = _should_synthesize(ctx.voice_settings.voice_response_mode, request.input_mode)
-    output_mode = "voice" if _should_synth else "text"
-    write_log(level="INFO", module="audio", event="tts_decision",
-              trace_id=ctx.trace_id,
-              payload={"voice_response_mode": ctx.voice_settings.voice_response_mode,
-                       "input_mode": request.input_mode,
-                       "should_synth": _should_synth})
-
-    prompt_context = PromptContextBuilder(
-        get_recent_messages=get_recent_db_messages,
-    ).build(
+    prep = build_ai_turn_prep(
         session=session,
-        message=request.message,
-        history_limit=history_limit,
-        planner_history_limit=4,
-        trace_id=ctx.trace_id,
-        input_mode=request.input_mode,
-        output_mode=output_mode,
-        skip_last_turns=_skip_history_turns,
-    )
-
-    recent_history = prompt_context.recent_history
-    planner_history = prompt_context.planner_history
-    user_message_with_history = prompt_context.user_message_with_history
-    planner_user_message = prompt_context.planner_user_message
-    prior_messages = prompt_context.prior_messages
-    planner_prior_messages = prompt_context.planner_prior_messages
-
-    write_log(
-        level="INFO",
-        module="chat",
-        event="history_injected",
-        trace_id=ctx.trace_id,
-        payload={
-            "session_id": DEFAULT_CHAT_SESSION_ID,
-            "history_limit": history_limit,
-            "history_count": len(recent_history),
-            "planner_history_count": len(planner_history),
-        },
+        request=request,
+        ctx=ctx,
+        strong_model=_strong_model,
+        skip_history_turns=_skip_history_turns,
+        upgrade_context=_upgrade_context,
+        persona_prompt=persona_prompt,
     )
 
     write_log(
@@ -248,98 +198,15 @@ def _chat_message_inner(
         },
     )
 
-    _voice_edit_pct: Optional[float] = None
-    if request.input_mode == "voice" and request.voice_transcript_original:
-        from app.audio.edit_distance import compute_edit_distance_pct
-        _voice_edit_pct = compute_edit_distance_pct(
-            request.voice_transcript_original, request.message
-        )
-        write_log(
-            level="INFO",
-            module="audio",
-            event="voice_input",
-            trace_id=ctx.trace_id,
-            payload={
-                "input_mode": "voice",
-                "edit_distance_pct": _voice_edit_pct,
-                "original_len": len(request.voice_transcript_original),
-                "final_len": len(request.message),
-            },
-        )
-
-    ctx.persistence.save(
-        role="user",
-        text=request.message,
-        trace_id=ctx.trace_id,
-        input_mode=request.input_mode,
-        voice_transcript_original=request.voice_transcript_original,
-        edit_distance_pct=_voice_edit_pct,
-        source_channel=request.source_channel,
-    )
-
-    # Build local provider when SITY_LOCAL_AI_ENABLED=true.
-    # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
-    # SITY_OLLAMA_MODEL must be set explicitly — never use the cloud model as fallback.
-    _local_provider = None
-    if runtime_config.local_ai_enabled:
-        _ollama_model = resolve_local_provider_model(runtime_config)
-        if _ollama_model is None:
-            write_log(
-                level="ERROR",
-                module="chat",
-                event="local_ai_misconfigured",
-                trace_id=ctx.trace_id,
-                payload={
-                    "error_message": "SITY_LOCAL_AI_ENABLED=true but SITY_OLLAMA_MODEL is not configured",
-                    "local_ai_provider": runtime_config.local_ai_provider,
-                },
-            )
-        else:
-            _local_provider = build_ai_provider(
-                runtime_config.local_ai_provider,
-                model=_ollama_model,
-            )
-
-    runner = ProviderCallRunner(
-        AIGateway(config=ctx.config, model_override=_strong_model),
-        local_provider=_local_provider,
-    )
-
-    toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
-    selected_tools = toolset_selection.tools
-
-    # Inject read_own_trace only when dataset_source == "debug_test".
-    if ctx.capture_ctx.dataset_source == "debug_test":
-        from app.cortex.tool_schemas import READ_OWN_TRACE_TOOL
-        if not any(t.get("name") == "read_own_trace" for t in selected_tools):
-            selected_tools = list(selected_tools) + [READ_OWN_TRACE_TOOL]
-
-    # Inject propose_model_upgrade when model_router_enabled, but NOT on strong-model re-runs
-    # (_strong_model is set) to prevent Sonnet from proposing a further upgrade.
-    if ctx.ai_config.get("claude", {}).get("model_router_enabled", False) and not _strong_model:
-        from app.cortex.tool_schemas import PROPOSE_MODEL_UPGRADE_TOOL
-        if not any(t.get("name") == "propose_model_upgrade" for t in selected_tools):
-            selected_tools = list(selected_tools) + [PROPOSE_MODEL_UPGRADE_TOOL]
-
-    routing_decision = build_chat_routing_decision(
-        message=request.message,
-        selection=toolset_selection,
-        local_ai_enabled=runtime_config.local_ai_enabled,
-    )
-
-    write_log(
-        level="INFO",
-        module="chat",
-        event="routing_decision",
-        trace_id=ctx.trace_id,
-        payload={
-            "provider_mode": routing_decision.provider_mode.value,
-            "activated_domains": sorted(toolset_selection.activated_domains),
-            "reasons": toolset_selection.reasons,
-            "local_ai_enabled": routing_decision.local_ai_enabled,
-            "reason": routing_decision.reason,
-        },
-    )
+    user_message_with_history = prep.prompt_context.user_message_with_history
+    planner_user_message = prep.prompt_context.planner_user_message
+    prior_messages = prep.prompt_context.prior_messages
+    planner_prior_messages = prep.prompt_context.planner_prior_messages
+    runner = prep.runner
+    selected_tools = prep.selected_tools
+    routing_decision = prep.routing_decision
+    output_mode = prep.output_mode
+    _should_synth = prep.should_synth
 
     tool_results_for_claude: list[dict] = []
     updated_parameters: list[str] = []
@@ -702,15 +569,6 @@ def _chat_message_inner(
                                    "tts_fragments": _tts_row.tts_fragments})
 
     return chat_result
-
-
-def _should_synthesize(voice_response_mode: str, input_mode: str) -> bool:
-    if voice_response_mode == "always":
-        return True
-    if voice_response_mode == "never":
-        return False
-    # symmetric: only when user input was voice
-    return input_mode == "voice"
 
 
 def _clean_text_for_tts(text: str) -> str:
