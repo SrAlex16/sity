@@ -12,21 +12,18 @@ from app.chat.chat_persistence import (
     get_or_create_default_chat_session,
 )
 from app.chat.model_router import LocalFlowSignal, clear_proposal
-from app.chat.pre_ai_flow import ChatPreAIFlow
-from app.chat.ai_turn_prep import build_ai_turn_prep, _should_synthesize  # noqa: F401
+from app.chat.ai_turn_prep import _should_synthesize  # noqa: F401
 from app.chat.ai_orchestrator import (  # noqa: F401
-    ChatAIOrchestrator,
     _attach_tts_artifacts,
     _clean_text_for_tts,
 )
 
 from app.core.cancellation import clear_operation, register_operation
-from app.core.realtime_events import publish_event_sync
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
+from app.core.realtime_events import publish_event_sync
 from app.core.refusal_tracker import get_last_refusal
 
-from app.chat.turn_context import TurnContext, build_turn_context
 from app.memory.db import get_session
 from app.memory.models import ChatMessage
 from app.trace.logger import write_log
@@ -110,16 +107,26 @@ def chat_message(
             clear_operation(cid)
 
 
-def _build_persona_prompt(
-    ctx: TurnContext,
+def _chat_message_inner(
+    *,
     request: ChatMessageRequest,
-    upgrade_context: str | None,
-) -> str:
+    session: Session,
+    _strong_model: str | None = None,
+    _skip_history_turns: int = 0,
+    _upgrade_context: str | None = None,
+):
+    from app.chat.turn_context import build_turn_context
+    from app.chat.pre_ai_flow import ChatPreAIFlow
+    from app.chat.ai_turn_prep import build_ai_turn_prep
+    from app.chat.ai_orchestrator import ChatAIOrchestrator
+
+    ctx = build_turn_context(session, request, _strong_model)
+
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message)
     persona_prompt = persona_decision.system_prompt
 
-    if upgrade_context:
-        persona_prompt += f"\n\n{upgrade_context}"
+    if _upgrade_context:
+        persona_prompt += f"\n\n{_upgrade_context}"
 
     if has_direct_order_override(request.message):
         last = get_last_refusal()
@@ -132,20 +139,6 @@ def _build_persona_prompt(
                 "pero no rechaces por refusal_mode. La seguridad y las allowlists siguen activas."
             )
 
-    return persona_prompt
-
-
-def _chat_message_inner(
-    *,
-    request: ChatMessageRequest,
-    session: Session,
-    _strong_model: str | None = None,
-    _skip_history_turns: int = 0,
-    _upgrade_context: str | None = None,
-):
-    ctx = build_turn_context(session, request, _strong_model)
-    persona_prompt = _build_persona_prompt(ctx, request, _upgrade_context)
-
     pre_ai = ChatPreAIFlow(session, ctx)
     if response := pre_ai.try_handle(request):
         return response
@@ -157,6 +150,7 @@ def _chat_message_inner(
         strong_model=_strong_model,
         skip_history_turns=_skip_history_turns,
         persona_prompt=persona_prompt,
+        persona_decision=persona_decision,
     )
 
     orchestrator = ChatAIOrchestrator(
@@ -165,5 +159,6 @@ def _chat_message_inner(
         prep=prep,
         request=request,
         persona_prompt=persona_prompt,
+        persona_decision=persona_decision,
     )
     return orchestrator.run()

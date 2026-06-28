@@ -24,6 +24,7 @@ from app.chat.toolset_selector import (
     select_toolset_with_metadata,
 )
 from app.chat.turn_context import TurnContext
+from app.core.persona_engine import PersonaDecision
 from app.core.runtime_config import RuntimeConfig, get_runtime_config
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.providers.factory import build_ai_provider
@@ -50,6 +51,7 @@ class AITurnPrep:
     selected_tools: list[dict]  # type: ignore[type-arg]
     routing_decision: ChatRoutingDecision
     runtime_config: RuntimeConfig
+    persona_decision: PersonaDecision
 
 
 def build_ai_turn_prep(
@@ -59,8 +61,9 @@ def build_ai_turn_prep(
     ctx: TurnContext,
     strong_model: str | None = None,
     skip_history_turns: int = 0,
-    upgrade_context: str | None = None,  # noqa: ARG001 — reserved for Fase 4 ChatOrchestrator
-    persona_prompt: str,  # noqa: ARG001 — reserved for Fase 4 ChatOrchestrator
+    upgrade_context: str | None = None,  # noqa: ARG001
+    persona_prompt: str,  # noqa: ARG001
+    persona_decision: PersonaDecision,
 ) -> AITurnPrep:
     runtime_config = get_runtime_config()
 
@@ -213,4 +216,5 @@ def build_ai_turn_prep(
         selected_tools=selected_tools,
         routing_decision=routing_decision,
         runtime_config=runtime_config,
+        persona_decision=persona_decision,
     )

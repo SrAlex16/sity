@@ -33,7 +33,7 @@ from app.chat.response_guard import has_narrated_search
 from app.chat.routing_decision import ProviderMode
 from app.chat.tool_loop_runner import run_tool_loop
 from app.chat.turn_context import TurnContext
-from app.core.persona_engine import PersonaEngine
+from app.core.persona_engine import PersonaDecision, PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.memory.models import AIUsage, ChatMessage
 from app.trace.logger import write_log
@@ -120,18 +120,14 @@ class ChatAIOrchestrator:
         prep: AITurnPrep,
         request: ChatMessageRequest,
         persona_prompt: str,
+        persona_decision: PersonaDecision,
     ) -> None:
         self.session = session
         self.ctx = ctx
         self.prep = prep
         self.request = request
         self.persona_prompt = persona_prompt
-        # Derive persona_decision for tone_snapshot / refusal_mode.
-        # Override context is already baked into self.persona_prompt; the base
-        # system_prompt here is used for post-tool re-generation and classification.
-        self._persona_decision = PersonaEngine().build_persona_prompt(
-            ctx.personality, request.message
-        )
+        self._persona_decision = persona_decision
 
     def run(self) -> ChatMessageResponse:
         """
