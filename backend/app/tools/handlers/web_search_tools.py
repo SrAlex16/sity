@@ -14,19 +14,15 @@ _DDG_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36",
     "Content-Type": "application/x-www-form-urlencoded",
 }
-_TITLE_RE = re.compile(r'class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>', re.DOTALL)
-_SNIPPET_RE = re.compile(r'class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL)
+_SNIPPET_RE = re.compile(r'<a class="result__snippet" href="([^"]*)">(.*?)</a>', re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
-_DDG_URL_RE = re.compile(r"uddg=([^&]+)")
+_ENTITY_MAP = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'"}
 
 
 def _clean(text: str) -> str:
-    return _TAG_RE.sub("", text).strip()
-
-
-def _decode_ddg_url(raw: str) -> str:
-    m = _DDG_URL_RE.search(raw)
-    return unquote(m.group(1)) if m else raw
+    text = _TAG_RE.sub("", text)
+    text = re.sub(r"&[a-z]+;", lambda m: _ENTITY_MAP.get(m.group(0), m.group(0)), text)
+    return text.strip()
 
 
 @tool_handler("web_search")
@@ -51,32 +47,22 @@ def handle_web_search(ctx: ToolContext) -> ToolExecutionResult:
             resp.raise_for_status()
             html = resp.text
 
-        titles = _TITLE_RE.findall(html)
-        snippets = _SNIPPET_RE.findall(html)
+        matches = _SNIPPET_RE.findall(html)
 
         results: list[str] = []
-        for i, raw_snippet in enumerate(snippets[:5]):
-            snippet = _clean(raw_snippet)
-            if not snippet:
+        for url, snippet in matches:
+            snippet_clean = _clean(snippet)
+            if not snippet_clean or "y.js" in url:
                 continue
-            title = _clean(titles[i][1]) if i < len(titles) else ""
-            url = _decode_ddg_url(titles[i][0]) if i < len(titles) else ""
-            entry = f"{len(results) + 1}. {title}\n   {snippet}"
-            if url:
-                entry += f"\n   {url}"
-            results.append(entry)
+            results.append(f"- {snippet_clean}\n  {url}")
+            if len(results) >= 5:
+                break
 
         if not results:
-            text = "No se encontraron resultados para esa búsqueda."
-            return ToolExecutionResult(
-                tool_name=ctx.tool_name,
-                ok=True,
-                message="web_search ok: 0 resultados",
-                updated_parameters=[],
-                raw_result={"success": True, "query": query, "text": text},
-            )
+            text = "No se encontraron resultados."
+        else:
+            text = f"Resultados para '{query}':\n\n" + "\n\n".join(results)
 
-        text = f"Resultados de búsqueda para '{query}':\n\n" + "\n\n".join(results)
         return ToolExecutionResult(
             tool_name=ctx.tool_name,
             ok=True,

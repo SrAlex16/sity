@@ -16,26 +16,22 @@ def _ctx(query: str = "") -> ToolContext:
     )
 
 
-def _html_with_results(title: str, snippet: str, url: str = "https://example.com") -> str:
-    return (
-        f'<a class="result__a" href="//duckduckgo.com/l/?uddg={url}">{title}</a>'
-        f'<a class="result__snippet">{snippet}</a>'
-    )
+def _snippet_html(snippet: str, url: str = "https://example.com") -> str:
+    return f'<a class="result__snippet" href="{url}">{snippet}</a>'
 
 
-def _mock_post_response(html: str) -> MagicMock:
-    mock_resp = MagicMock()
-    mock_resp.raise_for_status = MagicMock()
-    mock_resp.text = html
-    return mock_resp
-
-
-def _mock_client(html: str = "") -> MagicMock:
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.post.return_value = _mock_post_response(html)
-    return mock_client
+def _mock_client(html: str = "", error: Exception | None = None) -> MagicMock:
+    mc = MagicMock()
+    mc.__enter__ = MagicMock(return_value=mc)
+    mc.__exit__ = MagicMock(return_value=False)
+    if error:
+        mc.post.side_effect = error
+    else:
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.text = html
+        mc.post.return_value = mock_resp
+    return mc
 
 
 def test_web_search_registered() -> None:
@@ -49,21 +45,19 @@ def test_web_search_empty_query_returns_error() -> None:
 
 
 def test_web_search_calls_duckduckgo() -> None:
-    mc = _mock_client(_html_with_results("Python", "Lenguaje de programación."))
+    mc = _mock_client(_snippet_html("Python es un lenguaje de programación."))
 
     with patch("app.tools.handlers.web_search_tools.httpx.Client", return_value=mc):
         result = dispatch_tool(_ctx(query="python lenguaje"))
 
     assert result.ok is True
     call_args = mc.post.call_args
-    called_url = call_args[0][0]
-    called_data = call_args[1]["data"]
-    assert "duckduckgo.com" in called_url
-    assert called_data["q"] == "python lenguaje"
+    assert "duckduckgo.com" in call_args[0][0]
+    assert call_args[1]["data"]["q"] == "python lenguaje"
 
 
 def test_web_search_parses_abstract_text() -> None:
-    html = _html_with_results("Python", "Python es un lenguaje de programación de alto nivel.")
+    html = _snippet_html("Python es un lenguaje de programación de alto nivel.", "https://python.org")
     mc = _mock_client(html)
 
     with patch("app.tools.handlers.web_search_tools.httpx.Client", return_value=mc):
@@ -71,14 +65,26 @@ def test_web_search_parses_abstract_text() -> None:
 
     assert result.ok is True
     assert "Python es un lenguaje" in result.raw_result["text"]
-    assert "Resultados de búsqueda" in result.raw_result["text"]
+    assert "Resultados para" in result.raw_result["text"]
+
+
+def test_web_search_filters_ads() -> None:
+    html = (
+        _snippet_html("Anuncio de algo.", "https://y.js?ad=1")
+        + _snippet_html("Resultado orgánico.", "https://organico.com")
+    )
+    mc = _mock_client(html)
+
+    with patch("app.tools.handlers.web_search_tools.httpx.Client", return_value=mc):
+        result = dispatch_tool(_ctx(query="algo"))
+
+    assert result.ok is True
+    assert "Anuncio" not in result.raw_result["text"]
+    assert "Resultado orgánico" in result.raw_result["text"]
 
 
 def test_web_search_handles_http_error() -> None:
-    mc = MagicMock()
-    mc.__enter__ = MagicMock(return_value=mc)
-    mc.__exit__ = MagicMock(return_value=False)
-    mc.post.side_effect = Exception("connection refused")
+    mc = _mock_client(error=Exception("connection refused"))
 
     with patch("app.tools.handlers.web_search_tools.httpx.Client", return_value=mc):
         result = dispatch_tool(_ctx(query="algo"))
