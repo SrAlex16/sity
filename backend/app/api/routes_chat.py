@@ -21,10 +21,9 @@ from app.chat.chat_persistence import (
     save_chat_message,
 )
 from app.chat.prompt_context import PromptContextBuilder
-from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.model_router import LocalFlowSignal, ModelUpgradeProposal, clear_proposal, set_proposal
 from app.chat.local_provider_config import resolve_local_provider_model
-from app.chat.budget_guard import BudgetGuardContext, ChatBudgetGuard
+from app.chat.pre_ai_flow import ChatPreAIFlow
 from app.chat.ai_request_builder import (
     build_after_tools_ai_request,
     build_chat_ai_request,
@@ -37,7 +36,6 @@ from app.chat.toolset_selector import (
     select_toolset_with_metadata,
 )
 from app.chat.routing_decision import build_chat_routing_decision, ProviderMode
-from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.tool_loop_runner import run_tool_loop
 from app.chat.provider_call_runner import ProviderCallRunner
@@ -48,9 +46,7 @@ from app.chat.response_factory import (
 )
 from app.chat.response_guard import has_narrated_search
 
-from app.actions.confirmation_manager import ConfirmationManager
 from app.core.cancellation import clear_operation, register_operation
-from app.core.runtime_config import get_runtime_config
 from app.core.realtime_events import publish_event_sync
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
@@ -188,47 +184,12 @@ def _chat_message_inner(
                 "pero no rechaces por refusal_mode. La seguridad y las allowlists siguen activas."
             )
 
-    confirmation_manager = ConfirmationManager(session)
-    local_flow = ChatLocalFlow(confirmation_manager)
+    pre_ai = ChatPreAIFlow(session, ctx)
+    pre_ai_response = pre_ai.try_handle(request)
+    if pre_ai_response:
+        return pre_ai_response
 
-    _local_ctx = LocalFlowContext(
-        session=session,
-        trace_id=ctx.trace_id,
-        message=request.message,
-        daily_budget=ctx.daily_budget,
-        warnings=[],
-        save_message=ctx.persistence.save,
-        get_usage=get_today_token_usage,
-    )
-
-    local_response = local_flow.try_handle(_local_ctx)
-    if local_response:
-        return local_response
-
-    pending_action = confirmation_manager.find_pending_action_by_confirmation(request.message)
-
-    if not pending_action:
-        pending_action = confirmation_manager.find_pending_action_by_context(request.message)
-
-    if pending_action:
-        _par = PendingActionRunner(confirmation_manager)
-        return _par.run(pending_action, _local_ctx)
-
-    runtime_config = get_runtime_config()
-
-    budget_response = ChatBudgetGuard().try_handle(
-        BudgetGuardContext(
-            session=session,
-            trace_id=ctx.trace_id,
-            message=request.message,
-            daily_budget=ctx.daily_budget,
-            runtime_config=runtime_config,
-            save_message=ctx.persistence.save,
-            get_usage=get_today_token_usage,
-        )
-    )
-    if budget_response:
-        return budget_response
+    runtime_config = pre_ai.runtime_config
 
     history_limit = history_limit_for_message(request.message)
     if message_mentions_file_path(request.message):
