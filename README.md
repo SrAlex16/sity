@@ -1331,18 +1331,21 @@ El ChatOrchestrator puede extraerse cuando se diseñe la interfaz.
 
 ### 7. CI/CD y testing
 
-Pendiente:
+Completado:
+- Integración mock en CI (integration-mock job en GitHub Actions)
+- Test de smoke para Telegram bot — cubierto por test_telegram_adapter.py
+  y test_telegram_gateway.py (326 + 224 líneas, sin llamadas reales a API)
+- Test de smoke para TTS pipeline end-to-end — cubierto por test_tts.py
+  (506 líneas, Piper mockeado con subprocess.run)
+- Lint / type check automático — mypy en CI (step "Type check" en backend-local)
+- Tests de integración del tool loop — ver punto 6 ✓
 
-```text
-- Integración mock en CI (ya corre integration-mock en GitHub Actions)
-- Test de smoke para Telegram bot (sin llamadas reales)
-- Test de smoke para TTS pipeline end-to-end con mock provider
-- Lint / type check automático del backend (mypy o pyright)
+Pendiente:
 - Cobertura de test para routes_chat.py tras extraer ChatOrchestrator
+  (pendiente del punto 1)
 - STT: evaluar modelos faster-whisper `medium` o `large-v3` cuando se mejore
   el hardware, o cuantización `int8` del modelo `small` para reducir latencia
   en Pi manteniendo precisión
-```
 
 ### 8. Traducción entrada/salida al inglés para LLM local
 

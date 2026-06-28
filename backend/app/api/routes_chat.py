@@ -30,7 +30,6 @@ from app.chat.ai_request_builder import (
     build_chat_ai_request,
     build_forced_search_request,
     build_planner_ai_request,
-    max_tokens_for_verbosity,
 )
 from app.chat.toolset_selector import (
     history_limit_for_message,
@@ -60,13 +59,10 @@ from app.core.tool_executor import ToolExecutor
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.providers.factory import build_ai_provider
 
-from app.chat.turn_persistence import ChatTurnPersistence
+from app.chat.turn_context import build_turn_context
 from app.memory.db import get_session
 from app.memory.models import AIUsage, ChatMessage
-from app.training.dataset_capture import DatasetCaptureService
-from app.settings.config_loader import load_default_config
-from app.settings.settings_service import SettingsService
-from app.trace.logger import new_trace_id, write_log
+from app.trace.logger import write_log
 from app.trace.redaction import redact_tool_call_input
 
 
@@ -173,28 +169,9 @@ def _chat_message_inner(
     _skip_history_turns: int = 0,
     _upgrade_context: str | None = None,
 ):
-    trace_id = new_trace_id()
-    config = load_default_config()
-    settings_service = SettingsService(session)
-    personality = settings_service.get_personality()
+    ctx = build_turn_context(session, request, _strong_model)
 
-    # Read capture context once per turn; build role-specific metadata from it.
-    _capture_svc = DatasetCaptureService(session)
-    _capture_ctx = _capture_svc.get()
-    persistence = ChatTurnPersistence(session, _capture_ctx, _capture_svc)
-
-    write_log(
-        level="INFO",
-        module="chat",
-        event="user_message_received",
-        trace_id=trace_id,
-        payload={
-            "message_length": len(request.message),
-            "history_items": len(request.history),
-        },
-    )
-
-    persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
+    persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message)
     persona_prompt = persona_decision.system_prompt
 
     if _upgrade_context:
@@ -211,29 +188,16 @@ def _chat_message_inner(
                 "pero no rechaces por refusal_mode. La seguridad y las allowlists siguen activas."
             )
 
-    ai_config = config.get("ai", {})
-    usage_config = config.get("usage", {})
-
-    configured_max_tokens = int(ai_config.get("claude", {}).get("max_tokens", 1500))
-    verbosity_level = float(personality.get("verbosity_level", 0.45))
-    max_tokens = max_tokens_for_verbosity(
-        verbosity_level=verbosity_level,
-        configured_max_tokens=configured_max_tokens,
-    )
-    daily_budget = int(usage_config.get("daily_token_budget", 1000000))
-    warning_threshold = float(usage_config.get("warning_threshold", 0.80))
-    critical_threshold = float(usage_config.get("critical_threshold", 0.95))
-
     confirmation_manager = ConfirmationManager(session)
     local_flow = ChatLocalFlow(confirmation_manager)
 
     _local_ctx = LocalFlowContext(
         session=session,
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         message=request.message,
-        daily_budget=daily_budget,
+        daily_budget=ctx.daily_budget,
         warnings=[],
-        save_message=persistence.save,
+        save_message=ctx.persistence.save,
         get_usage=get_today_token_usage,
     )
 
@@ -255,11 +219,11 @@ def _chat_message_inner(
     budget_response = ChatBudgetGuard().try_handle(
         BudgetGuardContext(
             session=session,
-            trace_id=trace_id,
+            trace_id=ctx.trace_id,
             message=request.message,
-            daily_budget=daily_budget,
+            daily_budget=ctx.daily_budget,
             runtime_config=runtime_config,
-            save_message=persistence.save,
+            save_message=ctx.persistence.save,
             get_usage=get_today_token_usage,
         )
     )
@@ -271,12 +235,11 @@ def _chat_message_inner(
         history_limit = 2
 
     # Compute output_mode once — reused for prompt context AND TTS post-processing.
-    voice_settings = settings_service.get_voice_settings()
-    _should_synth = _should_synthesize(voice_settings.voice_response_mode, request.input_mode)
+    _should_synth = _should_synthesize(ctx.voice_settings.voice_response_mode, request.input_mode)
     output_mode = "voice" if _should_synth else "text"
     write_log(level="INFO", module="audio", event="tts_decision",
-              trace_id=trace_id,
-              payload={"voice_response_mode": voice_settings.voice_response_mode,
+              trace_id=ctx.trace_id,
+              payload={"voice_response_mode": ctx.voice_settings.voice_response_mode,
                        "input_mode": request.input_mode,
                        "should_synth": _should_synth})
 
@@ -287,7 +250,7 @@ def _chat_message_inner(
         message=request.message,
         history_limit=history_limit,
         planner_history_limit=4,
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         input_mode=request.input_mode,
         output_mode=output_mode,
         skip_last_turns=_skip_history_turns,
@@ -304,7 +267,7 @@ def _chat_message_inner(
         level="INFO",
         module="chat",
         event="history_injected",
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         payload={
             "session_id": DEFAULT_CHAT_SESSION_ID,
             "history_limit": history_limit,
@@ -317,9 +280,9 @@ def _chat_message_inner(
         level="INFO",
         module="core",
         event="persona_context_built",
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         payload={
-            "personality": personality,
+            "personality": ctx.personality,
             "refusal_mode": persona_decision.refusal_mode,
         },
     )
@@ -334,7 +297,7 @@ def _chat_message_inner(
             level="INFO",
             module="audio",
             event="voice_input",
-            trace_id=trace_id,
+            trace_id=ctx.trace_id,
             payload={
                 "input_mode": "voice",
                 "edit_distance_pct": _voice_edit_pct,
@@ -343,10 +306,10 @@ def _chat_message_inner(
             },
         )
 
-    persistence.save(
+    ctx.persistence.save(
         role="user",
         text=request.message,
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         input_mode=request.input_mode,
         voice_transcript_original=request.voice_transcript_original,
         edit_distance_pct=_voice_edit_pct,
@@ -364,7 +327,7 @@ def _chat_message_inner(
                 level="ERROR",
                 module="chat",
                 event="local_ai_misconfigured",
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 payload={
                     "error_message": "SITY_LOCAL_AI_ENABLED=true but SITY_OLLAMA_MODEL is not configured",
                     "local_ai_provider": runtime_config.local_ai_provider,
@@ -377,7 +340,7 @@ def _chat_message_inner(
             )
 
     runner = ProviderCallRunner(
-        AIGateway(config=config, model_override=_strong_model),
+        AIGateway(config=ctx.config, model_override=_strong_model),
         local_provider=_local_provider,
     )
 
@@ -385,14 +348,14 @@ def _chat_message_inner(
     selected_tools = toolset_selection.tools
 
     # Inject read_own_trace only when dataset_source == "debug_test".
-    if _capture_ctx.dataset_source == "debug_test":
+    if ctx.capture_ctx.dataset_source == "debug_test":
         from app.cortex.tool_schemas import READ_OWN_TRACE_TOOL
         if not any(t.get("name") == "read_own_trace" for t in selected_tools):
             selected_tools = list(selected_tools) + [READ_OWN_TRACE_TOOL]
 
     # Inject propose_model_upgrade when model_router_enabled, but NOT on strong-model re-runs
     # (_strong_model is set) to prevent Sonnet from proposing a further upgrade.
-    if ai_config.get("claude", {}).get("model_router_enabled", False) and not _strong_model:
+    if ctx.ai_config.get("claude", {}).get("model_router_enabled", False) and not _strong_model:
         from app.cortex.tool_schemas import PROPOSE_MODEL_UPGRADE_TOOL
         if not any(t.get("name") == "propose_model_upgrade" for t in selected_tools):
             selected_tools = list(selected_tools) + [PROPOSE_MODEL_UPGRADE_TOOL]
@@ -407,7 +370,7 @@ def _chat_message_inner(
         level="INFO",
         module="chat",
         event="routing_decision",
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         payload={
             "provider_mode": routing_decision.provider_mode.value,
             "activated_domains": sorted(toolset_selection.activated_domains),
@@ -429,21 +392,21 @@ def _chat_message_inner(
         # provider_unavailable / provider_error errors flow through
         # build_final_ai_response as controlled (ok=False) responses.
         local_persona_prompt = PersonaEngine().build_local_persona_prompt(
-            personality, request.message
+            ctx.personality, request.message
         )
         response = runner.run_local_chat(
             build_chat_ai_request(
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 persona_prompt=local_persona_prompt,
                 user_message=user_message_with_history,
-                max_tokens=max_tokens,
+                max_tokens=ctx.max_tokens,
                 prior_messages=prior_messages,
             )
         )
     else:
         # cloud_chat or cloud_tools: planner decides tool selection.
         planner_request = build_planner_ai_request(
-            trace_id=trace_id,
+            trace_id=ctx.trace_id,
             user_message=planner_user_message,
             tools=selected_tools,
             prior_messages=planner_prior_messages,
@@ -453,13 +416,13 @@ def _chat_message_inner(
             level="INFO",
             module="cortex",
             event="ai_call_started",
-            trace_id=trace_id,
+            trace_id=ctx.trace_id,
             payload={
                 "provider": "anthropic",
                 "model": runner._gateway.provider.model,
                 "task_type": "action_planner",
                 "max_tokens": 500,
-                "verbosity_level": verbosity_level,
+                "verbosity_level": float(ctx.personality.get("verbosity_level", 0.45)),
             },
         )
 
@@ -469,7 +432,7 @@ def _chat_message_inner(
             level="INFO",
             module="cortex",
             event="ai_response_received",
-            trace_id=trace_id,
+            trace_id=ctx.trace_id,
             payload={
                 "text_length": len(planner_response.text or ""),
                 "tool_calls_count": len(planner_response.tool_calls),
@@ -492,10 +455,10 @@ def _chat_message_inner(
         if first_tool.name == "no_action_required":
             response = runner.run_chat(
                 build_chat_ai_request(
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     persona_prompt=persona_prompt,
                     user_message=user_message_with_history,
-                    max_tokens=max_tokens,
+                    max_tokens=ctx.max_tokens,
                     prior_messages=prior_messages,
                 )
             )
@@ -506,12 +469,12 @@ def _chat_message_inner(
                     level="WARN",
                     module="chat",
                     event="narrated_search_without_tool_call",
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     payload={"text_snippet": response.text[:200]},
                 )
                 _forced_plan = runner.run_planner(
                     build_forced_search_request(
-                        trace_id=trace_id,
+                        trace_id=ctx.trace_id,
                         user_message=planner_user_message,
                         tools=selected_tools,
                         prior_messages=planner_prior_messages,
@@ -521,16 +484,16 @@ def _chat_message_inner(
                     _guard_loop = run_tool_loop(
                         planner_response=_forced_plan,
                         executor=ToolExecutor(session),
-                        trace_id=trace_id,
+                        trace_id=ctx.trace_id,
                         client_turn_id=request.client_turn_id,
                     )
                     if not _guard_loop.early_kind and _guard_loop.tool_results_for_claude:
                         _guard_after = runner.run_after_tools(
                             request=build_after_tools_ai_request(
-                                trace_id=trace_id,
+                                trace_id=ctx.trace_id,
                                 persona_prompt=persona_prompt,
                                 user_message=user_message_with_history,
-                                max_tokens=max(max_tokens, 700),
+                                max_tokens=max(ctx.max_tokens, 700),
                                 tools=selected_tools,
                                 prior_messages=prior_messages,
                             ),
@@ -556,7 +519,7 @@ def _chat_message_inner(
             response.latency_ms += planner_response.latency_ms
         elif first_tool.name == "propose_model_upgrade":
             _reason = str(first_tool.input.get("reason", "")).strip()
-            _strong = ai_config.get("claude", {}).get("strong_model", "claude-sonnet-4-6")
+            _strong = ctx.ai_config.get("claude", {}).get("strong_model", "claude-sonnet-4-6")
             set_proposal(ModelUpgradeProposal(
                 original_message=request.message,
                 strong_model=_strong,
@@ -568,12 +531,12 @@ def _chat_message_inner(
             )
             _snap = build_budget_snapshot(
                 daily_used=get_today_token_usage(session),
-                daily_budget=daily_budget,
-                warning_threshold=warning_threshold,
-                critical_threshold=critical_threshold,
+                daily_budget=ctx.daily_budget,
+                warning_threshold=ctx.warning_threshold,
+                critical_threshold=ctx.critical_threshold,
             )
             _usage_row = AIUsage(
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 session_id=None,
                 provider=planner_response.provider,
                 model=planner_response.model,
@@ -589,12 +552,12 @@ def _chat_message_inner(
             session.add(_usage_row)
             session.commit()
             write_log(level="INFO", module="chat", event="model_upgrade_proposed",
-                      trace_id=trace_id,
+                      trace_id=ctx.trace_id,
                       payload={"reason": _reason, "strong_model": _strong})
-            persistence.save(role="sity", text=_proposal_text, trace_id=trace_id,
+            ctx.persistence.save(role="sity", text=_proposal_text, trace_id=ctx.trace_id,
                              tone_meta=json.dumps(persona_decision.tone_snapshot))
             return local_tool_response(
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 text=_proposal_text,
                 model="model-router",
                 planner_input_tokens=planner_response.usage.input_tokens,
@@ -609,13 +572,13 @@ def _chat_message_inner(
             _loop = run_tool_loop(
                 planner_response=planner_response,
                 executor=executor,
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 client_turn_id=request.client_turn_id,
             )
 
             if _loop.early_kind == "local_final":
                 _usage_row = AIUsage(
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     session_id=None,
                     provider=planner_response.provider,
                     model=planner_response.model,
@@ -633,21 +596,21 @@ def _chat_message_inner(
 
                 _snap = build_budget_snapshot(
                     daily_used=get_today_token_usage(session),
-                    daily_budget=daily_budget,
-                    warning_threshold=warning_threshold,
-                    critical_threshold=critical_threshold,
+                    daily_budget=ctx.daily_budget,
+                    warning_threshold=ctx.warning_threshold,
+                    critical_threshold=ctx.critical_threshold,
                 )
                 write_log(
                     level="INFO",
                     module="cortex",
                     event="local_tool_response",
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     payload={"tool": _loop.early_tool_name, "model": _loop.local_model},
                 )
-                persistence.save(role="sity", text=_loop.local_text, trace_id=trace_id,
+                ctx.persistence.save(role="sity", text=_loop.local_text, trace_id=ctx.trace_id,
                                  tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return local_tool_response(
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     text=_loop.local_text,
                     model=_loop.local_model,
                     planner_input_tokens=planner_response.usage.input_tokens,
@@ -659,28 +622,28 @@ def _chat_message_inner(
                 )
 
             if _loop.early_kind in ("sensor_cancelled", "sensor_finished"):
-                _personality_dict = personality if isinstance(personality, dict) else {}
+                _personality_dict = ctx.personality if isinstance(ctx.personality, dict) else {}
                 _react_text = runner.run_micro_reaction(
                     event_type=_loop.sensor_event_type,
                     event_description=_loop.sensor_description,
                     personality=_personality_dict,
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                 )
                 write_log(
                     level="AUDIT",
                     module="senses",
                     event=_loop.sensor_event_type,
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     payload={"tool": _loop.early_tool_name},
                     audit=True,
                 )
-                persistence.save(role="sity", text=_react_text, trace_id=trace_id,
+                ctx.persistence.save(role="sity", text=_react_text, trace_id=ctx.trace_id,
                                  tone_meta=json.dumps(persona_decision.tone_snapshot))
                 return micro_reaction_response(
-                    trace_id=trace_id,
+                    trace_id=ctx.trace_id,
                     text=_react_text,
                     daily_used=get_today_token_usage(session),
-                    daily_budget=daily_budget,
+                    daily_budget=ctx.daily_budget,
                     artifacts=_loop.sensor_artifacts,
                 )
 
@@ -693,23 +656,23 @@ def _chat_message_inner(
                 level="INFO",
                 module="tools",
                 event="tool_results_ready",
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 payload={
                     "updated_parameters": updated_parameters,
                     "tool_results_count": len(tool_results_for_claude),
                 },
             )
 
-            personality = settings_service.get_personality()
-            persona_decision = PersonaEngine().build_persona_prompt(personality, request.message)
+            ctx.personality = ctx.settings_service.get_personality()
+            persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message)
 
     if tool_results_for_claude:
         response_after_tools = runner.run_after_tools(
             request=build_after_tools_ai_request(
-                trace_id=trace_id,
+                trace_id=ctx.trace_id,
                 persona_prompt=persona_decision.system_prompt,
                 user_message=user_message_with_history,
-                max_tokens=max(max_tokens, 700),
+                max_tokens=max(ctx.max_tokens, 700),
                 tools=selected_tools,
                 prior_messages=prior_messages,
             ),
@@ -732,16 +695,16 @@ def _chat_message_inner(
         response.error_type = response_after_tools.error_type
         response.error_message = response_after_tools.error_message
 
-    persistence.tag_sity_with_model(response.model)
+    ctx.persistence.tag_sity_with_model(response.model)
     chat_result = build_final_ai_response(
         session=session,
-        trace_id=trace_id,
+        trace_id=ctx.trace_id,
         response=response,
-        daily_budget=daily_budget,
-        warning_threshold=warning_threshold,
-        critical_threshold=critical_threshold,
+        daily_budget=ctx.daily_budget,
+        warning_threshold=ctx.warning_threshold,
+        critical_threshold=ctx.critical_threshold,
         get_today_token_usage=get_today_token_usage,
-        save_message=persistence.save,
+        save_message=ctx.persistence.save,
         refusal_mode=persona_decision.refusal_mode,
         user_message=request.message,
         updated_parameters=updated_parameters,
@@ -756,14 +719,14 @@ def _chat_message_inner(
         tts_result = _attach_tts_artifacts(
             result=chat_result,
             text=chat_result.text,
-            voice_settings=voice_settings,
-            trace_id=trace_id,
+            voice_settings=ctx.voice_settings,
+            trace_id=ctx.trace_id,
         )
         if tts_result is not None:
             n_fragments, audio_filename = tts_result
             _tts_row = session.exec(
                 select(ChatMessage).where(
-                    ChatMessage.trace_id == trace_id,
+                    ChatMessage.trace_id == ctx.trace_id,
                     ChatMessage.role == "sity",
                 )
             ).first()
@@ -773,7 +736,7 @@ def _chat_message_inner(
                 session.add(_tts_row)
                 session.commit()
                 write_log(level="INFO", module="audio", event="tts_db_committed",
-                          trace_id=trace_id,
+                          trace_id=ctx.trace_id,
                           payload={"audio_filename": _tts_row.audio_filename,
                                    "tts_fragments": _tts_row.tts_fragments})
 
