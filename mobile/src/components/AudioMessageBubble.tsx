@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { AudioChatMessage } from '../hooks/useChat';
 import styles from './AudioMessageBubble.module.css';
 
@@ -221,7 +223,7 @@ export function AudioMessageBubble({
 
             <AnimatePresence>
               {showTranscript && (
-                <motion.p
+                <motion.div
                   className={styles.transcriptText}
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -229,8 +231,10 @@ export function AudioMessageBubble({
                   transition={{ duration: 0.2 }}
                   style={{ overflow: 'hidden' }}
                 >
-                  {message.transcript}
-                </motion.p>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {message.transcript}
+                  </ReactMarkdown>
+                </motion.div>
               )}
             </AnimatePresence>
           </>

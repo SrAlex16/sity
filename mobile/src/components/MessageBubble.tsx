@@ -1,4 +1,6 @@
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { TextChatMessage } from '../hooks/useChat';
 import styles from './MessageBubble.module.css';
 
@@ -33,7 +35,58 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div
         className={`${styles.bubble} ${isUser ? styles.bubbleUser : styles.bubbleSity} ${message.isError ? styles.bubbleError : ''}`}
       >
-        <p className={styles.text}>{message.text}</p>
+        <div className={styles.text}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--neon-cyan)', textDecoration: 'underline' }}
+                >
+                  {children}
+                </a>
+              ),
+              code: ({ children }) => (
+                <code style={{
+                  background: 'rgba(0,0,0,0.4)',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.9em',
+                }}>
+                  {children}
+                </code>
+              ),
+              pre: ({ children }) => (
+                <pre style={{
+                  background: 'rgba(0,0,0,0.4)',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  overflowX: 'auto',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.85em',
+                  border: '1px solid var(--color-border)',
+                }}>
+                  {children}
+                </pre>
+              ),
+              p: ({ children }) => (
+                <p style={{ margin: '0 0 8px 0' }}>{children}</p>
+              ),
+              ul: ({ children }) => (
+                <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>{children}</ul>
+              ),
+              ol: ({ children }) => (
+                <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>{children}</ol>
+              ),
+            }}
+          >
+            {message.text}
+          </ReactMarkdown>
+        </div>
       </div>
       <span className={styles.timestamp}>{formatTimestamp(message.timestamp)}</span>
     </motion.div>
