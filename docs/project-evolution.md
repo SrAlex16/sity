@@ -267,6 +267,24 @@ por modelo al exportar datos de fine-tuning — ya que incluir respuestas de
 Sonnet en el dataset de Haiku podría introducir un estilo que Haiku no puede
 replicar.
 
+## Refactor del ChatOrchestrator
+
+El archivo más crítico del backend, `routes_chat.py`, acumuló durante meses
+toda la lógica de orquestación del chat: setup, flujos locales, historial,
+toolset, planner, tool loop, TTS. Llegó a 862 líneas.
+
+El refactor se hizo en cuatro fases incrementales, con 877 tests en verde y
+0 errores de mypy en cada paso:
+
+- Fase 1: `TurnContext` — setup state extraído
+- Fase 2: `ChatPreAIFlow` — early returns pre-AI extraídos
+- Fase 3: `AITurnPrep` — preparación del contexto AI extraída
+- Fase 4: `ChatAIOrchestrator` — flujo AI completo extraído
+
+Resultado: `routes_chat.py` pasó de 862 a 164 líneas. La lógica vive ahora
+en módulos con responsabilidades claras, cubiertos por tests, y con tipos
+verificados por mypy en CI.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

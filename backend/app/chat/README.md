@@ -452,6 +452,10 @@ artifacts.py
 chat_persistence.py         — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages, get_today_token_usage, get_or_create_default_chat_session (2026-06-17)
 turn_persistence.py         — ChatTurnPersistence: encapsula save_chat_message con metadatos de capture por turno (2026-06-17)
 model_router.py             — singleton ModelUpgradeProposal, propuesta de upgrade de modelo (2026-06-28)
+turn_context.py             — TurnContext dataclass + build_turn_context() (2026-06-28)
+pre_ai_flow.py              — ChatPreAIFlow: pre-AI gates (2026-06-28)
+ai_turn_prep.py             — AITurnPrep + build_ai_turn_prep() (2026-06-28)
+ai_orchestrator.py          — ChatAIOrchestrator.run() (2026-06-28)
 ```
 
 Esquemas extraídos a `backend/app/api/schemas.py` (2026-06-17):
@@ -469,17 +473,4 @@ _cancel_pending_action eliminado de ToolExecutor (código muerto tras migración
 memory_tools.py: handler search_conversation_history → MemoryRecallRunner
 ```
 
-Pendiente de extraer, pero no todavía:
-
-```text
-provider/tool loop
-final response assembly completo
-provider abstraction
-ChatOrchestrator
-```
-
-Motivo:
-
-```text
-El tool loop necesita tests de integración antes de moverlo.
-```
+Objetivo alcanzado: `routes_chat.py` = 164 líneas. Solo entrypoint HTTP.

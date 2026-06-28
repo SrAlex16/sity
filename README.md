@@ -1239,34 +1239,28 @@ curl -X POST http://localhost:8000/chat/message \
 
 ## Roadmap próximo técnico
 
-### 1. Seguir adelgazando `routes_chat.py`
+### 1. Seguir adelgazando `routes_chat.py` ✓
 
-Extraídos (✓ completado):
+Completado. `routes_chat.py`: 862 → 164 líneas (−81%).
+
+Módulos extraídos:
 
 ```text
-response_factory.py      — construcción de ChatMessageResponse
-budget_snapshot.py       — ratio/warnings post-llamada
-tool_loop_step.py        — normalización de una tool call
-tool_loop_runner.py      — iteración del tool loop completo
-ai_request_builder.py    — construcción de AIRequest por fase
-provider_call_runner.py  — wrapper semántico sobre AIGateway
+response_factory.py       — construcción de ChatMessageResponse
+budget_snapshot.py        — ratio/warnings post-llamada
+tool_loop_step.py         — normalización de una tool call
+tool_loop_runner.py       — iteración del tool loop completo
+ai_request_builder.py     — construcción de AIRequest por fase
+provider_call_runner.py   — wrapper semántico sobre AIGateway
 final_response_builder.py — cierre de respuesta AI final
+turn_context.py           — setup state (trace_id, config, personality, budget, persistence)
+pre_ai_flow.py            — pre-AI gates (local_flow, pending_action, budget_guard)
+ai_turn_prep.py           — AI context setup (output_mode, PromptContext, runner, toolset, routing)
+ai_orchestrator.py        — AI execution (planner, tools, early returns, TTS)
 ```
 
-`routes_chat.py`: 757 → 543 líneas (−214).
-
-Lo que queda en `routes_chat.py`:
-orquestación del flujo AI principal (planner → tool loop → after_tools),
-early returns (local_final, sensor_*), y el flujo local/budget anterior al provider.
-
-Objetivo final cuando la orquestación esté suficientemente clara:
-
-```python
-@router.post("/message")
-async def chat_message(request, session):
-    orchestrator = ChatOrchestrator(session)
-    return await orchestrator.handle(request)
-```
+`routes_chat.py` es ahora solo el entrypoint HTTP + orquestación delgada.
+El objetivo final está alcanzado.
 
 ### 2. ToolExecutor registry ✓
 

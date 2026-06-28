@@ -32,7 +32,8 @@ Estado actual:
 - `ToolsetSelector` estructural: evitar routing/intención con listas duras de lenguaje natural.
 - `BASE_TOOLSET` incluye file tools, `no_action_required` y `search_conversation_history`.
 - `cancel_pending_action` expuesto solo por señal estructural (`act_xxxxxxxx`).
-- `routes_chat.py` refactorizado en módulos de `backend/app/chat/` (868 → 730 líneas, 801 tests). Últimos extraídos (2026-06-17): `has_narrated_search` → `response_guard.py`, `chat_persistence.py`, `turn_persistence.py`, esquemas de petición/respuesta → `schemas.py`.
+- `routes_chat.py` refactorizado: 862 → 164 líneas (−81%). Lógica en 4 módulos nuevos (2026-06-28): `turn_context`, `pre_ai_flow`, `ai_turn_prep`, `ai_orchestrator`. 877 tests en verde, 0 errores mypy.
+- mypy en CI: 0 errores de tipos en `backend/app/`.
 - Frontend modularizado: shell `App.tsx`, hook `useChat`, tabs y APIs separadas.
 - AbortController añadido en frontend.
 - TimeContext añadido para que Sity pueda reaccionar al paso del tiempo por turno.

@@ -274,36 +274,57 @@ tokens:
 
 ### Módulos `backend/app/chat/`
 
-El paquete `chat/` contiene lógica de orquestación extraída de `routes_chat.py`. `routes_chat.py` es una capa HTTP fina; toda la lógica de negocio va en módulos pequeños y testeables.
+El paquete `chat/` contiene lógica de orquestación extraída de `routes_chat.py`. `routes_chat.py` es una capa HTTP fina (164 líneas); toda la lógica de negocio vive en módulos pequeños y testeables.
 
 ```text
-budget_guard.py          — guards locales (SITY_LOCAL_ONLY, hard cap)
-local_flow.py            — respuestas locales pre-AI (confirmaciones, expirados, ambigüedad)
-pending_action_runner.py — ejecución de acciones pendientes confirmadas
-toolset_selector.py      — selección de toolset y history_limit
-prompt_context.py        — prior_messages, user_message_with_history, contexto de memoria
-ai_request_builder.py    — builders de AIRequest para chat, planner, after_tools
-provider_call_runner.py  — ProviderCallRunner: run_chat, run_planner, run_after_tools
-tool_loop_runner.py      — run_tool_loop → ToolLoopRunOutcome
-tool_loop_step.py        — run_tool_loop_step → ToolLoopStepOutcome
+budget_guard.py           — guards locales (SITY_LOCAL_ONLY, hard cap)
+local_flow.py             — respuestas locales pre-AI (confirmaciones, expirados, ambigüedad)
+pending_action_runner.py  — ejecución de acciones pendientes confirmadas
+toolset_selector.py       — selección de toolset y history_limit
+prompt_context.py         — prior_messages, user_message_with_history, contexto de memoria
+ai_request_builder.py     — builders de AIRequest para chat, planner, after_tools
+provider_call_runner.py   — ProviderCallRunner: run_chat, run_planner, run_after_tools
+tool_loop_runner.py       — run_tool_loop → ToolLoopRunOutcome
+tool_loop_step.py         — run_tool_loop_step → ToolLoopStepOutcome
 final_response_builder.py — AIUsage + ResponseGuard + save + budget snapshot + respuesta
-response_factory.py      — constructores de ChatMessageResponse (local_tool_response, etc.)
-budget_snapshot.py       — BudgetSnapshot (daily_used, daily_ratio, warnings)
-response_guard.py        — ResponseGuard.validate_final_text() + has_narrated_search()
-artifacts.py             — helper ChatArtifact desde ruta de archivo
-routing_decision.py      — ProviderMode, build_chat_routing_decision()
-chat_persistence.py      — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages,
-                           get_today_token_usage, get_or_create_default_chat_session
-turn_persistence.py      — ChatTurnPersistence: encapsula save_chat_message con metadatos de
-                           capture por turno (reemplaza closure _save_with_capture)
+response_factory.py       — constructores de ChatMessageResponse (local_tool_response, etc.)
+budget_snapshot.py        — BudgetSnapshot (daily_used, daily_ratio, warnings)
+response_guard.py         — ResponseGuard.validate_final_text() + has_narrated_search()
+artifacts.py              — helper ChatArtifact desde ruta de archivo
+routing_decision.py       — ProviderMode, build_chat_routing_decision()
+chat_persistence.py       — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages,
+                            get_today_token_usage, get_or_create_default_chat_session
+turn_persistence.py       — ChatTurnPersistence: encapsula save_chat_message con metadatos de
+                            capture por turno (reemplaza closure _save_with_capture)
+turn_context.py           — TurnContext dataclass + build_turn_context() (setup state por turno)
+pre_ai_flow.py            — ChatPreAIFlow: tres early returns pre-AI (local_flow, pending_action,
+                            budget_guard)
+ai_turn_prep.py           — AITurnPrep dataclass + build_ai_turn_prep() (output_mode, historial,
+                            toolset, routing, ProviderCallRunner, PersonaDecision)
+ai_orchestrator.py        — ChatAIOrchestrator.run(): flujo AI completo (planner, tool loop,
+                            early returns, after_tools, TTS)
 ```
 
-**Pendiente de extraer** (requiere tests de integración previos):
-```text
-provider/tool loop completo
-final response assembly completo
-ChatOrchestrator
-```
+## Arquitectura del flujo de chat
+
+El flujo de un mensaje entrante pasa por cinco módulos en `backend/app/chat/`:
+
+1. **`turn_context.py`** — `build_turn_context()`: agrupa el estado inicial
+   del turno (trace_id, config, personalidad, presupuesto, persistence).
+
+2. **`pre_ai_flow.py`** — `ChatPreAIFlow.try_handle()`: tres early returns
+   antes de llamar al AI (local_flow, pending_action, budget_guard).
+
+3. **`ai_turn_prep.py`** — `build_ai_turn_prep()`: prepara el contexto AI
+   (output_mode, historial, toolset, routing decision, ProviderCallRunner).
+
+4. **`ai_orchestrator.py`** — `ChatAIOrchestrator.run()`: ejecuta el flujo AI
+   completo (planner, tool loop, early returns, after_tools, TTS).
+
+5. **`routes_chat.py`** — entrypoint HTTP (164 líneas). Construye los cuatro
+   objetos anteriores y los encadena. Maneja el model_upgrade_accepted rerun.
+
+Reducción total: 862 → 164 líneas en `routes_chat.py` (−81%).
 
 ## Arquitectura objetivo ampliada
 
