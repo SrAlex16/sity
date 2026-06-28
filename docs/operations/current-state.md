@@ -23,7 +23,7 @@ Infraestructura activa:
 - HTTPS real con certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
 - PWA servida como build estático (`mobile/dist/`) por Caddy.
 - `sity-mobile` (Vite dev server) desactivado en producción.
-- Servicios systemd activos: `sity-backend`, `sity-telegram`, `caddy`, `cloudflared`.
+- Servicios systemd activos: `sity-backend`, `caddy`, `cloudflared`.
 - TTS: asteriscos y markdown eliminados antes de síntesis (`_clean_text_for_tts`).
 
 ## Backend y frontend
@@ -52,7 +52,7 @@ Estado actual:
 - Dataset Capture Mode: etiquetado de mensajes nuevos para dataset. Persistido en `Setting` table.
 - DatasetStats: módulo puro `backend/app/training/dataset_stats.py`. Endpoint `GET /debug/dataset-stats`.
 - Pestaña Dataset en el frontend: Dataset Capture + DatasetStats.
-- Audio STT: `faster-whisper` local, modelo `small` (mejorado desde `base`), `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y soporte de mensajes de voz en Telegram.
+- Audio STT: `faster-whisper` local, modelo `small` (mejorado desde `base`), `POST /audio/transcribe`, metadata `input_mode`/`voice_transcript_original`/`edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab y PWA móvil.
 - Model Router semi-automático: Haiku propone cambiar a Sonnet para tareas complejas; el usuario confirma con sí/no. Activado con `ai.claude.model_router_enabled: true`.
 - Prompt caching: system prompt + tools + historial cacheados (cache_read:
   ~5885 tokens/turno). Campos `cache_creation_tokens` y `cache_read_tokens`
@@ -62,11 +62,10 @@ Estado actual:
 - Draft persistente en textarea de la PWA móvil.
 - Audio TTS: Piper TTS con binario en el venv (`Path(sys.executable).parent / "piper"`). `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino vía `_SPEAKER_NAME_MAP` y flag `--speaker`. `voice_response_mode`, `voice_include_text`, `voice_long_response_action`, `audio_cleanup_days` persistidas en `Setting`.
 - Audio TTS persistido: con `persist_tts: true` en config, los archivos `.wav` se guardan en `data/audio/` con nombre estable. `ChatMessage.audio_filename` guarda el nombre del primer fragmento. `GET /audio/stored/{filename}` los sirve. `POST /audio/cleanup` borra archivos más viejos que `cleanup_days` días (se ejecuta al arrancar). `GET /chat/current` devuelve `audio_filename` en cada `ChatMessageItem`; la PWA reconstruye burbujas de audio históricas sin recargar desde URLs efímeras.
-- `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend/PWA (burbuja sin texto si hay audio artifacts y `voice_include_text == false`).
+- `voice_include_text` respetado en frontend/PWA (burbuja sin texto si hay audio artifacts y `voice_include_text == false`).
 - `output_mode` y `tts_fragments` en `ChatMessage`: persisten el modo de salida y el número de fragmentos TTS sintetizados por turno.
 - Fragmentos TTS vacíos omitidos antes de sintetizar (guard contra WAV de 0 segundos cuando una frase queda vacía tras split).
-- `source_channel` en `ChatMessage`: `"web"` por defecto; `"telegram"` cuando el origen es el bot. Propagado desde `ChatMessageRequest` y heredado por la respuesta de Sity.
-- Telegram bot: proceso independiente con long polling, `sity-telegram.service`, allowlist por `chat_id`, rate limit, comandos `/preset` `/defaults` `/status`. Logs con `trace_id` para todas las fases de artifact (download, send). `SityGateway` incluye `"source_channel": "telegram"` en cada POST.
+- `source_channel` en `ChatMessage`: `"web"` por defecto. Propagado desde `ChatMessageRequest` y heredado por la respuesta de Sity.
 - Campo de texto del chat: `<textarea>` con auto-resize hasta 8 líneas (`maxHeight: 12rem`), Shift+Enter inserta salto de línea, Enter envía, scrollbar nativa oculta (Firefox y Chrome).
 - Timestamps en mensajes: cada burbuja muestra `created_at` como HH:MM (hoy), "Ayer HH:MM" (ayer) o "D mes HH:MM" (días anteriores).
 - Presupuesto diario de tokens: configurable en `config/default_config.yaml` sección `usage.daily_token_budget`. Override por env `SITY_DAILY_TOKEN_HARD_CAP`. Reset a medianoche hora local del servidor (no UTC). Fallback: 1 000 000 tokens/día.

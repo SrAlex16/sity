@@ -410,28 +410,3 @@ def test_save_chat_message_sity_inherits_source_channel(db_session: Session) -> 
     assert row.source_channel == "telegram"
 
 
-def test_gateway_send_message_includes_telegram_channel() -> None:
-    """SityGateway.send_message must include source_channel='telegram' in the body."""
-    import asyncio
-    from unittest.mock import AsyncMock, MagicMock, patch
-    from app.messaging.gateway import SityGateway
-
-    captured_body: dict = {}
-
-    async def fake_post(url, *, json, **kwargs):
-        captured_body.update(json)
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.json = MagicMock(return_value={"ok": True, "text": "ok", "artifacts": []})
-        return mock_resp
-
-    gw = SityGateway()
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(side_effect=fake_post)
-        mock_client_cls.return_value = mock_client
-        asyncio.run(gw.send_message("hola"))
-
-    assert captured_body.get("source_channel") == "telegram"

@@ -94,12 +94,11 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Contexto estructural de memoria inyectado en `planner_user_message` cada turno: `total_messages`, `visible_history_count`, `history_limit`, `long_memory_tool_available`.
 - Búsqueda proactiva de memoria cuando `n_total > history_limit`: inyecta bloque `[MEMORIA RELEVANTE]` antes de llamar al planner.
 - Filtrado de mensajes operativos en contexto prev/next de resultados de búsqueda.
-- Audio STT: `faster-whisper` local (modelo `small`, español, CPU). `POST /audio/transcribe`. Metadata `input_mode`, `voice_transcript_original`, `edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab. Soporte de mensajes de voz en Telegram.
+- Audio STT: `faster-whisper` local (modelo `small`, español, CPU). `POST /audio/transcribe`. Metadata `input_mode`, `voice_transcript_original`, `edit_distance_pct` en `ChatMessage`. Botón de micrófono en ChatTab.
 - Audio TTS: Piper TTS local. `POST /audio/synthesize`, `GET /audio/tts/{filename}`. Speaker femenino por `_SPEAKER_NAME_MAP` + `--speaker` flag. `voice_response_mode`, `voice_include_text`, `voice_long_response_action` en tab Voice.
-- `voice_include_text` respetado en Telegram (texto omitido si false) y en frontend (burbuja sin texto si hay audio y `voice_include_text == false`).
+- `voice_include_text` respetado en frontend (burbuja sin texto si hay audio y `voice_include_text == false`).
 - `output_mode` y `tts_fragments` en `ChatMessage`: modo de salida del turno y número de fragmentos TTS sintetizados.
-- `source_channel` en `ChatMessage`: `"web"` por defecto; `"telegram"` cuando el origen es el bot. Heredado por la respuesta de Sity.
-- Telegram bot: long polling, `sity-telegram.service`, allowlist por `chat_id`, rate limit, comandos `/preset /defaults /status`. Logs con `trace_id` en todas las fases de artifact. `SityGateway` incluye `"source_channel": "telegram"` en cada POST.
+- `source_channel` en `ChatMessage`: `"web"` por defecto. Heredado por la respuesta de Sity.
 - PWA móvil (mobile/) con diseño cyberpunk/neón.
 - Chat funcional conectado al backend real.
 - Grabación y envío de audio como nota de voz desde móvil.
@@ -1327,10 +1326,8 @@ El ChatOrchestrator puede extraerse cuando se diseñe la interfaz.
 
 Completado:
 - Integración mock en CI (integration-mock job en GitHub Actions)
-- Test de smoke para Telegram bot — cubierto por test_telegram_adapter.py
-  y test_telegram_gateway.py (326 + 224 líneas, sin llamadas reales a API)
 - Test de smoke para TTS pipeline end-to-end — cubierto por test_tts.py
-  (506 líneas, Piper mockeado con subprocess.run)
+  (Piper mockeado con subprocess.run)
 - Lint / type check automático — mypy en CI (step "Type check" en backend-local)
 - Tests de integración del tool loop — ver punto 6 ✓
 
@@ -1563,7 +1560,7 @@ Implementado:
 ✓ voice_response_mode / voice_include_text / voice_long_response_action
 ✓ Botón de micrófono en ChatTab
 ✓ Reproductor de audio en burbujas de Sity
-✓ voice_include_text respetado en frontend y Telegram
+✓ voice_include_text respetado en frontend
 ✓ output_mode y tts_fragments persistidos en ChatMessage
 ```
 
@@ -1582,52 +1579,12 @@ Pendiente:
 
 ## Roadmap Messaging Gateway
 
-Objetivo:
+Estado actual:
 
 ```text
-Hablar con Sity desde fuera de la UI web.
-```
-
-Canales:
-
-```text
-Telegram Bot primero
-WhatsApp Web bridge solo si es estable
-OpenClaw/bridges como experimento aislado
-Meta Business/Twilio como última opción
-```
-
-Capacidades:
-
-```text
-- texto
-- audio
-- fotos
-- archivos
-- confirmaciones pendientes
-- cancelación de acciones
-```
-
-Arquitectura:
-
-```text
-backend/app/messaging/
-  gateway.py
-  models.py
-  telegram_adapter.py
-  whatsapp_adapter.py
-```
-
-Sity no debe saber si el mensaje viene de web, Telegram o WhatsApp. El core recibe un mensaje normalizado.
-
-Seguridad:
-
-```text
-- allowlist de usuarios/contactos
-- no grupos por defecto
-- confirmación para acciones críticas
-- rate limit
-- audit log
+El acceso remoto se resuelve via PWA móvil instalable (https://sity.aletm.com) + Cloudflare Tunnel.
+El bot de Telegram fue eliminado (2026-06-28): añadía complejidad operativa sin ventaja real
+sobre la PWA, que corre en cualquier dispositivo sin instalación nativa.
 ```
 
 ### Completado
@@ -1651,8 +1608,8 @@ mientras el canal principal sea voz.
 ### Acceso actual
 
 ```text
-✓ Telegram bot: acceso remoto por texto y voz desde fuera de la red local.
-  Long polling, sity-telegram.service, allowlist por chat_id, rate limit.
+✓ PWA móvil + Cloudflare Tunnel: acceso remoto desde cualquier dispositivo sin VPN.
+  https://sity.aletm.com, HTTPS via Caddy + Let's Encrypt, sin puertos abiertos.
 ```
 
 Pendiente:

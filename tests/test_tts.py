@@ -1,9 +1,7 @@
-"""Tests for TTS pipeline: synthesizer, text splitter, voice settings, chat integration, Telegram."""
+"""Tests for TTS pipeline: synthesizer, text splitter, voice settings, chat integration."""
 from __future__ import annotations
 
-import asyncio
 import sys
-from collections import defaultdict, deque
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -205,120 +203,6 @@ def test_synthesize_returns_wav_bytes():
 
 
 # ---------------------------------------------------------------------------
-# Telegram: handle_chat_message sends audio artifacts
-# ---------------------------------------------------------------------------
-
-pytest.importorskip("telegram", reason="python-telegram-bot not installed")
-
-from app.messaging.models import TelegramConfig
-from app.messaging.gateway import SityGateway
-from app.messaging.telegram_adapter import handle_chat_message
-
-
-def _cfg(allowed: list[int] | None = None) -> TelegramConfig:
-    return TelegramConfig(
-        enabled=True,
-        allowed_chat_ids=allowed if allowed is not None else [1],
-        rate_limit_per_minute=10,
-        log_incoming=False,
-        log_outgoing=False,
-    )
-
-
-def run(coro):
-    return asyncio.run(coro)
-
-
-def test_handle_chat_message_sends_audio_artifact():
-    reply = AsyncMock()
-    reply_audio = AsyncMock()
-    gw = MagicMock(spec=SityGateway)
-    gw.send_message = AsyncMock(return_value={
-        "text": "Aquí tienes.",
-        "ok": True,
-        "trace_id": "t1",
-        "usage": {"total_tokens": 10},
-        "artifacts": [{"type": "audio", "url": "/audio/tts/abc.wav", "filename": "r.wav"}],
-    })
-    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": True})
-    gw.get_tts_artifact = AsyncMock(return_value=b"RIFF" + b"\x00" * 4)
-
-    run(handle_chat_message(
-        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
-        chat_id=1, chat_type="private", text="hola", username="u",
-        reply=reply, reply_audio=reply_audio,
-    ))
-
-    reply.assert_called_once_with("Aquí tienes.")
-    reply_audio.assert_called_once()
-    assert reply_audio.call_args[0][0] == b"RIFF" + b"\x00" * 4
-
-
-def test_handle_chat_message_no_reply_audio_callable_skips_artifacts():
-    reply = AsyncMock()
-    gw = MagicMock(spec=SityGateway)
-    gw.send_message = AsyncMock(return_value={
-        "text": "Texto.",
-        "ok": True,
-        "usage": {},
-        "artifacts": [{"type": "audio", "url": "/audio/tts/x.wav", "filename": "x.wav"}],
-    })
-
-    run(handle_chat_message(
-        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
-        chat_id=1, chat_type="private", text="hola", username="u",
-        reply=reply,
-        # reply_audio not passed → defaults to None
-    ))
-
-    reply.assert_called_once_with("Texto.")
-
-
-def test_handle_chat_message_no_audio_artifacts_skips_reply_audio():
-    reply = AsyncMock()
-    reply_audio = AsyncMock()
-    gw = MagicMock(spec=SityGateway)
-    gw.send_message = AsyncMock(return_value={
-        "text": "Sin audio.",
-        "ok": True,
-        "usage": {},
-        "artifacts": [],
-    })
-
-    run(handle_chat_message(
-        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
-        chat_id=1, chat_type="private", text="hola", username="u",
-        reply=reply, reply_audio=reply_audio,
-    ))
-
-    reply.assert_called_once_with("Sin audio.")
-    reply_audio.assert_not_called()
-
-
-def test_handle_chat_message_artifact_download_error_does_not_crash():
-    reply = AsyncMock()
-    reply_audio = AsyncMock()
-    gw = MagicMock(spec=SityGateway)
-    gw.send_message = AsyncMock(return_value={
-        "text": "Texto.",
-        "ok": True,
-        "usage": {},
-        "artifacts": [{"type": "audio", "url": "/audio/tts/x.wav", "filename": "x.wav"}],
-    })
-    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": True})
-    gw.get_tts_artifact = AsyncMock(side_effect=Exception("network error"))
-
-    run(handle_chat_message(
-        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
-        chat_id=1, chat_type="private", text="hola", username="u",
-        reply=reply, reply_audio=reply_audio,
-    ))
-
-    reply.assert_called_once_with("Texto.")
-    reply_audio.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # output_mode passed to PromptContextBuilder
 # ---------------------------------------------------------------------------
 
@@ -421,57 +305,6 @@ def test_synthesize_to_tmp_unique_filenames():
     assert url2.startswith("/audio/tts/tts_")
     assert url1 != url2, "Each call must generate a unique filename"
 
-
-# ---------------------------------------------------------------------------
-# voice_include_text: True/False in handle_chat_message
-# ---------------------------------------------------------------------------
-
-
-def _response_with_audio() -> dict:
-    return {
-        "text": "Respuesta.",
-        "ok": True,
-        "usage": {"total_tokens": 5},
-        "artifacts": [{"type": "audio", "url": "/audio/tts/abc.wav", "filename": "abc.wav"}],
-    }
-
-
-def test_voice_include_text_true_sends_text_and_audio():
-    """voice_include_text=True → both reply (text) and reply_audio are called."""
-    reply = AsyncMock()
-    reply_audio = AsyncMock()
-    gw = MagicMock(spec=SityGateway)
-    gw.send_message = AsyncMock(return_value=_response_with_audio())
-    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": True})
-    gw.get_tts_artifact = AsyncMock(return_value=b"RIFF" + b"\x00" * 4)
-
-    run(handle_chat_message(
-        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
-        chat_id=1, chat_type="private", text="hola", username="u",
-        reply=reply, reply_audio=reply_audio,
-    ))
-
-    reply.assert_called_once_with("Respuesta.")
-    reply_audio.assert_called_once()
-
-
-def test_voice_include_text_false_sends_audio_only():
-    """voice_include_text=False → reply_audio called, reply (text) NOT called."""
-    reply = AsyncMock()
-    reply_audio = AsyncMock()
-    gw = MagicMock(spec=SityGateway)
-    gw.send_message = AsyncMock(return_value=_response_with_audio())
-    gw.get_voice_settings = AsyncMock(return_value={"voice_include_text": False})
-    gw.get_tts_artifact = AsyncMock(return_value=b"RIFF" + b"\x00" * 4)
-
-    run(handle_chat_message(
-        cfg=_cfg([1]), gateway=gw, rate_buckets=defaultdict(deque),
-        chat_id=1, chat_type="private", text="hola", username="u",
-        reply=reply, reply_audio=reply_audio,
-    ))
-
-    reply.assert_not_called()
-    reply_audio.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

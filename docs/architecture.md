@@ -78,7 +78,7 @@ Modelo STT: `small` (cambiado desde `base` para mejorar precisión con acentos r
 - `POST /audio/transcribe` — recibe `multipart/form-data` con un archivo de audio, devuelve `{ transcript, duration_ms }`. No llama a servicios externos.
 - El modelo se carga de forma perezosa en el primer uso (`WhisperModel` dentro de `get_model()`). Singleton con lock por hilo.
 - `compute_type="int8"` para eficiencia en Raspberry Pi.
-- La ruta es origin-agnostic: la llaman frontend web, Telegram bot, o cualquier cliente futuro.
+- La ruta es origin-agnostic: la llaman frontend web, PWA móvil, o cualquier cliente futuro.
 
 Metadata de voz por mensaje:
 
@@ -195,31 +195,12 @@ mobile/src/components/AudioMessageBubble.tsx — burbuja de audio con player y c
 config/default_config.yaml             — audio.persist_tts, audio.cleanup_days
 ```
 
-Tests: `tests/test_tts.py` — 36 tests, sin llamadas reales a piper ni a Telegram. `tests/test_chat_message_metadata.py` — 30 tests cubriendo output_mode, tts_fragments y source_channel. `tests/test_audio_persistence.py` — 11 tests cubriendo audio_filename DB field, endpoints stored/cleanup, synthesize_to_persistent().
+Tests: `tests/test_tts.py` — 28 tests, sin llamadas reales a piper. `tests/test_chat_message_metadata.py` — 29 tests cubriendo output_mode, tts_fragments y source_channel. `tests/test_audio_persistence.py` — 11 tests cubriendo audio_filename DB field, endpoints stored/cleanup, synthesize_to_persistent().
 
-### Telegram Bot
+### Acceso remoto
 
-Proceso independiente para acceso remoto desde fuera de la red local.
-
-- Long polling, sin webhooks.
-- Corre como servicio systemd (`sity-telegram.service`) con dependencia en `sity-backend.service`.
-- Llama al backend en `localhost:8000` vía HTTP.
-- Lista de `allowed_chat_ids` en `config/telegram.yaml` — mensajes de otros chat_ids se ignoran silenciosamente.
-- Rate limit por chat_id (ventana de 60 segundos).
-
-Comandos: `/start`, `/help`, `/preset <modo>`, `/defaults`, `/status`.
-
-Archivos:
-
-```text
-backend/app/messaging/models.py        — TelegramConfig + is_rate_limited()
-backend/app/messaging/gateway.py       — SityGateway (httpx async)
-backend/app/messaging/telegram_adapter.py — bot, handlers, _build_app(), main()
-config/telegram.yaml                   — config (token en .env)
-deploy/systemd/sity-telegram.service   — unidad systemd
-```
-
-No expone el backend a internet. El token se lee de `TELEGRAM_BOT_TOKEN` en `.env`.
+El acceso remoto se resuelve con PWA + Cloudflare Tunnel (ver sección Infraestructura).
+El bot de Telegram fue eliminado en 2026-06-28.
 
 ### Tools
 
@@ -528,7 +509,7 @@ Campos de canal y modo de salida:
 - `input_mode: "text" | "voice"` — canal de entrada del turno.
 - `output_mode: "text" | "voice"` — modo de salida del turno. `"voice"` si se sintetizó TTS.
 - `tts_fragments: Optional[int]` — número de fragmentos de audio sintetizados. `None` si no hubo TTS (texto puro, `text_only` con respuesta larga, o error de síntesis).
-- `source_channel: "web" | "telegram"` — canal de origen del mensaje. Se propaga desde `ChatMessageRequest.source_channel` (default `"web"`). El bot de Telegram envía siempre `"telegram"`. La respuesta de Sity hereda el mismo valor del turno.
+- `source_channel: "web"` — canal de origen del mensaje. Se propaga desde `ChatMessageRequest.source_channel` (default `"web"`). La respuesta de Sity hereda el mismo valor del turno.
 
 Esta metadata **no se inyecta en el prompt de Sity**. Es invisible para el modelo en tiempo de inferencia.
 
@@ -611,7 +592,6 @@ Archivos de configuración:
 | Servicio       | Puerto  | Descripción                         |
 |----------------|---------|-------------------------------------|
 | sity-backend   | 8000    | FastAPI + uvicorn                   |
-| sity-telegram  | —       | Bot Telegram (long polling)         |
 | caddy          | 443/80  | Reverse proxy + TLS                 |
 | cloudflared    | —       | Túnel Cloudflare (acceso sin VPN)   |
 

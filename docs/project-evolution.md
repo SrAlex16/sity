@@ -323,6 +323,27 @@ Tailscale quedó obsoleto para este caso de uso y se desinstalò. El acceso ahor
 es completamente transparente: https://sity.aletm.com funciona desde cualquier
 red sin configuración adicional en el dispositivo.
 
+## Migración de Telegram a PWA móvil
+
+El bot de Telegram fue la primera solución de acceso remoto: permitía enviar
+mensajes de texto y voz a Sity desde fuera de la red local sin abrir puertos,
+usando long polling y una allowlist de `chat_id`. Corría como servicio systemd
+independiente (`sity-telegram.service`) y llamaba al backend en localhost.
+
+La llegada de la PWA móvil + Cloudflare Tunnel cambió el balance: la PWA ofrece
+acceso desde cualquier dispositivo con navegador, con la misma UX que el cliente
+de escritorio y sin necesidad de instalar nada. El túnel elimina la necesidad de
+VPN o puertos abiertos. Con ese acceso resuelto, el bot de Telegram añadía
+complejidad (proceso adicional, dependencia de `python-telegram-bot`, gestión de
+tokens, tests específicos) sin ventaja funcional real.
+
+El bot fue eliminado en 2026-06-28:
+- `backend/app/messaging/` — eliminado
+- `deploy/systemd/sity-telegram.service` — eliminado
+- `tests/test_telegram_adapter.py`, `test_telegram_gateway.py`, `test_telegram_voice.py` — eliminados
+- Sección Telegram en `tests/test_tts.py` y `tests/test_chat_message_metadata.py` — eliminada
+- `python-telegram-bot` — eliminado de `requirements.txt`
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

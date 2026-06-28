@@ -19,7 +19,6 @@ pillow==12.2.0
 psutil==7.2.2
 faster-whisper>=1.0.0
 python-multipart>=0.0.9
-python-telegram-bot==22.8
 pluggy==1.6.0
 pydantic==2.13.4
 pydantic-settings==2.14.1
