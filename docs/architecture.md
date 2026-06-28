@@ -589,39 +589,33 @@ Testing debe cubrir:
 
 ### Acceso y HTTPS
 
-La Pi es accesible desde cualquier dispositivo con Tailscale activo mediante
-el dominio `sity.aletm.com` (registro A apuntando a `100.73.248.0`).
+La PWA es accesible desde cualquier red sin VPN mediante `https://sity.aletm.com`.
 
-**Caddy** actúa como reverse proxy y gestor de certificados:
-- Certificado TLS real de Let's Encrypt via DNS-01 challenge
-- El challenge DNS se resuelve automáticamente via Porkbun API
-  (sin necesidad de abrir puertos en el router)
-- Renovación automática gestionada por Caddy
-- Configuración: `/etc/caddy/Caddyfile`
-- Variables de entorno (API keys): `/etc/caddy/caddy.env` (chmod 600)
-- Servicio: `caddy.service` (systemd, arranca con la Pi)
+**Cloudflare Tunnel** (`cloudflared`) crea una conexión saliente desde la Pi
+hacia los servidores de Cloudflare — sin abrir puertos en el router ni necesitar
+IP fija. El tráfico fluye: usuario → Cloudflare → túnel → Pi.
 
-### Routing de Caddy
+**Caddy** actúa como reverse proxy local recibiendo el tráfico del túnel:
+- Puerto 443: HTTPS con certificado Let's Encrypt (para acceso local/Tailscale)
+- Puerto 80: HTTP (para tráfico del túnel de Cloudflare)
+- Renovación automática del certificado via Porkbun DNS challenge
 
-```
-sity.aletm.com
-├── /chat/*      → proxy → localhost:8000 (FastAPI backend)
-├── /audio/*     → proxy → localhost:8000
-├── /settings/*  → proxy → localhost:8000
-├── /debug/*     → proxy → localhost:8000
-├── /health      → proxy → localhost:8000
-└── /*           → file_server → /home/alex/projects/sity/mobile/dist/
-```
+Archivos de configuración:
+- `/etc/caddy/Caddyfile` — configuración de Caddy
+- `/etc/caddy/caddy.env` — API keys de Porkbun (chmod 600)
+- `/etc/cloudflared/config.yml` — configuración del túnel
+- `/etc/cloudflared/*.json` — credenciales del túnel
 
 ### Servicios systemd activos
 
-| Servicio       | Puerto | Descripción                        |
-|----------------|--------|------------------------------------|
-| sity-backend   | 8000   | FastAPI + uvicorn                  |
-| sity-telegram  | —      | Bot Telegram (long polling)        |
-| caddy          | 443/80 | Reverse proxy + TLS                |
+| Servicio       | Puerto  | Descripción                         |
+|----------------|---------|-------------------------------------|
+| sity-backend   | 8000    | FastAPI + uvicorn                   |
+| sity-telegram  | —       | Bot Telegram (long polling)         |
+| caddy          | 443/80  | Reverse proxy + TLS                 |
+| cloudflared    | —       | Túnel Cloudflare (acceso sin VPN)   |
 
-`sity-mobile` (Vite dev server, puerto 5174) está desactivado en producción.
+`sity-mobile` (Vite dev server) desactivado en producción.
 La PWA se sirve como build estático desde `mobile/dist/`.
 
 ### Actualizar la PWA tras cambios

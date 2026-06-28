@@ -306,6 +306,16 @@ La PWA pasó de servirse con Vite dev server a un build estático de
 producción (`npm run build`) servido directamente por Caddy. El servicio
 `sity-mobile` quedó desactivado.
 
+Para eliminar el requisito de Tailscale y permitir acceso desde cualquier red
+sin VPN, se configuró Cloudflare Tunnel. `cloudflared` mantiene una conexión
+saliente permanente desde la Pi hacia Cloudflare, que actúa como intermediario.
+El tráfico entra por `sity.aletm.com` en Cloudflare y llega a la Pi a través
+del túnel sin necesidad de abrir ningún puerto.
+
+El DNS de `aletm.com` se migró de los nameservers de Porkbun a Cloudflare,
+manteniendo Porkbun como registrador. Los registros de Vercel (web principal)
+se importaron automáticamente sin interrupción del servicio.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

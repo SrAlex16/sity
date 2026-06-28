@@ -1995,14 +1995,15 @@ primero. Explícitamente fuera de alcance hasta entonces.
 ### Estado actual (2026-06)
 
 Stack: React 18 + TypeScript + Vite + Framer Motion.
-Acceso local: https://sity.aletm.com (misma red, Tailscale activo)
-Acceso remoto: https://sity.aletm.com (datos móviles, Tailscale activo)
-HTTPS: certificado real de Let's Encrypt via Caddy + DNS challenge con Porkbun API.
-Sin aviso de seguridad en Chrome.
+Acceso sin VPN: https://sity.aletm.com (cualquier red, sin Tailscale)
+Acceso con VPN: https://sity.aletm.com (Tailscale activo)
+HTTPS: certificado real de Let's Encrypt via Caddy + DNS challenge Porkbun.
+Túnel: Cloudflare Tunnel (`cloudflared`) — sin abrir puertos en el router.
 
 Infraestructura de producción:
 - Caddy sirve el build estático de `mobile/dist/` (`npm run build`)
 - Caddy hace proxy de `/chat/*`, `/audio/*`, `/settings/*`, `/debug/*`, `/health` al backend
+- Cloudflare Tunnel enruta tráfico externo hacia Caddy en puerto 80
 - `sity-mobile` (Vite dev server) desactivado — no necesario en producción
 - Renovación automática del certificado gestionada por Caddy
 
@@ -2031,12 +2032,10 @@ Completado recientemente:
 - Draft persistente en textarea — el texto no enviado se conserva al cambiar de pantalla.
 - ✓ HTTPS sin aviso de seguridad: certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
 - ✓ Dominio propio: `sity.aletm.com` apunta a `100.73.248.0` (Tailscale IP de la Pi).
+- ✓ Acceso sin VPN: Cloudflare Tunnel conecta la Pi con Cloudflare sin abrir puertos.
+- ✓ Acotaciones con asteriscos (`**texto**`): eliminadas en `_clean_text_for_tts` antes de Piper.
 
 Pendiente:
-- Acotaciones con asteriscos (`**texto**`): Piper lee los asteriscos literalmente.
-  Decidir si eliminar en post-procesado antes de síntesis o si Sity debe
-  evitarlos cuando `voice_response_mode != nunca`. Requiere evaluar impacto en
-  el dataset antes de implementar.
 - Botón clip (adjuntar archivos): placeholder sin funcionalidad.
 - Notificaciones push: avisar cuando Sity responde con app en segundo plano.
 - Selector de fondos predefinidos: sustituir los wallpapers actuales cuando

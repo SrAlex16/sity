@@ -1,0 +1,7 @@
+tunnel: TU_TUNNEL_ID
+credentials-file: /etc/cloudflared/TU_TUNNEL_ID.json
+
+ingress:
+  - hostname: sity.tudominio.com
+    service: http://localhost:80
+  - service: http_status:404

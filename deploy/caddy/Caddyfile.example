@@ -6,22 +6,25 @@
     }
 }
 
-sity.tudominio.com {
-    handle /chat/* {
-        reverse_proxy localhost:8000
+sity.tudominio.com:443 {
+    handle /chat/* { reverse_proxy localhost:8000 }
+    handle /audio/* { reverse_proxy localhost:8000 }
+    handle /settings/* { reverse_proxy localhost:8000 }
+    handle /debug/* { reverse_proxy localhost:8000 }
+    handle /health { reverse_proxy localhost:8000 }
+    handle {
+        root * /home/TU_USUARIO/projects/sity/mobile/dist
+        file_server
+        try_files {path} /index.html
     }
-    handle /audio/* {
-        reverse_proxy localhost:8000
-    }
-    handle /settings/* {
-        reverse_proxy localhost:8000
-    }
-    handle /debug/* {
-        reverse_proxy localhost:8000
-    }
-    handle /health {
-        reverse_proxy localhost:8000
-    }
+}
+
+sity.tudominio.com:80 {
+    handle /chat/* { reverse_proxy localhost:8000 }
+    handle /audio/* { reverse_proxy localhost:8000 }
+    handle /settings/* { reverse_proxy localhost:8000 }
+    handle /debug/* { reverse_proxy localhost:8000 }
+    handle /health { reverse_proxy localhost:8000 }
     handle {
         root * /home/TU_USUARIO/projects/sity/mobile/dist
         file_server

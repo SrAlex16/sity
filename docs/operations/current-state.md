@@ -18,12 +18,14 @@ Principios activos:
 
 Infraestructura activa:
 
-- PWA móvil en `mobile/` con diseño cyberpunk, acceso via Tailscale.
+- PWA móvil en `mobile/` con diseño cyberpunk.
+- Acceso sin VPN: Cloudflare Tunnel (`cloudflared`) + `sity.aletm.com`.
 - HTTPS real con certificado Let's Encrypt via Caddy + Porkbun DNS challenge.
-- Dominio: `sity.aletm.com` (Tailscale requerido, sin abrir puertos en router).
 - PWA servida como build estático (`mobile/dist/`) por Caddy.
 - `sity-mobile` (Vite dev server) desactivado en producción.
-- Tailscale instalado en Pi (IP: 100.73.248.0) para acceso remoto.
+- Tailscale instalado en Pi (IP: 100.73.248.0) para acceso local/VPN.
+- Servicios systemd activos: `sity-backend`, `sity-telegram`, `caddy`, `cloudflared`.
+- TTS: asteriscos y markdown eliminados antes de síntesis (`_clean_text_for_tts`).
 
 ## Backend y frontend
 
@@ -152,7 +154,6 @@ Reglas de DB:
 
 - **Transcripción STT**: el modelo `small` mejora la precisión pero sigue cometiendo errores con acentos andaluces fuertes, elisiones y encadenamiento de palabras. Limitación del modelo, no del código.
 - **Pronunciación de palabras en inglés en TTS**: Piper pronuncia palabras en inglés con acento inglés. Pendiente añadir instrucción en `persona_system.md` para que Sity transcriba fonéticamente las palabras en inglés.
-- **Acotaciones con asteriscos (`**texto**`)**: Piper lee los asteriscos literalmente en modo voz. Pendiente decidir si eliminar en post-procesado o instruir a Sity para evitarlos cuando `voice_response_mode != nunca`.
 
 ### Sistema de memoria
 
