@@ -607,6 +607,26 @@ sudo systemctl reload caddy
 
 ---
 
+## Búsqueda web
+
+Tool `web_search` en `backend/app/tools/handlers/web_search_tools.py`.
+
+Implementación: POST a `https://html.duckduckgo.com/html/` con la query.
+Extrae snippets orgánicos filtrando anuncios (URLs con `y.js`). Devuelve
+hasta 5 resultados con título, snippet y URL.
+
+Sin clave de API, sin publicidad, sin dependencias externas más allá de
+`httpx` (ya en requirements).
+
+Límite de iteraciones: `ai.max_tool_loop_iterations: 3` en config — evita
+bucles infinitos de búsquedas encadenadas.
+
+Cuándo la usa Sity: información que cambia frecuentemente (precios, fechas,
+puntuaciones, noticias, tiempo), cuando no tiene información suficiente sobre
+algo específico, o cuando el usuario lo pide explícitamente.
+
+---
+
 ## PWA móvil
 
 Ubicación: `mobile/` — proyecto independiente, no comparte build con `frontend/`.
@@ -626,6 +646,14 @@ Sistema de temas:
 
 Comunicación con backend: mismos endpoints que el frontend web.
 Campo adicional source_channel: 'mobile' en POST /chat/message.
+
+### Renderizado de markdown
+
+Las burbujas de chat usan `react-markdown` + `remark-gfm` para renderizar:
+- **Negrita** y *cursiva*
+- Listas ordenadas y no ordenadas
+- Bloques de código con fuente monoespaciada
+- Enlaces clicables `[texto](url)` — abren Chrome directamente
 
 ## Model Router
 

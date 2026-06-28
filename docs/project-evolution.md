@@ -344,6 +344,22 @@ El bot fue eliminado en 2026-06-28:
 - Sección Telegram en `tests/test_tts.py` y `tests/test_chat_message_metadata.py` — eliminada
 - `python-telegram-bot` — eliminado de `requirements.txt`
 
+## Búsqueda web y markdown
+
+Se añadió la tool `web_search` para que Sity pueda acceder a información
+actualizada via DuckDuckGo. La implementación usa scraping del HTML de
+DuckDuckGo (sin clave, sin publicidad) extrayendo los snippets orgánicos.
+
+El modelo (Haiku) decide cuándo buscar según la naturaleza de la pregunta —
+no busca en cada turno, solo cuando la información puede estar desactualizada
+o cuando el usuario lo pide. Se añadió un límite de 3 iteraciones en el tool
+loop para evitar bucles de búsquedas encadenadas.
+
+Paralelamente, las burbujas de chat de la PWA pasaron a renderizar markdown
+completo — negrita, listas, código y enlaces clicables. Esto beneficia tanto
+a las respuestas con URLs de búsqueda web como a cualquier respuesta con
+formato enriquecido.
+
 ## Mantenimiento de este documento
 
 Este documento debe actualizarse cuando se cierren hitos relevantes o se tomen

@@ -113,6 +113,10 @@ El objetivo no es solo tener un chatbot, sino una asistente local extensible: ca
 - Acceso remoto via Tailscale desde cualquier red.
 - Navegación entre pantallas con animaciones Framer Motion.
 - Servicio systemd `sity-mobile.service`.
+- Búsqueda web: tool `web_search` via DuckDuckGo HTML (sin clave, sin publicidad).
+  Sity busca automáticamente cuando necesita información actual.
+- Markdown en burbujas: `react-markdown` + `remark-gfm` renderiza negrita, listas,
+  código y enlaces clicables en los mensajes de la PWA.
 
 ### Refactor reciente
 
@@ -1344,6 +1348,35 @@ antes de enviársela al modelo local, y traducir la respuesta de vuelta al espa�
 antes de mostrarla. Requiere un modelo de traducción local o un paso ligero que
 no dispare safeguards. Añade latencia; el coste-beneficio depende del modelo
 final elegido para LoRA.
+
+### 9. Visión (imágenes)
+
+Pendiente. Claude Haiku soporta imágenes nativamente via API. Para el modelo
+local fine-tuneado se necesitará un modelo multimodal (LLaVA, MiniCPM-V) en
+el PC con RTX 3060 Ti via Ollama + Local AI Worker.
+
+Para generar imágenes: Stable Diffusion local o API externa. Apuntado en
+roadmap para cuando el modelo local esté operativo.
+
+### 10. Google (correo, calendario, Drive)
+
+Pendiente. Requiere OAuth2 con Google y tools nuevas en el ToolExecutor.
+Alta utilidad para uso diario — ver historial de emails, eventos del calendario,
+documentos de Drive.
+
+### 11. Domótica
+
+Pendiente. Objetivo: Sity descubre y controla dispositivos inteligentes por sí
+sola sin código hardcodeado por dispositivo — igual que un agente que encuentra
+la API local del dispositivo y se conecta.
+
+Dispositivos disponibles para pruebas:
+- Enchufe Tapo P100 (librería Python `PyP100`, WiFi local)
+- Bombilla Gleco Smart Bulb via Smart Life (protocolo Tuya, `tinytuya`)
+
+Nota de diseño: no implementar integraciones específicas por dispositivo.
+Sity debe poder decir "tengo un Tapo P100, conéctate y enciéndelo" y resolverlo
+sola usando `web_search` + acceso a red local.
 
 ---
 

@@ -69,6 +69,9 @@ Estado actual:
 - Campo de texto del chat: `<textarea>` con auto-resize hasta 8 líneas (`maxHeight: 12rem`), Shift+Enter inserta salto de línea, Enter envía, scrollbar nativa oculta (Firefox y Chrome).
 - Timestamps en mensajes: cada burbuja muestra `created_at` como HH:MM (hoy), "Ayer HH:MM" (ayer) o "D mes HH:MM" (días anteriores).
 - Presupuesto diario de tokens: configurable en `config/default_config.yaml` sección `usage.daily_token_budget`. Override por env `SITY_DAILY_TOKEN_HARD_CAP`. Reset a medianoche hora local del servidor (no UTC). Fallback: 1 000 000 tokens/día.
+- Búsqueda web: tool `web_search` via DuckDuckGo HTML. Sin clave de API.
+- PWA: markdown renderizado en burbujas (`react-markdown` + `remark-gfm`).
+- Tool loop: límite de 3 iteraciones (`ai.max_tool_loop_iterations`).
 
 ## Sistema de memoria (2026-06-04)
 
