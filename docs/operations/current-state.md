@@ -37,7 +37,9 @@ Estado actual:
 - `ToolsetSelector` estructural: evitar routing/intención con listas duras de lenguaje natural.
 - `BASE_TOOLSET` incluye file tools, `no_action_required` y `search_conversation_history`.
 - `cancel_pending_action` expuesto solo por señal estructural (`act_xxxxxxxx`).
-- `routes_chat.py` refactorizado: 862 → 164 líneas (−81%). Lógica en 4 módulos nuevos (2026-06-28): `turn_context`, `pre_ai_flow`, `ai_turn_prep`, `ai_orchestrator`. 877 tests en verde, 0 errores mypy.
+- `routes_chat.py` refactorizado: 862 → 164 líneas (−81%). Lógica en 4 módulos nuevos (2026-06-28): `turn_context`, `pre_ai_flow`, `ai_turn_prep`, `ai_orchestrator`.
+- 891 tests en verde. Cobertura de los módulos del refactor:
+  `test_pre_ai_flow.py`, `test_ai_turn_prep.py`, `test_ai_orchestrator.py`.
 - mypy en CI: 0 errores de tipos en `backend/app/`.
 - Frontend modularizado: shell `App.tsx`, hook `useChat`, tabs y APIs separadas.
 - AbortController añadido en frontend.

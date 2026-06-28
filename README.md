@@ -1335,8 +1335,6 @@ Completado:
 - Tests de integración del tool loop — ver punto 6 ✓
 
 Pendiente:
-- Cobertura de test para routes_chat.py tras extraer ChatOrchestrator
-  (pendiente del punto 1)
 - STT: evaluar modelos faster-whisper `medium` o `large-v3` cuando se mejore
   el hardware, o cuantización `int8` del modelo `small` para reducir latencia
   en Pi manteniendo precisión

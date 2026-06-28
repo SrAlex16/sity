@@ -452,10 +452,10 @@ artifacts.py
 chat_persistence.py         — DEFAULT_CHAT_SESSION_ID, save_chat_message, get_recent_db_messages, get_today_token_usage, get_or_create_default_chat_session (2026-06-17)
 turn_persistence.py         — ChatTurnPersistence: encapsula save_chat_message con metadatos de capture por turno (2026-06-17)
 model_router.py             — singleton ModelUpgradeProposal, propuesta de upgrade de modelo (2026-06-28)
-turn_context.py             — TurnContext dataclass + build_turn_context() (2026-06-28)
-pre_ai_flow.py              — ChatPreAIFlow: pre-AI gates (2026-06-28)
-ai_turn_prep.py             — AITurnPrep + build_ai_turn_prep() (2026-06-28)
-ai_orchestrator.py          — ChatAIOrchestrator.run() (2026-06-28)
+turn_context.py             — TurnContext dataclass + build_turn_context() (2026-06-28) — cubierto indirectamente por integración
+pre_ai_flow.py              — ChatPreAIFlow: pre-AI gates (2026-06-28) — test_pre_ai_flow.py (4 tests)
+ai_turn_prep.py             — AITurnPrep + build_ai_turn_prep() (2026-06-28) — test_ai_turn_prep.py (4 tests, _should_synthesize)
+ai_orchestrator.py          — ChatAIOrchestrator.run() (2026-06-28) — test_ai_orchestrator.py (6 tests)
 ```
 
 Esquemas extraídos a `backend/app/api/schemas.py` (2026-06-17):
