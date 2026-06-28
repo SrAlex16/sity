@@ -139,13 +139,30 @@ def test_empty_tool_calls_produces_normal_outcome() -> None:
 
 
 def test_loop_respects_max_iterations() -> None:
-    """Executor is called exactly once per tool_call — no extra iterations."""
+    """Tool calls beyond max_iterations are silently dropped."""
     n = 5
+    limit = 2
     planner = _make_planner_response(*[f"tool_{i}" for i in range(n)])
     executor = _make_executor(*[({"result": {}}, True, []) for _ in range(n)])
     outcome = run_tool_loop(
         planner_response=planner, executor=executor,
         trace_id="trc_test", client_turn_id=None,
+        max_iterations=limit,
+    )
+    assert outcome.early_kind is None
+    assert executor.execute_tool_call.call_count == limit
+    assert len(outcome.tool_results_for_claude) == limit
+
+
+def test_loop_executes_all_when_within_limit() -> None:
+    """All tool calls run when count is within max_iterations."""
+    n = 3
+    planner = _make_planner_response(*[f"tool_{i}" for i in range(n)])
+    executor = _make_executor(*[({"result": {}}, True, []) for _ in range(n)])
+    outcome = run_tool_loop(
+        planner_response=planner, executor=executor,
+        trace_id="trc_test", client_turn_id=None,
+        max_iterations=5,
     )
     assert outcome.early_kind is None
     assert executor.execute_tool_call.call_count == n

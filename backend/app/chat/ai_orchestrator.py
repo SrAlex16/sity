@@ -272,6 +272,7 @@ class ChatAIOrchestrator:
                             executor=ToolExecutor(session),
                             trace_id=ctx.trace_id,
                             client_turn_id=request.client_turn_id,
+                            max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
                         )
                         if not _guard_loop.early_kind and _guard_loop.tool_results_for_claude:
                             _guard_after = runner.run_after_tools(
@@ -368,6 +369,7 @@ class ChatAIOrchestrator:
                     executor=executor,
                     trace_id=ctx.trace_id,
                     client_turn_id=request.client_turn_id,
+                    max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
                 )
 
                 if _loop.early_kind == "local_final":

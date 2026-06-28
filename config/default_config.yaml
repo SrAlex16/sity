@@ -41,6 +41,7 @@ ai:
   request_timeout_ms: 20000
   max_retries: 1
   max_output_tokens_short: 220
+  max_tool_loop_iterations: 3
   claude:
     model: claude-haiku-4-5-20251001
     strong_model: claude-sonnet-4-6

@@ -51,19 +51,23 @@ class ToolLoopRunOutcome:
     artifacts: list[ChatArtifact]
 
 
+_DEFAULT_MAX_ITERATIONS = 3
+
+
 def run_tool_loop(
     *,
     planner_response: AIResponse,
     executor: ToolExecutor,
     trace_id: str,
     client_turn_id: str | None,
+    max_iterations: int = _DEFAULT_MAX_ITERATIONS,
 ) -> ToolLoopRunOutcome:
     """Run every tool call in planner_response and return a ToolLoopRunOutcome."""
     tool_results_for_claude: list[dict[str, Any]] = []
     updated_parameters: list[str] = []
     artifacts: list[ChatArtifact] = []
 
-    for tool_call in planner_response.tool_calls:
+    for tool_call in planner_response.tool_calls[:max_iterations]:
         step = run_tool_loop_step(
             tool_call=tool_call,
             executor=executor,
