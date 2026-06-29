@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.persona_engine import CRITICAL_KEYWORDS, PersonaEngine, _TEMPLATE_PATH
+from app.core.persona_engine import _refusal_bypass_keywords, PersonaEngine, _TEMPLATE_PATH
 from app.settings.settings_service import CANONICAL_PERSONALITY
 
 
@@ -87,9 +87,9 @@ def test_spot_critical_keywords_block_refusal(engine: PersonaEngine, kw: str) ->
     assert not engine._should_refuse(kw, 1.0), f"Critical keyword {kw!r} must block refusal_mode"
 
 
-@pytest.mark.parametrize("kw", sorted(CRITICAL_KEYWORDS))
+@pytest.mark.parametrize("kw", sorted(_refusal_bypass_keywords))
 def test_all_critical_keywords_block_refusal(engine: PersonaEngine, kw: str) -> None:
-    assert not engine._should_refuse(kw, 1.0), f"CRITICAL_KEYWORD {kw!r} must block refusal_mode"
+    assert not engine._should_refuse(kw, 1.0), f"bypass keyword {kw!r} must block refusal_mode"
 
 
 def test_order_override_blocks_refusal(engine: PersonaEngine) -> None:

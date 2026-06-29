@@ -1,0 +1,26 @@
+refusal:
+  bypass_keywords:
+    - seguridad
+    - privacidad
+    - modo privado
+    - apaga
+    - apagar
+    - borra
+    - borrar
+    - elimina
+    - eliminar
+    - configuración
+    - configuracion
+    - settings
+    - logs
+    - trazas
+    - debug
+    - error
+    - fallo
+    - parámetros
+    - parametros
+    - personalidad
+
+style_thresholds:
+  high: 0.80
+  low: 0.20

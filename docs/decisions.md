@@ -75,6 +75,48 @@ Pendientes:
 - Uptime por servicio
 - Logs on-click en barra de servicios
 
+## 2026-06-29 (sesión 2)
+
+### Refactorización persona_engine — literales hardcodeados
+
+Completado el batch 2 de la auditoría de literales (A3-A6, B5-B6).
+
+**A3 — CRITICAL_KEYWORDS a config**
+La lista de keywords que bypass refusal_mode estaba hardcodeada
+en Python. Movida a config/persona.yaml bajo
+refusal.bypass_keywords. El código lee la lista al
+importar el módulo via load_default_config(). Añadir o quitar una keyword
+ya no requiere tocar código ni reiniciar el backend.
+
+**A4, A5 — Instrucciones de override y refusal a constantes de módulo**
+Los bloques de texto _ORDER_OVERRIDE, _REFUSAL_ACTIVE y
+_REFUSAL_INACTIVE estaban inline en build_persona_prompt().
+Extraídos a constantes de módulo — se cargan una vez al importar.
+La lógica condicional (qué bloque usar) sigue en el método.
+
+**A6 — Directivas de estilo a constantes de módulo**
+29 constantes _DIR_* (path cloud) y 25 constantes _LOC_* (path
+local) extraídas de _build_style_directives y
+_build_local_voice_directives. Los métodos quedan como lógica
+pura (if/elif + append) sin ningún string literal inline.
+
+**B5, B6 — Umbrales de personalidad a config y unificación**
+Los umbrales 0.8/0.2 (cloud) y 0.75/0.25 (local) estaban
+hardcodeados en Python y eran inconsistentes entre paths.
+Unificados en config/persona.yaml bajo
+style_thresholds.high/low (0.80/0.20).
+Ambos paths leen los mismos valores al inicializar el módulo.
+
+### Panel de control — nota operacional
+
+Tras cambios en panel/, el flujo correcto es:
+```
+npm run build    ← compila TypeScript
+npm run package  ← actualiza el binario en release/
+```
+Solo después de `package` el autoarranque (/etc/xdg/autostart/)
+y el icono del escritorio usan el código nuevo.
+
 ## Deuda técnica documentada
 
 ### Fallbacks duplicados en código Python (B3, B8)

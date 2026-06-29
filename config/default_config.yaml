@@ -45,8 +45,6 @@ ai:
   planner_max_tokens: 500
   after_tools_min_tokens: 700
   history_limit_file_path: 2
-  # TODO: style_thresholds.high/low (cloud: 0.80/0.20, local: 0.75/0.25)
-  # Pendiente de mover en sesión de refactorización persona_engine.
   claude:
     model: claude-haiku-4-5-20251001
     strong_model: claude-sonnet-4-6

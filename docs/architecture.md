@@ -490,6 +490,22 @@ Reglas no negociables:
 - Puede protestar, pero no bloquear comandos críticos.
 - No puede negarse a apagar sensores, activar modo privado o borrar memoria si la política lo permite.
 
+### Fuentes de verdad — persona_engine
+
+- **Texto al modelo** (instrucciones, directivas): constantes de
+  módulo en `persona_engine.py` (`_DIR_*`, `_LOC_*`, `_REFUSAL_*`,
+  `_ORDER_OVERRIDE`). Para cambiar el texto que ve el modelo,
+  editar las constantes — no hay lógica de negocio mezclada.
+
+- **Keywords de bypass refusal**: `config/persona.yaml` →
+  `refusal.bypass_keywords`
+
+- **Umbrales de activación de directivas**: `config/persona.yaml` →
+  `style_thresholds.high` / `.low`
+
+- **Valores por defecto de personalidad**: `config/default_config.yaml`
+  → `personality.*`
+
 ## Dataset y pipeline de entrenamiento
 
 Sity usa un único timeline de conversación (`DEFAULT_CHAT_SESSION_ID = "default"`). No hay sesiones separadas para dataset. La separación semántica se hace mediante metadata por mensaje en `ChatMessage`.
