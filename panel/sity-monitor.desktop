@@ -1,5 +1,5 @@
 [Desktop Entry]
 Type=Application
 Name=Sity Monitor
-Exec=/home/alex/projects/sity/panel/dist-electron/sity-monitor
+Exec=/home/alex/projects/sity/panel/release/linux-arm64-unpacked/sity-panel
 StartupNotify=false

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "electron dist-electron/main.js"
+    "start": "electron dist-electron/main.js",
+    "package": "npm run build && electron-builder --linux dir"
   },
   "dependencies": {
     "react": "^18.3.1",
