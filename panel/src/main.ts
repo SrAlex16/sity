@@ -60,31 +60,32 @@ ipcMain.on('window:close', () => mainWindow?.close());
 
 // ---- System metrics ----
 ipcMain.handle('metrics:get', async () => {
-  const [load, mem, nets, disk, temp, procs] = await Promise.all([
+  const [load, mem, nets, disk, temp, procs, cpuInfo] = await Promise.all([
     si.currentLoad(),
     si.mem(),
     si.networkStats(),
     si.disksIO(),
     si.cpuTemperature(),
     si.processes(),
+    si.cpu(),
   ]);
 
   const net = Array.isArray(nets) ? nets[0] : nets;
 
-  console.log('disksIO raw:', JSON.stringify(disk));
-
   return {
     cpu: {
-      load: Math.round(load.currentLoad),
-      temp: Math.round((temp.main as number | null) ?? 0),
+      load:    Math.round(load.currentLoad),
+      temp:    Math.round((temp.main as number | null) ?? 0),
+      cores:   cpuInfo.cores,
+      threads: cpuInfo.cores,
     },
     ram: {
-      used: mem.active,
+      used:  mem.active,
       total: mem.total,
     },
     net: {
-      dl: ((net as any)?.rx_sec ?? 0) * 8 / 1e6,
-      ul: ((net as any)?.tx_sec ?? 0) * 8 / 1e6,
+      dl:    ((net as any)?.rx_sec ?? 0) * 8 / 1e6,
+      ul:    ((net as any)?.tx_sec ?? 0) * 8 / 1e6,
       iface: (net as any)?.iface ?? 'eth0',
     },
     disk: {
@@ -92,18 +93,14 @@ ipcMain.handle('metrics:get', async () => {
       w: Math.round((disk as any).wIO_sec ?? 0),
     },
     processes: procs.list
-      .filter(p =>
-        p.name !== 'ps' &&
-        p.name !== 'sh]' &&
-        p.cpu < 200
-      )
+      .filter(p => p.name !== 'ps' && p.name !== 'sh]' && p.cpu < 200)
       .sort((a, b) => b.cpu - a.cpu)
       .slice(0, 60)
       .map(p => ({
-        name: p.name,
-        pid: p.pid,
-        cpu: p.cpu,
-        ram: Math.round(((p.memRss as number | null) ?? 0) / 1024),
+        name:  p.name,
+        pid:   p.pid,
+        cpu:   p.cpu,
+        ram:   Math.round(((p.memRss as number | null) ?? 0) / 1024),
         state: p.state,
       })),
     processCount: procs.all,
@@ -121,16 +118,26 @@ ipcMain.handle('services:get', async () => {
   };
   return {
     'sity-backend': check('sity-backend'),
-    'caddy': check('caddy'),
-    'cloudflared': check('cloudflared'),
+    'caddy':        check('caddy'),
+    'cloudflared':  check('cloudflared'),
   };
 });
 
 // ---- Service journal log ----
-ipcMain.handle('service:log', async (_event, name: string) => {
+ipcMain.handle('service:log', async (_event: unknown, name: string) => {
   try {
-    return execSync(`journalctl -u ${name} -n 40 --no-pager`, { encoding: 'utf8' });
+    return execSync(`journalctl -u ${name} -n 30 --no-pager`, { encoding: 'utf8' });
   } catch {
     return 'Log unavailable.';
+  }
+});
+
+// ---- Service restart ----
+ipcMain.handle('service:restart', async (_event: unknown, name: string) => {
+  try {
+    execSync(`sudo systemctl restart ${name}`);
+    return 'ok';
+  } catch (e: unknown) {
+    return String(e);
   }
 });

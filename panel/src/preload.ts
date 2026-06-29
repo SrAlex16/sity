@@ -7,7 +7,8 @@ contextBridge.exposeInMainWorld('windowControls', {
 });
 
 contextBridge.exposeInMainWorld('sityAPI', {
-  getMetrics:  ()                  => ipcRenderer.invoke('metrics:get'),
-  getServices: ()                  => ipcRenderer.invoke('services:get'),
-  getLog:      (name: string)      => ipcRenderer.invoke('service:log', name),
+  getMetrics:     ()                  => ipcRenderer.invoke('metrics:get'),
+  getServices:    ()                  => ipcRenderer.invoke('services:get'),
+  getLog:         (name: string)      => ipcRenderer.invoke('service:log', name),
+  restartService: (name: string)      => ipcRenderer.invoke('service:restart', name),
 });

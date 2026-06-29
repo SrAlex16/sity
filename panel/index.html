@@ -39,26 +39,6 @@
       </div>
     </header>
 
-    <!-- ==================== SERVICES BAR ==================== -->
-    <div class="services-bar">
-      <span class="svc-label">SERVICES</span>
-      <div class="svc" id="svc-backend">
-        <span class="svc__dot"></span>
-        <span class="svc__name">sity-backend</span>
-        <span class="svc__status">–</span>
-      </div>
-      <div class="svc" id="svc-caddy">
-        <span class="svc__dot"></span>
-        <span class="svc__name">caddy</span>
-        <span class="svc__status">–</span>
-      </div>
-      <div class="svc" id="svc-cloudflared">
-        <span class="svc__dot"></span>
-        <span class="svc__name">cloudflared</span>
-        <span class="svc__status">–</span>
-      </div>
-    </div>
-
     <!-- ===================== STAT CARDS ===================== -->
     <section class="cards">
 
@@ -98,7 +78,7 @@
         <div class="card__big" id="ram-pct">–</div>
         <canvas class="card__chart" id="chart-ram"></canvas>
         <div class="card__foot">
-          <span>SPEED: <b>LPDDR4</b></span>
+          <span>TYPE: <b>LPDDR4</b></span>
           <span>USED: <b id="ram-used">– MB</b></span>
         </div>
       </article>
@@ -147,7 +127,7 @@
     <section class="panel">
       <div class="panel__head">
         <span class="panel__grip" aria-hidden="true"></span>
-        <h1 class="panel__title" id="panel-title">ACTIVE PROCESSES // SYSTEM-THREAD LIST</h1>
+        <h1 class="panel__title">ACTIVE PROCESSES // SYSTEM-THREAD LIST</h1>
         <span class="panel__deco" aria-hidden="true">
           <i class="hex"></i><i class="hex"></i><i class="hex on"></i><i class="hex"></i><i class="hex on"></i><i class="hex"></i>
         </span>
@@ -159,26 +139,51 @@
           <span>[PROCESS NAME]</span>
           <span>[PID]</span>
           <span>[CPU %]</span>
-          <span>[RAM MB]</span>
+          <span>[RAM (MB)]</span>
           <span>[STATUS]</span>
-          <span>[STATE]</span>
+          <span>[LOCATION]</span>
         </div>
         <div class="proc__list" id="proc-list"><!-- rows injected by renderer.ts --></div>
       </div>
     </section>
   </div>
 
-  <!-- Subtle CRT / vignette overlay -->
-  <div class="overlay" aria-hidden="true"></div>
+  <!-- ===================== ERROR MODAL ===================== -->
+  <div class="modal-backdrop" id="error-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
 
-  <!-- Alert / log overlay -->
-  <div id="alert-overlay" class="alert-overlay">
-    <div class="alert-box">
-      <div class="alert-title" id="alert-title">SERVICE ALERT</div>
-      <pre class="alert-msg" id="alert-msg"></pre>
-      <button class="alert-close" id="alert-close">DISMISS</button>
+      <div class="modal__header">
+        <svg class="modal__warn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <span class="modal__badge">[ ⚠ ] BACKEND_ERROR_DETECTED // STATUS_CRITICAL</span>
+      </div>
+
+      <div class="modal__body">
+        <h2 class="modal__title" id="modal-title">BACKEND SERVICE OFFLINE.</h2>
+        <p class="modal__desc">
+          Connection to <b>sity-backend</b> has been lost.
+          The system may be entering fail-safe mode. Check service status or
+          restart the backend before resuming operations.
+        </p>
+
+        <!-- Trace / log box -->
+        <div class="modal__log" id="modal-log" aria-live="polite" aria-label="System traces">
+          <!-- lines injected dynamically by renderer.ts -->
+        </div>
+      </div>
+
+      <div class="modal__footer">
+        <button class="mbtn mbtn--restart" id="modal-restart">[ RESTART_BACKEND ]</button>
+        <button class="mbtn mbtn--ok"      id="modal-ok">[ OK / CLOSE ]</button>
+      </div>
+
     </div>
   </div>
+
+  <!-- Subtle CRT / vignette overlay -->
+  <div class="overlay" aria-hidden="true"></div>
 
   <script src="dist/renderer.js"></script>
 </body>
