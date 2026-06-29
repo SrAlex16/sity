@@ -3,8 +3,16 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import app.tools.handlers  # noqa: F401 — ensures handlers are registered
 from app.tools.registry import ToolContext, dispatch_tool, has_handler
+
+
+@pytest.fixture(autouse=True)
+def _disable_search_cache(monkeypatch):
+    monkeypatch.setattr("app.tools.handlers.web_search_tools._cache_get", lambda *a, **kw: None)
+    monkeypatch.setattr("app.tools.handlers.web_search_tools._cache_set", lambda *a, **kw: None)
 
 
 def _ctx(query: str = "") -> ToolContext:

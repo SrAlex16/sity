@@ -972,14 +972,12 @@ PERSONALITY_TOOLSET = [
 WEB_SEARCH_TOOL = {
     "name": "web_search",
     "description": (
-        "Busca información actualizada en internet. TIENES acceso a internet "
-        "a través de esta herramienta — úsala directamente sin preguntar. "
-        "Úsala cuando el usuario pregunte por: noticias recientes, fechas de "
-        "eventos o conciertos, precios, tiempo meteorológico, resultados "
-        "deportivos, software reciente, o cualquier cosa que pueda haber "
-        "cambiado. NO digas 'no tengo acceso a internet' — sí lo tienes. "
-        "NO esperes a que el usuario te lo pida — si la pregunta requiere "
-        "información actual, busca directamente."
+        "Busca información actualizada en internet. Úsala cuando el usuario "
+        "pregunte por algo que puede haber cambiado recientemente (noticias, "
+        "precios, eventos, tiempo, personas públicas, software), cuando necesites "
+        "datos actuales que no están en tu historial de conversación, o cuando "
+        "el usuario lo pida explícitamente. NO la uses para conversación general, "
+        "conocimiento estable o cosas que ya sabes con certeza."
     ),
     "input_schema": {
         "type": "object",
@@ -987,9 +985,19 @@ WEB_SEARCH_TOOL = {
             "query": {
                 "type": "string",
                 "description": "La consulta de búsqueda en español o inglés según convenga."
+            },
+            "is_dynamic": {
+                "type": "boolean",
+                "description": (
+                    "True si la información buscada cambia frecuentemente "
+                    "(noticias, precios, resultados deportivos, clima, eventos "
+                    "en curso). False si es información estable (documentación, "
+                    "conceptos, historia, datos que no cambian con el tiempo). "
+                    "Determina cuánto tiempo se cachea el resultado."
+                )
             }
         },
-        "required": ["query"]
+        "required": ["query", "is_dynamic"]
     }
 }
 
