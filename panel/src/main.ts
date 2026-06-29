@@ -11,6 +11,7 @@ function createWindow(): void {
     height: 720,
     minWidth: 980,
     minHeight: 600,
+    fullscreen: true,
     frame: false,
     backgroundColor: '#05070f',
     title: 'System Monitor [RO-01]',
@@ -24,7 +25,10 @@ function createWindow(): void {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    mainWindow?.setFullScreen(true);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -67,6 +71,8 @@ ipcMain.handle('metrics:get', async () => {
 
   const net = Array.isArray(nets) ? nets[0] : nets;
 
+  console.log('disksIO raw:', JSON.stringify(disk));
+
   return {
     cpu: {
       load: Math.round(load.currentLoad),
@@ -82,10 +88,15 @@ ipcMain.handle('metrics:get', async () => {
       iface: (net as any)?.iface ?? 'eth0',
     },
     disk: {
-      r: (disk as any).rIO_sec ?? 0,
-      w: (disk as any).wIO_sec ?? 0,
+      r: Math.round((disk as any).rIO_sec ?? 0),
+      w: Math.round((disk as any).wIO_sec ?? 0),
     },
     processes: procs.list
+      .filter(p =>
+        p.name !== 'ps' &&
+        p.name !== 'sh]' &&
+        p.cpu < 200
+      )
       .sort((a, b) => b.cpu - a.cpu)
       .slice(0, 60)
       .map(p => ({
