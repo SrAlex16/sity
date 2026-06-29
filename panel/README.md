@@ -1,57 +1,64 @@
-# Sity Monitor Panel
+# Sity Monitor — Panel de Control
 
-Electron dashboard for monitoring the Raspberry Pi: CPU, RAM, network, disk, process list, and service status.
+Dashboard de monitorización en tiempo real para la Raspberry Pi 4.
+Estética cyberpunk, datos del sistema reales, integrado en el repo de Sity.
 
-## Prerequisites
+## Stack
+
+- Electron (frameless window, fullscreen al arrancar)
+- TypeScript + CSS puro (sin frameworks)
+- systeminformation — métricas de CPU, RAM, red, disco y procesos
+- IPC seguro: contextIsolation activado, nodeIntegration desactivado
+
+## Funcionalidades
+
+- CPU: uso en %, temperatura, gráfico de línea en tiempo real
+- RAM: usado/total en GB, %, gráfico de barras
+- Red: DL/UL en Mbps, gráfico de línea doble (eth0)
+- Disco: R/W en IO/s, gráfico de línea doble
+- Procesos: lista de los 60 más activos, ordenados por CPU,
+  coloreados por nivel de uso (azul → verde → amarillo → rojo)
+- Servicios: barra de estado de sity-backend, caddy, cloudflared
+- Alerta: pop-up automático cuando sity-backend cae, con log de
+  journalctl y botón de restart (sin contraseña via sudoers)
+- Autoarranque: fullscreen al encender la Pi via /etc/xdg/autostart/
+
+## Arranque en desarrollo
+
+```bash
+cd panel
+npm install
+npm run build
+DISPLAY=:0 npx electron . --no-sandbox
+```
+
+## Requisitos del sistema
 
 - Node.js 18+
-- npm 9+
-
-## Installation
+- Regla sudoers para restart sin contraseña:
 
 ```bash
-cd panel/
-npm install
-npm run approve-scripts   # needed once to allow electron + esbuild postinstall scripts
-npm install               # re-run after approving scripts
+sudo visudo -f /etc/sudoers.d/sity-panel
 ```
 
-## Development
-
-```bash
-npm run dev
+```
+alex ALL=(ALL) NOPASSWD: /bin/systemctl restart sity-backend
+alex ALL=(ALL) NOPASSWD: /bin/systemctl restart caddy
+alex ALL=(ALL) NOPASSWD: /bin/systemctl restart cloudflared
 ```
 
-## Build
+- Archivo de autoarranque en `/etc/xdg/autostart/sity-monitor.desktop`
 
-```bash
-npm run build
+## Estructura
+
+```text
+panel/
+├── index.html          # estructura HTML + modal de error
+├── styles.css          # estilos cyberpunk completos
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── main.ts         # proceso principal: IPC, métricas, servicios
+    ├── preload.ts      # API segura expuesta al renderer
+    └── renderer.ts     # lógica de UI, gráficos canvas, polling
 ```
-
-The packaged app lands in `dist-electron/`.
-
-## Production (packaged binary)
-
-```bash
-npm run package
-```
-
-Produces `release/` with the platform-specific binary. On Linux aarch64:
-- Binary: `release/linux-arm64/sity-monitor`
-- Or AppImage: `release/Sity Monitor-1.0.0-arm64.AppImage`
-
-## Autostart on boot
-
-Copy the desktop entry (adjust path if needed):
-
-```bash
-sudo cp /home/alex/projects/sity/panel/sity-monitor.desktop /etc/xdg/autostart/
-cp /home/alex/projects/sity/panel/sity-monitor.desktop ~/Desktop/
-```
-
-## Keyboard shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+W` / close button | Close window |
-| Minimize button | Minimize to taskbar |

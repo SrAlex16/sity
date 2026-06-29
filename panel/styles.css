@@ -59,7 +59,7 @@ body {
   z-index: 1;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   gap: 14px;
   padding: 12px 16px 16px;
 }
@@ -117,6 +117,39 @@ body {
   background: rgba(255,61,92,0.18);
   box-shadow: 0 0 12px rgba(255,61,92,0.4);
 }
+
+/* ============================================================
+   SERVICES BAR
+   ============================================================ */
+.services-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 28px;
+  padding: 0 16px;
+  background: rgba(5,7,15,0.8);
+  border-bottom: 1px solid rgba(31,231,214,0.2);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+.services-bar__label {
+  color: var(--text-dim);
+  letter-spacing: .1em;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.svc { display: flex; align-items: center; gap: 6px; }
+.svc__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #333;
+  transition: background 0.3s, box-shadow 0.3s;
+  flex: none;
+}
+.svc__dot--ok  { background: #00ff88; box-shadow: 0 0 6px #00ff88; }
+.svc__dot--err { background: #ff2222; box-shadow: 0 0 6px #ff2222; }
+.svc__name  { color: var(--cyan); }
+.svc__state { color: var(--text-dim); font-size: 10px; }
 
 /* ============================================================
    STAT CARDS
@@ -582,6 +615,13 @@ body {
   background: rgba(31,231,214,0.15);
   box-shadow: 0 0 16px rgba(31,231,214,0.35);
   color: #fff;
+}
+
+.mbtn--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.6);
 }
 
 /* Subtle scanline inside modal */

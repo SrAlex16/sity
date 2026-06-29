@@ -361,6 +361,10 @@
     total: number,
     totalRamBytes: number
   ): void {
+    const hash = procs.map(p => `${p.pid}${p.cpu}${p.ram}`).join('|');
+    if (hash === lastProcHash) return;
+    lastProcHash = hash;
+
     const list = document.getElementById('proc-list');
     if (!list) return;
     const totalMb = totalRamBytes / 1e6;
@@ -397,8 +401,10 @@
   const btnRestart = document.getElementById('modal-restart');
   const btnOk      = document.getElementById('modal-ok');
 
-  let alertShown   = false;
+  let alertShown    = false;
   let lastBackendOk = true;
+  let modalVisible  = false;
+  let lastProcHash  = '';
 
   function classifyLine(line: string): 'err' | 'warn' | 'info' {
     const l = line.toLowerCase();
@@ -423,14 +429,23 @@
       if (lastLine) lastLine.classList.add('log-line--cursor');
     }
     backdrop.classList.add('visible');
+    modalVisible = true;
   }
 
   function closeErrorModal(): void {
     backdrop?.classList.remove('visible');
+    modalVisible = false;
   }
 
   function handleRestart(): void {
     if (!logBox || !api) return;
+
+    const restartBtn = document.getElementById('modal-restart') as HTMLButtonElement | null;
+    if (restartBtn) { restartBtn.disabled = true; restartBtn.classList.add('mbtn--disabled'); }
+    const enableBtn = () => {
+      if (restartBtn) { restartBtn.disabled = false; restartBtn.classList.remove('mbtn--disabled'); }
+    };
+
     logBox.querySelector('.log-line--cursor')?.classList.remove('log-line--cursor');
 
     const addLine = (type: 'err' | 'warn' | 'info', text: string) => {
@@ -457,6 +472,7 @@
           logBox.scrollTop = logBox.scrollHeight;
           alertShown    = false;
           lastBackendOk = true;
+          enableBtn();
           setTimeout(closeErrorModal, 1500);
         } else {
           const log2 = await api.getLog('sity-backend');
@@ -464,10 +480,12 @@
           for (const l of log2.split('\n').filter(Boolean).slice(-10)) {
             addLine(classifyLine(l), l);
           }
+          enableBtn();
         }
       }, 3000);
     }).catch((e: unknown) => {
       addLine('err', `[ERR] ${String(e)}`);
+      enableBtn();
     });
   }
 
@@ -492,10 +510,27 @@
   // ----------------------------------------------------------
   // Services poll — only fires modal when sity-backend goes down
   // ----------------------------------------------------------
+  const svcMap: Record<string, string> = {
+    'sity-backend': 'svc-backend',
+    'caddy':        'svc-caddy',
+    'cloudflared':  'svc-cloudflared',
+  };
+
   async function updateServices(): Promise<void> {
     if (!api) return;
     try {
       const svcs = await api.getServices();
+
+      for (const [name, state] of Object.entries(svcs)) {
+        const el = document.getElementById(svcMap[name]);
+        if (!el) continue;
+        const dot = el.querySelector('.svc__dot')!;
+        const st  = el.querySelector('.svc__state')!;
+        const ok  = state === 'active';
+        dot.className  = 'svc__dot ' + (ok ? 'svc__dot--ok' : 'svc__dot--err');
+        st.textContent = state.toUpperCase();
+      }
+
       const backendOk = svcs['sity-backend'] === 'active';
       if (!backendOk && lastBackendOk && !alertShown) {
         alertShown = true;
@@ -551,8 +586,10 @@
       DISK_HIST.push([data.disk.r, data.disk.w]);
       DISK_HIST.shift();
 
-      // Processes
-      renderProcesses(data.processes, data.processCount, data.ram.total);
+      // Processes (skip DOM update while modal is open)
+      if (!modalVisible) {
+        renderProcesses(data.processes, data.processCount, data.ram.total);
+      }
 
     } catch (e) {
       console.error('update error:', e);
@@ -564,7 +601,7 @@
   // ----------------------------------------------------------
   update();
   updateServices();
-  setInterval(update, 2000);
+  setInterval(update, 3000);
   setInterval(updateServices, 8000);
 
 })();

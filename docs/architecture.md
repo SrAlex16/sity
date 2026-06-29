@@ -714,3 +714,29 @@ de input se procesan a coste reducido.
 Mínimo de tokens para cachear en Haiku 4.5: 4096. El system prompt + tools de
 Sity supera ese mínimo, así que el caché siempre se activa.
 
+---
+
+## Panel de control (Sity Monitor)
+
+App de escritorio Electron en `panel/` que monitoriza la Pi en tiempo real.
+Independiente del backend: arranca aunque sity-backend esté caído.
+
+Flujo de datos:
+```text
+systeminformation (Node) → ipcMain.handle → ipcRenderer.invoke → DOM
+```
+
+Polling:
+- Métricas del sistema: cada 3s
+- Estado de servicios: cada 8s
+
+Alertas implementadas:
+- sity-backend caído → pop-up crítico con log + botón restart
+
+Alertas pendientes (roadmap):
+- caddy caído (grave)
+- cloudflared caído (medio — Sity sigue accesible en red local)
+- CPU >85% sostenida (leve)
+- Temperatura >75°C (grave)
+- Disco >90% uso (medio)
+

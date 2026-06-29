@@ -1340,6 +1340,11 @@ Pendiente:
   el hardware, o cuantización `int8` del modelo `small` para reducir latencia
   en Pi manteniendo precisión
 
+### ✓ Panel de control (completado)
+
+App Electron de monitorización en tiempo real para la Pi.
+Ver `panel/README.md` para detalles.
+
 ### 8. Traducción entrada/salida al inglés para LLM local
 
 Para mejorar la calidad de los modelos locales (que rinden mejor en inglés) y
@@ -1349,34 +1354,28 @@ antes de mostrarla. Requiere un modelo de traducción local o un paso ligero que
 no dispare safeguards. Añade latencia; el coste-beneficio depende del modelo
 final elegido para LoRA.
 
-### 9. Visión (imágenes)
+### 9. Sistema de alertas del panel (pendiente)
 
-Pendiente. Claude Haiku soporta imágenes nativamente via API. Para el modelo
-local fine-tuneado se necesitará un modelo multimodal (LLaVA, MiniCPM-V) en
-el PC con RTX 3060 Ti via Ollama + Local AI Worker.
+Expandir las alertas del monitor más allá del backend caído.
+Severidades: crítico, grave, medio, leve.
+Ver lista completa en `docs/architecture.md`.
 
-Para generar imágenes: Stable Diffusion local o API externa. Apuntado en
-roadmap para cuando el modelo local esté operativo.
+### 10. Visión — imágenes (pendiente)
 
-### 10. Google (correo, calendario, Drive)
+Claude Haiku soporta imágenes via API. Permitir enviar fotos
+a Sity desde la PWA. Para el modelo local fine-tuneado se necesitará un modelo
+multimodal (LLaVA, MiniCPM-V) en el PC con RTX 3060 Ti via Ollama + Local AI Worker.
 
-Pendiente. Requiere OAuth2 con Google y tools nuevas en el ToolExecutor.
-Alta utilidad para uso diario — ver historial de emails, eventos del calendario,
-documentos de Drive.
+### 11. Google OAuth (pendiente)
 
-### 11. Domótica
+Correo, calendario, Drive como tools de Sity. Requiere OAuth2 con Google y
+tools nuevas en el ToolExecutor.
 
-Pendiente. Objetivo: Sity descubre y controla dispositivos inteligentes por sí
-sola sin código hardcodeado por dispositivo — igual que un agente que encuentra
-la API local del dispositivo y se conecta.
+### 12. Domótica (pendiente)
 
-Dispositivos disponibles para pruebas:
-- Enchufe Tapo P100 (librería Python `PyP100`, WiFi local)
-- Bombilla Gleco Smart Bulb via Smart Life (protocolo Tuya, `tinytuya`)
-
-Nota de diseño: no implementar integraciones específicas por dispositivo.
-Sity debe poder decir "tengo un Tapo P100, conéctate y enciéndelo" y resolverlo
-sola usando `web_search` + acceso a red local.
+Tapo P100 + Smart Life (Gleco) sin hardcodear por dispositivo. Sity debe poder
+decir "tengo un Tapo P100, conéctate y enciéndelo" y resolverlo sola usando
+`web_search` + acceso a red local.
 
 ---
 
