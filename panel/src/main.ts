@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import * as si from 'systeminformation';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -134,10 +134,10 @@ ipcMain.handle('service:log', async (_event: unknown, name: string) => {
 
 // ---- Service restart ----
 ipcMain.handle('service:restart', async (_event: unknown, name: string) => {
-  try {
-    execSync(`sudo systemctl restart ${name}`);
-    return 'ok';
-  } catch (e: unknown) {
-    return String(e);
-  }
+  const result = spawnSync('sudo', ['systemctl', 'restart', name], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  if (result.status === 0) return 'ok';
+  return result.stderr || result.error?.message || 'unknown error';
 });
