@@ -1,12 +1,185 @@
 <!DOCTYPE html>
-<html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sity Monitor</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; script-src 'self'" />
+  <title>SYSTEM MONITOR [RO-01]</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Faint hex mesh painted behind everything -->
+  <canvas id="bg-hex" aria-hidden="true"></canvas>
+
+  <div class="app">
+    <!-- ===================== TITLE BAR ===================== -->
+    <header class="titlebar">
+      <div class="titlebar__left">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+            <path d="M12 2 21 7v10l-9 5-9-5V7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </span>
+        <span class="title">
+          SYSTEM MONITOR <span class="dim">[RO-01]</span> // ACTIVE PROCESS ANALYSIS // <span class="dim">(R.N. v5)</span>
+        </span>
+      </div>
+      <div class="titlebar__controls">
+        <button id="btn-min" class="winbtn" title="Minimize" aria-label="Minimize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 12h14" /></svg>
+        </button>
+        <button id="btn-max" class="winbtn" title="Maximize" aria-label="Maximize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
+        </button>
+        <button id="btn-close" class="winbtn winbtn--close" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ==================== SERVICES BAR ==================== -->
+    <div class="services-bar">
+      <span class="svc-label">SERVICES</span>
+      <div class="svc" id="svc-backend">
+        <span class="svc__dot"></span>
+        <span class="svc__name">sity-backend</span>
+        <span class="svc__status">–</span>
+      </div>
+      <div class="svc" id="svc-caddy">
+        <span class="svc__dot"></span>
+        <span class="svc__name">caddy</span>
+        <span class="svc__status">–</span>
+      </div>
+      <div class="svc" id="svc-cloudflared">
+        <span class="svc__dot"></span>
+        <span class="svc__name">cloudflared</span>
+        <span class="svc__status">–</span>
+      </div>
+    </div>
+
+    <!-- ===================== STAT CARDS ===================== -->
+    <section class="cards">
+
+      <!-- CPU -->
+      <article class="card card--cyan">
+        <div class="card__head">
+          <span class="card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <rect x="7" y="7" width="10" height="10" rx="1.5" /><rect x="10" y="10" width="4" height="4" rx="0.5" fill="currentColor" stroke="none" />
+              <path d="M10 4v2M14 4v2M10 18v2M14 18v2M4 10h2M4 14h2M18 10h2M18 14h2" />
+            </svg>
+          </span>
+          CPU UTILIZATION
+        </div>
+        <div class="card__sub">CPU LOAD: <span id="cpu-load">–</span></div>
+        <div class="card__big" id="cpu-pct">–</div>
+        <canvas class="card__chart" id="chart-cpu"></canvas>
+        <div class="card__note" id="cpu-cores">4 Cores / 4 Threads</div>
+        <div class="card__foot">
+          <span>CORE TEMP: <b id="cpu-temp">–</b></span>
+          <span>ARCH: <b>aarch64</b></span>
+        </div>
+      </article>
+
+      <!-- RAM -->
+      <article class="card card--purple">
+        <div class="card__head">
+          <span class="card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <rect x="3" y="8" width="18" height="9" rx="1.5" />
+              <path d="M7 17v2M11 17v2M15 17v2M19 17v2M7 11v3M10 11v3M13 11v3M16 11v3" />
+            </svg>
+          </span>
+          RAM ALLOCATION
+        </div>
+        <div class="card__sub" id="ram-sub">MEMORY: <span id="ram-mem">–</span> / – GB</div>
+        <div class="card__big" id="ram-pct">–</div>
+        <canvas class="card__chart" id="chart-ram"></canvas>
+        <div class="card__foot">
+          <span>SPEED: <b>LPDDR4</b></span>
+          <span>USED: <b id="ram-used">– MB</b></span>
+        </div>
+      </article>
+
+      <!-- NETWORK -->
+      <article class="card card--blue">
+        <div class="card__head">
+          <span class="card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="6" cy="6" r="2.2" /><circle cx="18" cy="6" r="2.2" /><circle cx="12" cy="18" r="2.2" />
+              <path d="M7.6 7.6 10.6 16M16.4 7.6 13.4 16M8.2 6h7.6" />
+            </svg>
+          </span>
+          NETWORK TRAFFIC
+        </div>
+        <div class="card__sub">NET ACTIVITY // <span id="net-iface">eth0</span></div>
+        <canvas class="card__chart card__chart--tall" id="chart-net"></canvas>
+        <div class="card__foot">
+          <span>DL: <b id="net-dl">– Mbps</b></span>
+          <span>UL: <b id="net-ul">– Mbps</b></span>
+        </div>
+      </article>
+
+      <!-- DISK -->
+      <article class="card card--pink">
+        <div class="card__head">
+          <span class="card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="8" cy="12" r="2.6" />
+              <circle cx="8" cy="12" r="0.6" fill="currentColor" stroke="none" /><path d="M13 10h5M13 13.5h5" />
+            </svg>
+          </span>
+          DISK I/O
+        </div>
+        <div class="card__sub">READ/WRITE // BLOCK DEVICE</div>
+        <canvas class="card__chart card__chart--tall" id="chart-disk"></canvas>
+        <div class="card__foot">
+          <span>R: <b id="disk-r">– IO/s</b></span>
+          <span>W: <b id="disk-w">– IO/s</b></span>
+        </div>
+      </article>
+
+    </section>
+
+    <!-- ===================== PROCESS PANEL ===================== -->
+    <section class="panel">
+      <div class="panel__head">
+        <span class="panel__grip" aria-hidden="true"></span>
+        <h1 class="panel__title" id="panel-title">ACTIVE PROCESSES // SYSTEM-THREAD LIST</h1>
+        <span class="panel__deco" aria-hidden="true">
+          <i class="hex"></i><i class="hex"></i><i class="hex on"></i><i class="hex"></i><i class="hex on"></i><i class="hex"></i>
+        </span>
+      </div>
+
+      <div class="proc">
+        <div class="proc__cols">
+          <span>[ICON]</span>
+          <span>[PROCESS NAME]</span>
+          <span>[PID]</span>
+          <span>[CPU %]</span>
+          <span>[RAM MB]</span>
+          <span>[STATUS]</span>
+          <span>[STATE]</span>
+        </div>
+        <div class="proc__list" id="proc-list"><!-- rows injected by renderer.ts --></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Subtle CRT / vignette overlay -->
+  <div class="overlay" aria-hidden="true"></div>
+
+  <!-- Alert / log overlay -->
+  <div id="alert-overlay" class="alert-overlay">
+    <div class="alert-box">
+      <div class="alert-title" id="alert-title">SERVICE ALERT</div>
+      <pre class="alert-msg" id="alert-msg"></pre>
+      <button class="alert-close" id="alert-close">DISMISS</button>
+    </div>
+  </div>
+
+  <script src="dist/renderer.js"></script>
+</body>
 </html>
