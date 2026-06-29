@@ -1,8 +1,9 @@
 export interface ProcessInfo {
   pid: number
+  ppid?: number
   name: string
   cpu: number
-  memRss: number
+  memRss: number   // MB
   state: string
 }
 
@@ -24,6 +25,7 @@ export interface SystemData {
   ramUsed: number
   ramTotal: number
   ramPercent: number
+  ramHistory: number[]
   netHistory: NetworkSample[]
   netInterface: string
   diskHistory: DiskSample[]

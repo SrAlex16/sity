@@ -1,6 +1,3 @@
-// TODO: Expandir sistema de alertas con severidades: crítico, grave, medio, leve
-// cuando se añadan más servicios monitorizados. Ver issue #XXX para roadmap.
-
 const SERVICES = ['sity-backend', 'caddy', 'cloudflared']
 
 interface Props {
@@ -10,44 +7,44 @@ interface Props {
 export function ServicesStatus({ status }: Props) {
   return (
     <div style={{
-      display: 'flex',
-      gap: 12,
-      alignItems: 'center',
-      padding: '5px 10px',
-      background: 'var(--bg-surface)',
-      border: '1px solid var(--border)',
-      borderRadius: 4,
+      height: 32,
       flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '2rem',
+      padding: '0 14px',
+      background: '#060614',
+      borderBottom: '1px solid #00f0ff40',
     }}>
-      <span style={{ color: 'var(--text-dim)', fontSize: 9, letterSpacing: '0.12em' }}>
+      <span style={{
+        color: 'var(--text-dim)',
+        fontSize: '0.65rem',
+        letterSpacing: '0.18em',
+        marginRight: 4,
+      }}>
         SERVICIOS
       </span>
 
       {SERVICES.map(svc => {
         const s = status[svc]
-        const active = s === 'active'
+        const active  = s === 'active'
         const unknown = !s
+        const dotColor = unknown ? 'var(--text-dim)' : active ? '#00ff88' : '#ff2222'
+        const stateLabel = unknown ? '?' : active ? 'ACTIVE' : (s?.toUpperCase() ?? 'INACTIVE')
+
         return (
-          <div key={svc} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div key={svc} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: '0.85rem', color: dotColor, lineHeight: 1 }}>●</span>
             <span style={{
-              fontSize: 14,
-              color: unknown ? 'var(--text-dim)' : active ? 'var(--green)' : 'var(--red)',
-              lineHeight: 1,
-            }}>
-              {unknown ? '○' : active ? '●' : '✕'}
-            </span>
-            <span style={{
-              fontSize: 10,
-              color: unknown ? 'var(--text-dim)' : active ? 'var(--green)' : 'var(--red)',
-              letterSpacing: '0.05em',
+              color: 'var(--border-cyan)',
+              fontSize: '0.78rem',
+              letterSpacing: '0.04em',
             }}>
               {svc}
             </span>
-            {!unknown && (
-              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>
-                {active ? 'ACTIVE' : s?.toUpperCase() ?? 'INACTIVE'}
-              </span>
-            )}
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.7rem' }}>
+              {stateLabel}
+            </span>
           </div>
         )
       })}

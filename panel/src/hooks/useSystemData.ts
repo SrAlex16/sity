@@ -11,6 +11,7 @@ const initial: SystemData = {
   ramUsed: 0,
   ramTotal: 8,
   ramPercent: 0,
+  ramHistory: [],
   netHistory: [],
   netInterface: 'eth0',
   diskHistory: [],
@@ -27,8 +28,9 @@ function push<T>(arr: T[], item: T): T[] {
 export function useSystemData(): SystemData {
   const [data, setData] = useState<SystemData>(initial)
   const hist = useRef({
-    cpu: [] as number[],
-    net: [] as NetworkSample[],
+    cpu:  [] as number[],
+    ram:  [] as number[],
+    net:  [] as NetworkSample[],
     disk: [] as DiskSample[],
   })
 
@@ -39,48 +41,54 @@ export function useSystemData(): SystemData {
     api.onSystemData((raw: unknown) => {
       const r = raw as Record<string, unknown>
 
-      const load = r.load as Record<string, unknown> | undefined
-      const mem  = r.mem  as Record<string, number>  | undefined
-      const netArr = r.net as Record<string, number>[] | undefined
-      const disk = r.disk as Record<string, number>  | undefined
-      const procs = r.procs as { list: Record<string, unknown>[] } | undefined
-      const temp  = r.temp as Record<string, number>  | undefined
-      const fsArr = r.fs   as Record<string, number>[] | undefined
+      const load   = r.load  as Record<string, unknown> | undefined
+      const mem    = r.mem   as Record<string, number>  | undefined
+      const netArr = r.net   as Record<string, unknown>[] | undefined
+      const disk   = r.disk  as Record<string, number>  | undefined
+      const procs  = r.procs as { list: Record<string, unknown>[] } | undefined
+      const temp   = r.temp  as Record<string, number>  | undefined
+      const fsArr  = r.fs    as Record<string, number>[] | undefined
 
       // CPU
       const cpuLoad = (load?.currentLoad as number) ?? 0
       hist.current.cpu = push(hist.current.cpu, cpuLoad)
 
-      // Network — first active interface
-      const netIface = netArr?.[0]
-      const rx = ((netIface?.rx_sec as number) ?? 0) / 1e6
-      const tx = ((netIface?.tx_sec as number) ?? 0) / 1e6
+      // RAM
+      const ramTotal   = ((mem?.total as number) ?? 0) / 1e9
+      const ramUsed    = ((mem?.used  as number) ?? 0) / 1e9
+      const ramPercent = ramTotal > 0 ? (ramUsed / ramTotal) * 100 : 0
+      hist.current.ram = push(hist.current.ram, ramPercent)
+
+      // Network — skip loopback, prefer interface with highest activity
+      const nonLoopback = netArr?.filter(n => n.iface !== 'lo') ?? []
+      const netIface = nonLoopback.length > 0 ? nonLoopback[0] : netArr?.[0]
+      // rx_sec/tx_sec is null on first call (systeminformation needs two samples to compute rate)
+      const rxBytes = (netIface?.rx_sec as number | null) ?? 0
+      const txBytes = (netIface?.tx_sec as number | null) ?? 0
+      const rx = rxBytes * 8 / 1e6   // bytes/s → Mbps
+      const tx = txBytes * 8 / 1e6
       hist.current.net = push(hist.current.net, { rx, tx })
 
-      // Disk I/O
-      const rIO = ((disk?.rIO_sec as number) ?? 0) / 1e6
-      const wIO = ((disk?.wIO_sec as number) ?? 0) / 1e6
+      // Disk I/O — bytes/s → MB/s (also null on first call)
+      const rIO = ((disk?.rIO_sec as number | null) ?? 0) / 1e6
+      const wIO = ((disk?.wIO_sec as number | null) ?? 0) / 1e6
       hist.current.disk = push(hist.current.disk, { r: rIO, w: wIO })
 
-      // RAM
-      const ramTotal = ((mem?.total as number) ?? 0) / 1e9
-      const ramUsed  = ((mem?.used  as number) ?? 0) / 1e9
-      const ramPercent = ramTotal > 0 ? (ramUsed / ramTotal) * 100 : 0
-
       // Filesystem (root partition)
-      const rootFs = fsArr?.find(f => (f.mount as string) === '/') ?? fsArr?.[0]
-      const diskTotal = ((rootFs?.size   as number) ?? 0) / 1e9
-      const diskUsed  = ((rootFs?.used   as number) ?? 0) / 1e9
+      const rootFs    = fsArr?.find(f => (f.mount as unknown as string) === '/') ?? fsArr?.[0]
+      const diskTotal = ((rootFs?.size as number) ?? 0) / 1e9
+      const diskUsed  = ((rootFs?.used as number) ?? 0) / 1e9
 
-      // Processes
+      // Processes — memRss is in KB from systeminformation on Linux
       const rawList = (procs?.list ?? []) as Record<string, unknown>[]
       const processes: ProcessInfo[] = rawList
         .map(p => ({
-          pid:    (p.pid    as number)  ?? 0,
-          name:   (p.name   as string)  ?? '',
-          cpu:    (p.cpu    as number)  ?? 0,
-          memRss: Math.round(((p.memRss as number) ?? 0) / 1024 / 1024),
-          state:  (p.state  as string)  ?? 'unknown',
+          pid:    (p.pid       as number)           ?? 0,
+          ppid:   (p.parentPid as number | undefined),
+          name:   (p.name      as string)           ?? '',
+          cpu:    (p.cpu       as number)           ?? 0,
+          memRss: Math.round(((p.memRss as number) ?? 0) / 1024),  // KB → MB
+          state:  (p.state     as string)           ?? 'unknown',
         }))
         .filter(p => p.name)
         .sort((a, b) => b.cpu - a.cpu)
@@ -88,25 +96,24 @@ export function useSystemData(): SystemData {
 
       setData({
         cpuLoad,
-        cpuHistory: [...hist.current.cpu],
-        cpuTemp:   (temp?.main as number) ?? 0,
-        cpuCores:  (load?.cpus as unknown[])?.length ?? 4,
+        cpuHistory:   [...hist.current.cpu],
+        cpuTemp:      (temp?.main as number) ?? 0,
+        cpuCores:     (load?.cpus as unknown[])?.length ?? 4,
         ramUsed,
         ramTotal,
         ramPercent,
-        netHistory: [...hist.current.net],
+        ramHistory:   [...hist.current.ram],
+        netHistory:   [...hist.current.net],
         netInterface: (netIface?.iface as string) ?? 'eth0',
-        diskHistory: [...hist.current.disk],
+        diskHistory:  [...hist.current.disk],
         diskUsed,
         diskTotal,
         processes,
-        uptimeSecs: (r.uptimeSecs as number) ?? 0,
+        uptimeSecs:   (r.uptimeSecs as number) ?? 0,
       })
     })
 
-    return () => {
-      api.removeSystemDataListener()
-    }
+    return () => api.removeSystemDataListener()
   }, [])
 
   return data

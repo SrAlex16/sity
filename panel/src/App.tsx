@@ -12,7 +12,7 @@ const layout: React.CSSProperties = {
   flexDirection: 'column',
   height: '100vh',
   overflow: 'hidden',
-  background: 'var(--bg-base)',
+  background: 'var(--bg-main)',
 }
 
 const body: React.CSSProperties = {
@@ -47,7 +47,7 @@ export default function App() {
       <div style={body}>
         <ServicesStatus status={status} />
         <MetricsRow data={data} />
-        <ProcessTable processes={data.processes} />
+        <ProcessTable processes={data.processes} ramTotal={data.ramTotal} />
       </div>
 
       {showAlert && (

@@ -1,18 +1,27 @@
 :root {
-  --bg-base:    #0a0a14;
-  --bg-surface: #0e0e1c;
-  --bg-card:    #12122a;
-  --bg-row:     #050510;
+  font-size: 16px;
+
+  --bg-main:        #05050f;
+  --bg-card:        #0a0a1a;
+  --bg-card-inner:  #070712;
+  --border-cyan:    #00f0ff;
+  --border-magenta: #ff00aa;
+  --text-primary:   #e0f8ff;
+  --text-dim:       #4a7a8a;
+  --glow-cyan:      0 0 8px #00f0ff, 0 0 20px #00f0ff44;
+  --glow-magenta:   0 0 8px #ff00aa, 0 0 20px #ff00aa44;
+  --font-mono:      'Courier New', 'Lucida Console', monospace;
+
+  /* backward-compat aliases used by existing components */
+  --bg-base:    #05050f;
+  --bg-surface: #0a0a1a;
   --cyan:       #00f0ff;
   --magenta:    #ff00aa;
   --green:      #00ff88;
   --yellow:     #ffcc00;
-  --orange:     #ff6600;
   --red:        #ff2222;
-  --text:       #c0d0e0;
-  --text-dim:   #4488aa;
+  --text:       #e0f8ff;
   --border:     #1a2a3a;
-  --font-mono:  'Courier New', 'Lucida Console', monospace;
 }
 
 *, *::before, *::after {
@@ -25,28 +34,43 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-base);
-  color: var(--text);
+  background: var(--bg-main);
+  color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 12px;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
-::-webkit-scrollbar {
-  width: 4px;
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #050510; }
+::-webkit-scrollbar-thumb { background: #00f0ff44; border-radius: 3px; }
+
+button { font-family: var(--font-mono); cursor: pointer; border: none; outline: none; }
+
+/* Cyberpunk card corner accents */
+.card-corners { position: relative; }
+.card-corners::before,
+.card-corners::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 2;
 }
-::-webkit-scrollbar-track {
-  background: var(--bg-base);
+.card-corners::before {
+  top: -1px; left: -1px;
+  border-top: 2px solid var(--border-cyan);
+  border-left: 2px solid var(--border-cyan);
 }
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
+.card-corners::after {
+  bottom: -1px; right: -1px;
+  border-bottom: 2px solid var(--border-cyan);
+  border-right: 2px solid var(--border-cyan);
 }
 
-button {
-  font-family: var(--font-mono);
-  cursor: pointer;
-  border: none;
-  outline: none;
+/* Alert modal border animation */
+@keyframes borderPulse {
+  0%, 100% { border-color: #ff2222; box-shadow: 0 0 20px #ff222266, 0 0 60px #ff222222; }
+  50%       { border-color: #ff00aa; box-shadow: 0 0 20px #ff00aa66, 0 0 60px #ff00aa22; }
 }
