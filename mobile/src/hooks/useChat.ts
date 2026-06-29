@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 export type ChatStatus = 'conectado' | 'procesando' | 'desconectado';
 
@@ -9,6 +9,7 @@ interface BaseMsg {
   role: 'user' | 'assistant';
   timestamp: Date;
   isError?: boolean;
+  isCancelled?: boolean;
   trace_id?: string;
 }
 
@@ -68,6 +69,8 @@ interface ApiTranscribeResponse {
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<ChatStatus>('desconectado');
+  const [canCancel, setCanCancel] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => { void loadHistory(); }, []);
 
@@ -114,19 +117,32 @@ export function useChat() {
     setMessages((prev) => [...prev, userMsg]);
     setStatus('procesando');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setCanCancel(true);
+
     try {
       const res = await fetch('/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, source_channel: 'mobile' }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('network');
       const data = await res.json() as ApiChatResponse;
       setMessages((prev) => [...prev, ...buildAssistantMessages(data)]);
       setStatus('conectado');
-    } catch {
-      setMessages((prev) => [...prev, errorMsg()]);
-      setStatus('desconectado');
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setMessages((prev) => [...prev, cancelledMsg()]);
+        setStatus('conectado');
+      } else {
+        setMessages((prev) => [...prev, errorMsg()]);
+        setStatus('desconectado');
+      }
+    } finally {
+      setCanCancel(false);
+      abortControllerRef.current = null;
     }
   }
 
@@ -137,20 +153,30 @@ export function useChat() {
   async function sendAudio(blob: Blob, durationSecs: number) {
     setStatus('procesando');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setCanCancel(true);
+
     // 1. Transcribe
     const fd = new FormData();
     fd.append('file', blob, 'recording.webm');
     let transcript = '';
     let transcribedDuration = durationSecs;
     try {
-      const res = await fetch('/audio/transcribe', { method: 'POST', body: fd });
+      const res = await fetch('/audio/transcribe', { method: 'POST', body: fd, signal: controller.signal });
       if (!res.ok) throw new Error('transcribe failed');
       const data = await res.json() as ApiTranscribeResponse;
       transcript = data.transcript;
       if (data.duration_ms) transcribedDuration = data.duration_ms / 1000;
-    } catch {
-      setStatus('desconectado');
-      setMessages((prev) => [...prev, errorMsg('No se pudo transcribir el audio.')]);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setStatus('conectado');
+      } else {
+        setStatus('desconectado');
+        setMessages((prev) => [...prev, errorMsg('No se pudo transcribir el audio.')]);
+      }
+      setCanCancel(false);
+      abortControllerRef.current = null;
       return;
     }
 
@@ -174,23 +200,36 @@ export function useChat() {
           voice_transcript_original: transcript,
           source_channel: 'mobile',
         }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('network');
       const data = await res.json() as ApiChatResponse;
       setMessages((prev) => [...prev, ...buildAssistantMessages(data)]);
       setStatus('conectado');
-    } catch {
-      setMessages((prev) => [...prev, errorMsg()]);
-      setStatus('desconectado');
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setMessages((prev) => [...prev, cancelledMsg()]);
+        setStatus('conectado');
+      } else {
+        setMessages((prev) => [...prev, errorMsg()]);
+        setStatus('desconectado');
+      }
+    } finally {
+      setCanCancel(false);
+      abortControllerRef.current = null;
     }
   }
+
+  const cancel = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   function clearMessages() {
     localStorage.setItem('sity_chat_cleared', new Date().toISOString());
     setMessages([]);
   }
 
-  return { messages, status, sendMessage, sendAudio, clearMessages };
+  return { messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel };
 }
 
 export type UseChatResult = ReturnType<typeof useChat>;
@@ -227,4 +266,8 @@ function buildAssistantMessages(data: ApiChatResponse): ChatMessage[] {
 
 function errorMsg(text = 'Sin respuesta del servidor.'): TextChatMessage {
   return { id: uid(), type: 'text', role: 'assistant', text, timestamp: new Date(), isError: true };
+}
+
+function cancelledMsg(): TextChatMessage {
+  return { id: uid(), type: 'text', role: 'assistant', text: '', isCancelled: true, timestamp: new Date() };
 }

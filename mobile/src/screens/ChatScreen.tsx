@@ -61,6 +61,14 @@ function IconSend() {
   );
 }
 
+function IconStop() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
 // ── Recording state ───────────────────────────────────────────────────────────
 
 interface RecordingCtx {
@@ -73,7 +81,7 @@ interface RecordingCtx {
 
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
-export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages }: UseChatResult) {
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel }: UseChatResult) {
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
@@ -347,15 +355,26 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <IconMic />
                 </button>
 
-                <motion.button
-                  className={styles.sendBtn}
-                  onClick={handleSend}
-                  disabled={!inputText.trim() || status === 'procesando'}
-                  whileTap={{ scale: 0.88 }}
-                  aria-label="Enviar"
-                >
-                  <IconSend />
-                </motion.button>
+                {canCancel ? (
+                  <motion.button
+                    className={styles.cancelBtn}
+                    onClick={cancel}
+                    whileTap={{ scale: 0.88 }}
+                    aria-label="Cancelar respuesta"
+                  >
+                    <IconStop />
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    className={styles.sendBtn}
+                    onClick={handleSend}
+                    disabled={!inputText.trim() || status === 'procesando'}
+                    whileTap={{ scale: 0.88 }}
+                    aria-label="Enviar"
+                  >
+                    <IconSend />
+                  </motion.button>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

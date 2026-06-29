@@ -268,3 +268,25 @@
   box-shadow: none;
   cursor: default;
 }
+
+.cancelBtn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 60, 60, 0.2);
+  color: #ff5555;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(255, 60, 60, 0.3);
+  transition: background 0.2s, box-shadow 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cancelBtn:hover {
+  background: rgba(255, 60, 60, 0.35);
+  box-shadow: 0 0 14px rgba(255, 60, 60, 0.5);
+}
