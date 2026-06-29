@@ -83,7 +83,7 @@ def build_ai_turn_prep(
     # Prompt context — history, prior_messages, planner variants.
     history_limit = history_limit_for_message(request.message)
     if message_mentions_file_path(request.message):
-        history_limit = 2
+        history_limit = ctx.ai_config.get("history_limit_file_path", 2)
 
     prompt_context = PromptContextBuilder(
         get_recent_messages=get_recent_db_messages,

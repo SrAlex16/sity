@@ -74,3 +74,26 @@ Pendientes:
 - Historial de alertas con timestamps
 - Uptime por servicio
 - Logs on-click en barra de servicios
+
+## Deuda técnica documentada
+
+### Fallbacks duplicados en código Python (B3, B8)
+
+`turn_context.py` y `persona_engine.py` tienen valores numéricos de fallback
+en `.get("key", valor)` que replican los defaults de `config/default_config.yaml`.
+
+Riesgo: si se cambia un default en el YAML sin actualizar el código, el fallback
+en Python queda desactualizado silenciosamente. Solo afecta si falta la clave
+en el YAML (no ocurre en producción con la config completa).
+
+Solución pendiente: validar presencia de claves al cargar config y lanzar error
+explícito si falta alguna clave requerida. Prioridad: baja.
+
+### Literales de comportamiento en persona_engine.py (A3–A6)
+
+`CRITICAL_KEYWORDS`, `order_override_instruction`, `refusal_instruction` y las
+directivas de `_build_style_directives` son strings de comportamiento del modelo
+embebidos en Python. Cambiarlos requiere editar código + restart.
+
+Solución pendiente: extraer a `config/persona.yaml` y/o al template
+`prompts/persona_system.md`. Pendiente de sesión de refactorización dedicada.

@@ -67,6 +67,10 @@ def build_turn_context(
     ai_config: dict[str, Any] = config.get("ai", {})
     usage_config: dict[str, Any] = config.get("usage", {})
 
+    # Los valores de fallback aquí replican los defaults de config/default_config.yaml.
+    # Si se cambia un valor en el YAML, actualizar también aquí.
+    # Pendiente: validar presencia de claves en carga de config para eliminar
+    # esta duplicación (ver docs/decisions.md — deuda técnica B3).
     configured_max_tokens = int(ai_config.get("claude", {}).get("max_tokens", 1500))
     verbosity_level = float(personality.get("verbosity_level", 0.45))
     max_tokens = max_tokens_for_verbosity(

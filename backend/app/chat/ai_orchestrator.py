@@ -191,11 +191,13 @@ class ChatAIOrchestrator:
             )
         else:
             # cloud_chat or cloud_tools: planner decides tool selection.
+            _planner_max_tokens = ctx.ai_config.get("planner_max_tokens", 500)
             planner_request = build_planner_ai_request(
                 trace_id=ctx.trace_id,
                 user_message=planner_user_message,
                 tools=selected_tools,
                 prior_messages=planner_prior_messages,
+                max_tokens=_planner_max_tokens,
             )
 
             write_log(
@@ -207,7 +209,7 @@ class ChatAIOrchestrator:
                     "provider": "anthropic",
                     "model": runner._gateway.provider.model,
                     "task_type": "action_planner",
-                    "max_tokens": 500,
+                    "max_tokens": _planner_max_tokens,
                     "verbosity_level": float(ctx.personality.get("verbosity_level", 0.45)),
                 },
             )
@@ -280,7 +282,7 @@ class ChatAIOrchestrator:
                                     trace_id=ctx.trace_id,
                                     persona_prompt=persona_prompt,
                                     user_message=user_message_with_history,
-                                    max_tokens=max(ctx.max_tokens, 700),
+                                    max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
                                     tools=selected_tools,
                                     prior_messages=prior_messages,
                                 ),
@@ -474,7 +476,7 @@ class ChatAIOrchestrator:
                     trace_id=ctx.trace_id,
                     persona_prompt=persona_decision.system_prompt,
                     user_message=user_message_with_history,
-                    max_tokens=max(ctx.max_tokens, 700),
+                    max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
                     tools=selected_tools,
                     prior_messages=prior_messages,
                 ),

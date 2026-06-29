@@ -10,10 +10,18 @@ from urllib.parse import unquote
 
 import httpx
 
+from app.settings.config_loader import load_default_config
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
-_DDG_HTML_URL = "https://html.duckduckgo.com/html/"
+_ws_cfg = load_default_config().get("web_search", {})
+_DDG_HTML_URL   = str(_ws_cfg.get("ddg_url", "https://html.duckduckgo.com/html/"))
+_TIMEOUT        = float(_ws_cfg.get("request_timeout_s", 15))
+_MAX_RESULTS    = int(_ws_cfg.get("max_results", 5))
+TTL_SHORT       = int(_ws_cfg.get("cache_ttl_short_s", 3_600))
+TTL_LONG        = int(_ws_cfg.get("cache_ttl_long_s", 86_400))
+MAX_CACHE_ENTRIES = int(_ws_cfg.get("cache_max_entries", 500))
+
 _DDG_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36",
     "Content-Type": "application/x-www-form-urlencoded",
@@ -26,9 +34,6 @@ _ENTITY_MAP = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": 
 # SQLite cache
 # ------------------------------------------------------------------
 CACHE_DB = Path(__file__).parent.parent.parent.parent / "data" / "search_cache.db"
-TTL_SHORT = 3_600     # 1 hora  — contenido dinámico
-TTL_LONG  = 86_400    # 24 horas — contenido estable
-MAX_CACHE_ENTRIES = 500
 
 
 def _init_cache() -> None:
@@ -133,7 +138,7 @@ def handle_web_search(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     try:
-        with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
             resp = client.post(
                 _DDG_HTML_URL,
                 data={"q": query, "kl": "es-es"},
@@ -150,7 +155,7 @@ def handle_web_search(ctx: ToolContext) -> ToolExecutionResult:
             if not snippet_clean or "y.js" in url:
                 continue
             results.append(f"- {snippet_clean}\n  {url}")
-            if len(results) >= 5:
+            if len(results) >= _MAX_RESULTS:
                 break
 
         if not results:

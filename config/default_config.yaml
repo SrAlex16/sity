@@ -42,6 +42,11 @@ ai:
   max_retries: 1
   max_output_tokens_short: 220
   max_tool_loop_iterations: 3
+  planner_max_tokens: 500
+  after_tools_min_tokens: 700
+  history_limit_file_path: 2
+  # TODO: style_thresholds.high/low (cloud: 0.80/0.20, local: 0.75/0.25)
+  # Pendiente de mover en sesión de refactorización persona_engine.
   claude:
     model: claude-haiku-4-5-20251001
     strong_model: claude-sonnet-4-6
@@ -73,6 +78,14 @@ storage:
   data_dir: data
   export_dir: data/exports
   tts_voice_speaker: female
+
+web_search:
+  ddg_url: "https://html.duckduckgo.com/html/"
+  request_timeout_s: 15
+  max_results: 5
+  cache_ttl_short_s: 3600
+  cache_ttl_long_s: 86400
+  cache_max_entries: 500
 
 audio:
   stt_model: small

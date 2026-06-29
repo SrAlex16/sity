@@ -85,6 +85,8 @@ class PersonaEngine:
             refusal_mode_override: if not None, bypasses _should_refuse() and
                 uses this value directly. Intended for deterministic testing only.
         """
+        # Fuente de verdad: config/default_config.yaml [personality].
+        # Estos fallbacks solo actúan si falta la clave (no ocurre en producción).
         sarcasm = float(personality.get("sarcasm_level", 0.7))
         rudeness = float(personality.get("rudeness_level", 0.45))
         warmth = float(personality.get("warmth_level", 0.35))
@@ -327,6 +329,8 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
         - Includes explicit provider context: can respond offline.
         - Compact (~300 words) to minimise verbalization of internals.
         """
+        # Fuente de verdad: config/default_config.yaml [personality].
+        # Estos fallbacks solo actúan si falta la clave (no ocurre en producción).
         sarcasm    = float(personality.get("sarcasm_level",    0.7))
         rudeness   = float(personality.get("rudeness_level",   0.45))
         warmth     = float(personality.get("warmth_level",     0.35))
@@ -362,6 +366,11 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
             "verbosity_rule": verbosity_rule,
         }).strip()
 
+    # NOTA: estos umbrales (0.75/0.25) difieren intencionalmente de los del path cloud
+    # (0.80/0.20) en _build_style_directives. El path local usa umbrales más permisivos
+    # porque el modelo local es menos sensible a las directivas de estilo.
+    # Ambos sets de umbrales se moverán a config en la sesión de refactorización
+    # de persona_engine (junto con A5, A6 de la auditoría de literales).
     def _build_local_voice_directives(
         self,
         *,

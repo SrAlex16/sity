@@ -48,10 +48,10 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
                 "type": "array",
                 "description": (
                     "Lista OBLIGATORIA de cambios. Nunca la omitas. "
-                    "Para 'todo al 50%' incluye los 13 parámetros permitidos."
+                    f"Para 'todo al 50%' incluye los {len(PERSONALITY_PARAMETERS)} parámetros permitidos."
                 ),
                 "minItems": 1,
-                "maxItems": 13,
+                "maxItems": len(PERSONALITY_PARAMETERS),
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
