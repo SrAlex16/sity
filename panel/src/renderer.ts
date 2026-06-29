@@ -356,6 +356,9 @@
   // ----------------------------------------------------------
   // Process list rendering
   // ----------------------------------------------------------
+  let lastProcHash = '';
+  let modalVisible = false;
+
   function renderProcesses(
     procs: MetricsData['processes'],
     total: number,
@@ -394,121 +397,176 @@
   }
 
   // ----------------------------------------------------------
-  // Error modal
+  // Alert queue system
   // ----------------------------------------------------------
-  const backdrop   = document.getElementById('error-backdrop');
-  const logBox     = document.getElementById('modal-log');
-  const btnRestart = document.getElementById('modal-restart');
-  const btnOk      = document.getElementById('modal-ok');
-
-  let alertShown    = false;
-  let lastBackendOk = true;
-  let modalVisible  = false;
-  let lastProcHash  = '';
-
-  function classifyLine(line: string): 'err' | 'warn' | 'info' {
-    const l = line.toLowerCase();
-    if (/error|critical|fail|exception|traceback/i.test(l)) return 'err';
-    if (/warn|warning/i.test(l))                            return 'warn';
-    return 'info';
+  interface Alert {
+    id:          string;
+    severity:    'critical' | 'grave' | 'medium' | 'low';
+    title:       string;
+    description: string;
+    log?:        string;
+    canRestart?: string;
   }
 
-  function openErrorModal(logText?: string): void {
-    if (!backdrop || !logBox) return;
-    logBox.innerHTML = '';
-    if (logText) {
-      const lines = logText.split('\n').filter(l => l.trim());
-      for (const line of lines) {
-        const div = document.createElement('div');
-        div.className = `log-line log-line--${classifyLine(line)}`;
-        div.textContent = line;
-        logBox.appendChild(div);
-      }
-      logBox.scrollTop = logBox.scrollHeight;
-      const lastLine = logBox.lastElementChild;
-      if (lastLine) lastLine.classList.add('log-line--cursor');
-    }
-    backdrop.classList.add('visible');
+  const alertQueue: Alert[] = [];
+  let   currentAlertIndex   = 0;
+  const activeAlertIds      = new Set<string>();
+  let   cpuHighCount        = 0;
+
+  function severityOrder(s: Alert['severity']): number {
+    return { critical: 0, grave: 1, medium: 2, low: 3 }[s];
+  }
+
+  function addAlert(alert: Alert): void {
+    if (activeAlertIds.has(alert.id)) return;
+    activeAlertIds.add(alert.id);
+    alertQueue.push(alert);
+    alertQueue.sort((a, b) => severityOrder(a.severity) - severityOrder(b.severity));
+    if (!modalVisible) showCurrentAlert();
+    else updateAlertCounter();
+  }
+
+  function removeCurrentAlert(): void {
+    const current = alertQueue[currentAlertIndex];
+    if (!current) return;
+    activeAlertIds.delete(current.id);
+    alertQueue.splice(currentAlertIndex, 1);
+    if (currentAlertIndex >= alertQueue.length) currentAlertIndex = 0;
+    if (alertQueue.length === 0) hideModal();
+    else showCurrentAlert();
+  }
+
+  function removeAlertById(id: string): void {
+    if (!activeAlertIds.has(id)) return;
+    activeAlertIds.delete(id);
+    const idx = alertQueue.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    alertQueue.splice(idx, 1);
+    if (idx < currentAlertIndex) currentAlertIndex--;
+    if (currentAlertIndex >= alertQueue.length) currentAlertIndex = 0;
+    if (alertQueue.length === 0) hideModal();
+    else if (modalVisible) showCurrentAlert();
+  }
+
+  function showCurrentAlert(): void {
+    const alert = alertQueue[currentAlertIndex];
+    if (!alert) return;
     modalVisible = true;
-  }
 
-  function closeErrorModal(): void {
-    backdrop?.classList.remove('visible');
-    modalVisible = false;
-  }
+    const badgeEl = document.getElementById('modal-badge');
+    if (badgeEl) badgeEl.textContent =
+      `[ ⚠ ] ${alert.id.toUpperCase()}_ERROR_DETECTED // STATUS_${alert.severity.toUpperCase()}`;
 
-  function handleRestart(): void {
-    if (!logBox || !api) return;
+    const titleEl = document.getElementById('modal-title');
+    if (titleEl) titleEl.textContent = alert.title;
+
+    const descEl = document.getElementById('modal-desc');
+    if (descEl) descEl.innerHTML = alert.description;
+
+    const logEl = document.getElementById('modal-log') as HTMLElement | null;
+    if (logEl) {
+      if (alert.log) {
+        logEl.textContent  = alert.log;
+        logEl.style.display = 'block';
+      } else {
+        logEl.style.display = 'none';
+      }
+    }
 
     const restartBtn = document.getElementById('modal-restart') as HTMLButtonElement | null;
-    if (restartBtn) { restartBtn.disabled = true; restartBtn.classList.add('mbtn--disabled'); }
-    const enableBtn = () => {
-      if (restartBtn) { restartBtn.disabled = false; restartBtn.classList.remove('mbtn--disabled'); }
-    };
-
-    logBox.querySelector('.log-line--cursor')?.classList.remove('log-line--cursor');
-
-    const addLine = (type: 'err' | 'warn' | 'info', text: string) => {
-      const div = document.createElement('div');
-      div.className = `log-line log-line--${type}`;
-      div.textContent = text;
-      logBox.appendChild(div);
-      logBox.scrollTop = logBox.scrollHeight;
-    };
-
-    addLine('info', '[SYS] Initiating sity-backend restart...');
-
-    api.restartService('sity-backend').then(result => {
-      if (result !== 'ok') {
-        addLine('warn', `[SYS] systemctl said: ${result}`);
+    if (restartBtn) {
+      if (alert.canRestart) {
+        restartBtn.style.display  = 'inline-flex';
+        restartBtn.dataset.service = alert.canRestart;
+        restartBtn.disabled       = false;
+        restartBtn.classList.remove('mbtn--disabled');
+      } else {
+        restartBtn.style.display = 'none';
       }
-      setTimeout(async () => {
-        const svcs2 = await api.getServices();
-        if (svcs2['sity-backend'] === 'active') {
-          const ok = document.createElement('div');
-          ok.className = 'log-line log-line--info log-line--cursor';
-          ok.textContent = '[BE-SYNC] sity-backend restarted successfully. Resuming.';
-          logBox.appendChild(ok);
-          logBox.scrollTop = logBox.scrollHeight;
-          alertShown    = false;
-          lastBackendOk = true;
-          enableBtn();
-          setTimeout(closeErrorModal, 1500);
-        } else {
-          const log2 = await api.getLog('sity-backend');
-          addLine('err', '[FAIL] Restart did not bring the service up. New log:');
-          for (const l of log2.split('\n').filter(Boolean).slice(-10)) {
-            addLine(classifyLine(l), l);
-          }
-          enableBtn();
-        }
-      }, 3000);
-    }).catch((e: unknown) => {
-      addLine('err', `[ERR] ${String(e)}`);
-      enableBtn();
-    });
+    }
+
+    updateAlertCounter();
+    document.getElementById('error-backdrop')?.classList.add('visible');
   }
 
-  btnOk?.addEventListener('click', () => {
-    closeErrorModal();
-    alertShown = false;
+  function hideModal(): void {
+    modalVisible = false;
+    document.getElementById('error-backdrop')?.classList.remove('visible');
+    currentAlertIndex = 0;
+  }
+
+  function updateAlertCounter(): void {
+    const counter = document.getElementById('modal-counter') as HTMLElement | null;
+    const prevBtn = document.getElementById('modal-prev')    as HTMLButtonElement | null;
+    const nextBtn = document.getElementById('modal-next')    as HTMLButtonElement | null;
+    if (!counter) return;
+    if (alertQueue.length <= 1) {
+      counter.style.display = 'none';
+    } else {
+      counter.style.display = 'inline-flex';
+      counter.textContent   = `${currentAlertIndex + 1} / ${alertQueue.length}`;
+    }
+    if (prevBtn) prevBtn.disabled = currentAlertIndex === 0;
+    if (nextBtn) nextBtn.disabled = currentAlertIndex === alertQueue.length - 1;
+  }
+
+  // Navigation
+  document.getElementById('modal-prev')?.addEventListener('click', () => {
+    if (currentAlertIndex > 0) { currentAlertIndex--; showCurrentAlert(); }
   });
-  btnRestart?.addEventListener('click', handleRestart);
-  backdrop?.addEventListener('click', e => {
-    if (e.target === backdrop) closeErrorModal();
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeErrorModal();
+  document.getElementById('modal-next')?.addEventListener('click', () => {
+    if (currentAlertIndex < alertQueue.length - 1) { currentAlertIndex++; showCurrentAlert(); }
   });
 
-  // Dev helper: Ctrl+Shift+E or window.showError() to test modal
-  (window as any).showError = () => openErrorModal('Test modal — no real error.');
-  document.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'E') openErrorModal('Test modal — no real error.');
+  // OK: dismiss current alert
+  document.getElementById('modal-ok')?.addEventListener('click', removeCurrentAlert);
+
+  // Restart button
+  document.getElementById('modal-restart')?.addEventListener('click', async () => {
+    if (!api) return;
+    const btn     = document.getElementById('modal-restart') as HTMLButtonElement;
+    const service = btn.dataset.service;
+    if (!service) return;
+    btn.disabled = true;
+    btn.classList.add('mbtn--disabled');
+    const logEl = document.getElementById('modal-log') as HTMLElement;
+    logEl.textContent   = `[SYS] Restarting ${service}...`;
+    logEl.style.display = 'block';
+    await api.restartService(service);
+    setTimeout(async () => {
+      if (!api) return;
+      const svcs2 = await api.getServices();
+      if (svcs2[service] === 'active') {
+        logEl.textContent = `[BE-SYNC] ${service} restarted successfully. Resuming.`;
+        setTimeout(removeCurrentAlert, 1500);
+      } else {
+        const log2 = await api.getLog(service);
+        logEl.textContent = 'Restart failed.\n\n' + log2;
+        btn.disabled = false;
+        btn.classList.remove('mbtn--disabled');
+      }
+    }, 3000);
   });
+
+  // Backdrop click and Escape dismiss current alert
+  document.getElementById('error-backdrop')?.addEventListener('click', e => {
+    if (e.target === document.getElementById('error-backdrop')) removeCurrentAlert();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modalVisible) removeCurrentAlert();
+  });
+
+  // Dev helper: Ctrl+Shift+E to inject a test alert
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'E') {
+      addAlert({ id: 'test', severity: 'critical', title: 'TEST MODAL.', description: 'Test alert — no real error.' });
+    }
+  });
+  (window as any).showError = () =>
+    addAlert({ id: 'test', severity: 'critical', title: 'TEST MODAL.', description: 'Test alert — no real error.' });
 
   // ----------------------------------------------------------
-  // Services poll — only fires modal when sity-backend goes down
+  // Services bar + alert triggers (poll every 8s)
   // ----------------------------------------------------------
   const svcMap: Record<string, string> = {
     'sity-backend': 'svc-backend',
@@ -521,30 +579,70 @@
     try {
       const svcs = await api.getServices();
 
+      // Update services bar dots
       for (const [name, state] of Object.entries(svcs)) {
         const el = document.getElementById(svcMap[name]);
         if (!el) continue;
         const dot = el.querySelector('.svc__dot')!;
         const st  = el.querySelector('.svc__state')!;
-        const ok  = state === 'active';
-        dot.className  = 'svc__dot ' + (ok ? 'svc__dot--ok' : 'svc__dot--err');
+        dot.className  = 'svc__dot ' + (state === 'active' ? 'svc__dot--ok' : 'svc__dot--err');
         st.textContent = state.toUpperCase();
       }
 
-      const backendOk = svcs['sity-backend'] === 'active';
-      if (!backendOk && lastBackendOk && !alertShown) {
-        alertShown = true;
-        const log  = await api.getLog('sity-backend');
-        openErrorModal(log || 'No log output available.');
+      // sity-backend (critical)
+      if (svcs['sity-backend'] !== 'active' && !activeAlertIds.has('sity-backend')) {
+        const log = await api.getLog('sity-backend');
+        addAlert({
+          id: 'sity-backend', severity: 'critical',
+          title: 'BACKEND SERVICES ARE OFFLINE.',
+          description: `Connection to <b>sity-backend</b> has been lost.<br>
+            Sity AI assistant is offline. Chat, tools and API access are unavailable.<br>
+            This monitor continues operating independently.`,
+          log,
+          canRestart: 'sity-backend',
+        });
       }
-      lastBackendOk = backendOk;
+
+      // caddy (grave)
+      if (svcs['caddy'] !== 'active' && !activeAlertIds.has('caddy')) {
+        const log = await api.getLog('caddy');
+        addAlert({
+          id: 'caddy', severity: 'grave',
+          title: 'REVERSE PROXY OFFLINE.',
+          description: `<b>Caddy</b> reverse proxy is down.<br>
+            HTTPS and external access to Sity are unavailable.<br>
+            Local access on port 8000 may still work.`,
+          log,
+          canRestart: 'caddy',
+        });
+      }
+
+      // cloudflared (medium)
+      if (svcs['cloudflared'] !== 'active' && !activeAlertIds.has('cloudflared')) {
+        const log = await api.getLog('cloudflared');
+        addAlert({
+          id: 'cloudflared', severity: 'medium',
+          title: 'TUNNEL CONNECTION LOST.',
+          description: `<b>Cloudflare Tunnel</b> is down.<br>
+            External access via sity.aletm.com is unavailable.<br>
+            Sity remains accessible on the local network.`,
+          log,
+          canRestart: 'cloudflared',
+        });
+      }
+
+      // Auto-remove alerts when service recovers
+      for (const svcId of ['sity-backend', 'caddy', 'cloudflared']) {
+        if (svcs[svcId] === 'active') removeAlertById(svcId);
+      }
+
     } catch (e) {
       console.error('services error:', e);
     }
   }
 
   // ----------------------------------------------------------
-  // Main metrics update (every 2s)
+  // Main metrics update (every 3s)
   // ----------------------------------------------------------
   async function update(): Promise<void> {
     if (!api) return;
@@ -552,9 +650,9 @@
       const data = await api.getMetrics();
 
       // CPU
-      setText('cpu-pct',  `${data.cpu.load}%`);
-      setText('cpu-load', `${data.cpu.load}%`);
-      setText('cpu-temp', data.cpu.temp > 0 ? `${data.cpu.temp}°C` : '–');
+      setText('cpu-pct',   `${data.cpu.load}%`);
+      setText('cpu-load',  `${data.cpu.load}%`);
+      setText('cpu-temp',  data.cpu.temp > 0 ? `${data.cpu.temp}°C` : '–');
       setText('cpu-cores', `${data.cpu.cores} Cores / ${data.cpu.threads} Threads`);
       CPU_HIST.push(data.cpu.load);
       CPU_HIST.shift();
@@ -572,8 +670,8 @@
       RAM_HIST.shift();
 
       // Network
-      setText('net-dl',   `${data.net.dl.toFixed(2)} Mbps`);
-      setText('net-ul',   `${data.net.ul.toFixed(2)} Mbps`);
+      setText('net-dl',    `${data.net.dl.toFixed(2)} Mbps`);
+      setText('net-ul',    `${data.net.ul.toFixed(2)} Mbps`);
       setText('net-iface', data.net.iface);
       netMax = Math.max(netMax, data.net.dl, data.net.ul, 1);
       NET_HIST.push([data.net.dl, data.net.ul]);
@@ -585,6 +683,36 @@
       diskMax = Math.max(diskMax, data.disk.r, data.disk.w, 1);
       DISK_HIST.push([data.disk.r, data.disk.w]);
       DISK_HIST.shift();
+
+      // CPU sustained >85% → medium alert (requires 4 consecutive cycles ≈ 12s)
+      if (data.cpu.load > 85) {
+        cpuHighCount++;
+        if (cpuHighCount >= 4 && !activeAlertIds.has('cpu-high')) {
+          addAlert({
+            id: 'cpu-high', severity: 'medium',
+            title: 'HIGH CPU USAGE DETECTED.',
+            description: `CPU usage has been above <b>85%</b> for over 12 seconds.<br>
+              Current load: <b>${data.cpu.load}%</b>.<br>
+              Check active processes for runaway tasks.`,
+          });
+        }
+      } else {
+        cpuHighCount = 0;
+        if (data.cpu.load <= 80) removeAlertById('cpu-high');
+      }
+
+      // Temperature >80°C → grave alert; clears at ≤75°C
+      if (data.cpu.temp > 80 && !activeAlertIds.has('cpu-temp')) {
+        addAlert({
+          id: 'cpu-temp', severity: 'grave',
+          title: 'CRITICAL TEMPERATURE ALERT.',
+          description: `CPU temperature has exceeded <b>80°C</b>.<br>
+            Current: <b>${data.cpu.temp}°C</b>.<br>
+            Check ventilation and reduce load immediately.`,
+        });
+      } else if (data.cpu.temp <= 75) {
+        removeAlertById('cpu-temp');
+      }
 
       // Processes (skip DOM update while modal is open)
       if (!modalVisible) {

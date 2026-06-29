@@ -19,9 +19,33 @@ Estética cyberpunk, datos del sistema reales, integrado en el repo de Sity.
 - Procesos: lista de los 60 más activos, ordenados por CPU,
   coloreados por nivel de uso (azul → verde → amarillo → rojo)
 - Servicios: barra de estado de sity-backend, caddy, cloudflared
-- Alerta: pop-up automático cuando sity-backend cae, con log de
-  journalctl y botón de restart (sin contraseña via sudoers)
+- Alertas: cola de pop-ups ordenada por severidad con navegación
+  y botón de restart (sin contraseña via sudoers)
 - Autoarranque: fullscreen al encender la Pi via /etc/xdg/autostart/
+
+### Sistema de alertas
+
+Cola de alertas ordenada por severidad (critical → grave → medium → low).
+Sin duplicados: una alerta por servicio hasta que se resuelva.
+Recuperación automática: cuando el servicio vuelve a active, la alerta
+desaparece sola sin que el usuario tenga que cerrarla.
+
+Alertas implementadas:
+
+| ID           | Severidad | Trigger                      | Restart |
+|--------------|-----------|------------------------------|---------|
+| sity-backend | critical  | systemctl is-active → inactive | sí    |
+| caddy        | grave     | systemctl is-active → inactive | sí    |
+| cloudflared  | medium    | systemctl is-active → inactive | sí    |
+| cpu-high     | medium    | CPU >85% durante 12s           | no    |
+| cpu-temp     | grave     | Temperatura >80°C              | no    |
+
+Alertas pendientes (roadmap):
+- Disco >95% uso (critical)
+- RAM >90% sostenida (grave)
+- Disco >80% uso (medium)
+- Temperatura 70-80°C (low)
+- Procesos zombie acumulados >5 (low)
 
 ## Arranque en desarrollo
 

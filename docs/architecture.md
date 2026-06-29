@@ -721,22 +721,36 @@ Sity supera ese mínimo, así que el caché siempre se activa.
 App de escritorio Electron en `panel/` que monitoriza la Pi en tiempo real.
 Independiente del backend: arranca aunque sity-backend esté caído.
 
-Flujo de datos:
+### Flujo de datos
+
 ```text
 systeminformation (Node) → ipcMain.handle → ipcRenderer.invoke → DOM
 ```
 
-Polling:
+### Polling
+
 - Métricas del sistema: cada 3s
 - Estado de servicios: cada 8s
 
-Alertas implementadas:
-- sity-backend caído → pop-up crítico con log + botón restart
+### Sistema de alertas
 
-Alertas pendientes (roadmap):
-- caddy caído (grave)
-- cloudflared caído (medio — Sity sigue accesible en red local)
-- CPU >85% sostenida (leve)
-- Temperatura >75°C (grave)
-- Disco >90% uso (medio)
+Cola `alertQueue: Alert[]` ordenada por severidad. Cada alerta tiene:
+`id, severity, title, description, log?, canRestart?`
+
+`activeAlertIds: Set<string>` evita duplicados por id.
+Recuperación automática en cada ciclo de `updateServices()`: si un servicio
+vuelve a `'active'` y su id está en `activeAlertIds`, se elimina de la cola.
+Si la cola queda vacía, el modal se cierra solo.
+
+Navegación entre alertas: botones `[ ← ]` `[ → ]` y contador `N / Total`
+(oculto cuando solo hay una alerta).
+
+Restart genérico: el botón lee `btn.dataset.service` — funciona para
+cualquier servicio sin cambiar el código.
+
+### Seguridad
+
+- `contextIsolation: true`, `nodeIntegration: false`
+- `sityAPI` expuesto via `contextBridge` (`preload.ts`)
+- Restart de servicios sin contraseña via `/etc/sudoers.d/sity-panel`
 

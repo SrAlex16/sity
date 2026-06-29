@@ -575,12 +575,52 @@ body {
 }
 @keyframes blink-cur { 0%,100%{opacity:.7} 50%{opacity:0} }
 
-/* Footer buttons */
+/* Footer */
 .modal__footer {
   display: flex;
-  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
   padding: 0 22px 22px;
-  justify-content: flex-end;
+  gap: 12px;
+}
+
+.modal__nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal__counter {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 40px;
+  text-align: center;
+}
+
+.modal__actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mbtn--nav {
+  padding: 5px 12px;
+  border: 1px solid rgba(31,231,214,0.3);
+  background: transparent;
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background .2s, box-shadow .2s;
+}
+.mbtn--nav:hover:not(:disabled) {
+  background: rgba(31,231,214,0.1);
+  box-shadow: 0 0 8px rgba(31,231,214,0.3);
+}
+.mbtn--nav:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
 }
 
 .mbtn {

@@ -177,12 +177,12 @@
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
           <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
-        <span class="modal__badge">[ ⚠ ] BACKEND_ERROR_DETECTED // STATUS_CRITICAL</span>
+        <span class="modal__badge" id="modal-badge">[ ⚠ ] BACKEND_ERROR_DETECTED // STATUS_CRITICAL</span>
       </div>
 
       <div class="modal__body">
         <h2 class="modal__title" id="modal-title">BACKEND SERVICE OFFLINE.</h2>
-        <p class="modal__desc">
+        <p class="modal__desc" id="modal-desc">
           Connection to <b>sity-backend</b> has been lost.
           The system may be entering fail-safe mode. Check service status or
           restart the backend before resuming operations.
@@ -195,8 +195,15 @@
       </div>
 
       <div class="modal__footer">
-        <button class="mbtn mbtn--restart" id="modal-restart">[ RESTART_BACKEND ]</button>
-        <button class="mbtn mbtn--ok"      id="modal-ok">[ OK / CLOSE ]</button>
+        <div class="modal__nav">
+          <button class="mbtn mbtn--nav" id="modal-prev">[ ← ]</button>
+          <span class="modal__counter" id="modal-counter" style="display:none"></span>
+          <button class="mbtn mbtn--nav" id="modal-next">[ → ]</button>
+        </div>
+        <div class="modal__actions">
+          <button class="mbtn mbtn--restart" id="modal-restart">[ RESTART_SERVICE ]</button>
+          <button class="mbtn mbtn--ok"      id="modal-ok">[ OK / CLOSE ]</button>
+        </div>
       </div>
 
     </div>
