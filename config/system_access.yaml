@@ -32,6 +32,7 @@ file_access:
   - scripts
   - deploy
   - README.md
+  - work
   blocked_paths:
   - .git
   - .env

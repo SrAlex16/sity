@@ -38,7 +38,7 @@ ai:
   primary_provider: claude
   fallback_provider: null
   fallback_enabled: false
-  request_timeout_ms: 20000
+  request_timeout_ms: 60000
   max_retries: 1
   max_output_tokens_short: 220
   max_tool_loop_iterations: 3
@@ -49,7 +49,7 @@ ai:
     model: claude-haiku-4-5-20251001
     strong_model: claude-sonnet-4-6
     model_router_enabled: true
-    max_tokens: 1500
+    max_tokens: 4000
 
 usage:
   daily_token_budget: 1000000
