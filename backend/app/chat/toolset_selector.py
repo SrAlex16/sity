@@ -12,6 +12,7 @@ from app.cortex.tool_schemas import (
     DEBUG_TOOLSET,
     FILE_AGENT_TOOLSET,
     GIT_TOOLSET,
+    GOOGLE_TOOLSET,
     PENDING_ACTION_TOOLSET,
     PERSONALITY_TOOLSET,
     SENSES_TOOLSET,
@@ -31,7 +32,7 @@ for _toolset in [
     FILE_AGENT_TOOLSET,
     GIT_TOOLSET, SERVICE_CONFIG_TOOLSET, SERVICE_CONTROL_TOOLSET,
     SYSTEM_TOOLSET, SENSES_TOOLSET, DEBUG_TOOLSET, PERSONALITY_TOOLSET,
-    PENDING_ACTION_TOOLSET,
+    PENDING_ACTION_TOOLSET, GOOGLE_TOOLSET,
 ]:
     for _tool in _toolset:
         _TOOL_TO_TOOLSET[_tool["name"]] = _toolset
@@ -85,6 +86,13 @@ _PERSONALITY_FIELD_RE = re.compile(
 )
 _PERSONALITY_ACTION_RE = re.compile(
     r"\bsube\b|\bbaja\b|\bajusta\b|\bcambia\b|\bpon\b|\bponte\b|\bslider\b",
+    re.IGNORECASE,
+)
+
+_GOOGLE_RE = re.compile(
+    r"\bcorreo(?:s)?\b|\bemail(?:s)?\b|\bgmail\b"
+    r"|\bcalendario\b|\bagenda\b|\bevento(?:s)?\b|\bcita(?:s)?\b"
+    r"|\bdrive\b|\barchivos?\s+de\s+google\b|\bgoogle\b",
     re.IGNORECASE,
 )
 
@@ -176,6 +184,9 @@ def _legacy_keyword_toolsets(message: str) -> list[list[dict]]:
     if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
         result.append(PERSONALITY_TOOLSET)
 
+    if _GOOGLE_RE.search(message):
+        result.append(GOOGLE_TOOLSET)
+
     return result
 
 
@@ -229,6 +240,7 @@ _TOOLSET_DOMAIN: dict[int, str] = {
     id(DEBUG_TOOLSET):           "debug",
     id(PERSONALITY_TOOLSET):     "personality",
     id(PENDING_ACTION_TOOLSET):  "pending_action",
+    id(GOOGLE_TOOLSET):          "google",
 }
 
 
@@ -307,6 +319,9 @@ def select_toolset_with_metadata(message: str, input_mode: str = "text") -> Tool
         _record(DEBUG_TOOLSET, "keyword:debug")
     if _PERSONALITY_FIELD_RE.search(message) and _PERSONALITY_ACTION_RE.search(message):
         _record(PERSONALITY_TOOLSET, "keyword:personality")
+
+    if _GOOGLE_RE.search(message):
+        _record(GOOGLE_TOOLSET, "keyword:google")
 
     if input_mode == "voice":
         activated_domains.discard("senses")

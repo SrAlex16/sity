@@ -1047,6 +1047,79 @@ SEARCH_CONVERSATION_HISTORY_TOOL = {
     },
 }
 
+GMAIL_SEARCH_TOOL = {
+    "name": "gmail_search",
+    "description": (
+        "Busca correos en Gmail del usuario. Solo lectura, no puede enviar ni eliminar correos. "
+        "Usa sintaxis de búsqueda Gmail si es útil (from:, subject:, after:, etc.). "
+        "Devuelve remitente, asunto, fecha y extracto del cuerpo, no el correo completo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Query de búsqueda Gmail."},
+            "max_results": {"type": "integer", "description": "Máximo de resultados (máx 10). Por defecto 5."},
+        },
+        "required": ["query"],
+    },
+}
+
+CALENDAR_LIST_EVENTS_TOOL = {
+    "name": "calendar_list_events",
+    "description": (
+        "Lista los próximos eventos del calendario del usuario. Solo lectura."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "days_ahead": {"type": "integer", "description": "Días hacia adelante a consultar. Por defecto 7."},
+        },
+    },
+}
+
+CALENDAR_CREATE_EVENT_TOOL = {
+    "name": "calendar_create_event",
+    "description": (
+        "Crea un evento en el calendario del usuario. SIEMPRE requiere confirmación explícita "
+        "del usuario antes de ejecutarse — nunca se crea directamente. "
+        "Usa fechas en formato ISO 8601 con zona horaria (ej: 2026-07-01T18:00:00+02:00)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Título del evento."},
+            "start_iso": {"type": "string", "description": "Fecha/hora de inicio en ISO 8601."},
+            "end_iso": {"type": "string", "description": "Fecha/hora de fin en ISO 8601."},
+            "description": {"type": "string", "description": "Descripción opcional del evento."},
+        },
+        "required": ["title", "start_iso", "end_iso"],
+    },
+}
+
+DRIVE_SEARCH_TOOL = {
+    "name": "drive_search",
+    "description": (
+        "Busca archivos en Google Drive del usuario por nombre. Solo lectura — devuelve "
+        "metadatos (nombre, tipo, fecha de modificación, enlace), no el contenido del archivo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Término a buscar en el nombre del archivo."},
+            "max_results": {"type": "integer", "description": "Máximo de resultados (máx 10). Por defecto 5."},
+        },
+        "required": ["query"],
+    },
+}
+
+GOOGLE_TOOLSET = [
+    GMAIL_SEARCH_TOOL,
+    CALENDAR_LIST_EVENTS_TOOL,
+    CALENDAR_CREATE_EVENT_TOOL,
+    DRIVE_SEARCH_TOOL,
+    NO_ACTION_REQUIRED_TOOL,
+]
+
 BASE_TOOLSET: list[dict] = [
     # Minimal conversational toolset. No file tools here.
     # FILE_AGENT_TOOLSET is added structurally by toolset_selector:

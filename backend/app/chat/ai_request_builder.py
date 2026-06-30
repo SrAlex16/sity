@@ -56,6 +56,10 @@ Debes elegir exactamente una herramienta:
 - Si el usuario pide explícitamente revertir un rollback anterior: usa rollback_latest_file_change con include_rollbacks=true.
 - Usa rollback_file_change solo si el usuario proporciona un backup_path concreto.
 - Usa find_latest_reversible_file_change solo si el usuario pide ver cuál sería el último cambio reversible sin querer ejecutar el rollback todavía.
+- Usa gmail_search si el usuario pregunta por correos, emails o contenido de su bandeja de entrada.
+- Usa calendar_list_events si pregunta qué tiene en la agenda, eventos próximos o su calendario.
+- Usa calendar_create_event si pide crear, añadir o programar un evento o cita. Siempre requiere confirmación — no se crea sin confirmación previa del usuario.
+- Usa drive_search si pregunta por archivos o documentos en su Google Drive.
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.

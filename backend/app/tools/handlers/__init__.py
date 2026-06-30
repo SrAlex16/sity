@@ -12,3 +12,4 @@ from app.tools.handlers import file_rollback_tools  # noqa: F401
 from app.tools.handlers import memory_tools  # noqa: F401
 from app.tools.handlers import trace_tools  # noqa: F401
 from app.tools.handlers import web_search_tools  # noqa: F401
+from app.tools.handlers import google_tools  # noqa: F401

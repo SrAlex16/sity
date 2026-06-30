@@ -1,0 +1,59 @@
+"""Ejecución de acciones de Google Calendar confirmadas por el usuario."""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class GoogleActionResult:
+    ok: bool
+    text: str
+
+
+def execute_google_action(payload: dict[str, Any]) -> GoogleActionResult:
+    action = payload.get("action", "")
+
+    if action == "calendar_create_event":
+        return _create_calendar_event(payload)
+
+    return GoogleActionResult(ok=False, text=f"Acción de Google desconocida: {action}")
+
+
+def _create_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
+    from app.integrations.google_auth import is_google_connected, load_credentials
+    from googleapiclient.discovery import build
+
+    if not is_google_connected():
+        return GoogleActionResult(
+            ok=False,
+            text="Google no está conectado. Ejecuta scripts/google_auth_setup.py para autorizar el acceso.",
+        )
+
+    title = payload.get("title", "")
+    start_iso = payload.get("start_iso", "")
+    end_iso = payload.get("end_iso", "")
+    description = payload.get("description", "")
+
+    creds = load_credentials()
+    service = build("calendar", "v3", credentials=creds)
+
+    event_body: dict[str, Any] = {
+        "summary": title,
+        "start": {"dateTime": start_iso},
+        "end": {"dateTime": end_iso},
+    }
+    if description:
+        event_body["description"] = description
+
+    event = service.events().insert(calendarId="primary", body=event_body).execute()
+    link = event.get("htmlLink", "")
+    return GoogleActionResult(
+        ok=True,
+        text=f"Evento creado: {title}\nEnlace: {link}",
+    )
+
+
+def parse_payload(payload_json: str) -> dict[str, Any]:
+    return json.loads(payload_json)
