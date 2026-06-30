@@ -383,11 +383,13 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
     creds = load_credentials()
     service = build("drive", "v3", credentials=creds)
 
+    actual_folder_name = folder_name
     if not folder_id and folder_name:
         safe = folder_name.replace("'", "\\'")
         res = service.files().list(
-            q=(f"name = '{safe}' and mimeType = 'application/vnd.google-apps.folder'"
+            q=(f"name contains '{safe}' and mimeType = 'application/vnd.google-apps.folder'"
                " and trashed = false"),
+            orderBy="modifiedTime desc",
             fields="files(id, name)",
         ).execute()
         folders = res.get("files", [])
@@ -398,6 +400,7 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
                 updated_parameters=[], raw_result={"output": output},
             )
         folder_id = folders[0]["id"]
+        actual_folder_name = folders[0]["name"]
 
     if not folder_id:
         output = "Necesito el nombre o ID de la carpeta."
@@ -433,7 +436,7 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
         for f in files
     ]
     output = (
-        f"Contenido de '{folder_name or folder_id}' ({len(files)} elementos):\n"
+        f"Contenido de '{actual_folder_name or folder_id}' ({len(files)} elementos):\n"
         + "\n".join(lines)
     )
     return ToolExecutionResult(
