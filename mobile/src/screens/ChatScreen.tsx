@@ -102,6 +102,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll to bottom on new content
   useEffect(() => {
@@ -115,14 +116,27 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputText(e.target.value);
-    localStorage.setItem('sity_draft_message', e.target.value);
+    const value = e.target.value;
+    setInputText(value);
     resizeTextarea(e.target);
+
+    // Debounce del guardado en localStorage — evita I/O síncrono
+    // en cada tecla pulsada (causaba lag perceptible en el input).
+    if (draftSaveTimeout.current) {
+      clearTimeout(draftSaveTimeout.current);
+    }
+    draftSaveTimeout.current = setTimeout(() => {
+      localStorage.setItem('sity_draft_message', value);
+    }, 400);
   };
 
   const handleSend = useCallback(() => {
     const text = inputText.trim();
     if (!text || status === 'procesando') return;
+    if (draftSaveTimeout.current) {
+      clearTimeout(draftSaveTimeout.current);
+      draftSaveTimeout.current = null;
+    }
     setInputText('');
     localStorage.removeItem('sity_draft_message');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -177,6 +191,15 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     mediaRecorder.stream.getTracks().forEach((t) => t.stop());
     mediaRecorder.stop();
   };
+
+  // Cancel pending draft save on unmount
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimeout.current) {
+        clearTimeout(draftSaveTimeout.current);
+      }
+    };
+  }, []);
 
   // Stop recording on unmount
   useEffect(() => {
