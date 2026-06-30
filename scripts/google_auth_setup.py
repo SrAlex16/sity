@@ -1,7 +1,9 @@
 """Ejecutar UNA SOLA VEZ para autorizar a Sity a acceder a Gmail, Calendar y Drive.
 
-Abre una URL en el navegador — debe ejecutarse desde un entorno con navegador
-disponible (la Pi con escritorio, o reenviando el puerto si se ejecuta por SSH).
+Muestra una URL para abrir en cualquier navegador (incluido el del PC aunque
+accedas vía SSH). Tras autorizar, copia el código que muestra Google (o la URL
+completa de redirección si el navegador redirige a una página que no carga) y
+pégalo en la terminal.
 
 Uso:
     cd ~/projects/sity
@@ -30,8 +32,9 @@ def main() -> None:
         print("Error: GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET no están en .env")
         sys.exit(1)
 
-    print("Se abrirá una ventana del navegador para autorizar a Sity.")
-    print("Inicia sesión con la cuenta de Google que quieras conectar.")
+    print("Se mostrará una URL para autorizar a Sity.")
+    print("Puedes abrirla en cualquier navegador, incluido el de tu PC.")
+    print("Tras autorizar, copia el código (o la URL final) y pégalo aquí.")
     input("Pulsa Enter para continuar...")
 
     run_initial_auth_flow(client_id, client_secret)

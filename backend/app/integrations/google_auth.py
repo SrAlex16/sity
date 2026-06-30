@@ -50,19 +50,49 @@ def _save_credentials(creds: Credentials) -> None:
 
 
 def run_initial_auth_flow(client_id: str, client_secret: str) -> Credentials:
-    """Ejecuta el flujo de autorización inicial. Solo se llama una vez,
-    desde scripts/google_auth_setup.py."""
+    """Flujo de autorización inicial sin servidor local.
+
+    Imprime una URL para abrir en cualquier navegador (incluyendo el del PC
+    cuando se accede vía SSH). El usuario pega el código de autorización de
+    vuelta en la terminal. Solo se llama una vez, desde google_auth_setup.py.
+    """
     client_config = {
         "installed": {
             "client_id": client_id,
             "client_secret": client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": ["http://localhost"],
+            "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob", "http://localhost"],
         }
     }
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-    creds = flow.run_local_server(port=0)
+    auth_url, _ = flow.authorization_url(
+        prompt="consent",
+        redirect_uri="urn:ietf:wg:oauth:2.0:oob",
+    )
+
+    print("\nAbre esta URL en cualquier navegador (puede ser el de tu PC):\n")
+    print(auth_url)
+    print()
+    print("Tras autorizar, Google te mostrará un código.")
+    print("Si en vez de un código el navegador redirige a una URL que no carga,")
+    print("copia esa URL completa y pégala aquí.")
+    print()
+    raw = input("Pega aquí el código (o la URL completa de redirección): ").strip()
+
+    # Si el usuario pegó una URL de redirección, extraer el código del parámetro
+    if raw.startswith("http"):
+        from urllib.parse import parse_qs, urlparse
+        params = parse_qs(urlparse(raw).query)
+        code = params.get("code", [raw])[0]
+    else:
+        code = raw
+
+    flow.fetch_token(
+        code=code,
+        redirect_uri="urn:ietf:wg:oauth:2.0:oob",
+    )
+    creds = flow.credentials
     _save_credentials(creds)
     return creds
 
