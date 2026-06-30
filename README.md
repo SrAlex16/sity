@@ -1360,11 +1360,12 @@ Expandir las alertas del monitor más allá del backend caído.
 Severidades: crítico, grave, medio, leve.
 Ver lista completa en `docs/architecture.md`.
 
-### 10. Visión — imágenes (pendiente)
+### 10. Visión — imágenes ✓ (completado)
 
-Claude Haiku soporta imágenes via API. Permitir enviar fotos
-a Sity desde la PWA. Para el modelo local fine-tuneado se necesitará un modelo
-multimodal (LLaVA, MiniCPM-V) en el PC con RTX 3060 Ti via Ollama + Local AI Worker.
+Clip funcional en la PWA móvil: redimensionado a 1024px en cliente, preview antes
+de enviar, validación tipo/tamaño en backend, content blocks multimodal en Claude API.
+El planner recibe las imágenes y puede decidir `web_search` u otras tools con contexto visual.
+Para el modelo local fine-tuneado se necesitará un modelo multimodal (Fase 2, pendiente).
 
 ### 11. Google OAuth (pendiente)
 
@@ -2019,7 +2020,8 @@ Completado recientemente:
   entre "Instalar app" y "Añadir a pantalla de inicio" — ambos son equivalentes.
 
 Pendiente:
-- Botón clip (adjuntar archivos): placeholder sin funcionalidad.
+- ✓ Botón clip (adjuntar archivos): funcional — imágenes jpeg/png/webp/gif, redimensionado
+  a 1024px en cliente, preview antes de enviar, thumbnail en burbuja con overlay.
 - Notificaciones push: avisar cuando Sity responde con app en segundo plano.
 - Selector de fondos predefinidos: sustituir los wallpapers actuales cuando
   se generen imágenes definitivas.

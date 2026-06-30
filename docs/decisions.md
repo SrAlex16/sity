@@ -225,6 +225,58 @@ sistemática es dar la tool real, no solo reforzar la instrucción
 de "no inventes" — la regla ayuda pero no sustituye tener la
 fuente de verdad disponible.
 
+## 2026-06-30 (sesión 3) — Visión (imágenes) implementada y depurada
+
+### Implementación inicial
+
+Soporte de imágenes en el chat vía Claude API multimodal:
+- AIRequest extendido con campo `images: list[dict[str, str]]`
+- ClaudeProvider construye content blocks `[image, text]` cuando hay imágenes adjuntas
+- ChatMessageRequest acepta `images` con validación de tipo (jpeg/png/webp/gif) y tamaño (máx 5MB)
+- Botón del clip en mobile, antes placeholder sin función, ahora funcional: selección de archivo,
+  redimensionado a 1024px máx en cliente (canvas, ahorro de tokens), preview antes de enviar
+- `persona_system.md` actualizado: Sity puede ver imágenes
+
+### Bug encontrado: el planner no veía las imágenes
+
+La implementación inicial propagaba `images` correctamente al chat normal y al `after_tools`,
+pero NO a `build_planner_ai_request` — el planner (quien decide si usar `web_search` u otra tool)
+evaluaba el mensaje sin contexto visual. Resultado: peticiones como "busca quién es esta persona
+de la foto" caían a `no_action_required` porque el planner no veía nada que justificara una búsqueda.
+
+Fix: `build_planner_ai_request` acepta y propaga `images`. Confirmado con logs reales
+(`data/logs/app-YYYY-MM-DD.jsonl`) que tras el fix el planner sí invoca `web_search`
+con `tool_calls_count: 1` al recibir una imagen con petición de búsqueda.
+
+Lección: cuando se añade un campo nuevo a `AIRequest`, hay que verificar TODOS los builders
+que lo construyen (planner, chat, after_tools, local), no solo los que parecen obviamente
+relacionados con la feature.
+
+### Calidad de queries con imagen
+
+Tras el fix del planner, las queries generadas para `web_search` con imagen eran demasiado
+genéricas y mezclaban idiomas (ej: "manga girl character antifaz gorro de punto"). Añadida
+regla específica en el prompt del planner: describir rasgos visuales distintivos, idioma
+coherente, incluir sospechas de autor/serie aunque no haya certeza total.
+
+Validado con prueba real: una imagen de un personaje de manga poco conocido no fue identificable
+ni por Sity ni por ChatGPT sin contexto adicional — confirma que el límite no era de
+implementación sino de información disponible. Con una pista del usuario (autor de la obra),
+Sity resolvió correctamente usando conocimiento propio sin necesitar nueva búsqueda.
+
+### Persistencia de imágenes
+
+Las imágenes NO se persisten en el backend: viajan en base64 en el payload JSON, se usan para
+la llamada a la API de Anthropic, y no se escriben a disco ni a SQLite en ningún punto del flujo.
+En el frontend, la preview vive en estado de React (`useChat`), no en localStorage — desaparece
+al recargar.
+
+Pendiente para el futuro: si se decide guardar imágenes para generar dataset multimodal
+(fine-tuning de Gemma), diseñar política de retención con borrado automático desde el principio,
+no añadir persistencia primero y política de borrado después.
+
+---
+
 ## Deuda técnica documentada
 
 ### Fallbacks duplicados en código Python (B3, B8)

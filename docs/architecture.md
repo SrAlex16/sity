@@ -631,6 +631,42 @@ sudo systemctl reload caddy
 
 ---
 
+## Visión (imágenes)
+
+Flujo: mobile (clip) → redimensionado a 1024px en cliente → base64 en payload JSON →
+`ChatMessageRequest.images` → `AIRequest.images` → `ClaudeProvider` construye content blocks
+`[image, text]` → Claude API (Haiku/Sonnet, multimodal nativo).
+
+Puntos donde `images` debe propagarse (verificar en cualquier cambio futuro al flujo de IA):
+- `build_planner_ai_request` — decide qué tool usar; necesita ver la imagen para decidir
+  correctamente (sin esto el planner devuelve `no_action_required` aunque haya algo que buscar)
+- `build_chat_ai_request` — chat normal y path `no_action_required`
+- `build_after_tools_ai_request` — respuesta tras ejecutar una tool
+- path local (Ollama) — Gemma actual no es multimodal; el campo se propaga pero no tiene efecto
+  hasta que el modelo local soporte visión (ver docs/decisions.md sección Imágenes para el plan
+  de Fase 2)
+
+No hay persistencia de imágenes en el backend (ver docs/decisions.md, sesión 2026-06-30 #3).
+
+Validación: tipo (`image/jpeg`, `image/png`, `image/webp`, `image/gif`) y tamaño (máx 5MB)
+en `routes_chat.py` antes de procesar.
+
+Archivos clave:
+```text
+mobile/src/utils/imageResize.ts        — redimensionado cliente a 1024px, JPEG 0.85
+mobile/src/screens/ChatScreen.tsx      — clip button, preview, handleSend con images
+mobile/src/components/MessageBubble.tsx — thumbnail 240px + overlay click-to-expand
+backend/app/api/schemas.py             — ChatImageInput, ChatMessageRequest.images
+backend/app/api/routes_chat.py         — _validate_images(), walrus-operator guard
+backend/app/cortex/schemas.py          — AIRequest.images: list[dict[str, str]]
+backend/app/cortex/claude_provider.py  — _user_content_block(): str | list[block]
+backend/app/chat/ai_request_builder.py — images en los 3 builders (planner, chat, after_tools)
+backend/app/chat/ai_orchestrator.py    — propaga request.images al planner y otros paths
+tests/test_vision.py                   — 11 tests: validación, content blocks, propagación
+```
+
+---
+
 ## Búsqueda web
 
 Tool `web_search` en `backend/app/tools/handlers/web_search_tools.py`.
