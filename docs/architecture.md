@@ -397,6 +397,7 @@ Búsqueda de memoria implementada:
 - `backend/app/chat/prompt_context.py` — inyección de contexto estructural de memoria (total de mensajes, visibles, límite, disponibilidad de tool). Sin búsqueda proactiva: la búsqueda es solo on-demand vía tool.
 - `backend/app/tools/handlers/memory_tools.py` — handler `search_conversation_history` disponible en `BASE_TOOLSET`.
 - `backend/app/tools/handlers/trace_tools.py` — handler `read_own_trace`: lee `data/logs/app-YYYY-MM-DD.jsonl` (hoy + ayer como fallback), agrupa por `trace_id`, devuelve resumen estructurado por turno (tokens, tools, modo de salida, búsqueda de memoria, fragmentos TTS). Disponible solo cuando `dataset_source == "debug_test"` (inyectado en `routes_chat.py`; fuera de ese modo no aparece en el toolset).
+- `backend/app/tools/handlers/git_tools.py` — handler `git_read_log`: lectura del historial de commits recientes del proyecto (solo lectura, sin pending action). Parámetro `hours_back` para filtrar por tiempo. Evita que Sity invente actividad del proyecto cuando se le pregunta qué se ha hecho recientemente.
 
 La búsqueda de memoria es on-demand. El modelo llama a `search_conversation_history` cuando detecta que falta contexto. No hay inyección proactiva automática ni listas de triggers.
 
@@ -505,6 +506,13 @@ Reglas no negociables:
 
 - **Valores por defecto de personalidad**: `config/default_config.yaml`
   → `personality.*`
+
+- **refusal_mode — disponibilidad vs. aplicación**: `_should_refuse()`
+  decide con un roll de probabilidad si refusal_mode está disponible
+  en el turno. El modelo evalúa el contenido del mensaje en tiempo
+  de respuesta para decidir si ejercerlo (ver `_REFUSAL_ACTIVE` en
+  `persona_system.md`). `tone_snapshot["refusal_mode"] = "active"`
+  significa disponible, no necesariamente ejercido.
 
 ## Dataset y pipeline de entrenamiento
 

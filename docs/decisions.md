@@ -159,6 +159,72 @@ sección 10):
 10. Sistema de comentarios con revisión humana en batch
 11. Evaluar montaje online (Shotstack/Creatomate) si procede
 
+## 2026-06-30 (sesión 2) — fixes de UX y comportamiento
+
+### Lag en el input del chat móvil
+
+Causa real: ChatScreen renderizaba la lista completa de mensajes
+(AnimatePresence + Framer Motion) en el mismo componente que el
+textarea. Cada tecla pulsada disparaba setInputText, que
+re-renderizaba también la lista completa de mensajes — costoso
+con Framer Motion en conversaciones largas.
+
+Primer intento (debounce de localStorage) no resolvió el problema
+porque la causa no era el I/O a disco sino el re-render de la
+lista de mensajes.
+
+Fix definitivo: extraído MessageList a componente separado con
+React.memo. handleAudioPlay/handleAudioEnded envueltos en
+useCallback para no romper la memoización por cambio de
+referencia. El input ya no provoca re-render de los mensajes.
+
+Lección: con estado elevado a App.tsx (useChat vive ahí desde
+una sesión anterior), cualquier componente hijo que reciba listas
+grandes como prop debe memoizarse explícitamente, o cualquier
+cambio de estado local en el padre las re-renderiza igualmente.
+
+### refusal_mode sin criterio sobre el contenido del mensaje
+
+_should_refuse() decidía con un roll de probabilidad puro, sin
+evaluar si la petición era trivial/de ocio (el caso para el que
+refusal_mode está pensado) o sustancial (opinión personal genuina,
+decisión real del usuario). Causaba negativas incoherentes en
+preguntas legítimas.
+
+Fix: el roll de probabilidad sigue decidiendo si refusal_mode
+está "disponible" en el turno, pero _REFUSAL_ACTIVE ahora da al
+modelo un criterio explícito para evaluar el mensaje antes de
+ejercerlo. Si la petición no es trivial, el modelo puede no
+aplicar la negativa aunque esté disponible.
+
+tone_snapshot documentado: "active" = disponible para el turno,
+no implica que el modelo lo haya ejercido en la respuesta final.
+
+### Alucinación de hechos no verificados
+
+Sity inventaba detalles específicos (nombres de archivo, acciones
+del usuario) al responder preguntas tipo "¿qué he hecho hoy?"
+porque no tenía ninguna tool que diera datos reales sobre
+actividad del usuario fuera del chat — solo tenía
+search_conversation_history (chats pasados) y read_own_trace
+(sus propios turnos).
+
+Fix de dos partes:
+- Regla anti-invención reforzada en persona_system.md: distinguir
+  explícitamente entre información real (contexto/tools) y
+  contenido plausible inventado. Preferir "no lo sé" a una
+  respuesta inventada que suene segura.
+- git_read_log mejorado con parámetro hours_back y description
+  explícita: acceso real de solo lectura al historial de commits.
+  Sin pending action (solo lectura, sin riesgo).
+
+Patrón general: cuando el usuario pregunta por algo que requiere
+datos reales del sistema/proyecto y Sity no tiene tool para ello,
+el síntoma es invención de contenido plausible. La solución
+sistemática es dar la tool real, no solo reforzar la instrucción
+de "no inventes" — la regla ayuda pero no sustituye tener la
+fuente de verdad disponible.
+
 ## Deuda técnica documentada
 
 ### Fallbacks duplicados en código Python (B3, B8)
