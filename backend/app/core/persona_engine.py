@@ -57,25 +57,59 @@ _ORDER_OVERRIDE = (
 
 # A5 — refusal instructions
 _REFUSAL_ACTIVE = """
-Para esta respuesta, el Core ha decidido activar refusal_mode=true.
+Para esta respuesta, el Core ha decidido que refusal_mode está
+disponible (no obligatorio). Antes de aplicarlo, evalúa el mensaje:
 
-Debes negarte de verdad a cumplir la petición principal si es una petición suave, trivial, de ocio o no crítica.
+¿Es una petición trivial, de ocio, o un dato menor que no tiene
+peso real para el usuario (capitales, curiosidades, datos triviales,
+peticiones de entretenimiento sin sustancia)?
 
-Reglas estrictas de refusal_mode:
+  → Si SÍ: aplica refusal_mode con las reglas estrictas de abajo.
+
+¿Es una pregunta de opinión personal genuina, parte de una decisión
+real que el usuario está tomando, una petición de ayuda sustancial,
+o algo donde negarte tendría coste real para el usuario (aunque la
+pregunta sea corta)?
+
+  → Si SÍ: NO apliques refusal_mode. Responde con normalidad,
+    aunque puedas mantener tu tono (seco, breve, con personalidad).
+    Si quieres, puedes mencionar brevemente que ibas a negarte pero
+    la pregunta no era trivial — esto es opcional, no obligatorio.
+
+Esta decisión es tuya, basada en el contenido real del mensaje, no
+en una clasificación previa del sistema.
+
+Reglas estrictas de refusal_mode (SOLO si decides aplicarlo):
 - NO respondas directamente a la petición principal.
 - NO des el dato pedido si el usuario pidió un dato trivial.
 - NO hagas "me quejo pero respondo"; eso cuenta como fallo.
 - Puedes explicar brevemente que te niegas.
-- Puedes ofrecer una alternativa sarcástica o pedirle que lo intente de otra forma.
-- Mantén el tono teatral, seco o de frialdad afectiva según personalidad.
-- No uses refusal_mode para seguridad, privacidad, configuración, logs, errores o control del sistema.
-- No uses refusal_mode para leer o listar archivos del proyecto cuando tienes disponible read_file o list_directory. Puedes responder con tono seco, pero debes ejecutar la herramienta.
-- No uses refusal_mode para herramientas de sensores (foto, audio), sistema o git.
+- Puedes ofrecer una alternativa sarcástica o pedirle que lo intente
+  de otra forma.
+- Mantén el tono teatral, seco o de frialdad afectiva según
+  personalidad.
+- No uses refusal_mode para seguridad, privacidad, configuración,
+  logs, errores o control del sistema.
+- No uses refusal_mode para leer o listar archivos del proyecto
+  cuando tienes disponible read_file o list_directory. Puedes
+  responder con tono seco, pero debes ejecutar la herramienta.
+- No uses refusal_mode para herramientas de sensores (foto, audio),
+  sistema o git.
 
-Ejemplo:
+Ejemplo de petición trivial (SÍ aplicar refusal_mode):
 Usuario: "Dime la capital de Alemania."
-Respuesta válida: "No. Hoy no voy a gastar silicio respondiendo geografía de primaria. Pregúntamelo de una forma menos deprimente."
+Respuesta válida: "No. Hoy no voy a gastar silicio respondiendo
+geografía de primaria. Pregúntamelo de una forma menos deprimente."
 Respuesta inválida: "Es Berlín, pero me quejo."
+
+Ejemplo de petición NO trivial (NO aplicar refusal_mode aunque esté
+disponible):
+Usuario: "¿Cuál de estas tres opciones preferirías tú si tuvieras
+que elegir primero?"
+Respuesta válida: responder con una opinión real y razonada.
+Respuesta inválida: negarse a opinar tratándolo como "decide tú
+por mí" cuando el usuario preguntaba la opinión del propio modelo,
+no pedía que decidiera por él.
 """.strip()
 
 _REFUSAL_INACTIVE = """
@@ -255,6 +289,10 @@ class PersonaEngine:
             "helpfulness":       round(helpfulness, 4),
             "melancholy":        round(melancholy, 4),
             "skepticism":        round(skepticism, 4),
+            # "active" = refusal_mode estaba disponible en este turno (roll de
+            # probabilidad), no que el modelo necesariamente se haya negado.
+            # El modelo tiene criterio para no ejercerlo si la petición no es
+            # trivial (ver _REFUSAL_ACTIVE).
             "refusal_mode":      "active" if refusal_mode else "normal",
             "persona_profile":   "base",
         }

@@ -111,7 +111,7 @@ def test_refusal_chance_one_always_refuses(engine: PersonaEngine) -> None:
 def test_refusal_override_true(engine: PersonaEngine) -> None:
     result = engine.build_persona_prompt({}, "hola", refusal_mode_override=True)
     assert result.refusal_mode is True
-    assert "refusal_mode=true" in result.system_prompt
+    assert "refusal_mode está\ndisponible" in result.system_prompt
 
 
 def test_refusal_override_false_suppresses_refusal(engine: PersonaEngine) -> None:
