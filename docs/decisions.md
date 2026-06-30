@@ -277,6 +277,134 @@ no añadir persistencia primero y política de borrado después.
 
 ---
 
+## 2026-06-30 (sesión 4) — Google OAuth implementado y depurado
+
+### Integración inicial
+
+OAuth2 con Google para Gmail, Calendar y Drive:
+- Scopes: gmail.readonly, calendar.readonly, calendar.events, drive.readonly
+- Credenciales: client_id/client_secret en backend/.env (nunca en repo)
+- Token: data/google_token.json, fuera del repo (.gitignore)
+- Primera autenticación: flujo manual con URL + código de copiar/pegar
+  (no depende de servidor local — compatible con SSH sin X forwarding)
+- Refresh automático del access_token sin intervención del usuario
+
+Tools implementadas:
+- gmail_search: solo lectura, filtra por bandeja Principal por defecto
+  (category:primary). NO puede enviar, borrar, archivar ni modificar.
+- calendar_list_events: lista eventos futuros, devuelve event_id
+- calendar_create_event: crea eventos con pending action + timezone
+  del sistema (timedatectl, fallback Europe/Madrid)
+- calendar_edit_event: edita eventos por event_title O event_id —
+  busca internamente por título si no hay event_id
+- calendar_delete_event: borra eventos con pending action,
+  mismo patrón de búsqueda por título
+- drive_search: busca archivos por nombre en todo el Drive
+- drive_list_folder: lista contenido de una carpeta específica
+  o el Drive raíz si no se especifica carpeta
+
+### Bugs encontrados y resueltos
+
+**Bug 1 — GOOGLE_TOOLSET con regex de keywords frágil:**
+El selector activaba las tools de Google solo si el mensaje contenía
+palabras exactas ("correo", "agenda", etc.). Preguntas naturales como
+"¿qué tengo hoy?" no activaban nada — el planner nunca veía las tools.
+Fix: GOOGLE_TOOLSET eliminado, las 7 tools integradas en BASE_TOOLSET.
+Siempre disponibles para el planner, sin clasificación por keywords.
+Coste extra mínimo por el cacheo de prompts existente.
+
+**Bug 2 — Timezone faltante al crear eventos:**
+HttpError 400 "Missing time zone definition". La API de Google Calendar
+requiere timezone en los eventos. Fix: _get_system_timezone() lee la
+timezone con timedatectl (fallback Europe/Madrid).
+
+**Bug 3 — Sity inventaba capacidades de Gmail:**
+Con scope gmail.readonly, Sity decía que podía "marcar como leído,
+archivar, eliminar". Fix: descripción del tool y reglas del planner
+explícitas sobre los límites reales del scope.
+
+**Bug 4 — Gmail no filtraba por bandeja Principal:**
+Sin filtro explícito, la búsqueda incluía Promociones, Social y
+Notificaciones. Fix: category:primary añadido automáticamente a la
+query salvo que el usuario especifique otra bandeja.
+
+**Bug 5 — Drive no encontraba carpetas por mayúsculas/acentos:**
+La query usaba name = 'X' (exacto, case-sensitive). Fix: cambiado a
+name contains 'X', que tolera variaciones de mayúsculas y acentos.
+
+**Bug 6 — Drive listaba archivos compartidos en vez del Drive propio:**
+La query por defecto devolvía archivos de otros. Fix: query vacía
+usa 'me' in owners con orderBy por fecha de modificación.
+
+**Bug 7 — drive_list_folder buscaba carpeta "root" cuando se pedía la raíz:**
+El modelo pasaba folder_name="root" para listar el nivel superior.
+Fix: aliases detectados (root, raíz, inicio...) → 'root' in parents.
+
+**Bug 8 — calendar_edit_event nunca se llamaba (bug estructural):**
+El planner hace UNA sola tool call por turno. El flujo "list eventos
+para obtener event_id → edit en el turno siguiente" no funcionaba
+porque el resultado del primer turno no llegaba al planner del segundo.
+Fix estructural: calendar_edit_event y calendar_delete_event aceptan
+event_title. El handler busca el event_id internamente antes de crear
+la pending action — todo en una sola tool call.
+
+**Bug 9 — Planner usaba search_conversation_history antes de actuar:**
+Cuando el usuario daba todos los datos ("añade X al evento Y"), el
+planner llamaba a search_conversation_history en vez de actuar
+directamente. Fix: regla de acción directa en el prompt del planner:
+si el mensaje contiene todos los datos necesarios, ejecutar la tool
+sin pasos previos de "preparación".
+
+### Lecciones aprendidas
+
+- Las tools de Google deben estar siempre en BASE_TOOLSET: cualquier
+  mecanismo de selección por keywords es frágil porque el lenguaje
+  natural es impredecible. El coste de tenerlas siempre disponibles
+  es bajo con el cacheo de prompts.
+- El planner de una sola tool call por turno no puede hacer flujos
+  encadenados (list → edit). Diseñar tools que sean autocontenidas:
+  que resuelvan internamente lo que necesitan (buscar el event_id)
+  sin depender del contexto de turnos anteriores.
+- search_conversation_history es una "herramienta de procrastinación"
+  cuando el modelo no sabe qué hacer. La regla de acción directa
+  evita que se use como paso previo innecesario.
+
+### Capacidades actuales de Google en Sity
+
+Gmail: solo lectura/búsqueda. Bandeja Principal por defecto.
+Calendar: leer eventos, crear eventos (pending action), editar
+eventos por título o ID (pending action), borrar eventos (pending action).
+Drive: buscar archivos por nombre, listar contenido de carpetas,
+listar el Drive raíz.
+
+Pendiente (no implementado aún):
+- Gmail: envío de correos (requeriría scope gmail.send)
+- Calendar: gestión de recordatorios/alertas en eventos
+- Drive: leer contenido de archivos (solo metadatos por ahora)
+- Drive: subir/crear archivos en Drive
+
+---
+
+## 2026-06-30 (sesión 4 cont.) — Fixes de UX y comportamiento
+
+### Panel de control — nota operacional
+
+Tras cambios en panel/, el flujo correcto para que el autoarranque
+use el código nuevo:
+- `npm run build` — compila TypeScript
+- `npm run package` — actualiza el binario en release/
+
+Sin `npm run package`, el autoarranque sigue usando el binario anterior.
+
+### Caché de web_search
+
+Resultados cacheados en data/search_cache.db con TTL decidido por el modelo
+(is_dynamic: true/false en el tool input). TTL corto (1h) para contenido
+dinámico, TTL largo (24h) para estable. Ver commit feat(tools): caché SQLite
+para web_search.
+
+---
+
 ## Deuda técnica documentada
 
 ### Fallbacks duplicados en código Python (B3, B8)

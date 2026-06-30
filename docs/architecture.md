@@ -814,3 +814,64 @@ cualquier servicio sin cambiar el código.
 - `sityAPI` expuesto via `contextBridge` (`preload.ts`)
 - Restart de servicios sin contraseña via `/etc/sudoers.d/sity-panel`
 
+---
+
+## Integración Google OAuth
+
+### Módulos
+
+- `backend/app/integrations/google_auth.py` — gestión de credenciales, refresh automático
+- `backend/app/tools/handlers/google_tools.py` — handlers de las 7 tools
+- `backend/app/actions/google_actions.py` — ejecutores de acciones confirmadas
+  (calendar_create, calendar_edit, calendar_delete)
+- `scripts/google_auth_setup.py` — autenticación inicial manual (una vez)
+
+### Flujo de autenticación
+
+```
+python scripts/google_auth_setup.py
+  → URL en terminal
+  → autorizar en cualquier navegador (funciona vía SSH)
+  → pegar código de autorización
+  → token guardado en data/google_token.json
+  → refresh automático sin intervención del usuario
+```
+
+### Scopes activos
+
+- `gmail.readonly`
+- `calendar.readonly` + `calendar.events`
+- `drive.readonly`
+
+### Patrón de diseño de tools de Google
+
+**Tools de solo lectura** (`gmail_search`, `calendar_list_events`, `drive_search`,
+`drive_list_folder`): ejecutan directamente, sin pending action.
+
+**Tools de escritura/destructivas** (`calendar_create_event`, `calendar_edit_event`,
+`calendar_delete_event`): crean pending action con `risk_level="safe_confirm"`.
+Requieren confirmación explícita del usuario antes de ejecutar via
+`pending_action_runner.py` → `google_actions.py`.
+
+**Tools que necesitan identificar un recurso** (`calendar_edit_event`,
+`calendar_delete_event`): autocontenidas — aceptan `event_title` además de
+`event_id`. Si no hay `event_id`, buscan internamente el evento por título
+(coincidencia parcial, case-insensitive, próximos 365 días) antes de crear
+la pending action. Sin dependencia de tool calls previas en turnos anteriores.
+
+### Regla de toolset
+
+Las 7 tools de Google están en `BASE_TOOLSET` (siempre disponibles para el
+planner). No hay selector condicional por keywords — el lenguaje natural es
+impredecible y cualquier regex de keywords falla con expresiones naturales
+no previstas ("¿qué tengo hoy?" no contiene "agenda" ni "calendario").
+
+### Regla de acción directa (planner)
+
+Si el mensaje del usuario contiene todos los datos necesarios para ejecutar
+una acción (qué hacer + sobre qué + con qué datos), el planner ejecuta la
+tool directamente sin pasos de "preparación" (`search_conversation_history`,
+`calendar_list_events`, etc.). Evita el antipatrón de usar
+`search_conversation_history` como herramienta de procrastinación cuando
+el modelo no está seguro de qué hacer.
+

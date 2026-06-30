@@ -1367,22 +1367,56 @@ de enviar, validación tipo/tamaño en backend, content blocks multimodal en Cla
 El planner recibe las imágenes y puede decidir `web_search` u otras tools con contexto visual.
 Para el modelo local fine-tuneado se necesitará un modelo multimodal (Fase 2, pendiente).
 
-### 11. Google OAuth (pendiente)
+### 11. Google OAuth ✓ (completado)
 
-Correo, calendario, Drive como tools de Sity. Requiere OAuth2 con Google y
-tools nuevas en el ToolExecutor.
+Gmail, Calendar y Drive implementados y depurados. 7 tools: gmail_search, calendar_list_events,
+calendar_create_event, calendar_edit_event, calendar_delete_event, drive_search, drive_list_folder.
+Flujo de autenticación manual vía URL + código (compatible con SSH). Refresh automático del token.
+Ver docs/decisions.md sección 2026-06-30 sesión 4 para los 9 bugs resueltos y lecciones aprendidas.
 
-### 12. Domótica (pendiente)
+### 11b. Caché de web_search ✓ (completado)
+
+Resultados cacheados en SQLite con TTL decidido por el modelo (is_dynamic). TTL corto (1h) para
+contenido dinámico, TTL largo (24h) para contenido estable.
+
+### 12. Panel Claude API Usage (pendiente)
+
+Bloque en el panel de control mostrando uso real de la API de Anthropic: tokens consumidos,
+coste del mes, coste de hoy, ahorro por caché, desglose por modelo.
+Requiere Admin API key (distinta a la key de Sity).
+Endpoints: /v1/organizations/usage_report/messages y /v1/organizations/cost_report.
+Actualización cada 5 minutos.
+
+### 13. Domótica (pendiente)
 
 Tapo P100 + Smart Life (Gleco) sin hardcodear por dispositivo. Sity debe poder
 decir "tengo un Tapo P100, conéctate y enciéndelo" y resolverlo sola usando
 `web_search` + acceso a red local.
 
-### 13. Canal de divulgación Tech & IA (futuro, a largo plazo)
-Sity como orquestadora de un canal de YouTube de divulgación
-tech/IA, con pipeline de noticias → guion → audio → vídeo →
-publicación, todo con confirmación humana en pasos críticos.
-Especificación completa en docs/canal-spec.md.
+### 14. Sistema de alertas del panel (pendiente)
+
+Expandir las alertas del monitor más allá del backend caído.
+Disco >95% (critical), RAM >90% (grave), Disco >80% (medium),
+Temperatura 70-80°C (low), Zombies >5 (low).
+Historial de alertas con timestamps. Uptime por servicio.
+Logs on-click en barra de servicios.
+
+### 15. Refactorización persona_engine (pendiente)
+
+A3–A6 parcialmente resueltos (ver commits batch 2). Pendiente: mover instrucciones y
+directivas del modelo al template persona_system.md (A4, A5, A6 completos) y umbrales
+de estilo a config (B5, B6).
+
+### 16. Canal de divulgación Tech & IA (futuro, a largo plazo)
+
+Sity como orquestadora de un canal de YouTube de divulgación tech/IA, con pipeline
+de noticias → guion → audio → vídeo → publicación, todo con confirmación humana en
+pasos críticos. Especificación completa en docs/canal-spec.md.
+
+### 17. Fine-tuning con Gemma 3 4B + LoRA (futuro)
+
+Cuando el dataset esté completo. Dataset multimodal (imágenes) se acumula durante el
+uso actual de la API de Anthropic. Ver docs/decisions.md sección fine-tuning.
 
 ---
 
