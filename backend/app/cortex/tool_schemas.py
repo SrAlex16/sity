@@ -286,13 +286,27 @@ GIT_READ_STATUS_TOOL = {
 
 GIT_READ_LOG_TOOL = {
     "name": "git_read_log",
-    "description": "Lee últimos commits de un repositorio permitido. Solo lectura.",
+    "description": (
+        "Lee commits recientes de un repositorio permitido. Solo lectura, sin riesgo. "
+        "Úsala SIEMPRE que el usuario pregunte qué se ha hecho en el proyecto "
+        "recientemente, hoy, esta semana, o en cualquier rango de tiempo — por ejemplo: "
+        "'¿qué he hecho hoy?', 'revisa el historial', '¿qué cambios se han hecho?', "
+        "'¿qué commits hay?'. NUNCA inventes commits, nombres de archivo ni contenido "
+        "de cambios: consulta esta herramienta y devuelve lo que devuelva. "
+        "Usa hours_back para filtrar por tiempo (p.ej. 24 para las últimas 24 horas)."
+    ),
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
         "properties": {
             "repo_path": _GIT_REPO_PATH_FIELD,
             "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+            "hours_back": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 720,
+                "description": "Filtrar commits de las últimas N horas. Sin este parámetro devuelve los últimos `limit` commits sin filtro temporal.",
+            },
         },
         "required": ["repo_path"],
     },

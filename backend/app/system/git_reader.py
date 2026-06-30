@@ -70,12 +70,13 @@ def git_status(repo_path: str) -> dict[str, Any]:
     }
 
 
-def git_log(repo_path: str, limit: int = 10) -> dict[str, Any]:
+def git_log(repo_path: str, limit: int = 10, hours_back: int | None = None) -> dict[str, Any]:
     limit = max(1, min(limit, 50))
-    result = run_git(
-        repo_path,
-        ["log", f"-{limit}", "--oneline", "--decorate"],
-    )
+    args = ["log", f"-{limit}", "--pretty=format:%h  %ad  %s", "--date=short"]
+    if hours_back is not None:
+        hours_back = max(1, min(hours_back, 720))
+        args.append(f"--since={hours_back} hours ago")
+    result = run_git(repo_path, args)
     return {
         "repo_path": repo_path,
         "ok": result["ok"],

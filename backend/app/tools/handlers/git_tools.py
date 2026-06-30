@@ -16,12 +16,14 @@ def handle_git_read_status(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("git_read_log")
 def handle_git_read_log(ctx: ToolContext) -> ToolExecutionResult:
+    hours_raw = ctx.tool_input.get("hours_back")
     return ctx.executor._simple_read_tool(
         tool_name=ctx.tool_name,
         trace_id=ctx.trace_id,
         result=git_log(
             str(ctx.tool_input.get("repo_path", "")),
             int(ctx.tool_input.get("limit", 10)),
+            hours_back=int(hours_raw) if hours_raw is not None else None,
         ),
     )
 
