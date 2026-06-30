@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -23,6 +24,7 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const [overlayOpen, setOverlayOpen] = useState(false);
 
   return (
     <motion.div
@@ -37,11 +39,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       >
         <div className={styles.text}>
           {message.imagePreviewUrl && (
-            <img
-              src={message.imagePreviewUrl}
-              alt="imagen adjunta"
-              style={{ maxWidth: '100%', borderRadius: 8, marginBottom: 6, display: 'block' }}
-            />
+            <>
+              <img
+                src={message.imagePreviewUrl}
+                alt="imagen adjunta"
+                className={styles.messageImage}
+                onClick={() => setOverlayOpen(true)}
+              />
+              {overlayOpen && (
+                <div
+                  className={styles.imageOverlay}
+                  onClick={() => setOverlayOpen(false)}
+                >
+                  <img
+                    src={message.imagePreviewUrl}
+                    alt="imagen ampliada"
+                    className={styles.imageOverlayImg}
+                  />
+                </div>
+              )}
+            </>
           )}
           {message.text && (
             <ReactMarkdown
