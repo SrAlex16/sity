@@ -237,20 +237,45 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     )
 
 
+def _resolve_event_id_by_title(service: object, event_title: str) -> tuple[str, str]:
+    """Return (event_id, error_message). error_message is empty on success."""
+    import datetime as dt
+    now = dt.datetime.utcnow().isoformat() + "Z"
+    end = (dt.datetime.utcnow() + dt.timedelta(days=365)).isoformat() + "Z"
+    results = service.events().list(  # type: ignore[union-attr]
+        calendarId="primary", timeMin=now, timeMax=end,
+        singleEvents=True, orderBy="startTime", maxResults=50,
+    ).execute()
+    matched = [
+        e for e in results.get("items", [])
+        if event_title.lower() in e.get("summary", "").lower()
+    ]
+    if not matched:
+        return "", f"No encontré ningún evento con el nombre '{event_title}' en los próximos 365 días."
+    if len(matched) > 1:
+        names = ", ".join(e.get("summary", "?") for e in matched[:5])
+        return "", (
+            f"Encontré {len(matched)} eventos que coinciden con '{event_title}': {names}. "
+            "Sé más específico o usa el event_id exacto."
+        )
+    return matched[0]["id"], ""
+
+
 @tool_handler("calendar_edit_event")
 def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
     if not is_google_connected():
         return _not_connected(ctx.tool_name)
 
-    event_id    = str(ctx.tool_input.get("event_id", ""))
+    event_id    = str(ctx.tool_input.get("event_id", "")).strip()
+    event_title = str(ctx.tool_input.get("event_title", "")).strip()
     title       = ctx.tool_input.get("title")
     start_iso   = ctx.tool_input.get("start_iso")
     end_iso     = ctx.tool_input.get("end_iso")
     description = ctx.tool_input.get("description")
     location    = ctx.tool_input.get("location")
 
-    if not event_id:
-        msg = "Falta el event_id del evento a editar."
+    if not event_id and not event_title:
+        msg = "Necesito el event_id o el event_title del evento a editar."
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=False, message=msg,
             updated_parameters=[], raw_result={
@@ -259,7 +284,22 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
             },
         )
 
+    if not event_id and event_title:
+        creds = load_credentials()
+        service = build("calendar", "v3", credentials=creds)
+        event_id, err = _resolve_event_id_by_title(service, event_title)
+        if err:
+            return ToolExecutionResult(
+                tool_name=ctx.tool_name, ok=False, message=err,
+                updated_parameters=[], raw_result={
+                    "success": False, "message": err,
+                    "local_final": True, "text": err, "local_model": "tool-policy",
+                },
+            )
+
+    label = event_title or event_id
     payload: dict = {"action": "calendar_edit_event", "event_id": event_id}
+    if event_title: payload["event_title"] = event_title
     if title:       payload["title"]       = title
     if start_iso:   payload["start_iso"]   = start_iso
     if end_iso:     payload["end_iso"]     = end_iso
@@ -289,7 +329,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
     created = manager.create_pending_action(
         action_type="google",
         risk_level="safe_confirm",
-        summary=f"Editar evento de calendario: {event_id}",
+        summary=f"Editar evento de calendario: {label}",
         payload=payload,
         trace_id=ctx.trace_id,
     )
@@ -315,10 +355,11 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
     if not is_google_connected():
         return _not_connected(ctx.tool_name)
 
-    event_id = str(ctx.tool_input.get("event_id", ""))
+    event_id    = str(ctx.tool_input.get("event_id", "")).strip()
+    event_title = str(ctx.tool_input.get("event_title", "")).strip()
 
-    if not event_id:
-        msg = "Falta el event_id del evento a borrar."
+    if not event_id and not event_title:
+        msg = "Necesito el event_id o el event_title del evento a borrar."
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=False, message=msg,
             updated_parameters=[], raw_result={
@@ -327,7 +368,22 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
             },
         )
 
+    if not event_id and event_title:
+        creds = load_credentials()
+        service = build("calendar", "v3", credentials=creds)
+        event_id, err = _resolve_event_id_by_title(service, event_title)
+        if err:
+            return ToolExecutionResult(
+                tool_name=ctx.tool_name, ok=False, message=err,
+                updated_parameters=[], raw_result={
+                    "success": False, "message": err,
+                    "local_final": True, "text": err, "local_model": "tool-policy",
+                },
+            )
+
+    label = event_title or event_id
     payload: dict = {"action": "calendar_delete_event", "event_id": event_id}
+    if event_title: payload["event_title"] = event_title
 
     manager = ConfirmationManager(ctx.executor.session)
     existing = manager.find_equivalent_pending_action(action_type="google", payload=payload)
@@ -352,7 +408,7 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
     created = manager.create_pending_action(
         action_type="google",
         risk_level="safe_confirm",
-        summary=f"Borrar evento de calendario: {event_id}",
+        summary=f"Borrar evento de calendario: {label}",
         payload=payload,
         trace_id=ctx.trace_id,
     )

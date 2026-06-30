@@ -1104,37 +1104,38 @@ CALENDAR_EDIT_EVENT_TOOL = {
     "name": "calendar_edit_event",
     "description": (
         "Modifica un evento existente de Google Calendar. Úsala cuando el usuario quiera cambiar, "
-        "actualizar o añadir cualquier dato a un evento que ya existe: nombre, hora, ubicación, "
-        "descripción o cualquier otro campo. Requiere confirmación explícita antes de ejecutarse. "
-        "Necesitas el event_id del evento — obtenlo primero con calendar_list_events si no lo "
-        "tienes. Solo modifica los campos que se especifiquen, el resto no cambia."
+        "actualizar o añadir cualquier dato a un evento: nombre, hora, ubicación, descripción, etc. "
+        "Puedes identificar el evento por event_id O por event_title (nombre del evento) — si "
+        "pasas event_title, lo busco automáticamente sin necesitar llamar antes a "
+        "calendar_list_events. Requiere confirmación antes de ejecutarse."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "event_id":    {"type": "string", "description": "ID del evento a editar."},
-            "title":       {"type": "string", "description": "Nuevo título del evento."},
+            "event_id":    {"type": "string", "description": "ID del evento. Opcional si tienes event_title."},
+            "event_title": {"type": "string", "description": "Nombre o parte del nombre del evento. Úsalo cuando no tengas el event_id."},
+            "title":       {"type": "string", "description": "Nuevo nombre del evento."},
             "start_iso":   {"type": "string", "description": "Nueva fecha/hora inicio ISO 8601."},
             "end_iso":     {"type": "string", "description": "Nueva fecha/hora fin ISO 8601."},
             "description": {"type": "string", "description": "Nueva descripción del evento."},
             "location":    {"type": "string", "description": "Ubicación o lugar del evento."},
         },
-        "required": ["event_id"],
     },
 }
 
 CALENDAR_DELETE_EVENT_TOOL = {
     "name": "calendar_delete_event",
     "description": (
-        "Borra un evento de Google Calendar. Requiere confirmación explícita — es una acción "
-        "destructiva e irreversible. Necesitas el event_id — obtenlo con calendar_list_events."
+        "Borra un evento de Google Calendar. Requiere confirmación — es irreversible. "
+        "Puedes identificar el evento por event_id O por event_title (nombre del evento) — "
+        "si pasas event_title, lo busco automáticamente."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "event_id": {"type": "string", "description": "ID del evento a borrar."},
+            "event_id":    {"type": "string", "description": "ID del evento. Opcional si tienes event_title."},
+            "event_title": {"type": "string", "description": "Nombre o parte del nombre del evento."},
         },
-        "required": ["event_id"],
     },
 }
 
