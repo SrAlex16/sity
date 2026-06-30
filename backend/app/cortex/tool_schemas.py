@@ -1159,8 +1159,12 @@ DRIVE_SEARCH_TOOL = {
 DRIVE_LIST_FOLDER_TOOL = {
     "name": "drive_list_folder",
     "description": (
-        "Lista el contenido de una carpeta específica de Google Drive. "
-        "Usa esta tool cuando el usuario pregunta qué hay dentro de una carpeta concreta. "
+        "Lista el contenido de una carpeta de Google Drive. "
+        "Para ver las carpetas y archivos del Drive raíz (nivel superior), llama con "
+        "folder_name vacío o sin folder_name. "
+        "Para ver el contenido de una carpeta específica, pasa su nombre en folder_name. "
+        "No uses 'root', 'raiz' ni similares como folder_name — deja folder_name vacío "
+        "para listar el nivel raíz. "
         "Para buscar archivos por nombre en todo el Drive, usa drive_search."
     ),
     "input_schema": {

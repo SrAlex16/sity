@@ -378,12 +378,48 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
     if not is_google_connected():
         return _not_connected(ctx.tool_name)
 
-    folder_name = str(ctx.tool_input.get("folder_name", ""))
-    folder_id   = str(ctx.tool_input.get("folder_id", ""))
+    folder_name = str(ctx.tool_input.get("folder_name", "")).strip()
+    folder_id   = str(ctx.tool_input.get("folder_id", "")).strip()
     max_results = min(int(ctx.tool_input.get("max_results", 20)), 50)
 
     creds = load_credentials()
     service = build("drive", "v3", credentials=creds)
+
+    _ROOT_ALIASES = {"root", "raiz", "raíz", "inicio", "principal", "mi drive", ""}
+
+    _MIME_LABELS: dict[str, str] = {
+        "application/vnd.google-apps.folder":      "Carpeta",
+        "application/vnd.google-apps.document":    "Doc",
+        "application/vnd.google-apps.spreadsheet": "Hoja",
+        "application/pdf":                         "PDF",
+    }
+
+    def _format_files(files: list, label: str) -> ToolExecutionResult:
+        if not files:
+            output = "No se encontraron archivos o carpetas."
+            return ToolExecutionResult(
+                tool_name=ctx.tool_name, ok=True, message=output,
+                updated_parameters=[], raw_result={"output": output},
+            )
+        lines = [
+            f"{_MIME_LABELS.get(f['mimeType'], 'Archivo')} — {f['name']}"
+            for f in files
+        ]
+        output = f"Contenido de '{label}' ({len(files)} elementos):\n" + "\n".join(lines)
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    # Listar Drive raíz cuando no hay carpeta concreta o se pide la raíz
+    if not folder_id and folder_name.lower() in _ROOT_ALIASES:
+        res = service.files().list(
+            q="'root' in parents and trashed = false",
+            pageSize=max_results,
+            orderBy="folder,modifiedTime desc",
+            fields="files(id, name, mimeType, modifiedTime)",
+        ).execute()
+        return _format_files(res.get("files", []), "Mi Drive (raíz)")
 
     actual_folder_name = folder_name
     if not folder_id and folder_name:
@@ -405,7 +441,7 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
         actual_folder_name = folders[0]["name"]
 
     if not folder_id:
-        output = "Necesito el nombre o ID de la carpeta."
+        output = "Necesito el nombre o ID de la carpeta, o deja folder_name vacío para ver el Drive raíz."
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=False, message=output,
             updated_parameters=[], raw_result={"output": output},
@@ -414,34 +450,7 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
     res = service.files().list(
         q=f"'{folder_id}' in parents and trashed = false",
         pageSize=max_results,
-        orderBy="modifiedTime desc",
+        orderBy="folder,modifiedTime desc",
         fields="files(id, name, mimeType, modifiedTime)",
     ).execute()
-
-    files = res.get("files", [])
-    if not files:
-        output = "La carpeta está vacía o no contiene archivos visibles."
-        return ToolExecutionResult(
-            tool_name=ctx.tool_name, ok=True, message=output,
-            updated_parameters=[], raw_result={"output": output},
-        )
-
-    _MIME_LABELS: dict[str, str] = {
-        "application/vnd.google-apps.folder":      "Carpeta",
-        "application/vnd.google-apps.document":    "Doc",
-        "application/vnd.google-apps.spreadsheet": "Hoja",
-        "application/pdf":                         "PDF",
-    }
-
-    lines = [
-        f"{_MIME_LABELS.get(f['mimeType'], 'Archivo')} — {f['name']}"
-        for f in files
-    ]
-    output = (
-        f"Contenido de '{actual_folder_name or folder_id}' ({len(files)} elementos):\n"
-        + "\n".join(lines)
-    )
-    return ToolExecutionResult(
-        tool_name=ctx.tool_name, ok=True, message=output,
-        updated_parameters=[], raw_result={"output": output},
-    )
+    return _format_files(res.get("files", []), actual_folder_name or folder_id)
