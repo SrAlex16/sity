@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session, col, select
 
 from app.api.schemas import (
+    ChatImageInput,
     ChatMessageItem,
     ChatMessageRequest,
     ChatMessageResponse,
@@ -30,6 +31,23 @@ from app.trace.logger import write_log
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def _validate_images(images: list[ChatImageInput]) -> str | None:
+    import base64
+    for img in images:
+        if img.media_type not in _ALLOWED_IMAGE_TYPES:
+            return f"Tipo de imagen no soportado: {img.media_type}"
+        try:
+            decoded_size = len(base64.b64decode(img.data, validate=True))
+        except Exception:
+            return "Imagen con datos base64 inválidos."
+        if decoded_size > _MAX_IMAGE_BYTES:
+            return "La imagen supera el límite de 5MB."
+    return None
 
 
 @router.get("/current", response_model=CurrentChatResponse)
@@ -69,6 +87,10 @@ def chat_message(
     request: ChatMessageRequest,
     session: Session = Depends(get_session),
 ):
+    if err := _validate_images(request.images):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=err)
+
     cid = request.client_turn_id
     if cid:
         register_operation(cid)

@@ -36,6 +36,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         className={`${styles.bubble} ${isUser ? styles.bubbleUser : styles.bubbleSity} ${message.isError ? styles.bubbleError : ''}`}
       >
         <div className={styles.text}>
+          {message.imagePreviewUrl && (
+            <img
+              src={message.imagePreviewUrl}
+              alt="imagen adjunta"
+              style={{ maxWidth: '100%', borderRadius: 8, marginBottom: 6, display: 'block' }}
+            />
+          )}
           {message.text && (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}

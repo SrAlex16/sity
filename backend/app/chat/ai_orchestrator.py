@@ -187,6 +187,7 @@ class ChatAIOrchestrator:
                     user_message=user_message_with_history,
                     max_tokens=ctx.max_tokens,
                     prior_messages=prior_messages,
+                    images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
                 )
             )
         else:
@@ -248,6 +249,7 @@ class ChatAIOrchestrator:
                         user_message=user_message_with_history,
                         max_tokens=ctx.max_tokens,
                         prior_messages=prior_messages,
+                        images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
                     )
                 )
 
@@ -285,6 +287,7 @@ class ChatAIOrchestrator:
                                     max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
                                     tools=selected_tools,
                                     prior_messages=prior_messages,
+                                    images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
                                 ),
                                 first_response_content=[
                                     {
@@ -479,6 +482,7 @@ class ChatAIOrchestrator:
                     max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
                     tools=selected_tools,
                     prior_messages=prior_messages,
+                    images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
                 ),
                 first_response_content=[
                     {

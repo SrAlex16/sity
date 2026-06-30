@@ -16,6 +16,7 @@ interface BaseMsg {
 export interface TextChatMessage extends BaseMsg {
   type: 'text';
   text: string;
+  imagePreviewUrl?: string; // data URL de la imagen adjunta (solo cliente, no persiste)
 }
 
 export interface AudioChatMessage extends BaseMsg {
@@ -112,8 +113,14 @@ export function useChat() {
     }
   }
 
-  async function sendMessage(text: string) {
-    const userMsg: TextChatMessage = { id: uid(), type: 'text', role: 'user', text, timestamp: new Date() };
+  async function sendMessage(
+    text: string,
+    images?: Array<{ mediaType: string; data: string; previewUrl: string }>,
+  ) {
+    const userMsg: TextChatMessage = {
+      id: uid(), type: 'text', role: 'user', text, timestamp: new Date(),
+      imagePreviewUrl: images?.[0]?.previewUrl,
+    };
     setMessages((prev) => [...prev, userMsg]);
     setStatus('procesando');
 
@@ -125,7 +132,11 @@ export function useChat() {
       const res = await fetch('/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, source_channel: 'mobile' }),
+        body: JSON.stringify({
+          message: text,
+          source_channel: 'mobile',
+          images: images?.map((img) => ({ media_type: img.mediaType, data: img.data })) ?? [],
+        }),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error('network');

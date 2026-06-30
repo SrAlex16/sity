@@ -60,6 +60,25 @@ def _messages_with_history_cache(
     return result
 
 
+def _user_content_block(request: AIRequest) -> str | list[dict[str, Any]]:
+    """Build the user message content — plain string when no images are present,
+    or a list of content blocks (image + text) when images are attached."""
+    if not request.images:
+        return request.user_message
+    blocks: list[dict[str, Any]] = []
+    for img in request.images:
+        blocks.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": img["media_type"],
+                "data": img["data"],
+            },
+        })
+    blocks.append({"type": "text", "text": request.user_message})
+    return blocks
+
+
 class ClaudeProvider:
     name = "anthropic"
 
@@ -80,7 +99,7 @@ class ClaudeProvider:
             "system": _system_with_cache(request.system_prompt),
             "messages": [
                 *_messages_with_history_cache(request.prior_messages, request.user_message),
-                {"role": "user", "content": request.user_message},
+                {"role": "user", "content": _user_content_block(request)},
             ],
         }
 
@@ -111,7 +130,7 @@ class ClaudeProvider:
         effective_tools = request.tools if request.tools is not None else TOOLS
         _msgs: list[Any] = [
             *_messages_with_history_cache(request.prior_messages, request.user_message),
-            {"role": "user", "content": request.user_message},
+            {"role": "user", "content": _user_content_block(request)},
             {"role": "assistant", "content": first_response_content},
             {"role": "user", "content": tool_results},
         ]

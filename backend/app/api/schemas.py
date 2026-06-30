@@ -23,6 +23,11 @@ class CurrentChatResponse(BaseModel):
     messages: list[ChatMessageItem]
 
 
+class ChatImageInput(BaseModel):
+    media_type: str   # "image/jpeg", "image/png", "image/webp", "image/gif"
+    data: str          # base64 sin prefijo data:
+
+
 class ChatMessageRequest(BaseModel):
     message: str
     history: list[ChatHistoryItem] = []
@@ -30,6 +35,7 @@ class ChatMessageRequest(BaseModel):
     input_mode: str = "text"
     voice_transcript_original: Optional[str] = None
     source_channel: str = "web"
+    images: list[ChatImageInput] = []
 
 
 class ChatArtifact(BaseModel):

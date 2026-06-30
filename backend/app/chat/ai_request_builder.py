@@ -102,6 +102,7 @@ def build_chat_ai_request(
     user_message: str,
     max_tokens: int,
     prior_messages: list[dict[str, Any]] | None = None,
+    images: list[dict[str, str]] | None = None,
 ) -> AIRequest:
     """Plain conversational request — no tools, no tool choice."""
     return AIRequest(
@@ -112,6 +113,7 @@ def build_chat_ai_request(
         max_tokens=max_tokens,
         tools_enabled=False,
         prior_messages=prior_messages or [],
+        images=images or [],
     )
 
 
@@ -167,6 +169,7 @@ def build_after_tools_ai_request(
     max_tokens: int,
     tools: list[dict[str, Any]] | None = None,
     prior_messages: list[dict[str, Any]] | None = None,
+    images: list[dict[str, str]] | None = None,
 ) -> AIRequest:
     """Follow-up request after tool results have been fed back to the model."""
     return AIRequest(
@@ -178,4 +181,5 @@ def build_after_tools_ai_request(
         tools_enabled=False,
         tools=tools,
         prior_messages=prior_messages or [],
+        images=images or [],
     )

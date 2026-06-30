@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { UseChatResult } from '../hooks/useChat';
 import { useVoice } from '../hooks/useVoice';
 import { TypingIndicator } from '../components/TypingIndicator';
+import { resizeImageToBase64, type ResizedImage } from '../utils/imageResize';
 import { StatusBadge } from '../components/StatusBadge';
 import { BackgroundPicker } from '../components/BackgroundPicker';
 import { FontPicker } from '../components/FontPicker';
@@ -95,6 +96,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const [bgValue, setBgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '/backgrounds/wallpaper1.png');
   const [avatarSrc] = useState<string>(() => localStorage.getItem('sity_avatar') ?? '/icons/sity_icon.jpg');
   const [recording, setRecording] = useState<RecordingCtx | null>(null);
+  const [pendingImage, setPendingImage] = useState<ResizedImage | null>(null);
 
   const handleAudioPlay = useCallback(
     (id: string) => setActiveAudioId(id),
@@ -107,6 +109,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll to bottom on new content
@@ -135,18 +138,30 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     }, 400);
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const resized = await resizeImageToBase64(file);
+      setPendingImage(resized);
+    } catch { /* ignore — imagen inválida o cancelada */ }
+  };
+
   const handleSend = useCallback(() => {
     const text = inputText.trim();
-    if (!text || status === 'procesando') return;
+    if ((!text && !pendingImage) || status === 'procesando') return;
     if (draftSaveTimeout.current) {
       clearTimeout(draftSaveTimeout.current);
       draftSaveTimeout.current = null;
     }
+    const imageToSend = pendingImage;
     setInputText('');
+    setPendingImage(null);
     localStorage.removeItem('sity_draft_message');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    void sendMessage(text);
-  }, [inputText, status, sendMessage]);
+    void sendMessage(text || ' ', imageToSend ? [imageToSend] : undefined);
+  }, [inputText, pendingImage, status, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -344,19 +359,52 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                 exit={{ opacity: 0, y: 8 }}
                 transition={{ duration: 0.15 }}
               >
-                <button className={styles.iconBtn} aria-label="Adjuntar">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  style={{ display: 'none' }}
+                  onChange={handleFileChange}
+                />
+                <button
+                  className={styles.iconBtn}
+                  aria-label="Adjuntar imagen"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <IconClip />
                 </button>
 
-                <textarea
-                  ref={textareaRef}
-                  className={styles.textarea}
-                  value={inputText}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="メッセージを入力..."
-                  rows={1}
-                />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {pendingImage && (
+                    <div style={{ position: 'relative', display: 'inline-block', alignSelf: 'flex-start' }}>
+                      <img
+                        src={pendingImage.previewUrl}
+                        alt="preview"
+                        style={{ height: 56, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--color-border)' }}
+                      />
+                      <button
+                        onClick={() => setPendingImage(null)}
+                        aria-label="Quitar imagen"
+                        style={{
+                          position: 'absolute', top: -6, right: -6,
+                          background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+                          borderRadius: '50%', width: 18, height: 18,
+                          fontSize: 10, cursor: 'pointer', color: 'var(--text-secondary)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >✕</button>
+                    </div>
+                  )}
+                  <textarea
+                    ref={textareaRef}
+                    className={styles.textarea}
+                    value={inputText}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="メッセージを入力..."
+                    rows={1}
+                  />
+                </div>
 
                 <button
                   className={styles.iconBtn}
@@ -379,7 +427,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <motion.button
                     className={styles.sendBtn}
                     onClick={handleSend}
-                    disabled={!inputText.trim() || status === 'procesando'}
+                    disabled={(!inputText.trim() && !pendingImage) || status === 'procesando'}
                     whileTap={{ scale: 0.88 }}
                     aria-label="Enviar"
                   >

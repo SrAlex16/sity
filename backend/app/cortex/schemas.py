@@ -13,6 +13,7 @@ class AIRequest(BaseModel):
     tool_choice: dict[str, Any] | None = None
     tools: list[dict[str, Any]] | None = None
     prior_messages: list[dict[str, Any]] = []
+    images: list[dict[str, str]] = []  # [{"media_type": "image/jpeg", "data": "<base64>"}]
 
 
 class AIUsageData(BaseModel):
