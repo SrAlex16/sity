@@ -203,3 +203,27 @@ def test_reinicia_activates_service_control_domain() -> None:
     from app.chat.toolset_selector import select_toolset_with_metadata
     sel = select_toolset_with_metadata("reinicia sity-backend")
     assert "service_control" in sel.activated_domains
+
+
+# ── Google tools always available ─────────────────────────────────────────────
+
+def test_google_tools_available_without_keyword() -> None:
+    """Google tools must be available even when the message contains no explicit
+    keywords like 'agenda', 'correo' or 'drive'. The planner must always receive
+    them so it can decide whether to use them based on natural phrasing."""
+    from app.chat.toolset_selector import select_toolset_for_message
+    tools = select_toolset_for_message("¿qué tengo hoy?")
+    tool_names = {t["name"] for t in tools}
+    assert "calendar_list_events" in tool_names
+    assert "gmail_search" in tool_names
+    assert "drive_search" in tool_names
+    assert "calendar_create_event" in tool_names
+
+
+def test_google_tools_available_for_any_message() -> None:
+    """Google tools must be in the toolset for an unrelated conversational message."""
+    from app.chat.toolset_selector import select_toolset_for_message
+    tools = select_toolset_for_message("hola, ¿qué tal?")
+    tool_names = {t["name"] for t in tools}
+    assert "gmail_search" in tool_names
+    assert "calendar_list_events" in tool_names

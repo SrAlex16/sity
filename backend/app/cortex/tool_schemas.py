@@ -1128,6 +1128,12 @@ BASE_TOOLSET: list[dict] = [
     WEB_SEARCH_TOOL,
     SEARCH_CONVERSATION_HISTORY_TOOL,
     NO_ACTION_REQUIRED_TOOL,
+    # Google tools always available — keyword detection was too fragile.
+    # Coste extra mínimo gracias al cache_control existente en tools.
+    GMAIL_SEARCH_TOOL,
+    CALENDAR_LIST_EVENTS_TOOL,
+    CALENDAR_CREATE_EVENT_TOOL,
+    DRIVE_SEARCH_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [
