@@ -58,6 +58,14 @@ Debes elegir exactamente una herramienta:
 - Usa find_latest_reversible_file_change solo si el usuario pide ver cuál sería el último cambio reversible sin querer ejecutar el rollback todavía.
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
+- Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.
+
+Regla de búsqueda con imagen adjunta: si el usuario adjunta una imagen y pide identificarla, buscar información sobre ella, o investigar algo relacionado con su contenido, usa web_search con una query bien formulada:
+- Describe los rasgos visuales más distintivos y específicos que veas (color y estilo de pelo, vestimenta característica, accesorios únicos, estilo de arte si es reconocible, elementos de fondo relevantes), no una descripción genérica.
+- Si reconoces o sospechas el estilo de un autor, serie, juego, o medio específico, inclúyelo en la query aunque no estés seguro al 100%.
+- Usa un único idioma coherente en la query (español o inglés, no mezcles ambos en la misma búsqueda).
+- Si la primera búsqueda no da resultados útiles, considera que el usuario pueda necesitar dar más contexto — pero intenta primero con la mejor query posible antes de rendirte.
+- Evita queries genéricas tipo "anime girl character" — son demasiado amplias para dar resultados útiles. Sé específico.
 
 Regla de contexto: Si el turno anterior fue sobre leer un archivo y el usuario confirma o aclara, mantén la intención de lectura. No cambies a herramientas Git salvo que el usuario pida explícitamente commits, ramas, diff, status git, pull o push.
 
@@ -124,6 +132,7 @@ def build_planner_ai_request(
     tools: list[dict[str, Any]],
     max_tokens: int = 500,
     prior_messages: list[dict[str, Any]] | None = None,
+    images: list[dict[str, str]] | None = None,
 ) -> AIRequest:
     """Action-planner request — tools required, tool_choice=any."""
     return AIRequest(
@@ -136,6 +145,7 @@ def build_planner_ai_request(
         tool_choice={"type": "any"},
         tools=tools,
         prior_messages=prior_messages or [],
+        images=images or [],
     )
 
 
