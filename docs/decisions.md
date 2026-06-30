@@ -117,6 +117,48 @@ npm run package  ← actualiza el binario en release/
 Solo después de `package` el autoarranque (/etc/xdg/autostart/)
 y el icono del escritorio usan el código nuevo.
 
+## 2026-06-30
+
+### Canal de divulgación Tech & IA — especificación futura
+
+Documentada en docs/canal-spec.md. Sity actuaría como orquestadora
+de un canal de YouTube de divulgación tech/IA, con revisión humana
+obligatoria en cada paso crítico (mismo principio de pending action
++ confirmación que ya tiene Sity).
+
+Posición en el roadmap: después de domótica. Depende de tener
+tool-calling maduro y el patrón de specialist agents asentado.
+
+**Notas de Claude (revisión de la spec):**
+
+- Medir coste real de Sonnet en el primer guion generado antes de
+  asumir que el coste semanal es trivial.
+- Fase C (imágenes): priorizar capturas reales y stock sobre
+  generación con IA al inicio — más barato, sin riesgo de licencia,
+  y coherente con la transparencia que es el diferenciador del canal.
+- Verificar costes de Twitter/X API antes de implementar Fase F
+  para esa plataforma — han cambiado varias veces y pueden no
+  compensar para un canal que empieza.
+- Añadir gate de calidad antes de avanzar de fase: no implementar
+  fetch_metrics ni comentarios automatizados hasta validar el
+  formato con al menos 3 guiones aprobados sin ediciones mayores
+  por parte de Alex. Evita sobre-construir antes de saber si el
+  formato funciona.
+
+**Orden de implementación cuando se aborde** (de canal-spec.md
+sección 10):
+1. Tabla news_items en SQLite
+2. config/content_sources.yaml
+3. Ampliar system_access.yaml con rutas de /home/alex/canal/*
+4. Tool fetch_rss_news (sin Claude, feedparser local)
+5. Tool generate_script (Claude Sonnet + DOCX)
+6. Validar ciclo completo y calidad antes de continuar
+7. Tool generate_tts (ElevenLabs, con confirmación)
+8. Tool upload_youtube (con confirmación)
+9. Tool fetch_metrics
+10. Sistema de comentarios con revisión humana en batch
+11. Evaluar montaje online (Shotstack/Creatomate) si procede
+
 ## Deuda técnica documentada
 
 ### Fallbacks duplicados en código Python (B3, B8)

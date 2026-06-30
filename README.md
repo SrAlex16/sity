@@ -1377,6 +1377,12 @@ Tapo P100 + Smart Life (Gleco) sin hardcodear por dispositivo. Sity debe poder
 decir "tengo un Tapo P100, conéctate y enciéndelo" y resolverlo sola usando
 `web_search` + acceso a red local.
 
+### 13. Canal de divulgación Tech & IA (futuro, a largo plazo)
+Sity como orquestadora de un canal de YouTube de divulgación
+tech/IA, con pipeline de noticias → guion → audio → vídeo →
+publicación, todo con confirmación humana en pasos críticos.
+Especificación completa en docs/canal-spec.md.
+
 ---
 
 ## Roadmap Portabilidad de Plataforma
