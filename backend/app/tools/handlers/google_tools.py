@@ -184,19 +184,31 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     if not is_google_connected():
         return _not_connected(ctx.tool_name)
 
-    query = str(ctx.tool_input.get("query", ""))
+    query = str(ctx.tool_input.get("query", "")).strip()
     max_results = min(int(ctx.tool_input.get("max_results", 5)), 10)
+    include_shared = bool(ctx.tool_input.get("include_shared", False))
 
     creds = load_credentials()
     service = build("drive", "v3", credentials=creds)
 
-    # Escape single quotes in query to avoid injection in Drive API filter
-    safe_query = query.replace("'", "\\'")
-    results = service.files().list(
-        q=f"name contains '{safe_query}' and trashed = false",
-        pageSize=max_results,
-        fields="files(name, mimeType, modifiedTime, webViewLink)",
-    ).execute()
+    if query:
+        safe_query = query.replace("'", "\\'")
+        drive_filter = f"name contains '{safe_query}' and trashed = false"
+    else:
+        drive_filter = "trashed = false and 'me' in owners"
+
+    if include_shared:
+        drive_filter += " or sharedWithMe = true"
+
+    list_kwargs: dict = {
+        "q": drive_filter,
+        "pageSize": max_results,
+        "fields": "files(id, name, mimeType, modifiedTime, webViewLink, owners)",
+    }
+    if not query:
+        list_kwargs["orderBy"] = "modifiedTime desc"
+
+    results = service.files().list(**list_kwargs).execute()
 
     files = results.get("files", [])
     if not files:

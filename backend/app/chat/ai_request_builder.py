@@ -56,7 +56,7 @@ Debes elegir exactamente una herramienta:
 - Si el usuario pide explícitamente revertir un rollback anterior: usa rollback_latest_file_change con include_rollbacks=true.
 - Usa rollback_file_change solo si el usuario proporciona un backup_path concreto.
 - Usa find_latest_reversible_file_change solo si el usuario pide ver cuál sería el último cambio reversible sin querer ejecutar el rollback todavía.
-- Usa gmail_search si el usuario pregunta por correos, emails o contenido de su bandeja de entrada.
+- Usa gmail_search si el usuario pregunta por correos, emails o contenido de su bandeja de entrada. gmail_search es SOLO lectura/búsqueda: no puede enviar, borrar, archivar ni modificar correos. Si el usuario pide algo que requiera escritura, explícaselo claramente — no inventes capacidades que no tienes.
 - Usa calendar_list_events si pregunta qué tiene en la agenda, eventos próximos o su calendario.
 - Usa calendar_create_event si pide crear, añadir o programar un evento o cita. Siempre requiere confirmación — no se crea sin confirmación previa del usuario.
 - Usa drive_search si pregunta por archivos o documentos en su Google Drive.

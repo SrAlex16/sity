@@ -1050,7 +1050,8 @@ SEARCH_CONVERSATION_HISTORY_TOOL = {
 GMAIL_SEARCH_TOOL = {
     "name": "gmail_search",
     "description": (
-        "Busca correos en Gmail del usuario. Solo lectura, no puede enviar ni eliminar correos. "
+        "Busca y lee correos en Gmail del usuario. "
+        "SOLO LECTURA: no puede enviar, eliminar, archivar, marcar como leído/no leído, ni crear etiquetas. "
         "Usa sintaxis de búsqueda Gmail si es útil (from:, subject:, after:, etc.). "
         "Devuelve remitente, asunto, fecha y extracto del cuerpo, no el correo completo."
     ),
@@ -1099,16 +1100,18 @@ CALENDAR_CREATE_EVENT_TOOL = {
 DRIVE_SEARCH_TOOL = {
     "name": "drive_search",
     "description": (
-        "Busca archivos en Google Drive del usuario por nombre. Solo lectura — devuelve "
-        "metadatos (nombre, tipo, fecha de modificación, enlace), no el contenido del archivo."
+        "Busca archivos en Google Drive del usuario. Solo lectura — devuelve "
+        "metadatos (nombre, tipo, fecha de modificación, enlace), no el contenido del archivo. "
+        "Si query está vacío, devuelve los archivos modificados más recientemente. "
+        "Usa include_shared=true para incluir archivos compartidos contigo."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "query": {"type": "string", "description": "Término a buscar en el nombre del archivo."},
+            "query": {"type": "string", "description": "Término a buscar en el nombre del archivo. Vacío para ver recientes."},
             "max_results": {"type": "integer", "description": "Máximo de resultados (máx 10). Por defecto 5."},
+            "include_shared": {"type": "boolean", "description": "Incluir archivos compartidos contigo. Por defecto false."},
         },
-        "required": ["query"],
     },
 }
 

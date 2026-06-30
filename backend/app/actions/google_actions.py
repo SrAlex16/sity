@@ -2,8 +2,23 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass
 from typing import Any
+
+
+def _get_system_timezone() -> str:
+    try:
+        result = subprocess.run(
+            ["timedatectl", "show", "--property=Timezone", "--value"],
+            capture_output=True, text=True, timeout=3,
+        )
+        tz = result.stdout.strip()
+        if tz:
+            return tz
+    except Exception:
+        pass
+    return "Europe/Madrid"
 
 
 @dataclass
@@ -39,13 +54,13 @@ def _create_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
     creds = load_credentials()
     service = build("calendar", "v3", credentials=creds)
 
+    tz = _get_system_timezone()
     event_body: dict[str, Any] = {
         "summary": title,
-        "start": {"dateTime": start_iso},
-        "end": {"dateTime": end_iso},
+        "description": description,
+        "start": {"dateTime": start_iso, "timeZone": tz},
+        "end": {"dateTime": end_iso, "timeZone": tz},
     }
-    if description:
-        event_body["description"] = description
 
     event = service.events().insert(calendarId="primary", body=event_body).execute()
     link = event.get("htmlLink", "")
