@@ -1023,7 +1023,8 @@ SEARCH_CONVERSATION_HISTORY_TOOL = {
         "Úsala cuando responder dependa de conversación anterior que no aparece en el historial visible. "
         "Devuelve ventanas cronológicas alrededor de las coincidencias encontradas, no solo el mensaje adyacente. "
         "No inventes ni pidas al usuario que repita algo antes de consultar esta herramienta. "
-        "La búsqueda usa palabras clave; términos simples tienen mayor cobertura que frases largas."
+        "La búsqueda usa palabras clave; términos simples tienen mayor cobertura que frases largas. "
+        "NO usar como paso previo a una acción cuando el mensaje del usuario ya contiene todos los datos necesarios para ejecutarla."
     ),
     "input_schema": {
         "type": "object",
