@@ -1052,7 +1052,10 @@ GMAIL_SEARCH_TOOL = {
     "description": (
         "Busca y lee correos en Gmail del usuario. "
         "SOLO LECTURA: no puede enviar, eliminar, archivar, marcar como leído/no leído, ni crear etiquetas. "
-        "Usa sintaxis de búsqueda Gmail si es útil (from:, subject:, after:, etc.). "
+        "Por defecto busca solo en la bandeja Principal (category:primary). "
+        "Para buscar en otras bandejas, especifica: category:promotions, category:social, "
+        "category:updates, o label:inbox. "
+        "Usa sintaxis de búsqueda Gmail si es útil (from:, subject:, after:, is:unread, etc.). "
         "Devuelve remitente, asunto, fecha y extracto del cuerpo, no el correo completo."
     ),
     "input_schema": {
@@ -1097,6 +1100,41 @@ CALENDAR_CREATE_EVENT_TOOL = {
     },
 }
 
+CALENDAR_EDIT_EVENT_TOOL = {
+    "name": "calendar_edit_event",
+    "description": (
+        "Edita un evento existente de Google Calendar. Requiere confirmación explícita antes de "
+        "ejecutarse. Necesitas el event_id del evento — obtenlo con calendar_list_events si no lo "
+        "tienes. Solo modifica los campos que se especifiquen."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "event_id":    {"type": "string", "description": "ID del evento a editar."},
+            "title":       {"type": "string", "description": "Nuevo título del evento."},
+            "start_iso":   {"type": "string", "description": "Nueva fecha/hora inicio ISO 8601."},
+            "end_iso":     {"type": "string", "description": "Nueva fecha/hora fin ISO 8601."},
+            "description": {"type": "string", "description": "Nueva descripción del evento."},
+        },
+        "required": ["event_id"],
+    },
+}
+
+CALENDAR_DELETE_EVENT_TOOL = {
+    "name": "calendar_delete_event",
+    "description": (
+        "Borra un evento de Google Calendar. Requiere confirmación explícita — es una acción "
+        "destructiva e irreversible. Necesitas el event_id — obtenlo con calendar_list_events."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "event_id": {"type": "string", "description": "ID del evento a borrar."},
+        },
+        "required": ["event_id"],
+    },
+}
+
 DRIVE_SEARCH_TOOL = {
     "name": "drive_search",
     "description": (
@@ -1115,11 +1153,31 @@ DRIVE_SEARCH_TOOL = {
     },
 }
 
+DRIVE_LIST_FOLDER_TOOL = {
+    "name": "drive_list_folder",
+    "description": (
+        "Lista el contenido de una carpeta específica de Google Drive. "
+        "Usa esta tool cuando el usuario pregunta qué hay dentro de una carpeta concreta. "
+        "Para buscar archivos por nombre en todo el Drive, usa drive_search."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "folder_name": {"type": "string", "description": "Nombre de la carpeta."},
+            "folder_id":   {"type": "string", "description": "ID de la carpeta (más preciso si lo tienes)."},
+            "max_results": {"type": "integer", "description": "Máximo de resultados (máx 50). Por defecto 20."},
+        },
+    },
+}
+
 GOOGLE_TOOLSET = [
     GMAIL_SEARCH_TOOL,
     CALENDAR_LIST_EVENTS_TOOL,
     CALENDAR_CREATE_EVENT_TOOL,
+    CALENDAR_EDIT_EVENT_TOOL,
+    CALENDAR_DELETE_EVENT_TOOL,
     DRIVE_SEARCH_TOOL,
+    DRIVE_LIST_FOLDER_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
 
@@ -1136,7 +1194,10 @@ BASE_TOOLSET: list[dict] = [
     GMAIL_SEARCH_TOOL,
     CALENDAR_LIST_EVENTS_TOOL,
     CALENDAR_CREATE_EVENT_TOOL,
+    CALENDAR_EDIT_EVENT_TOOL,
+    CALENDAR_DELETE_EVENT_TOOL,
     DRIVE_SEARCH_TOOL,
+    DRIVE_LIST_FOLDER_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [

@@ -56,10 +56,13 @@ Debes elegir exactamente una herramienta:
 - Si el usuario pide explícitamente revertir un rollback anterior: usa rollback_latest_file_change con include_rollbacks=true.
 - Usa rollback_file_change solo si el usuario proporciona un backup_path concreto.
 - Usa find_latest_reversible_file_change solo si el usuario pide ver cuál sería el último cambio reversible sin querer ejecutar el rollback todavía.
-- Usa gmail_search si el usuario pregunta por correos, emails o contenido de su bandeja de entrada. gmail_search es SOLO lectura/búsqueda: no puede enviar, borrar, archivar ni modificar correos. Si el usuario pide algo que requiera escritura, explícaselo claramente — no inventes capacidades que no tienes.
-- Usa calendar_list_events si pregunta qué tiene en la agenda, eventos próximos o su calendario.
+- Usa gmail_search si el usuario pregunta por correos, emails o contenido de su bandeja de entrada. gmail_search busca por defecto en la bandeja Principal (category:primary). Si el usuario pregunta por sin leer, añade 'is:unread' en la query. Si pide contar sin leer, usa is:unread con max_results alto (ej. 50) e informa del número de resultados devueltos — no inventes un total exacto si no puedes contarlos todos. gmail_search es SOLO lectura/búsqueda: no puede enviar, borrar, archivar ni modificar correos. Si el usuario pide algo que requiera escritura, explícaselo claramente.
+- Usa calendar_list_events si pregunta qué tiene en la agenda, eventos próximos o su calendario. calendar_list_events devuelve el ID de cada evento — úsalo en calendar_edit_event o calendar_delete_event si el usuario quiere modificar o borrar un evento concreto.
 - Usa calendar_create_event si pide crear, añadir o programar un evento o cita. Siempre requiere confirmación — no se crea sin confirmación previa del usuario.
-- Usa drive_search si pregunta por archivos o documentos en su Google Drive.
+- Usa calendar_edit_event si pide modificar, cambiar la hora, renombrar o actualizar un evento existente. Necesitas el event_id — obtenlo con calendar_list_events si no lo tienes. Requiere confirmación.
+- Usa calendar_delete_event si pide borrar o eliminar un evento. Necesitas el event_id. Requiere confirmación — es irreversible.
+- Usa drive_search si pregunta por archivos o documentos en su Google Drive por nombre.
+- Para ver archivos dentro de una carpeta específica de Drive, usa drive_list_folder — NUNCA list_directory (que es para el sistema de archivos de la Pi, no para Drive). drive_search sirve para buscar por nombre en todo el Drive; drive_list_folder sirve para ver el contenido de una carpeta concreta.
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.

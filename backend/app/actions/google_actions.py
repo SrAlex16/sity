@@ -33,6 +33,12 @@ def execute_google_action(payload: dict[str, Any]) -> GoogleActionResult:
     if action == "calendar_create_event":
         return _create_calendar_event(payload)
 
+    if action == "calendar_edit_event":
+        return _edit_calendar_event(payload)
+
+    if action == "calendar_delete_event":
+        return _delete_calendar_event(payload)
+
     return GoogleActionResult(ok=False, text=f"Acción de Google desconocida: {action}")
 
 
@@ -68,6 +74,59 @@ def _create_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
         ok=True,
         text=f"Evento creado: {title}\nEnlace: {link}",
     )
+
+
+def _edit_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
+    from app.integrations.google_auth import is_google_connected, load_credentials
+    from googleapiclient.discovery import build
+
+    if not is_google_connected():
+        return GoogleActionResult(ok=False, text="Google no está conectado.")
+
+    event_id = payload.get("event_id", "")
+    creds = load_credentials()
+    service = build("calendar", "v3", credentials=creds)
+
+    try:
+        event = service.events().get(calendarId="primary", eventId=event_id).execute()
+    except Exception as exc:
+        return GoogleActionResult(ok=False, text=f"No se encontró el evento: {exc}")
+
+    tz = _get_system_timezone()
+    if payload.get("title"):
+        event["summary"] = payload["title"]
+    if payload.get("description") is not None:
+        event["description"] = payload["description"]
+    if payload.get("start_iso"):
+        event["start"] = {"dateTime": payload["start_iso"], "timeZone": tz}
+    if payload.get("end_iso"):
+        event["end"] = {"dateTime": payload["end_iso"], "timeZone": tz}
+
+    updated = service.events().update(
+        calendarId="primary", eventId=event_id, body=event,
+    ).execute()
+    return GoogleActionResult(
+        ok=True,
+        text=f"Evento actualizado: {updated.get('summary')}\n{updated.get('htmlLink', '')}",
+    )
+
+
+def _delete_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
+    from app.integrations.google_auth import is_google_connected, load_credentials
+    from googleapiclient.discovery import build
+
+    if not is_google_connected():
+        return GoogleActionResult(ok=False, text="Google no está conectado.")
+
+    event_id = payload.get("event_id", "")
+    creds = load_credentials()
+    service = build("calendar", "v3", credentials=creds)
+
+    try:
+        service.events().delete(calendarId="primary", eventId=event_id).execute()
+        return GoogleActionResult(ok=True, text=f"Evento {event_id} eliminado.")
+    except Exception as exc:
+        return GoogleActionResult(ok=False, text=f"Error al borrar el evento: {exc}")
 
 
 def parse_payload(payload_json: str) -> dict[str, Any]:

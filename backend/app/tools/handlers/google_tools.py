@@ -32,6 +32,14 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
     query = str(ctx.tool_input.get("query", ""))
     max_results = min(int(ctx.tool_input.get("max_results", 5)), 10)
 
+    # Default to inbox Principal unless the user already targets another category/label
+    _other_categories = ("category:social", "category:promotions",
+                         "category:updates", "category:forums",
+                         "label:", "in:")
+    if not any(c in query.lower() for c in _other_categories):
+        base = "category:primary"
+        query = f"{base} {query}".strip() if query else base
+
     creds = load_credentials()
     service = build("gmail", "v1", credentials=creds)
 
@@ -97,7 +105,7 @@ def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
     lines = []
     for ev in events:
         start = ev["start"].get("dateTime", ev["start"].get("date"))
-        lines.append(f"{start} — {ev.get('summary', '(sin título)')}")
+        lines.append(f"ID: {ev['id']}\n{start} — {ev.get('summary', '(sin título)')}")
 
     output = "\n".join(lines)
     return ToolExecutionResult(
@@ -223,6 +231,211 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
         for f in files
     ]
     output = "\n\n".join(summaries)
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=output,
+        updated_parameters=[], raw_result={"output": output},
+    )
+
+
+@tool_handler("calendar_edit_event")
+def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_google_connected():
+        return _not_connected(ctx.tool_name)
+
+    event_id    = str(ctx.tool_input.get("event_id", ""))
+    title       = ctx.tool_input.get("title")
+    start_iso   = ctx.tool_input.get("start_iso")
+    end_iso     = ctx.tool_input.get("end_iso")
+    description = ctx.tool_input.get("description")
+
+    if not event_id:
+        msg = "Falta el event_id del evento a editar."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
+
+    payload: dict = {"action": "calendar_edit_event", "event_id": event_id}
+    if title:       payload["title"]       = title
+    if start_iso:   payload["start_iso"]   = start_iso
+    if end_iso:     payload["end_iso"]     = end_iso
+    if description: payload["description"] = description
+
+    manager = ConfirmationManager(ctx.executor.session)
+    existing = manager.find_equivalent_pending_action(action_type="google", payload=payload)
+    if existing:
+        local_text = (
+            f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+            f"Confirma con: `{existing.confirmation_phrase}`"
+        )
+        result = {
+            "success": True, "message": local_text,
+            "action_id": existing.id,
+            "confirmation_phrase": existing.confirmation_phrase,
+            "summary": existing.summary,
+            "already_existed": True,
+            "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+        }
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=local_text,
+            updated_parameters=[], raw_result=result,
+        )
+
+    created = manager.create_pending_action(
+        action_type="google",
+        risk_level="safe_confirm",
+        summary=f"Editar evento de calendario: {event_id}",
+        payload=payload,
+        trace_id=ctx.trace_id,
+    )
+    local_text = (
+        f"Acción pendiente creada: {created.summary}\n\n"
+        f"Confirma con: `{created.confirmation_phrase}`"
+    )
+    result = {
+        "success": True, "message": local_text,
+        "action_id": created.id,
+        "confirmation_phrase": created.confirmation_phrase,
+        "summary": created.summary,
+        "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+    }
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=local_text,
+        updated_parameters=[], raw_result=result,
+    )
+
+
+@tool_handler("calendar_delete_event")
+def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_google_connected():
+        return _not_connected(ctx.tool_name)
+
+    event_id = str(ctx.tool_input.get("event_id", ""))
+
+    if not event_id:
+        msg = "Falta el event_id del evento a borrar."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
+
+    payload: dict = {"action": "calendar_delete_event", "event_id": event_id}
+
+    manager = ConfirmationManager(ctx.executor.session)
+    existing = manager.find_equivalent_pending_action(action_type="google", payload=payload)
+    if existing:
+        local_text = (
+            f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+            f"Confirma con: `{existing.confirmation_phrase}`"
+        )
+        result = {
+            "success": True, "message": local_text,
+            "action_id": existing.id,
+            "confirmation_phrase": existing.confirmation_phrase,
+            "summary": existing.summary,
+            "already_existed": True,
+            "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+        }
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=local_text,
+            updated_parameters=[], raw_result=result,
+        )
+
+    created = manager.create_pending_action(
+        action_type="google",
+        risk_level="safe_confirm",
+        summary=f"Borrar evento de calendario: {event_id}",
+        payload=payload,
+        trace_id=ctx.trace_id,
+    )
+    local_text = (
+        f"Acción pendiente creada: {created.summary}\n\n"
+        f"Confirma con: `{created.confirmation_phrase}`"
+    )
+    result = {
+        "success": True, "message": local_text,
+        "action_id": created.id,
+        "confirmation_phrase": created.confirmation_phrase,
+        "summary": created.summary,
+        "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+    }
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=local_text,
+        updated_parameters=[], raw_result=result,
+    )
+
+
+@tool_handler("drive_list_folder")
+def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_google_connected():
+        return _not_connected(ctx.tool_name)
+
+    folder_name = str(ctx.tool_input.get("folder_name", ""))
+    folder_id   = str(ctx.tool_input.get("folder_id", ""))
+    max_results = min(int(ctx.tool_input.get("max_results", 20)), 50)
+
+    creds = load_credentials()
+    service = build("drive", "v3", credentials=creds)
+
+    if not folder_id and folder_name:
+        safe = folder_name.replace("'", "\\'")
+        res = service.files().list(
+            q=(f"name = '{safe}' and mimeType = 'application/vnd.google-apps.folder'"
+               " and trashed = false"),
+            fields="files(id, name)",
+        ).execute()
+        folders = res.get("files", [])
+        if not folders:
+            output = f"No se encontró ninguna carpeta llamada '{folder_name}'."
+            return ToolExecutionResult(
+                tool_name=ctx.tool_name, ok=True, message=output,
+                updated_parameters=[], raw_result={"output": output},
+            )
+        folder_id = folders[0]["id"]
+
+    if not folder_id:
+        output = "Necesito el nombre o ID de la carpeta."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    res = service.files().list(
+        q=f"'{folder_id}' in parents and trashed = false",
+        pageSize=max_results,
+        orderBy="modifiedTime desc",
+        fields="files(id, name, mimeType, modifiedTime)",
+    ).execute()
+
+    files = res.get("files", [])
+    if not files:
+        output = "La carpeta está vacía o no contiene archivos visibles."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    _MIME_LABELS: dict[str, str] = {
+        "application/vnd.google-apps.folder":      "Carpeta",
+        "application/vnd.google-apps.document":    "Doc",
+        "application/vnd.google-apps.spreadsheet": "Hoja",
+        "application/pdf":                         "PDF",
+    }
+
+    lines = [
+        f"{_MIME_LABELS.get(f['mimeType'], 'Archivo')} — {f['name']}"
+        for f in files
+    ]
+    output = (
+        f"Contenido de '{folder_name or folder_id}' ({len(files)} elementos):\n"
+        + "\n".join(lines)
+    )
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=output,
         updated_parameters=[], raw_result={"output": output},
