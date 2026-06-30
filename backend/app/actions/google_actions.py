@@ -97,6 +97,8 @@ def _edit_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
         event["summary"] = payload["title"]
     if payload.get("description") is not None:
         event["description"] = payload["description"]
+    if payload.get("location"):
+        event["location"] = payload["location"]
     if payload.get("start_iso"):
         event["start"] = {"dateTime": payload["start_iso"], "timeZone": tz}
     if payload.get("end_iso"):

@@ -247,6 +247,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
     start_iso   = ctx.tool_input.get("start_iso")
     end_iso     = ctx.tool_input.get("end_iso")
     description = ctx.tool_input.get("description")
+    location    = ctx.tool_input.get("location")
 
     if not event_id:
         msg = "Falta el event_id del evento a editar."
@@ -263,6 +264,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
     if start_iso:   payload["start_iso"]   = start_iso
     if end_iso:     payload["end_iso"]     = end_iso
     if description: payload["description"] = description
+    if location:    payload["location"]    = location
 
     manager = ConfirmationManager(ctx.executor.session)
     existing = manager.find_equivalent_pending_action(action_type="google", payload=payload)

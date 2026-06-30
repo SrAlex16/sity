@@ -1103,9 +1103,11 @@ CALENDAR_CREATE_EVENT_TOOL = {
 CALENDAR_EDIT_EVENT_TOOL = {
     "name": "calendar_edit_event",
     "description": (
-        "Edita un evento existente de Google Calendar. Requiere confirmación explícita antes de "
-        "ejecutarse. Necesitas el event_id del evento — obtenlo con calendar_list_events si no lo "
-        "tienes. Solo modifica los campos que se especifiquen."
+        "Modifica un evento existente de Google Calendar. Úsala cuando el usuario quiera cambiar, "
+        "actualizar o añadir cualquier dato a un evento que ya existe: nombre, hora, ubicación, "
+        "descripción o cualquier otro campo. Requiere confirmación explícita antes de ejecutarse. "
+        "Necesitas el event_id del evento — obtenlo primero con calendar_list_events si no lo "
+        "tienes. Solo modifica los campos que se especifiquen, el resto no cambia."
     ),
     "input_schema": {
         "type": "object",
@@ -1115,6 +1117,7 @@ CALENDAR_EDIT_EVENT_TOOL = {
             "start_iso":   {"type": "string", "description": "Nueva fecha/hora inicio ISO 8601."},
             "end_iso":     {"type": "string", "description": "Nueva fecha/hora fin ISO 8601."},
             "description": {"type": "string", "description": "Nueva descripción del evento."},
+            "location":    {"type": "string", "description": "Ubicación o lugar del evento."},
         },
         "required": ["event_id"],
     },
