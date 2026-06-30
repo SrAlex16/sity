@@ -66,10 +66,11 @@ def run_initial_auth_flow(client_id: str, client_secret: str) -> Credentials:
         }
     }
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-    auth_url, _ = flow.authorization_url(
-        prompt="consent",
-        redirect_uri="urn:ietf:wg:oauth:2.0:oob",
-    )
+    # Fijar redirect_uri en el objeto — no pasarla a authorization_url()
+    # para evitar el TypeError "multiple values for keyword argument 'redirect_uri'"
+    flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+
+    auth_url, _ = flow.authorization_url(prompt="consent")
 
     print("\nAbre esta URL en cualquier navegador (puede ser el de tu PC):\n")
     print(auth_url)
@@ -88,10 +89,7 @@ def run_initial_auth_flow(client_id: str, client_secret: str) -> Credentials:
     else:
         code = raw
 
-    flow.fetch_token(
-        code=code,
-        redirect_uri="urn:ietf:wg:oauth:2.0:oob",
-    )
+    flow.fetch_token(code=code)
     creds = flow.credentials
     _save_credentials(creds)
     return creds
