@@ -2,12 +2,11 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { UseChatResult } from '../hooks/useChat';
 import { useVoice } from '../hooks/useVoice';
-import { MessageBubble } from '../components/MessageBubble';
-import { AudioMessageBubble } from '../components/AudioMessageBubble';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { StatusBadge } from '../components/StatusBadge';
 import { BackgroundPicker } from '../components/BackgroundPicker';
 import { FontPicker } from '../components/FontPicker';
+import { MessageList } from '../components/MessageList';
 import { RecordingUI } from '../components/RecordingUI';
 import styles from './ChatScreen.module.css';
 
@@ -97,8 +96,14 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const [avatarSrc] = useState<string>(() => localStorage.getItem('sity_avatar') ?? '/icons/sity_icon.jpg');
   const [recording, setRecording] = useState<RecordingCtx | null>(null);
 
-  const handleAudioPlay = (id: string) => setActiveAudioId(id);
-  const handleAudioEnded = (id: string) => setActiveAudioId((prev) => (prev === id ? null : prev));
+  const handleAudioPlay = useCallback(
+    (id: string) => setActiveAudioId(id),
+    [],
+  );
+  const handleAudioEnded = useCallback(
+    (id: string) => setActiveAudioId((prev) => (prev === id ? null : prev)),
+    [],
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -301,30 +306,13 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
 
         {/* Messages */}
         <div className={styles.messages}>
-          <AnimatePresence initial={false}>
-            {messages.map((msg, idx) => {
-              if (msg.type === 'audio') {
-                const next = messages[idx + 1];
-                const nextAudioId = (
-                  next?.type === 'audio' &&
-                  next.trace_id &&
-                  next.trace_id === msg.trace_id
-                ) ? next.id : undefined;
-                return (
-                  <AudioMessageBubble
-                    key={msg.id}
-                    message={msg}
-                    showText={msg.role === 'user' || voiceIncludeText}
-                    isActive={activeAudioId === msg.id}
-                    onPlay={handleAudioPlay}
-                    onEnded={handleAudioEnded}
-                    nextAudioId={nextAudioId}
-                  />
-                );
-              }
-              return <MessageBubble key={msg.id} message={msg} />;
-            })}
-          </AnimatePresence>
+          <MessageList
+            messages={messages}
+            activeAudioId={activeAudioId}
+            onAudioPlay={handleAudioPlay}
+            onAudioEnded={handleAudioEnded}
+            voiceIncludeText={voiceIncludeText}
+          />
           {status === 'procesando' && <TypingIndicator />}
           <div ref={messagesEndRef} />
         </div>
