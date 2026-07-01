@@ -94,3 +94,25 @@ audio:
   tts_long_response_chars: 500
   persist_tts: true
   cleanup_days: 7
+
+
+home_assistant:
+  url: "http://192.168.0.118:8123"
+  known_devices:
+    - entity_id: "switch.tapo_p100"
+      name: "enchufe dormitorio"
+      type: "switch"
+      location: "dormitorio"
+    - entity_id: "light.luz_cuarto"
+      name: "bombilla cuarto"
+      type: "light"
+      location: "cuarto"
+      color_modes: ["rgb_color", "color_temp_kelvin"]
+      color_temp_range: [2700, 6500]
+    - entity_id: "light.cuarto_malaga"
+      name: "bombilla cuarto Málaga"
+      type: "light"
+      location: "cuarto Málaga"
+      color_modes: ["rgb_color", "color_temp_kelvin"]
+      color_temp_range: [2700, 6500]
+      note: "unavailable cuando no está en la red local"

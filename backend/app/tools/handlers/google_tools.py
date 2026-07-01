@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 from googleapiclient.discovery import build
 
@@ -237,12 +238,12 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     )
 
 
-def _resolve_event_id_by_title(service: object, event_title: str) -> tuple[str, str]:
+def _resolve_event_id_by_title(service: Any, event_title: str) -> tuple[str, str]:
     """Return (event_id, error_message). error_message is empty on success."""
     import datetime as dt
     now = dt.datetime.utcnow().isoformat() + "Z"
     end = (dt.datetime.utcnow() + dt.timedelta(days=365)).isoformat() + "Z"
-    results = service.events().list(  # type: ignore[union-attr]
+    results = service.events().list(
         calendarId="primary", timeMin=now, timeMax=end,
         singleEvents=True, orderBy="startTime", maxResults=50,
     ).execute()

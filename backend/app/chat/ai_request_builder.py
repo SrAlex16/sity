@@ -14,6 +14,34 @@ from __future__ import annotations
 from typing import Any
 
 from app.cortex.schemas import AIRequest
+from app.settings.config_loader import load_default_config
+
+
+# ---------------------------------------------------------------------------
+# HA devices context (generated from config at import time)
+# ---------------------------------------------------------------------------
+
+def _build_ha_devices_context() -> str:
+    devices = load_default_config().get("home_assistant", {}).get("known_devices", [])
+    if not devices:
+        return ""
+    lines = ["Dispositivos conocidos en Home Assistant:"]
+    for d in devices:
+        line = f"    · {d['entity_id']} — {d['name']}"
+        if d.get("location"):
+            line += f" ({d['location']})"
+        if d.get("color_modes"):
+            line += f". Soporta: {', '.join(d['color_modes'])}"
+        if d.get("color_temp_range"):
+            lo, hi = d["color_temp_range"]
+            line += f", {lo}–{hi}K"
+        if d.get("note"):
+            line += f". Nota: {d['note']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+_HA_DEVICES_CONTEXT = _build_ha_devices_context()
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +64,7 @@ def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int)
 # ---------------------------------------------------------------------------
 
 def _build_action_planner_prompt() -> str:
-    return """
+    return f"""
 Eres el planificador de acciones de Sity.
 
 Debes elegir exactamente una herramienta:
@@ -85,16 +113,12 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
   - ha_call_service: controla dispositivos directamente. Para turn_on/turn_off/toggle no necesitas
     confirmación — son reversibles. Si no conoces el entity_id exacto, primero usa ha_list_entities
     con una keyword.
-  - Dispositivos conocidos:
-    · switch.tapo_p100 — enchufe del dormitorio (Tapo P100)
-    · light.luz_cuarto — bombilla del cuarto (Gleco RGB)
-    · light.cuarto_malaga — bombilla del cuarto de Málaga (Gleco RGB; puede aparecer
-      como unavailable cuando no está en la red local)
+  - {_HA_DEVICES_CONTEXT}
   - Servicios más comunes: turn_on, turn_off, toggle (para switch, light, fan, cover…).
-  - Para luces con brillo: service_data={"brightness": 0-255}
-  - Para temperatura de color: service_data={"color_temp_kelvin": 2700-6500}
+  - Para luces con brillo: service_data={{"brightness": 0-255}}
+  - Para temperatura de color: service_data={{"color_temp_kelvin": 2700-6500}}
     (2700K = cálido/naranja, 6500K = frío/blanco)
-  - Para color RGB: service_data={"rgb_color": [R, G, B]}
+  - Para color RGB: service_data={{"rgb_color": [R, G, B]}}
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.
