@@ -25,6 +25,7 @@ system_access:
 file_access:
   readable_paths:
   - .
+  - work/canal
   writable_paths:
   - backend
   - frontend
@@ -33,6 +34,9 @@ file_access:
   - deploy
   - README.md
   - work
+  - work/canal/guiones
+  - work/canal/audio
+  - work/canal/assets
   blocked_paths:
   - .git
   - .env
