@@ -569,9 +569,10 @@
   // Services bar + alert triggers (poll every 8s)
   // ----------------------------------------------------------
   const svcMap: Record<string, string> = {
-    'sity-backend': 'svc-backend',
-    'caddy':        'svc-caddy',
-    'cloudflared':  'svc-cloudflared',
+    'sity-backend':  'svc-backend',
+    'caddy':         'svc-caddy',
+    'cloudflared':   'svc-cloudflared',
+    'homeassistant': 'svc-homeassistant',
   };
 
   async function updateServices(): Promise<void> {

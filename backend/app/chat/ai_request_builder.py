@@ -68,6 +68,16 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
 - Para ver el contenido de una carpeta específica de Drive, usa drive_list_folder con el nombre de la carpeta.
 - drive_search sirve para buscar archivos por nombre en todo el Drive.
 - NUNCA uses list_directory para contenido de Drive — list_directory es exclusivamente para el sistema de archivos local de la Pi.
+- Domótica (Home Assistant):
+  - ha_list_entities: úsala para saber qué dispositivos hay disponibles antes de controlar algo,
+    o cuando el usuario pregunte qué tiene en casa. No es necesario listar antes de controlar
+    si el usuario ya especificó el dispositivo claramente (ej: "apaga el enchufe del dormitorio").
+  - ha_get_state: úsala para saber el estado actual de un dispositivo concreto antes de reportarlo.
+  - ha_call_service: controla dispositivos directamente. Para turn_on/turn_off/toggle no necesitas
+    confirmación — son reversibles. Si no conoces el entity_id exacto, primero usa ha_list_entities
+    con una keyword. El entity_id del enchufe Tapo P100 del dormitorio es switch.tapo_p100.
+  - Servicios más comunes: turn_on, turn_off, toggle (para switch, light, fan, cover…).
+    Para luces: service_data={'brightness': 0-255} o service_data={'rgb_color': [R, G, B]}.
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.

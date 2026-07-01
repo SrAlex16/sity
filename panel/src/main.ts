@@ -116,10 +116,22 @@ ipcMain.handle('services:get', async () => {
       return 'inactive';
     }
   };
+  const checkDocker = (name: string): string => {
+    try {
+      const out = execSync(
+        `docker inspect --format="{{.State.Running}}" ${name}`,
+        { encoding: 'utf8' }
+      ).trim().replace(/"/g, '');
+      return out === 'true' ? 'active' : 'inactive';
+    } catch {
+      return 'inactive';
+    }
+  };
   return {
-    'sity-backend': check('sity-backend'),
-    'caddy':        check('caddy'),
-    'cloudflared':  check('cloudflared'),
+    'sity-backend':  check('sity-backend'),
+    'caddy':         check('caddy'),
+    'cloudflared':   check('cloudflared'),
+    'homeassistant': checkDocker('homeassistant'),
   };
 });
 

@@ -9,6 +9,8 @@ from app.actions.git_actions import execute_git_action
 from app.actions.git_actions import parse_payload as parse_git_payload
 from app.actions.google_actions import execute_google_action
 from app.actions.google_actions import parse_payload as parse_google_payload
+from app.actions.ha_actions import execute_ha_action
+from app.actions.ha_actions import parse_payload as parse_ha_payload
 from app.actions.sense_actions import execute_sense_action
 from app.actions.sense_actions import parse_payload as parse_sense_payload
 from app.actions.system_actions import execute_system_action
@@ -78,6 +80,8 @@ class PendingActionRunner:
             return self._run_sense(action, trace_id)
         if action.action_type == "google":
             return self._run_google(action, trace_id)
+        if action.action_type == "ha":
+            return self._run_ha(action, trace_id)
         return _ActionResult(text=f"Tipo de acción desconocido: {action.action_type}")
 
     def _run_git(self, action: PendingAction, trace_id: str) -> _ActionResult:
@@ -207,6 +211,22 @@ class PendingActionRunner:
                 self.cm.mark_failed(action, trace_id, error)
                 return _ActionResult(
                     text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{error}"
+                )
+        except Exception as exc:
+            self.cm.mark_failed(action, trace_id, str(exc))
+            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+
+    def _run_ha(self, action: PendingAction, trace_id: str) -> _ActionResult:
+        try:
+            payload = parse_ha_payload(action.payload_json)
+            result = execute_ha_action(payload)
+            if result.ok:
+                self.cm.mark_executed(action, trace_id)
+                return _ActionResult(text=result.text)
+            else:
+                self.cm.mark_failed(action, trace_id, result.text)
+                return _ActionResult(
+                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{result.text}"
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
