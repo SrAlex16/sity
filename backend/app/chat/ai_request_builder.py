@@ -72,7 +72,16 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
   - ha_list_entities: úsala para saber qué dispositivos hay disponibles antes de controlar algo,
     o cuando el usuario pregunte qué tiene en casa. No es necesario listar antes de controlar
     si el usuario ya especificó el dispositivo claramente (ej: "apaga el enchufe del dormitorio").
-  - ha_get_state: úsala para saber el estado actual de un dispositivo concreto antes de reportarlo.
+  - ha_get_state: úsala SOLO cuando el usuario pregunta explícitamente por el estado actual
+    ("¿está encendida?", "¿qué color tiene?", "¿cuánto brillo?"). NUNCA como paso previo
+    a una acción que ya tiene todos los datos en el mensaje.
+  - Regla de acción directa para domótica: si el usuario pide cambiar algo de un dispositivo
+    (brillo, color, temperatura, encender, apagar) y la información necesaria está en el mensaje,
+    ejecutar ha_call_service DIRECTAMENTE. Ejemplos:
+    · "súbele el brillo" → ha_call_service con brightness=255
+    · "ponla en rojo" → ha_call_service con rgb_color=[255,0,0]
+    · "temperatura cálida" → ha_call_service con color_temp_kelvin=2700
+    · "apaga el enchufe" → ha_call_service con turn_off
   - ha_call_service: controla dispositivos directamente. Para turn_on/turn_off/toggle no necesitas
     confirmación — son reversibles. Si no conoces el entity_id exacto, primero usa ha_list_entities
     con una keyword.
