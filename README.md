@@ -1387,11 +1387,34 @@ Requiere Admin API key (distinta a la key de Sity).
 Endpoints: /v1/organizations/usage_report/messages y /v1/organizations/cost_report.
 Actualización cada 5 minutos.
 
-### 13. Domótica (pendiente)
+### 13. Domótica ✓ (completado)
 
-Tapo P100 + Smart Life (Gleco) sin hardcodear por dispositivo. Sity debe poder
-decir "tengo un Tapo P100, conéctate y enciéndelo" y resolverlo sola usando
-`web_search` + acceso a red local.
+Home Assistant como capa de abstracción universal: Sity habla con la REST API
+de HA y HA controla el dispositivo, sin importar la marca. Añadir un dispositivo
+nuevo = configurarlo en HA + actualizar el prompt del planner con el entity_id.
+
+Dispositivos activos: switch.tapo_p100 (enchufe dormitorio), light.luz_cuarto
+y light.cuarto_malaga (bombillas Gleco RGB). Control de brillo, color RGB y
+temperatura de color (2700–6500K).
+
+### 13b. Análisis de Docker (pendiente)
+
+Revisar el proyecto completo y determinar qué partes se benefician de Docker.
+Primer uso ya implementado: Home Assistant Container. Criterio: Docker donde
+haya aislamiento real necesario, no por defecto. Incluir análisis de sandbox
+para ejecución de código generado por el modelo (domótica avanzada, futuras
+capacidades de Code).
+
+### 13c. Soporte Matter (futuro)
+
+Cuando los dispositivos lo soporten, HA los absorbe transparentemente.
+Sin cambios en Sity.
+
+### 13d. Domótica avanzada — dispositivos sin integración HA (futuro)
+
+Para dispositivos que no tienen integración en HA: proceso de varios niveles
+(buscar librería → buscar en PyPI/GitHub → generar adaptador mínimo en sandbox
+Docker). Excepción a la norma, no el flujo habitual.
 
 ### 14. Sistema de alertas del panel (pendiente)
 

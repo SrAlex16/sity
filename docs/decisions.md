@@ -405,6 +405,91 @@ para web_search.
 
 ---
 
+## 2026-07-01 — Domótica implementada via Home Assistant
+
+### Decisión de arquitectura: capa de abstracción con Home Assistant
+
+Descartado el enfoque inicial de tool genérica + web_search por dispositivo
+(demasiado costoso en tokens, frágil, requiere código por dispositivo).
+Adoptado Home Assistant como capa de abstracción universal:
+
+```
+Tú → Sity → Home Assistant REST API → cualquier dispositivo
+```
+
+Ventajas:
+- Sity habla con una sola API sin importar la marca del dispositivo
+- Añadir un dispositivo nuevo = configurarlo en HA; Sity lo controla
+  automáticamente sin tocar código
+- HA soporta cientos de marcas (Tapo, Tuya/SmartLife, Philips Hue,
+  IKEA, Shelly, Matter, etc.)
+- Control local (sin dependencia de internet para los comandos)
+
+### Instalación
+
+Home Assistant Container en Docker en la Pi:
+
+```bash
+docker run -d --name homeassistant --restart=unless-stopped \
+  --privileged -e TZ=Europe/Madrid \
+  -v /home/alex/homeassistant:/config \
+  -v /run/dbus:/run/dbus:ro --network=host \
+  ghcr.io/home-assistant/home-assistant:stable
+```
+
+Corre en http://192.168.0.118:8123 (IP local de la Pi).
+Autoarranque: `--restart=unless-stopped` (sin systemd adicional).
+
+### Autenticación
+
+Long-Lived Access Token generado en HA → guardado en `.env` como
+`HA_TOKEN`. URL en `HA_URL`. Nunca en el repo.
+
+### Tools implementadas
+
+- `ha_list_entities`: lista dispositivos filtrando por dominio/área/keyword.
+  Solo devuelve dominios controlables (switch, light, climate, fan, etc.).
+- `ha_get_state`: estado actual de una entidad. Solo usar cuando el usuario
+  pregunta explícitamente, nunca como paso previo a una acción.
+- `ha_call_service`: controla dispositivos. Acciones reversibles
+  (turn_on/off/toggle) directas sin confirmación. Acciones irreversibles
+  (lock, etc.) via pending action.
+
+### Dispositivos configurados
+
+- `switch.tapo_p100` — enchufe dormitorio (TP-Link Tapo P100)
+- `light.luz_cuarto` — bombilla cuarto (Gleco RGB, 2700–6500K)
+- `light.cuarto_malaga` — bombilla cuarto Málaga (misma marca;
+  aparece como unavailable cuando no está en la red local)
+
+### Bugs encontrados y resueltos
+
+**Bug 1 — ha_get_state como paso previo innecesario:**
+Para "súbele el brillo", el planner llamaba a `ha_get_state` primero
+y luego no ejecutaba `ha_call_service` en el turno siguiente (mismo
+problema estructural que `calendar_edit_event`).
+Fix: regla de acción directa en el prompt del planner — si el mensaje
+contiene todos los datos para actuar, ejecutar directamente sin
+consultar el estado primero.
+
+### Matter (futuro)
+
+Matter es el estándar abierto de domótica que permitirá control local
+sin depender de clouds de fabricantes. Los dispositivos actuales
+(Tapo, Gleco/Tuya) no son nativos Matter, pero HA los integra via sus
+propias integraciones. Cuando dispositivos futuros soporten Matter, la
+integración con Sity no cambia — HA los absorbe transparentemente.
+
+### Docker en el proyecto
+
+Este es el primer uso de Docker en Sity (Home Assistant Container).
+Pendiente: análisis formal de qué otras partes del proyecto se
+beneficiarían de Docker (ver roadmap — "Análisis de Docker").
+Criterio: Docker tiene sentido donde hay aislamiento real necesario
+(HA es un ejemplo claro). No aplicar por defecto a todo el proyecto.
+
+---
+
 ## Deuda técnica documentada
 
 ### Fallbacks duplicados en código Python (B3, B8)

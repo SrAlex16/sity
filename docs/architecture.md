@@ -875,3 +875,42 @@ tool directamente sin pasos de "preparación" (`search_conversation_history`,
 `search_conversation_history` como herramienta de procrastinación cuando
 el modelo no está seguro de qué hacer.
 
+---
+
+## Domótica (Home Assistant)
+
+### Flujo
+
+```
+Usuario → Sity → ha_call_service → HA REST API (:8123)
+  → integración TP-Link / Tuya / etc. → dispositivo físico
+```
+
+### Módulos
+
+- `backend/app/tools/handlers/ha_tools.py` — 3 handlers: `ha_list_entities`,
+  `ha_get_state`, `ha_call_service`
+- `backend/app/actions/ha_actions.py` — ejecutor de acciones confirmadas (lock, etc.)
+- Credenciales: `HA_TOKEN` y `HA_URL` en `.env`
+
+### Patrón de diseño
+
+Las 3 tools están en `BASE_TOOLSET` (siempre disponibles). Misma razón que
+Google: el lenguaje natural para referirse a dispositivos es impredecible.
+
+Regla de acción directa: si el mensaje contiene todos los datos para controlar
+un dispositivo, el planner ejecuta `ha_call_service` directamente sin llamar
+a `ha_get_state` antes. `ha_get_state` solo para preguntas explícitas de estado
+("¿está encendida?", "¿qué color tiene?").
+
+Acciones reversibles (`turn_on`, `turn_off`, `toggle`) se ejecutan directamente.
+Acciones irreversibles (`lock`, etc.) crean pending action con confirmación.
+
+### Añadir un dispositivo nuevo
+
+1. Conectar el dispositivo a WiFi via su app oficial.
+2. En HA: Configuración → Integraciones → añadir la marca.
+3. HA lo descubre automáticamente.
+4. Actualizar el prompt del planner en `ai_request_builder.py` con el `entity_id`.
+5. Sity puede controlarlo inmediatamente — sin código nuevo.
+
