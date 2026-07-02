@@ -574,3 +574,51 @@ Todos los assets de un episodio usan el prefijo `EP[N]`:
 - Scope: solo "De texto a voz" + "Voces (leído)" en la API key
 - El DOCX revisado por Alex es el input; extraer solo texto
   narrable (sin notas de producción, tablas de metadatos)
+
+---
+
+## 2026-07-02 (sesión canal) — Fases A y B completadas
+
+### Refactor arquitectural: POST síncrono → 202 + SSE
+
+Problema: el endpoint /chat/message era síncrono. Cloudflare Tunnel
+corta conexiones HTTP sin datos a los ~100s. generate_script (2
+llamadas a Claude Sonnet) y generate_tts (ElevenLabs) superaban
+ese límite.
+
+Solución: POST /chat/message devuelve 202 inmediatamente con
+turn_id. El backend procesa en background. El frontend escucha
+SSE en /chat/stream/{turn_id} con heartbeats cada 15s que
+mantienen viva la conexión con Cloudflare.
+
+Bugs encontrados al implementar el SSE:
+- Faltaban cabeceras Cache-Control: no-cache y X-Accel-Buffering: no
+  → Cloudflare buffeaba la respuesta completa
+- Race condition en onerror: EventSource dispara onerror cuando el
+  servidor cierra normalmente. Fix: flag serverClosedNormally para
+  distinguir cierre normal de error real.
+
+### Fase B: generate_tts con ElevenLabs
+
+- Extrae texto narrable del DOCX (excluye SITY:, notas de
+  producción, encabezados, markdown **)
+- Llama a Claude Haiku para expandir acrónimos de forma natural
+  en español antes de enviar a ElevenLabs — sin lista hardcodeada
+- Genera EP[N].mp3 (largo) y EP[N]-shorts.mp3 (shorts) por separado
+- Actualiza episode.audio_path / episode.audio_shorts_path en SQLite
+
+Limitaciones conocidas:
+- El encabezado del DOCX (título y fecha de generación) a veces
+  se narra si no tiene estilo Heading. Pendiente de arreglar —
+  se puede cortar en edición mientras tanto. Ver roadmap.
+- Plan gratuito de ElevenLabs no permite voces de la biblioteca
+  via API. Requiere plan Starter (6$/mes) o voz propia creada
+  con Voice Design.
+
+### Convención de IDs de episodio
+
+ID secuencial EP001, EP002... en SQLite. Todos los assets usan
+el mismo prefijo: EP001-largo-YYYY-MM-DD.docx, EP001.mp3,
+EP001-shorts.mp3, etc.
+Episodios creados manualmente (sin pasar por generate_script)
+pueden tener campos NULL en script_shorts_path y audio_shorts_path.

@@ -1437,12 +1437,18 @@ de noticias → guion → audio → vídeo → publicación, todo con confirmaci
 pasos críticos. Especificación completa en docs/canal-spec.md.
 
 ✓ Fase A — Ingesta RSS + selección editorial + generación de guion
-⏳ Fase B — Audio TTS (ElevenLabs) — siguiente
-○ Fase C — Imágenes y assets visuales (a definir)
+✓ Fase B — Audio TTS (ElevenLabs largo + shorts)
+⏳ Fase C — Imágenes y assets visuales (a definir)
 ○ Fase D — Montaje de vídeo (manual en PC por ahora)
 ○ Fase E — Publicación en YouTube (YouTube Data API v3)
 ○ Fase F — Respuesta a comentarios
 ○ Fase G — Métricas y datos
+
+Bugs pendientes del canal:
+- Encabezado del DOCX (título + fecha) se narra en el audio —
+  pendiente de filtrar en _execute_generate_tts
+- generate_tts debería poder generar largo y shorts en una sola
+  confirmación cuando se piden los dos a la vez
 
 ### 17. Fine-tuning con Gemma 3 4B + LoRA (futuro)
 
