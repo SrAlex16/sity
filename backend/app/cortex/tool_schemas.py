@@ -1241,8 +1241,10 @@ GENERATE_TTS_TOOL = {
         "Genera el audio TTS del guion revisado usando ElevenLabs. "
         "Requiere confirmación — consume créditos de la API. "
         "El input es el guion del episodio (status script_ready). "
-        "Produce un MP3 en work/canal/audio/EP[N].mp3. "
-        "Usar solo cuando Alex haya revisado y aprobado el guion."
+        "Produce un MP3 en work/canal/audio/. "
+        "Usar solo cuando Alex haya revisado y aprobado el guion. "
+        "script_type='largo' (por defecto) para el vídeo principal; "
+        "script_type='shorts' para el audio de los shorts."
     ),
     "input_schema": {
         "type": "object",
@@ -1253,6 +1255,14 @@ GENERATE_TTS_TOOL = {
                 "description": (
                     "ID del episodio. Si no se especifica, "
                     "usa el más reciente con status script_ready."
+                ),
+            },
+            "script_type": {
+                "type": "string",
+                "enum": ["largo", "shorts"],
+                "description": (
+                    "'largo' para el vídeo principal (por defecto), "
+                    "'shorts' para los shorts derivados."
                 ),
             },
         },

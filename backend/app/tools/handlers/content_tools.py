@@ -232,17 +232,13 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
             updated_parameters=[], raw_result={"output": msg},
         )
 
-    news_text = "\n\n".join(
+    news_items_text = "\n\n".join(
         f"Noticia {i + 1}: {n.title}\n"
         f"Fuente: {n.source} ({n.category})\n"
         f"Resumen: {n.summary or 'Sin resumen disponible'}\n"
         f"URL: {n.url}"
         for i, n in enumerate(selected)
     )
-
-    prompt_path = _PROJECT_ROOT / "config" / "prompts" / "script_prompt.txt"
-    prompt_template = prompt_path.read_text(encoding="utf-8")
-    full_prompt = prompt_template.replace("{news_items}", news_text)
 
     cfg = _load_canal_config()
     output_dir = Path(cfg.get("settings", {}).get("output", {}).get("guiones", "work/canal/guiones"))
@@ -254,7 +250,7 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
         "action": "generate_script",
         "news_ids": [n.id for n in selected],
         "output_dir": str(output_dir),
-        "full_prompt": full_prompt,
+        "news_items_text": news_items_text,
     }
     dedup_payload: dict[str, Any] = {
         "action": "generate_script",
@@ -266,10 +262,7 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
     if existing_result:
         return existing_result
 
-    summary = (
-        f"Crear EP nuevo y generar guion con {len(selected)} noticia(s) "
-        f"→ EP[N]-{date_str}.docx"
-    )
+    summary = f"Generar guion largo + shorts de EP nuevo con {len(selected)} noticia(s)"
 
     created = manager.create_pending_action(
         action_type="content",
@@ -279,7 +272,10 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
         trace_id=ctx.trace_id,
     )
     local_text = (
-        f"Acción pendiente creada: {created.summary}\n\n"
+        f"Acción pendiente creada: {created.summary}\n"
+        f"Se generarán DOS archivos:\n"
+        f"  • EP[N]-largo-{date_str}.docx\n"
+        f"  • EP[N]-shorts-{date_str}.docx\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"
     )
     result = {
@@ -328,6 +324,7 @@ def handle_generate_tts(ctx: ToolContext) -> ToolExecutionResult:
 
     session = next(get_session())
     raw_episode_id = ctx.tool_input.get("episode_id")
+    script_type = str(ctx.tool_input.get("script_type", "largo"))
 
     if raw_episode_id is not None:
         episode = session.exec(
@@ -348,29 +345,41 @@ def handle_generate_tts(ctx: ToolContext) -> ToolExecutionResult:
             updated_parameters=[], raw_result={"output": msg},
         )
 
-    if not episode.script_path:
-        msg = f"EP{episode.id:03d} no tiene ruta de guion registrada."
+    ep_label = f"EP{episode.id:03d}"
+
+    if script_type == "shorts":
+        chosen_script = episode.script_shorts_path
+        audio_suffix = f"{ep_label}-shorts.mp3"
+        type_label = "shorts"
+    else:
+        chosen_script = episode.script_path
+        audio_suffix = f"{ep_label}.mp3"
+        type_label = "largo"
+
+    if not chosen_script:
+        msg = f"{ep_label} no tiene ruta de guion '{type_label}' registrada."
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=False, message=msg,
             updated_parameters=[], raw_result={"output": msg},
         )
 
-    ep_label = f"EP{episode.id:03d}"
     cfg = _load_canal_config()
     audio_dir = Path(cfg.get("settings", {}).get("output", {}).get("audio", "work/canal/audio"))
     if not audio_dir.is_absolute():
         audio_dir = _PROJECT_ROOT / audio_dir
-    audio_path = audio_dir / f"{ep_label}.mp3"
+    audio_path = audio_dir / audio_suffix
 
     payload: dict[str, Any] = {
         "action": "generate_tts",
         "episode_id": episode.id,
-        "script_path": episode.script_path,
+        "script_path": chosen_script,
         "audio_path": str(audio_path),
+        "script_type": script_type,
     }
     dedup_payload: dict[str, Any] = {
         "action": "generate_tts",
         "episode_id": episode.id,
+        "script_type": script_type,
     }
     manager = ConfirmationManager(ctx.executor.session)
 
@@ -378,9 +387,9 @@ def handle_generate_tts(ctx: ToolContext) -> ToolExecutionResult:
     if existing_result:
         return existing_result
 
-    summary = f"Generar audio TTS de {ep_label} → {audio_path.name}"
+    summary = f"Generar audio TTS ({type_label}) de {ep_label} → {audio_path.name}"
     local_text_extra = (
-        f"\nGuion: {episode.script_path}"
+        f"\nGuion: {chosen_script}"
         f"\nAudio de salida: {audio_path}"
         f"\nEsto consumirá créditos de ElevenLabs."
     )

@@ -12,6 +12,24 @@ from elevenlabs import save as elevenlabs_save
 from app.memory.db import get_session
 from app.memory.models import Episode, NewsItem
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_PROMPTS_DIR = _PROJECT_ROOT / "config" / "prompts"
+
+_LARGO_PROMPT_PATH = _PROMPTS_DIR / "script_largo_prompt.txt"
+_SHORTS_PROMPT_PATH = _PROMPTS_DIR / "script_shorts_prompt.txt"
+
+# Structural labels that should not be narrated
+_TTS_SKIP_PREFIXES = (
+    "SITY:", "**SITY:**", "*SITY:*", "SITY**:",
+    "[NOTA PRODUCCIÓN", "*[NOTA",
+    "GUION", "Generado:", "---",
+    "**Duración estimada", "Duración estimada",
+)
+_TTS_SKIP_PATTERNS = (
+    "GANCHO (", "DESARROLLO:", "CIERRE:",
+    "INTRO (", "SECCIÓN ", "SHORT ", "OUTRO (", "REFLEXIÓN FINAL",
+)
+
 
 @dataclass
 class ContentActionResult:
@@ -50,14 +68,41 @@ def _execute_select_news(payload: dict[str, Any]) -> ContentActionResult:
     return ContentActionResult(ok=True, text=f"{updated} noticia(s) marcadas como '{status}'.")
 
 
+def _build_docx(text: str, output_path: Path, title: str) -> None:
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    heading = doc.add_heading(f"GUION — Sity Canal · {title}", 0)
+    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    doc.add_paragraph()
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            doc.add_paragraph()
+            continue
+        if stripped.startswith("# "):
+            doc.add_heading(stripped[2:], level=1)
+        elif stripped.startswith("## "):
+            doc.add_heading(stripped[3:], level=2)
+        elif stripped.startswith("### "):
+            doc.add_heading(stripped[4:], level=3)
+        else:
+            p = doc.add_paragraph(stripped)
+            if "[NOTA PRODUCCIÓN:" in stripped or stripped.startswith("*[NOTA"):
+                for run in p.runs:
+                    run.italic = True
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+
+
 def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
     import anthropic
-    from docx import Document
-    from docx.shared import Pt  # noqa: F401
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
     from sqlmodel import select as sql_select
 
-    full_prompt = payload.get("full_prompt", "")
     news_ids = payload.get("news_ids", [])
     output_dir = Path(payload.get("output_dir", "work/canal/guiones"))
 
@@ -68,43 +113,41 @@ def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
     session.flush()
     ep_id = episode.id
     ep_label = f"EP{ep_id:03d}"
-    docx_path = output_dir / f"{ep_label}-{date_str}.docx"
+
+    largo_path = output_dir / f"{ep_label}-largo-{date_str}.docx"
+    shorts_path = output_dir / f"{ep_label}-shorts-{date_str}.docx"
+
+    # Build shared news text
+    news_items_text = payload.get("news_items_text", "")
+
+    largo_template = _LARGO_PROMPT_PATH.read_text(encoding="utf-8")
+    shorts_template = _SHORTS_PROMPT_PATH.read_text(encoding="utf-8")
+    largo_prompt = largo_template.replace("{news_items}", news_items_text)
+    shorts_prompt = shorts_template.replace("{news_items}", news_items_text)
 
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
+
+    largo_response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4000,
-        messages=[{"role": "user", "content": full_prompt}],
+        messages=[{"role": "user", "content": largo_prompt}],
     )
-    first_block = response.content[0]
-    script_text: str = first_block.text if hasattr(first_block, "text") else ""  # type: ignore[union-attr]
+    largo_block = largo_response.content[0]
+    largo_text: str = largo_block.text if hasattr(largo_block, "text") else ""  # type: ignore[union-attr]
 
-    docx_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = Document()
+    shorts_response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": shorts_prompt}],
+    )
+    shorts_block = shorts_response.content[0]
+    shorts_text: str = shorts_block.text if hasattr(shorts_block, "text") else ""  # type: ignore[union-attr]
 
-    title_para = doc.add_heading(f"GUION — Sity Canal · {ep_label}", 0)
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    doc.add_paragraph()
+    _build_docx(largo_text, largo_path, f"{ep_label} — Largo")
+    _build_docx(shorts_text, shorts_path, f"{ep_label} — Shorts")
 
-    for line in script_text.split("\n"):
-        if line.startswith("# "):
-            doc.add_heading(line[2:], level=1)
-        elif line.startswith("## "):
-            doc.add_heading(line[3:], level=2)
-        elif line.startswith("### "):
-            doc.add_heading(line[4:], level=3)
-        elif line.strip():
-            p = doc.add_paragraph(line)
-            if "[NOTA PRODUCCIÓN:" in line:
-                for run in p.runs:
-                    run.italic = True
-        else:
-            doc.add_paragraph()
-
-    doc.save(str(docx_path))
-
-    episode.script_path = str(docx_path)
+    episode.script_path = str(largo_path)
+    episode.script_shorts_path = str(shorts_path)
     episode.status = "script_ready"
 
     for nid in news_ids:
@@ -118,9 +161,10 @@ def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
         ok=True,
         text=(
             f"Guion generado: {ep_label}\n"
-            f"Archivo: {docx_path}\n"
+            f"Largo: {largo_path}\n"
+            f"Shorts: {shorts_path}\n"
             f"{len(news_ids)} noticia(s) vinculadas al episodio.\n"
-            f"Abre el archivo para revisarlo antes de continuar."
+            f"Abre los archivos para revisarlos antes de continuar."
         ),
     )
 
@@ -144,13 +188,15 @@ def _execute_generate_tts(payload: dict[str, Any]) -> ContentActionResult:
         text = para.text.strip()
         if not text:
             continue
-        if text.startswith("[NOTA PRODUCCIÓN") or text.startswith("*[NOTA"):
+        if any(text.startswith(p) for p in _TTS_SKIP_PREFIXES):
             continue
-        if text.startswith("GUION") or text.startswith("Generado:"):
+        if any(p in text for p in _TTS_SKIP_PATTERNS):
             continue
         if para.style and para.style.name.startswith("Heading"):
             continue
-        narrable_lines.append(text)
+        clean = text.replace("**", "").replace("*", "").strip()
+        if clean:
+            narrable_lines.append(clean)
 
     full_text = "\n".join(narrable_lines)
     if not full_text.strip():

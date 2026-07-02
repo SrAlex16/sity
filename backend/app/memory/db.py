@@ -59,6 +59,18 @@ def _migrate_chatmessage() -> None:
         conn.commit()
 
 
+def _migrate_episode() -> None:
+    """Add missing columns to episode table (idempotent)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='episode'"))
+        if not result.fetchone():
+            return
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(episode)")).fetchall()}
+        if "script_shorts_path" not in existing:
+            conn.execute(text("ALTER TABLE episode ADD COLUMN script_shorts_path TEXT"))
+        conn.commit()
+
+
 def _migrate_news_items() -> None:
     """Add indexes and missing columns to newsitem if absent (idempotent)."""
     with engine.connect() as conn:
@@ -78,6 +90,7 @@ def init_db() -> None:
     _configure_sqlite()
     SQLModel.metadata.create_all(engine)
     _migrate_chatmessage()
+    _migrate_episode()
     _migrate_news_items()
 
 

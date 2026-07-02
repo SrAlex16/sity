@@ -17,9 +17,6 @@ Genera un guion para un vídeo largo de 6-10 minutos que:
 Marca en cursiva [NOTA PRODUCCIÓN: ...] cualquier sugerencia de b-roll,
 pausa, énfasis o recurso visual que ayude al montaje.
 
-Al final, genera 3-4 shorts derivados, cada uno con su propio gancho
-en los primeros 3 segundos, autónomo (no necesita haber visto el largo).
-
 IMPORTANTE: no inventes datos, fechas ni cifras. Si algo no está en
 las noticias que te paso, no lo incluyas. Alex lo verificará todo
 antes de publicar.

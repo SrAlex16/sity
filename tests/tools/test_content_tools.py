@@ -175,7 +175,7 @@ def test_generate_script_creates_pending_action() -> None:
     created = MagicMock()
     created.id = "act_gen01"
     created.confirmation_phrase = "confirmo ejecutar act_gen01"
-    created.summary = "Generar guion con 1 noticia(s)"
+    created.summary = "Generar guion largo + shorts de EP nuevo con 1 noticia(s)"
     mock_manager.create_pending_action.return_value = created
 
     canal_cfg = {"settings": {"output": {"guiones": "work/canal/guiones"}}}
@@ -183,12 +183,17 @@ def test_generate_script_creates_pending_action() -> None:
     with patch("app.tools.handlers.content_tools.get_session", return_value=iter([mock_session])):
         with patch("app.tools.handlers.content_tools.ConfirmationManager", return_value=mock_manager):
             with patch("app.tools.handlers.content_tools._load_canal_config", return_value=canal_cfg):
-                with patch("pathlib.Path.read_text", return_value="Prompt: {news_items}"):
-                    result = handle_generate_script(ctx)
+                result = handle_generate_script(ctx)
 
     assert result.ok is True
     assert "confirmo ejecutar act_gen01" in result.message
     assert result.raw_result.get("local_final") is True
+    # Payload should NOT contain full_prompt — executor loads prompts from files
+    call_args = mock_manager.create_pending_action.call_args
+    payload = call_args.kwargs.get("payload") or (call_args.args[0] if call_args.args else {})
+    if isinstance(payload, dict):
+        assert "full_prompt" not in payload
+        assert "news_items_text" in payload
 
 
 # ── content_actions ───────────────────────────────────────────────────────────
@@ -225,7 +230,6 @@ def test_execute_generate_script_creates_docx(tmp_path: Path) -> None:
     mock_session.exec.return_value.first.return_value = MagicMock()
 
     def mock_flush_sets_id() -> None:
-        # Simulate DB assigning an id on flush by setting id on any Episode added
         for call in mock_session.add.call_args_list:
             obj = call[0][0]
             if isinstance(obj, Episode):
@@ -235,16 +239,23 @@ def test_execute_generate_script_creates_docx(tmp_path: Path) -> None:
 
     with patch("anthropic.Anthropic", return_value=mock_client):
         with patch("app.actions.content_actions.get_session", return_value=iter([mock_session])):
-            result = _execute_generate_script({
-                "full_prompt": "Genera un guion sobre: {news_items}",
-                "output_dir": str(tmp_path),
-                "news_ids": [1],
-            })
+            with patch("pathlib.Path.read_text", return_value="Prompt: {news_items}"):
+                result = _execute_generate_script({
+                    "news_items_text": "Noticia de prueba",
+                    "output_dir": str(tmp_path),
+                    "news_ids": [1],
+                })
 
     assert result.ok is True
-    expected_docx = list(tmp_path.glob("EP001-*.docx"))
-    assert expected_docx, f"No EP001-*.docx found in {tmp_path}"
+    largo_docs = list(tmp_path.glob("EP001-largo-*.docx"))
+    shorts_docs = list(tmp_path.glob("EP001-shorts-*.docx"))
+    assert largo_docs, f"No EP001-largo-*.docx found in {tmp_path}"
+    assert shorts_docs, f"No EP001-shorts-*.docx found in {tmp_path}"
     assert "EP001" in result.text
+    assert "Largo" in result.text or "largo" in result.text
+    assert "Shorts" in result.text or "shorts" in result.text
+    # Claude called twice — once per prompt
+    assert mock_client.messages.create.call_count == 2
 
 
 # ── generate_tts ──────────────────────────────────────────────────────────────
@@ -271,7 +282,8 @@ def test_generate_tts_creates_pending_action() -> None:
     episode = MagicMock(spec=Episode)
     episode.id = 1
     episode.status = "script_ready"
-    episode.script_path = "/tmp/EP001-2026-07-02.docx"
+    episode.script_path = "/tmp/EP001-largo-2026-07-02.docx"
+    episode.script_shorts_path = "/tmp/EP001-shorts-2026-07-02.docx"
 
     mock_session = MagicMock()
     mock_session.exec.return_value.first.return_value = episode
@@ -283,7 +295,7 @@ def test_generate_tts_creates_pending_action() -> None:
     created = MagicMock()
     created.id = "act_tts01"
     created.confirmation_phrase = "confirmo ejecutar act_tts01"
-    created.summary = "Generar audio TTS de EP001 → EP001.mp3"
+    created.summary = "Generar audio TTS (largo) de EP001 → EP001.mp3"
     mock_manager.create_pending_action.return_value = created
 
     canal_cfg = {"settings": {"output": {"audio": "work/canal/audio"}}}
@@ -296,14 +308,55 @@ def test_generate_tts_creates_pending_action() -> None:
     assert result.ok is True
     assert "confirmo ejecutar act_tts01" in result.message
     assert result.raw_result.get("local_final") is True
+    # Default script_type='largo' → EP001.mp3, not EP001-shorts.mp3
+    call_payload = mock_manager.create_pending_action.call_args.kwargs.get("payload", {})
+    assert call_payload.get("script_type") == "largo"
+    assert "EP001.mp3" in call_payload.get("audio_path", "")
+
+
+def test_generate_tts_shorts_uses_shorts_path() -> None:
+    from app.tools.handlers.content_tools import handle_generate_tts
+    from app.memory.models import Episode
+
+    episode = MagicMock(spec=Episode)
+    episode.id = 1
+    episode.status = "script_ready"
+    episode.script_path = "/tmp/EP001-largo-2026-07-02.docx"
+    episode.script_shorts_path = "/tmp/EP001-shorts-2026-07-02.docx"
+
+    mock_session = MagicMock()
+    mock_session.exec.return_value.first.return_value = episode
+
+    ctx = _make_ctx("generate_tts", {"script_type": "shorts"})
+
+    mock_manager = MagicMock()
+    mock_manager.find_equivalent_pending_action.return_value = None
+    created = MagicMock()
+    created.id = "act_tts02"
+    created.confirmation_phrase = "confirmo ejecutar act_tts02"
+    created.summary = "Generar audio TTS (shorts) de EP001 → EP001-shorts.mp3"
+    mock_manager.create_pending_action.return_value = created
+
+    canal_cfg = {"settings": {"output": {"audio": "work/canal/audio"}}}
+
+    with patch("app.tools.handlers.content_tools.get_session", return_value=iter([mock_session])):
+        with patch("app.tools.handlers.content_tools.ConfirmationManager", return_value=mock_manager):
+            with patch("app.tools.handlers.content_tools._load_canal_config", return_value=canal_cfg):
+                result = handle_generate_tts(ctx)
+
+    assert result.ok is True
+    call_payload = mock_manager.create_pending_action.call_args.kwargs.get("payload", {})
+    assert call_payload.get("script_type") == "shorts"
+    assert "EP001-shorts.mp3" in call_payload.get("audio_path", "")
+    assert call_payload.get("script_path") == "/tmp/EP001-shorts-2026-07-02.docx"
 
 
 def test_execute_generate_tts_extracts_narrable_text(tmp_path: Path) -> None:
-    """El extractor debe omitir notas de producción, encabezados y metadatos."""
+    """El extractor debe omitir notas de producción, encabezados, labels de shorts y metadatos."""
     from docx import Document
     from app.actions.content_actions import _execute_generate_tts
 
-    script_path = tmp_path / "EP001-test.docx"
+    script_path = tmp_path / "EP001-largo-test.docx"
     audio_path = tmp_path / "EP001.mp3"
 
     doc = Document()
@@ -312,6 +365,10 @@ def test_execute_generate_tts_extracts_narrable_text(tmp_path: Path) -> None:
     doc.add_heading("Sección principal", level=1)
     doc.add_paragraph("Este es el texto narrable del episodio.")
     doc.add_paragraph("[NOTA PRODUCCIÓN: pausa aquí, mostrar b-roll]")
+    doc.add_paragraph("GANCHO (0-3s): ¿Sabías que...?")
+    doc.add_paragraph("SECCIÓN 1: Noticias de la semana")
+    doc.add_paragraph("SHORT 1 — Título del short")
+    doc.add_paragraph("SITY: Bienvenida a todos.")
     doc.add_paragraph("Otro párrafo narrable sin notas.")
     doc.save(str(script_path))
 
@@ -337,10 +394,14 @@ def test_execute_generate_tts_extracts_narrable_text(tmp_path: Path) -> None:
 
     assert result.ok is True
     call_kwargs = mock_client.text_to_speech.convert.call_args
-    sent_text: str = call_kwargs.kwargs.get("text") or call_kwargs.args[1] if call_kwargs.args else ""
+    sent_text: str = call_kwargs.kwargs.get("text") or (call_kwargs.args[1] if call_kwargs.args else "")
     if not sent_text:
         sent_text = call_kwargs.kwargs["text"]
     assert "[NOTA PRODUCCIÓN:" not in sent_text
     assert "GUION" not in sent_text
+    assert "GANCHO" not in sent_text
+    assert "SECCIÓN" not in sent_text
+    assert "SHORT " not in sent_text
+    assert "SITY:" not in sent_text
     assert "Este es el texto narrable" in sent_text
     assert "Otro párrafo narrable" in sent_text
