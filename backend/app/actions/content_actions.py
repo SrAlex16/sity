@@ -306,14 +306,33 @@ def _execute_generate_images(payload: dict[str, Any]) -> ContentActionResult:
             ok=False, text=f"No se encontró la transcripción en {transcript_path}"
         )
 
-    transcript_text = transcript_path.read_text(encoding="utf-8")
+    raw_text = transcript_path.read_text(encoding="utf-8")
 
-    pattern = re.compile(r'\((\d+:\d+)\)\s*(.+?)(?=\s*\(\d+:\d+\)|$)', re.DOTALL)
-    segments = pattern.findall(transcript_text)
+    raw_text = re.sub(
+        r'\(Transcrito por TurboScribe.*?\)',
+        '',
+        raw_text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    parts = re.compile(r'\((\d+:\d+)\)\s*').split(raw_text)
+    # parts: ['', '0:06', 'texto1', '0:12', 'texto2', ...]
+    segments: list[tuple[str, str]] = []
+    i = 1
+    while i < len(parts) - 1:
+        timestamp = parts[i].strip()
+        text = parts[i + 1].strip()
+        if text:
+            segments.append((timestamp, text))
+        i += 2
 
     if not segments:
         return ContentActionResult(
-            ok=False, text="No se encontraron segmentos con timestamps válidos."
+            ok=False,
+            text=(
+                "No se encontraron segmentos con timestamps válidos. "
+                "Formato esperado: (0:00) texto (0:06) más texto..."
+            ),
         )
 
     assets_dir.mkdir(parents=True, exist_ok=True)
