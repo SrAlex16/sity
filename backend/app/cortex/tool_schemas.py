@@ -1235,6 +1235,33 @@ HA_CALL_SERVICE_TOOL = {
     },
 }
 
+GENERATE_IMAGES_TOOL = {
+    "name": "generate_images",
+    "description": (
+        "Genera imágenes cyberpunk 16:9 para cada timestamp de la "
+        "transcripción del episodio usando Stability AI. "
+        "Requiere que exista la transcripción con timestamps en "
+        "work/canal/assets/EP[N]/EP[N]-transcripcion.txt "
+        "(generada con Turboscribe). "
+        "Requiere confirmación — consume créditos de Stability AI "
+        "(~$0.065 por imagen con SD3.5 Medium). "
+        "Las imágenes se guardan en work/canal/assets/EP[N]/."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "episode_id": {
+                "type": "integer",
+                "description": (
+                    "ID del episodio. Si no se especifica, "
+                    "usa el más reciente con guion o audio listo."
+                ),
+            },
+        },
+    },
+}
+
 GENERATE_TTS_TOOL = {
     "name": "generate_tts",
     "description": (
@@ -1362,6 +1389,7 @@ CANAL_TOOLSET = [
     SELECT_NEWS_TOOL,
     GENERATE_SCRIPT_TOOL,
     GENERATE_TTS_TOOL,
+    GENERATE_IMAGES_TOOL,
 ]
 
 HA_TOOLSET = [
@@ -1404,6 +1432,7 @@ BASE_TOOLSET: list[dict] = [
     HA_CALL_SERVICE_TOOL,
     # Canal YouTube tools always available.
     GENERATE_TTS_TOOL,
+    GENERATE_IMAGES_TOOL,
     LIST_EPISODES_TOOL,
     LIST_NEWS_TOOL,
     FETCH_RSS_NEWS_TOOL,

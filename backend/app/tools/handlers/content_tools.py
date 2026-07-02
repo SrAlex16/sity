@@ -318,6 +318,109 @@ def handle_list_episodes(ctx: ToolContext) -> ToolExecutionResult:
     )
 
 
+@tool_handler("generate_images")
+def handle_generate_images(ctx: ToolContext) -> ToolExecutionResult:
+    import re
+    from sqlmodel import col, select as sql_select
+
+    session = next(get_session())
+    raw_episode_id = ctx.tool_input.get("episode_id")
+
+    if raw_episode_id is not None:
+        episode = session.exec(
+            sql_select(Episode).where(Episode.id == int(raw_episode_id))
+        ).first()
+    else:
+        episode = session.exec(
+            sql_select(Episode)
+            .where(col(Episode.status).in_(["audio_ready", "script_ready"]))
+            .order_by(col(Episode.id).desc())
+        ).first()
+
+    if not episode:
+        msg = "No hay episodios con guion o audio listo."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    ep_label = f"EP{episode.id:03d}"
+    assets_dir = _PROJECT_ROOT / "work" / "canal" / "assets" / ep_label
+    transcript_path = assets_dir / f"{ep_label}-transcripcion.txt"
+
+    if not transcript_path.exists():
+        msg = (
+            f"No se encontró la transcripción en {transcript_path}.\n"
+            f"Genera la transcripción con Turboscribe y guárdala en "
+            f"work/canal/assets/{ep_label}/{ep_label}-transcripcion.txt"
+        )
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    transcript_text = transcript_path.read_text(encoding="utf-8")
+    timestamps = re.findall(r'\(\d+:\d+\)', transcript_text)
+    n_images = len(timestamps)
+
+    if n_images == 0:
+        msg = (
+            "No se encontraron timestamps en la transcripción. "
+            "Formato esperado: (0:00) texto..."
+        )
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    payload: dict[str, Any] = {
+        "action": "generate_images",
+        "episode_id": episode.id,
+        "transcript_path": str(transcript_path),
+        "assets_dir": str(assets_dir),
+    }
+    dedup_payload: dict[str, Any] = {
+        "action": "generate_images",
+        "episode_id": episode.id,
+    }
+    manager = ConfirmationManager(ctx.executor.session)
+
+    existing_result = _pending_action_existing(manager, ctx, dedup_payload, action_type="content")
+    if existing_result:
+        return existing_result
+
+    summary = (
+        f"Generar {n_images} imágenes cyberpunk para {ep_label} "
+        f"→ work/canal/assets/{ep_label}/"
+    )
+    created = manager.create_pending_action(
+        action_type="content",
+        risk_level="safe_confirm",
+        summary=summary,
+        payload=payload,
+        trace_id=ctx.trace_id,
+    )
+    local_text = (
+        f"Acción pendiente creada: {created.summary}\n"
+        f"Transcripción: {transcript_path}\n"
+        f"Salida: work/canal/assets/{ep_label}/\n"
+        f"Esto consumirá créditos de Stability AI "
+        f"(~${n_images * 0.065:.2f} estimado con SD3.5).\n\n"
+        f"Confirma con: `{created.confirmation_phrase}`"
+    )
+    result: dict[str, Any] = {
+        "success": True, "message": local_text,
+        "action_id": created.id,
+        "confirmation_phrase": created.confirmation_phrase,
+        "summary": created.summary,
+        "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+    }
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=local_text,
+        updated_parameters=[], raw_result=result,
+    )
+
+
 @tool_handler("generate_tts")
 def handle_generate_tts(ctx: ToolContext) -> ToolExecutionResult:
     from sqlmodel import col, select as sql_select

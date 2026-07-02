@@ -139,6 +139,11 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
     Requiere confirmación — consume créditos. Si no se especifica episode_id,
     usa el episodio más reciente con guion listo (script_ready).
     script_type='largo' (por defecto) para el vídeo principal; script_type='shorts' para los shorts.
+  - generate_images: genera imágenes cyberpunk 16:9 para cada timestamp de la transcripción
+    usando Claude Sonnet (prompts) + Stability AI SD3.5 Medium (generación).
+    Requiere que el usuario haya generado la transcripción con Turboscribe y la haya guardado en
+    work/canal/assets/EP[N]/EP[N]-transcripcion.txt.
+    Requiere confirmación — consume créditos de Stability AI (~$0.065 por imagen).
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.

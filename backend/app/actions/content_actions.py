@@ -78,6 +78,8 @@ def execute_content_action(payload: dict[str, Any]) -> ContentActionResult:
         return _execute_generate_script(payload)
     if action == "generate_tts":
         return _execute_generate_tts(payload)
+    if action == "generate_images":
+        return _execute_generate_images(payload)
     return ContentActionResult(ok=False, text=f"Acción desconocida: {action}")
 
 
@@ -283,3 +285,128 @@ def _execute_generate_tts(payload: dict[str, Any]) -> ContentActionResult:
             f"Escucha el archivo antes de continuar."
         ),
     )
+
+
+def _execute_generate_images(payload: dict[str, Any]) -> ContentActionResult:
+    import anthropic
+    import httpx
+    from sqlmodel import Session, select as sql_select
+
+    from app.memory.db import engine
+    from app.memory.models import Episode
+
+    episode_id = payload.get("episode_id")
+    transcript_path = Path(payload.get("transcript_path", ""))
+    assets_dir = Path(payload.get("assets_dir", ""))
+
+    if not transcript_path.exists():
+        return ContentActionResult(
+            ok=False, text=f"No se encontró la transcripción en {transcript_path}"
+        )
+
+    transcript_text = transcript_path.read_text(encoding="utf-8")
+
+    pattern = re.compile(r'\((\d+:\d+)\)\s*(.+?)(?=\s*\(\d+:\d+\)|$)', re.DOTALL)
+    segments = pattern.findall(transcript_text)
+
+    if not segments:
+        return ContentActionResult(
+            ok=False, text="No se encontraron segmentos con timestamps válidos."
+        )
+
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    ep_label = assets_dir.name
+
+    anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+    stability_api_key = os.getenv("STABILITY_API_KEY", "")
+
+    if not stability_api_key:
+        return ContentActionResult(ok=False, text="Falta STABILITY_API_KEY en el entorno.")
+
+    results: list[str] = []
+    errors: list[str] = []
+
+    for i, (timestamp, text) in enumerate(segments, start=1):
+        text = text.strip()
+        img_filename = f"{ep_label}-img-{i:03d}.png"
+        img_path = assets_dir / img_filename
+
+        try:
+            prompt_response = anthropic_client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=300,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Genera un prompt en inglés para Stable Diffusion "
+                        "que ilustre visualmente el siguiente fragmento de "
+                        "narración de un canal de divulgación tech/IA.\n\n"
+                        f"Texto narrado: \"{text}\"\n\n"
+                        "El prompt debe seguir esta estética SIEMPRE:\n"
+                        "- Estilo cyberpunk con influencia asiática\n"
+                        "- Predominio de colores: azul eléctrico, magenta, "
+                        "rosa neón, violeta, cian\n"
+                        "- Interfaces holográficas y pantallas flotantes\n"
+                        "- Fondos oscuros con neones brillantes y contrastes fuertes\n"
+                        "- Inspirado en Blade Runner, Ghost in the Shell, Cyberpunk 2077\n"
+                        "- Composición simple y limpia, no sobrecargada\n"
+                        "- Sin texto en la imagen excepto caracteres "
+                        "decorativos asiáticos si encajan\n"
+                        "- Formato 16:9 horizontal\n\n"
+                        "Devuelve SOLO el prompt en inglés, sin explicaciones."
+                    ),
+                }],
+            )
+            prompt_block = prompt_response.content[0]
+            image_prompt: str = prompt_block.text.strip() if hasattr(prompt_block, "text") else ""  # type: ignore[union-attr]
+        except Exception as e:
+            errors.append(f"[{timestamp}] Error generando prompt: {e}")
+            continue
+
+        try:
+            response = httpx.post(
+                "https://api.stability.ai/v2beta/stable-image/generate/sd3",
+                headers={
+                    "authorization": f"Bearer {stability_api_key}",
+                    "accept": "image/*",
+                },
+                data={
+                    "prompt": image_prompt,
+                    "aspect_ratio": "16:9",
+                    "model": "sd3.5-medium",
+                    "output_format": "png",
+                },
+                timeout=60,
+            )
+            if response.status_code == 200:
+                img_path.write_bytes(response.content)
+                results.append(f"✓ ({timestamp}) → {img_filename}")
+            else:
+                errors.append(
+                    f"[{timestamp}] Error Stability AI: "
+                    f"{response.status_code} {response.text[:200]}"
+                )
+        except Exception as e:
+            errors.append(f"[{timestamp}] Error llamando a Stability AI: {e}")
+
+    if episode_id and len(results) > 0:
+        with Session(engine) as session:
+            episode = session.exec(
+                sql_select(Episode).where(Episode.id == episode_id)
+            ).first()
+            if episode:
+                session.add(episode)
+                session.commit()
+
+    summary = (
+        f"Generación completada para {ep_label}:\n"
+        f"✓ {len(results)} imágenes generadas\n"
+        f"✗ {len(errors)} errores\n\n"
+    )
+    if results:
+        summary += "Imágenes generadas:\n" + "\n".join(results)
+    if errors:
+        summary += "\n\nErrores:\n" + "\n".join(errors)
+    summary += f"\n\nImágenes guardadas en: {assets_dir}"
+
+    return ContentActionResult(ok=len(results) > 0, text=summary)
