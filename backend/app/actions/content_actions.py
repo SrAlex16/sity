@@ -296,8 +296,10 @@ def _execute_generate_images(payload: dict[str, Any]) -> ContentActionResult:
     from app.memory.models import Episode
 
     episode_id = payload.get("episode_id")
-    transcript_path = Path(payload.get("transcript_path", ""))
-    assets_dir = Path(payload.get("assets_dir", ""))
+    ep_label = f"EP{episode_id:03d}" if episode_id else Path(payload.get("assets_dir", "EP000")).name
+    timestamps_dir = _PROJECT_ROOT / "work" / "canal" / "guiones" / "timestamps"
+    transcript_path = timestamps_dir / f"{ep_label}.txt"
+    assets_dir = _PROJECT_ROOT / "work" / "canal" / "assets" / ep_label
 
     if not transcript_path.exists():
         return ContentActionResult(
@@ -315,7 +317,6 @@ def _execute_generate_images(payload: dict[str, Any]) -> ContentActionResult:
         )
 
     assets_dir.mkdir(parents=True, exist_ok=True)
-    ep_label = assets_dir.name
 
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
     stability_api_key = os.getenv("STABILITY_API_KEY", "")

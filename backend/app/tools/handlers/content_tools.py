@@ -345,14 +345,15 @@ def handle_generate_images(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     ep_label = f"EP{episode.id:03d}"
+    timestamps_dir = _PROJECT_ROOT / "work" / "canal" / "guiones" / "timestamps"
+    transcript_path = timestamps_dir / f"{ep_label}.txt"
     assets_dir = _PROJECT_ROOT / "work" / "canal" / "assets" / ep_label
-    transcript_path = assets_dir / f"{ep_label}-transcripcion.txt"
 
     if not transcript_path.exists():
         msg = (
             f"No se encontró la transcripción en {transcript_path}.\n"
-            f"Genera la transcripción con Turboscribe y guárdala en "
-            f"work/canal/assets/{ep_label}/{ep_label}-transcripcion.txt"
+            f"Guarda el archivo de timestamps en "
+            f"work/canal/guiones/timestamps/{ep_label}.txt"
         )
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=False, message=msg,
@@ -403,7 +404,7 @@ def handle_generate_images(ctx: ToolContext) -> ToolExecutionResult:
     local_text = (
         f"Acción pendiente creada: {created.summary}\n"
         f"Transcripción: {transcript_path}\n"
-        f"Salida: work/canal/assets/{ep_label}/\n"
+        f"Salida: {assets_dir}/\n"
         f"Esto consumirá créditos de Stability AI "
         f"(~${n_images * 0.065:.2f} estimado con SD3.5).\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"
