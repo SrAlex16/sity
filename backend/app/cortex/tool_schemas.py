@@ -1235,6 +1235,30 @@ HA_CALL_SERVICE_TOOL = {
     },
 }
 
+GENERATE_TTS_TOOL = {
+    "name": "generate_tts",
+    "description": (
+        "Genera el audio TTS del guion revisado usando ElevenLabs. "
+        "Requiere confirmación — consume créditos de la API. "
+        "El input es el guion del episodio (status script_ready). "
+        "Produce un MP3 en work/canal/audio/EP[N].mp3. "
+        "Usar solo cuando Alex haya revisado y aprobado el guion."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "episode_id": {
+                "type": "integer",
+                "description": (
+                    "ID del episodio. Si no se especifica, "
+                    "usa el más reciente con status script_ready."
+                ),
+            },
+        },
+    },
+}
+
 LIST_EPISODES_TOOL = {
     "name": "list_episodes",
     "description": (
@@ -1327,6 +1351,7 @@ CANAL_TOOLSET = [
     FETCH_RSS_NEWS_TOOL,
     SELECT_NEWS_TOOL,
     GENERATE_SCRIPT_TOOL,
+    GENERATE_TTS_TOOL,
 ]
 
 HA_TOOLSET = [
@@ -1368,6 +1393,7 @@ BASE_TOOLSET: list[dict] = [
     HA_GET_STATE_TOOL,
     HA_CALL_SERVICE_TOOL,
     # Canal YouTube tools always available.
+    GENERATE_TTS_TOOL,
     LIST_EPISODES_TOOL,
     LIST_NEWS_TOOL,
     FETCH_RSS_NEWS_TOOL,

@@ -320,3 +320,90 @@ def handle_list_episodes(ctx: ToolContext) -> ToolExecutionResult:
         tool_name=ctx.tool_name, ok=True, message=output,
         updated_parameters=[], raw_result={"output": output},
     )
+
+
+@tool_handler("generate_tts")
+def handle_generate_tts(ctx: ToolContext) -> ToolExecutionResult:
+    from sqlmodel import col, select as sql_select
+
+    session = next(get_session())
+    raw_episode_id = ctx.tool_input.get("episode_id")
+
+    if raw_episode_id is not None:
+        episode = session.exec(
+            sql_select(Episode).where(Episode.id == int(raw_episode_id))
+        ).first()
+    else:
+        episode = session.exec(
+            sql_select(Episode)
+            .where(Episode.status == "script_ready")
+            .order_by(col(Episode.id).desc())
+        ).first()
+
+    if not episode:
+        msg = ("No hay episodios con status='script_ready'. "
+               "Genera primero el guion con generate_script.")
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    if not episode.script_path:
+        msg = f"EP{episode.id:03d} no tiene ruta de guion registrada."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    ep_label = f"EP{episode.id:03d}"
+    cfg = _load_canal_config()
+    audio_dir = Path(cfg.get("settings", {}).get("output", {}).get("audio", "work/canal/audio"))
+    if not audio_dir.is_absolute():
+        audio_dir = _PROJECT_ROOT / audio_dir
+    audio_path = audio_dir / f"{ep_label}.mp3"
+
+    payload: dict[str, Any] = {
+        "action": "generate_tts",
+        "episode_id": episode.id,
+        "script_path": episode.script_path,
+        "audio_path": str(audio_path),
+    }
+    dedup_payload: dict[str, Any] = {
+        "action": "generate_tts",
+        "episode_id": episode.id,
+    }
+    manager = ConfirmationManager(ctx.executor.session)
+
+    existing_result = _pending_action_existing(manager, ctx, dedup_payload, action_type="content")
+    if existing_result:
+        return existing_result
+
+    summary = f"Generar audio TTS de {ep_label} → {audio_path.name}"
+    local_text_extra = (
+        f"\nGuion: {episode.script_path}"
+        f"\nAudio de salida: {audio_path}"
+        f"\nEsto consumirá créditos de ElevenLabs."
+    )
+    created = manager.create_pending_action(
+        action_type="content",
+        risk_level="safe_confirm",
+        summary=summary,
+        payload=payload,
+        trace_id=ctx.trace_id,
+    )
+    local_text = (
+        f"Acción pendiente creada: {created.summary}"
+        f"{local_text_extra}\n\n"
+        f"Confirma con: `{created.confirmation_phrase}`"
+    )
+    result = {
+        "success": True, "message": local_text,
+        "action_id": created.id,
+        "confirmation_phrase": created.confirmation_phrase,
+        "summary": created.summary,
+        "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+    }
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=local_text,
+        updated_parameters=[], raw_result=result,
+    )

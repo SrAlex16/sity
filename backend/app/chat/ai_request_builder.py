@@ -134,6 +134,10 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
     usar esta tool con los IDs correctos.
   - generate_script: genera el guion con las noticias seleccionadas y lo exporta a DOCX.
     Requiere confirmación. Usar solo cuando Alex pida explícitamente generar el guion.
+  - generate_tts: genera el audio TTS del guion con ElevenLabs.
+    Usar solo cuando Alex indique que ha revisado el guion y quiere generar el audio.
+    Requiere confirmación — consume créditos. Si no se especifica episode_id,
+    usa el episodio más reciente con guion listo (script_ready).
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.

@@ -245,3 +245,102 @@ def test_execute_generate_script_creates_docx(tmp_path: Path) -> None:
     expected_docx = list(tmp_path.glob("EP001-*.docx"))
     assert expected_docx, f"No EP001-*.docx found in {tmp_path}"
     assert "EP001" in result.text
+
+
+# ── generate_tts ──────────────────────────────────────────────────────────────
+
+def test_generate_tts_no_script_ready_fails() -> None:
+    from app.tools.handlers.content_tools import handle_generate_tts
+
+    mock_session = MagicMock()
+    mock_session.exec.return_value.first.return_value = None
+
+    ctx = _make_ctx("generate_tts", {})
+
+    with patch("app.tools.handlers.content_tools.get_session", return_value=iter([mock_session])):
+        result = handle_generate_tts(ctx)
+
+    assert result.ok is False
+    assert "script_ready" in result.message
+
+
+def test_generate_tts_creates_pending_action() -> None:
+    from app.tools.handlers.content_tools import handle_generate_tts
+    from app.memory.models import Episode
+
+    episode = MagicMock(spec=Episode)
+    episode.id = 1
+    episode.status = "script_ready"
+    episode.script_path = "/tmp/EP001-2026-07-02.docx"
+
+    mock_session = MagicMock()
+    mock_session.exec.return_value.first.return_value = episode
+
+    ctx = _make_ctx("generate_tts", {})
+
+    mock_manager = MagicMock()
+    mock_manager.find_equivalent_pending_action.return_value = None
+    created = MagicMock()
+    created.id = "act_tts01"
+    created.confirmation_phrase = "confirmo ejecutar act_tts01"
+    created.summary = "Generar audio TTS de EP001 → EP001.mp3"
+    mock_manager.create_pending_action.return_value = created
+
+    canal_cfg = {"settings": {"output": {"audio": "work/canal/audio"}}}
+
+    with patch("app.tools.handlers.content_tools.get_session", return_value=iter([mock_session])):
+        with patch("app.tools.handlers.content_tools.ConfirmationManager", return_value=mock_manager):
+            with patch("app.tools.handlers.content_tools._load_canal_config", return_value=canal_cfg):
+                result = handle_generate_tts(ctx)
+
+    assert result.ok is True
+    assert "confirmo ejecutar act_tts01" in result.message
+    assert result.raw_result.get("local_final") is True
+
+
+def test_execute_generate_tts_extracts_narrable_text(tmp_path: Path) -> None:
+    """El extractor debe omitir notas de producción, encabezados y metadatos."""
+    from docx import Document
+    from app.actions.content_actions import _execute_generate_tts
+
+    script_path = tmp_path / "EP001-test.docx"
+    audio_path = tmp_path / "EP001.mp3"
+
+    doc = Document()
+    doc.add_heading("GUION — Sity Canal · EP001", 0)
+    doc.add_paragraph("Generado: 2026-07-02 15:00")
+    doc.add_heading("Sección principal", level=1)
+    doc.add_paragraph("Este es el texto narrable del episodio.")
+    doc.add_paragraph("[NOTA PRODUCCIÓN: pausa aquí, mostrar b-roll]")
+    doc.add_paragraph("Otro párrafo narrable sin notas.")
+    doc.save(str(script_path))
+
+    mock_audio = iter([b"fake_audio_bytes"])
+    mock_client = MagicMock()
+    mock_client.text_to_speech.convert.return_value = mock_audio
+
+    mock_session = MagicMock()
+    mock_session.exec.return_value.first.return_value = MagicMock()
+
+    def mock_save(audio, filename: str) -> None:
+        Path(filename).write_bytes(b"fake_audio")
+
+    with patch("elevenlabs.client.ElevenLabs", return_value=mock_client):
+        with patch("app.actions.content_actions.elevenlabs_save", mock_save):
+            with patch("app.actions.content_actions.get_session", return_value=iter([mock_session])):
+                with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "test", "ELEVENLABS_VOICE_ID": "v1"}):
+                    result = _execute_generate_tts({
+                        "episode_id": 1,
+                        "script_path": str(script_path),
+                        "audio_path": str(audio_path),
+                    })
+
+    assert result.ok is True
+    call_kwargs = mock_client.text_to_speech.convert.call_args
+    sent_text: str = call_kwargs.kwargs.get("text") or call_kwargs.args[1] if call_kwargs.args else ""
+    if not sent_text:
+        sent_text = call_kwargs.kwargs["text"]
+    assert "[NOTA PRODUCCIÓN:" not in sent_text
+    assert "GUION" not in sent_text
+    assert "Este es el texto narrable" in sent_text
+    assert "Otro párrafo narrable" in sent_text

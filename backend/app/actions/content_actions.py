@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from elevenlabs import save as elevenlabs_save
+
 from app.memory.db import get_session
 from app.memory.models import Episode, NewsItem
 
@@ -23,6 +25,8 @@ def execute_content_action(payload: dict[str, Any]) -> ContentActionResult:
         return _execute_select_news(payload)
     if action == "generate_script":
         return _execute_generate_script(payload)
+    if action == "generate_tts":
+        return _execute_generate_tts(payload)
     return ContentActionResult(ok=False, text=f"Acción desconocida: {action}")
 
 
@@ -117,5 +121,74 @@ def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
             f"Archivo: {docx_path}\n"
             f"{len(news_ids)} noticia(s) vinculadas al episodio.\n"
             f"Abre el archivo para revisarlo antes de continuar."
+        ),
+    )
+
+
+def _execute_generate_tts(payload: dict[str, Any]) -> ContentActionResult:
+    from elevenlabs.client import ElevenLabs
+    from elevenlabs.types import VoiceSettings
+    from docx import Document
+    from sqlmodel import select as sql_select
+
+    episode_id = payload.get("episode_id")
+    script_path = Path(payload.get("script_path", ""))
+    audio_path = Path(payload.get("audio_path", ""))
+
+    if not script_path.exists():
+        return ContentActionResult(ok=False, text=f"No se encontró el guion en {script_path}")
+
+    doc = Document(str(script_path))
+    narrable_lines: list[str] = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        if text.startswith("[NOTA PRODUCCIÓN") or text.startswith("*[NOTA"):
+            continue
+        if text.startswith("GUION") or text.startswith("Generado:"):
+            continue
+        if para.style and para.style.name.startswith("Heading"):
+            continue
+        narrable_lines.append(text)
+
+    full_text = "\n".join(narrable_lines)
+    if not full_text.strip():
+        return ContentActionResult(ok=False, text="El guion no tiene texto narrable extraíble.")
+
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    voice_id = os.getenv("ELEVENLABS_VOICE_ID", "")
+    if not api_key or not voice_id:
+        return ContentActionResult(ok=False, text="Faltan ELEVENLABS_API_KEY o ELEVENLABS_VOICE_ID en .env")
+
+    try:
+        client = ElevenLabs(api_key=api_key)
+        audio = client.text_to_speech.convert(
+            voice_id=voice_id,
+            text=full_text,
+            model_id="eleven_multilingual_v2",
+            voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75),
+        )
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        elevenlabs_save(audio, str(audio_path))
+    except Exception as e:
+        return ContentActionResult(ok=False, text=f"Error llamando a ElevenLabs: {e}")
+
+    session = next(get_session())
+    episode = session.exec(sql_select(Episode).where(Episode.id == episode_id)).first()
+    if episode:
+        episode.audio_path = str(audio_path)
+        episode.status = "audio_ready"
+        session.add(episode)
+        session.commit()
+
+    size_mb = audio_path.stat().st_size / (1024 * 1024)
+    return ContentActionResult(
+        ok=True,
+        text=(
+            f"Audio generado: {audio_path}\n"
+            f"Tamaño: {size_mb:.1f} MB\n"
+            f"Episodio actualizado a status='audio_ready'.\n"
+            f"Escucha el archivo antes de continuar."
         ),
     )
