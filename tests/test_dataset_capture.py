@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.models import ChatMessage
+from helpers import chat_post_and_drain
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +284,7 @@ def _last_pair(db_session: Session) -> tuple[ChatMessage | None, ChatMessage | N
 def test_chat_normal_mode_user_saved_with_human_local(client, db_session: Session) -> None:
     """With capture disabled, user message gets human_local speaker_source."""
     client.post("/debug/dataset-capture/disable")
-    client.post("/chat/message", json={"message": "hola"})
+    chat_post_and_drain(client, "hola")
     user_msg, _ = _last_pair(db_session)
     assert user_msg is not None
     assert user_msg.speaker_source == "human_local"
@@ -293,7 +294,7 @@ def test_chat_normal_mode_user_saved_with_human_local(client, db_session: Sessio
 def test_chat_normal_mode_sity_saved_with_sity_local(client, db_session: Session) -> None:
     """With capture disabled, sity message gets sity_local + normal_use."""
     client.post("/debug/dataset-capture/disable")
-    client.post("/chat/message", json={"message": "hola"})
+    chat_post_and_drain(client, "hola")
     _, sity_msg = _last_pair(db_session)
     assert sity_msg is not None
     assert sity_msg.speaker_source == "sity_local"
@@ -303,7 +304,7 @@ def test_chat_normal_mode_sity_saved_with_sity_local(client, db_session: Session
 def test_chat_capture_user_saved_with_synthetic_metadata(client, db_session: Session) -> None:
     """With capture enabled, user message gets synthetic_claude_user metadata."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
-    client.post("/chat/message", json={"message": "hola desde capture"})
+    chat_post_and_drain(client, "hola desde capture")
     user_msg, _ = _last_pair(db_session)
     assert user_msg is not None
     assert user_msg.speaker_source == "synthetic_claude_user"
@@ -318,7 +319,7 @@ def test_chat_capture_sity_saved_with_sity_local_and_synthetic_source(
 ) -> None:
     """With capture enabled, sity message uses dataset_source from capture but speaker_source=sity_local."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
-    client.post("/chat/message", json={"message": "hola desde capture sity"})
+    chat_post_and_drain(client, "hola desde capture sity")
     _, sity_msg = _last_pair(db_session)
     assert sity_msg is not None
     assert sity_msg.speaker_source == "sity_local"
@@ -330,7 +331,7 @@ def test_chat_capture_sity_saved_with_sity_local_and_synthetic_source(
 def test_chat_capture_sity_tone_meta_preserved(client, db_session: Session) -> None:
     """tone_meta is still saved on sity messages when capture is active."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
-    client.post("/chat/message", json={"message": "qué tal?"})
+    chat_post_and_drain(client, "qué tal?")
     _, sity_msg = _last_pair(db_session)
     assert sity_msg is not None
     assert sity_msg.tone_meta is not None
@@ -343,7 +344,7 @@ def test_chat_after_disable_reverts_to_normal_use(client, db_session: Session) -
     """After disabling capture, new messages revert to normal_use metadata."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
     client.post("/debug/dataset-capture/disable")
-    client.post("/chat/message", json={"message": "post-disable"})
+    chat_post_and_drain(client, "post-disable")
     user_msg, _ = _last_pair(db_session)
     assert user_msg is not None
     assert user_msg.speaker_source == "human_local"
@@ -357,7 +358,7 @@ def test_chat_after_disable_reverts_to_normal_use(client, db_session: Session) -
 def test_dataset_stats_counts_synthetic_source(client) -> None:
     """After a capture-mode chat turn, stats show synthetic_claude_user in by_source."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
-    client.post("/chat/message", json={"message": "stats check synthetic"})
+    chat_post_and_drain(client, "stats check synthetic")
     client.post("/debug/dataset-capture/disable")
 
     resp = client.get("/debug/dataset-stats")
@@ -369,7 +370,7 @@ def test_dataset_stats_counts_synthetic_source(client) -> None:
 def test_dataset_stats_multi_persona_tag_counted(client) -> None:
     """multi_persona tag from capture is counted in by_tag."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
-    client.post("/chat/message", json={"message": "stats check multi_persona"})
+    chat_post_and_drain(client, "stats check multi_persona")
     client.post("/debug/dataset-capture/disable")
 
     resp = client.get("/debug/dataset-stats")

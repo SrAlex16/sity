@@ -1,4 +1,10 @@
+from __future__ import annotations
+
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session, col, select
 
 from app.api.schemas import (
@@ -19,10 +25,15 @@ from app.chat.ai_orchestrator import (  # noqa: F401
     _clean_text_for_tts,
 )
 
-from app.core.cancellation import clear_operation, register_operation
+from app.core.cancellation import cancel_operation, clear_operation, register_operation
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
-from app.core.realtime_events import publish_event_sync
+from app.core.realtime_events import (
+    ensure_queue,
+    new_client_turn_id,
+    publish_event_sync,
+    subscribe,
+)
 from app.core.refusal_tracker import get_last_refusal
 
 from app.memory.db import get_session
@@ -82,51 +93,90 @@ def current_chat(session: Session = Depends(get_session)):
     )
 
 
-@router.post("/message", response_model=ChatMessageResponse)
-def chat_message(
-    request: ChatMessageRequest,
-    session: Session = Depends(get_session),
-):
+@router.post("/message", status_code=202)
+async def chat_message(request: ChatMessageRequest):
     if err := _validate_images(request.images):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=err)
 
-    cid = request.client_turn_id
-    if cid:
-        register_operation(cid)
+    turn_id = request.client_turn_id or new_client_turn_id()
+    ensure_queue(turn_id)
+    register_operation(turn_id)
 
-    try:
-        result = _chat_message_inner(request=request, session=session)
-        if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
-            original_message = result.original_message
-            strong_model = result.strong_model
-            write_log(level="INFO", module="chat", event="model_upgrade_accepted",
-                      trace_id="outer",
-                      payload={"original_message": original_message[:80],
-                               "strong_model": strong_model})
-            upgraded = request.model_copy(update={"message": original_message})
-            clear_proposal()
-            write_log(level="INFO", module="chat", event="model_upgrade_rerun",
-                      trace_id="outer",
-                      payload={"strong_model": strong_model,
-                               "message_len": len(original_message)})
-            _upgrade_ctx = (
-                "CONTEXTO DE UPGRADE: El usuario ya confirmó usar el modelo más potente para esta tarea. "
-                "Ejecuta la tarea directamente sin volver a preguntar ni proponer cambios de modelo. "
-                "No menciones el cambio de modelo — simplemente responde a la tarea."
-            )
-            result = _chat_message_inner(
-                request=upgraded, session=session, _strong_model=strong_model,
-                _skip_history_turns=2, _upgrade_context=_upgrade_ctx,
-            )
-        return result
-    except Exception:
-        publish_event_sync(cid, {"type": "error", "label": "Error procesando la petición."})
-        raise
-    finally:
-        publish_event_sync(cid, {"type": "done"})
-        if cid:
-            clear_operation(cid)
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _run_turn_in_background, request, turn_id)
+
+    return JSONResponse(status_code=202, content={"turn_id": turn_id, "status": "processing"})
+
+
+@router.get("/stream/{turn_id}")
+async def chat_stream(turn_id: str):
+    """SSE stream — subscribe here to receive the result of a POST /chat/message."""
+    async def event_generator():
+        async for event in subscribe(turn_id):
+            if event is None:
+                yield ": heartbeat\n\n"
+            else:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/stream/{turn_id}/cancel")
+def cancel_stream(turn_id: str):
+    ok = cancel_operation(turn_id)
+    publish_event_sync(turn_id, {
+        "type": "cancelled",
+        "label": "Cancelando…",
+        "message": "Has cancelado la operación.",
+    })
+    return {"ok": ok}
+
+
+def _run_turn_in_background(request: ChatMessageRequest, turn_id: str) -> None:
+    """Worker that runs the full chat turn in a thread pool and publishes
+    the result (or error) as SSE events before closing with 'done'."""
+    from app.memory.db import engine
+
+    with Session(engine) as session:
+        try:
+            result = _chat_message_inner(request=request, session=session)
+            if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
+                original_message = result.original_message
+                strong_model = result.strong_model
+                write_log(
+                    level="INFO", module="chat", event="model_upgrade_accepted",
+                    trace_id=turn_id,
+                    payload={"original_message": original_message[:80], "strong_model": strong_model},
+                )
+                upgraded = request.model_copy(update={"message": original_message})
+                clear_proposal()
+                write_log(
+                    level="INFO", module="chat", event="model_upgrade_rerun",
+                    trace_id=turn_id,
+                    payload={"strong_model": strong_model, "message_len": len(original_message)},
+                )
+                _upgrade_ctx = (
+                    "CONTEXTO DE UPGRADE: El usuario ya confirmó usar el modelo más potente para esta tarea. "
+                    "Ejecuta la tarea directamente sin volver a preguntar ni proponer cambios de modelo. "
+                    "No menciones el cambio de modelo — simplemente responde a la tarea."
+                )
+                result = _chat_message_inner(
+                    request=upgraded,
+                    session=session,
+                    _strong_model=strong_model,
+                    _skip_history_turns=2,
+                    _upgrade_context=_upgrade_ctx,
+                )
+            publish_event_sync(turn_id, {
+                "type": "response",
+                "data": result.model_dump(mode="json"),
+            })
+        except Exception:
+            publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
+        finally:
+            publish_event_sync(turn_id, {"type": "done"})
+            clear_operation(turn_id)
 
 
 def _chat_message_inner(

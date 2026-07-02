@@ -26,6 +26,12 @@ async def publish_event(client_turn_id: str, event: dict[str, Any]) -> None:
     await _queues[client_turn_id].put(event)
 
 
+def ensure_queue(turn_id: str) -> None:
+    """Pre-create the event queue so events published before the SSE subscriber
+    connects are not lost (defaultdict creates the queue on first access)."""
+    _ = _queues[turn_id]
+
+
 def publish_event_sync(client_turn_id: str | None, event: dict[str, Any]) -> None:
     if not client_turn_id or _loop is None:
         return

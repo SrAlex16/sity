@@ -11,8 +11,8 @@ Tests verify:
   - Ollama httpx.post payload has no 'tools' key when chat path is taken.
   - Default (SITY_LOCAL_AI_ENABLED not set) routes through cloud planner (mock).
 
-Uses FastAPI TestClient (synchronous). httpx.post is patched at module level to avoid real
-Ollama network calls. The test DB is already isolated by conftest.
+POST /chat/message now returns 202 immediately. Tests drain /chat/stream/{turn_id}
+via SSE to get the final response data.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from helpers import chat_post_and_drain
 
 # ---------------------------------------------------------------------------
 # Ollama response helpers
@@ -79,22 +80,21 @@ def local_ai_client(monkeypatch: pytest.MonkeyPatch):
 def test_local_ai_conversational_returns_ok(local_ai_client):
     """Conversational message with local AI enabled returns ok=True."""
     client, _ = local_ai_client
-    resp = client.post("/chat/message", json={"message": "hola"})
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
+    data = chat_post_and_drain(client, "hola")
+    assert data["ok"] is True
 
 
 def test_local_ai_conversational_no_tools_not_supported(local_ai_client):
     """Conversational message must not return tools_not_supported."""
     client, _ = local_ai_client
-    resp = client.post("/chat/message", json={"message": "hola"})
-    assert resp.json().get("error_type") != "tools_not_supported"
+    data = chat_post_and_drain(client, "hola")
+    assert data.get("error_type") != "tools_not_supported"
 
 
 def test_local_ai_conversational_httpx_called_once(local_ai_client):
     """Exactly one httpx.post call: the Ollama chat call, not a planner call."""
     client, captured = local_ai_client
-    client.post("/chat/message", json={"message": "hola"})
+    chat_post_and_drain(client, "hola")
     assert len(captured) == 1, (
         f"Expected 1 httpx.post call (local chat), got {len(captured)}"
     )
@@ -103,7 +103,7 @@ def test_local_ai_conversational_httpx_called_once(local_ai_client):
 def test_local_ai_conversational_no_tools_in_httpx_payload(local_ai_client):
     """The payload sent to Ollama must NOT contain a 'tools' key."""
     client, captured = local_ai_client
-    client.post("/chat/message", json={"message": "hola"})
+    chat_post_and_drain(client, "hola")
     assert len(captured) == 1
     assert "tools" not in captured[0], (
         f"'tools' key found in Ollama payload — planner path was taken: {captured[0]}"
@@ -113,15 +113,15 @@ def test_local_ai_conversational_no_tools_in_httpx_payload(local_ai_client):
 def test_local_ai_conversational_payload_has_stream_false(local_ai_client):
     """Ollama payload must have stream=False (chat-only protocol)."""
     client, captured = local_ai_client
-    client.post("/chat/message", json={"message": "hola"})
+    chat_post_and_drain(client, "hola")
     assert captured[0].get("stream") is False
 
 
 def test_local_ai_conversational_response_text_from_ollama(local_ai_client):
     """Response text comes from the mocked Ollama body."""
     client, _ = local_ai_client
-    resp = client.post("/chat/message", json={"message": "hola"})
-    assert resp.json()["text"] == "Hola, soy Sity."
+    data = chat_post_and_drain(client, "hola")
+    assert data["text"] == "Hola, soy Sity."
 
 
 # ---------------------------------------------------------------------------
@@ -147,11 +147,8 @@ def test_local_ai_action_message_ollama_not_called(monkeypatch):
     monkeypatch.setattr(httpx, "post", _should_not_be_called)
 
     with TestClient(app, raise_server_exceptions=True) as client:
-        resp = client.post(
-            "/chat/message", json={"message": "lee backend/app/main.py"}
-        )
+        chat_post_and_drain(client, "lee backend/app/main.py")
 
-    assert resp.status_code == 200
     assert not ollama_called, (
         "Ollama httpx.post was called for an action message — should use cloud path"
     )
@@ -172,13 +169,10 @@ def test_local_ai_action_message_no_tools_not_supported(monkeypatch):
     )
 
     with TestClient(app, raise_server_exceptions=True) as client:
-        resp = client.post(
-            "/chat/message", json={"message": "lee backend/app/main.py"}
-        )
+        data = chat_post_and_drain(client, "lee backend/app/main.py")
 
-    assert resp.status_code == 200
-    assert resp.json().get("error_type") != "tools_not_supported", (
-        f"Got tools_not_supported — action message was routed to Ollama: {resp.json()}"
+    assert data.get("error_type") != "tools_not_supported", (
+        f"Got tools_not_supported — action message was routed to Ollama: {data}"
     )
 
 
@@ -189,16 +183,15 @@ def test_local_ai_action_message_no_tools_not_supported(monkeypatch):
 def test_default_cloud_provider_conversational_returns_ok():
     """Default (no local AI) conversational → cloud (mock) → ok=True."""
     with TestClient(app, raise_server_exceptions=True) as client:
-        resp = client.post("/chat/message", json={"message": "hola"})
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
+        data = chat_post_and_drain(client, "hola")
+    assert data["ok"] is True
 
 
 def test_default_cloud_provider_no_tools_not_supported():
     """Default (no local AI) conversational must not return tools_not_supported."""
     with TestClient(app, raise_server_exceptions=True) as client:
-        resp = client.post("/chat/message", json={"message": "hola"})
-    assert resp.json().get("error_type") != "tools_not_supported"
+        data = chat_post_and_drain(client, "hola")
+    assert data.get("error_type") != "tools_not_supported"
 
 
 def test_default_cloud_provider_ollama_not_called(monkeypatch):
@@ -213,7 +206,7 @@ def test_default_cloud_provider_ollama_not_called(monkeypatch):
     )
 
     with TestClient(app, raise_server_exceptions=True) as client:
-        client.post("/chat/message", json={"message": "hola"})
+        chat_post_and_drain(client, "hola")
 
     assert not ollama_called, (
         "Ollama was called but SITY_LOCAL_AI_ENABLED is not set"
@@ -311,9 +304,7 @@ def test_local_ai_missing_model_returns_provider_not_configured(monkeypatch):
     monkeypatch.setattr(httpx, "post", _should_not_be_called)
 
     with TestClient(app, raise_server_exceptions=True) as client:
-        resp = client.post("/chat/message", json={"message": "hola"})
+        data = chat_post_and_drain(client, "hola")
 
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is False
-    assert body.get("error_type") == "provider_not_configured"
+    assert data["ok"] is False
+    assert data.get("error_type") == "provider_not_configured"

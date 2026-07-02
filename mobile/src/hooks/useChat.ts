@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 export type ChatStatus = 'conectado' | 'procesando' | 'desconectado';
 
@@ -60,6 +60,18 @@ interface ApiChatResponse {
   artifacts?: ApiArtifact[];
 }
 
+interface ApiChatAccepted {
+  turn_id: string;
+  status: string;
+}
+
+interface SseEvent {
+  type: string;
+  data?: ApiChatResponse;
+  label?: string;
+  message?: string;
+}
+
 interface ApiTranscribeResponse {
   transcript: string;
   duration_ms: number;
@@ -72,6 +84,7 @@ export function useChat() {
   const [status, setStatus] = useState<ChatStatus>('desconectado');
   const [canCancel, setCanCancel] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const currentTurnIdRef = useRef<string | null>(null);
 
   useEffect(() => { void loadHistory(); }, []);
 
@@ -128,10 +141,8 @@ export function useChat() {
     abortControllerRef.current = controller;
     setCanCancel(true);
 
-    let timedOut = false;
-    const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 5 * 60 * 1000);
-
     try {
+      // 1. POST → 202 immediately
       const res = await fetch('/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -142,25 +153,22 @@ export function useChat() {
         }),
         signal: controller.signal,
       });
-      if (!res.ok) throw new Error('network');
-      const data = await res.json() as ApiChatResponse;
-      setMessages((prev) => [...prev, ...buildAssistantMessages(data)]);
-      setStatus('conectado');
+      if (res.status !== 202) throw new Error('network');
+      const { turn_id } = await res.json() as ApiChatAccepted;
+      currentTurnIdRef.current = turn_id;
+
+      // 2. Subscribe to SSE — Cloudflare sees heartbeats and keeps the connection alive
+      await _listenTurn(turn_id, controller.signal, setMessages, setStatus);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        if (timedOut) {
-          setMessages((prev) => [...prev, errorMsg('La operación tardó demasiado. Puedes intentarlo de nuevo.')]);
-          setStatus('desconectado');
-        } else {
-          setMessages((prev) => [...prev, cancelledMsg()]);
-          setStatus('conectado');
-        }
+        setMessages((prev) => [...prev, cancelledMsg()]);
+        setStatus('conectado');
       } else {
         setMessages((prev) => [...prev, errorMsg()]);
         setStatus('desconectado');
       }
     } finally {
-      clearTimeout(timeoutId);
+      currentTurnIdRef.current = null;
       setCanCancel(false);
       abortControllerRef.current = null;
     }
@@ -210,9 +218,6 @@ export function useChat() {
     setMessages((prev) => [...prev, userMsg]);
 
     // 3. Send to chat as voice
-    let timedOut = false;
-    const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 5 * 60 * 1000);
-
     try {
       const res = await fetch('/chat/message', {
         method: 'POST',
@@ -225,31 +230,31 @@ export function useChat() {
         }),
         signal: controller.signal,
       });
-      if (!res.ok) throw new Error('network');
-      const data = await res.json() as ApiChatResponse;
-      setMessages((prev) => [...prev, ...buildAssistantMessages(data)]);
-      setStatus('conectado');
+      if (res.status !== 202) throw new Error('network');
+      const { turn_id } = await res.json() as ApiChatAccepted;
+      currentTurnIdRef.current = turn_id;
+
+      await _listenTurn(turn_id, controller.signal, setMessages, setStatus);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        if (timedOut) {
-          setMessages((prev) => [...prev, errorMsg('La operación tardó demasiado. Puedes intentarlo de nuevo.')]);
-          setStatus('desconectado');
-        } else {
-          setMessages((prev) => [...prev, cancelledMsg()]);
-          setStatus('conectado');
-        }
+        setMessages((prev) => [...prev, cancelledMsg()]);
+        setStatus('conectado');
       } else {
         setMessages((prev) => [...prev, errorMsg()]);
         setStatus('desconectado');
       }
     } finally {
-      clearTimeout(timeoutId);
+      currentTurnIdRef.current = null;
       setCanCancel(false);
       abortControllerRef.current = null;
     }
   }
 
   const cancel = useCallback(() => {
+    const tid = currentTurnIdRef.current;
+    if (tid) {
+      fetch(`/chat/stream/${tid}/cancel`, { method: 'POST' }).catch(() => {});
+    }
     abortControllerRef.current?.abort();
   }, []);
 
@@ -264,6 +269,51 @@ export function useChat() {
 export type UseChatResult = ReturnType<typeof useChat>;
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to /chat/stream/{turn_id} via EventSource and process events
+ * until "done", "error", or "cancelled". Resolves when the turn is complete.
+ * Heartbeat SSE comments (": heartbeat") are ignored by the browser automatically.
+ */
+function _listenTurn(
+  turn_id: string,
+  signal: AbortSignal,
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
+  setStatus: React.Dispatch<React.SetStateAction<ChatStatus>>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const es = new EventSource(`/chat/stream/${turn_id}`);
+
+    es.onmessage = (e: MessageEvent) => {
+      let ev: SseEvent;
+      try {
+        ev = JSON.parse(e.data as string) as SseEvent;
+      } catch {
+        return;
+      }
+      if (ev.type === 'response' && ev.data) {
+        setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
+        setStatus('conectado');
+      } else if (ev.type === 'done' || ev.type === 'cancelled') {
+        es.close();
+        resolve();
+      } else if (ev.type === 'error') {
+        es.close();
+        reject(new Error(ev.label ?? 'Error del servidor'));
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      reject(new Error('SSE connection error'));
+    };
+
+    signal.addEventListener('abort', () => {
+      es.close();
+      resolve();
+    }, { once: true });
+  });
+}
 
 function buildAssistantMessages(data: ApiChatResponse): ChatMessage[] {
   const msgs: ChatMessage[] = [];
