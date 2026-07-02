@@ -1438,17 +1438,19 @@ pasos críticos. Especificación completa en docs/canal-spec.md.
 
 ✓ Fase A — Ingesta RSS + selección editorial + generación de guion
 ✓ Fase B — Audio TTS (ElevenLabs largo + shorts)
-⏳ Fase C — Imágenes y assets visuales (a definir)
+✓ Fase C — Imágenes con Stability AI (una por timestamp)
 ○ Fase D — Montaje de vídeo (manual en PC por ahora)
 ○ Fase E — Publicación en YouTube (YouTube Data API v3)
 ○ Fase F — Respuesta a comentarios
 ○ Fase G — Métricas y datos
 
-Bugs pendientes del canal:
-- Encabezado del DOCX (título + fecha) se narra en el audio —
-  pendiente de filtrar en _execute_generate_tts
-- generate_tts debería poder generar largo y shorts en una sola
-  confirmación cuando se piden los dos a la vez
+Mejoras pendientes del canal:
+- Fix: encabezado del DOCX se narra en el audio (filtro TTS)
+- Upgrade: reemplazar Turboscribe con Whisper API de OpenAI
+  para automatizar la transcripción con timestamps
+  (coste ~$0.006/min, ~$0.04 por episodio de 7 min)
+- Mejora: generate_tts debería poder generar largo y shorts
+  en una sola confirmación
 
 ### 17. Fine-tuning con Gemma 3 4B + LoRA (futuro)
 

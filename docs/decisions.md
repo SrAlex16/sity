@@ -622,3 +622,35 @@ el mismo prefijo: EP001-largo-YYYY-MM-DD.docx, EP001.mp3,
 EP001-shorts.mp3, etc.
 Episodios creados manualmente (sin pasar por generate_script)
 pueden tener campos NULL en script_shorts_path y audio_shorts_path.
+
+## 2026-07-02 (sesión canal cont.) — Fase C: imágenes con Stability AI
+
+### Pipeline de generación de imágenes
+
+Flujo implementado:
+1. Usuario genera transcripción con Turboscribe (manual) y la
+   guarda en work/canal/assets/EP[N]/EP[N]-transcripcion.txt
+2. generate_images parsea los timestamps del archivo
+3. Claude Sonnet genera un prompt cyberpunk en inglés por cada
+   timestamp, basado en el texto narrado en ese momento
+4. Stability AI SD3.5 Medium genera la imagen 16:9 con ese prompt
+5. Imágenes guardadas como EP[N]-img-NNN.png en work/canal/assets/EP[N]/
+
+Estética definida para las imágenes:
+- Cyberpunk con influencia asiática
+- Colores: azul eléctrico, magenta, rosa neón, violeta, cian
+- Interfaces holográficas, fondos oscuros con neones brillantes
+- Inspirado en Blade Runner, Ghost in the Shell, Cyberpunk 2077
+- Sin texto en la imagen (salvo caracteres decorativos asiáticos)
+- Formato 16:9 horizontal
+
+Coste estimado: ~$0.065 por imagen (SD3.5 Medium).
+Para un episodio de 20-30 imágenes: ~$1.30-$1.95.
+
+Turboscribe no tiene API — el paso de transcripción es manual.
+Pendiente: reemplazar Turboscribe con Whisper API de OpenAI
+para automatizar completamente el pipeline (ver roadmap).
+
+Paso manual aún pendiente: recortar el audio antes de transcribir
+para eliminar las partes que Sity lee incorrectamente (marcadores
+entre **). Pendiente de arreglar el filtro TTS (ver roadmap).
