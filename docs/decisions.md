@@ -512,3 +512,65 @@ embebidos en Python. Cambiarlos requiere editar código + restart.
 
 Solución pendiente: extraer a `config/persona.yaml` y/o al template
 `prompts/persona_system.md`. Pendiente de sesión de refactorización dedicada.
+
+---
+
+## 2026-07-02 — Canal de YouTube: Fase A implementada
+
+### Pipeline de contenido — Fase A completa
+
+Implementado el núcleo del pipeline: ingesta de noticias,
+selección editorial y generación de guion.
+
+**Tools implementadas:**
+- `fetch_rss_news`: lee 7 feeds RSS (The Verge, Ars Technica,
+  VentureBeat AI, Anthropic, OpenAI, Google DeepMind, Hacker News),
+  deduplica por URL, guarda en SQLite. Sin Claude, lógica local
+  con feedparser. Sin pending action (solo lectura/escritura local).
+- `list_news`: consulta noticias de SQLite por status. Necesaria
+  porque `fetch_rss_news` no mantiene el listado en contexto entre
+  turnos.
+- `select_news`: marca noticias como `selected`/`discarded` con pending
+  action. Alex selecciona por número o ID.
+- `generate_script`: llama a Claude Sonnet 4.6 con prompt desde
+  `config/prompts/script_prompt.txt`, exporta DOCX a
+  `work/canal/guiones/EP[N]-YYYY-MM-DD.docx`. Crea episodio en
+  SQLite y vincula noticias. Pending action obligatoria.
+- `list_episodes`: historial de episodios con estado del pipeline.
+
+**Tablas SQLite nuevas:**
+- `news_items`: noticias RSS con estados `pending`/`selected`/`used`/`discarded`
+- `episodes`: episodios con ID secuencial (EP001, EP002…) y estados
+  `draft`/`script_ready`/`audio_ready`/`video_ready`/`uploaded`/`published`
+
+**Convención de nombres de archivos:**
+Todos los assets de un episodio usan el prefijo `EP[N]`:
+`EP001-2026-07-02.docx`, `EP001.mp3`, `EP001-thumbnail.png`, etc.
+
+**Prueba real del flujo completo:**
+- 51 noticias ingestadas de 7 feeds en la primera ejecución
+- 3 noticias seleccionadas (robot casero 7.999$, Kimi K2.7 en
+  GitHub Copilot, fusión Paramount/Warner Bros.)
+- Guion EP001 generado: calidad alta, tono correcto, estructura
+  de 6-10 minutos con 3 shorts derivados
+- Error detectado en el guion: "Amazon Leo" → debería ser
+  "Amazon Kuiper" (Leo es el tipo de órbita, no el nombre del
+  servicio). El prompt ya advierte de no inventar datos; aun así
+  Claude tomó el nombre del titular. Requiere revisión manual
+  siempre antes de grabar — confirmado como paso obligatorio.
+
+**Decisiones tomadas:**
+- Prompt del guion vive en `config/prompts/script_prompt.txt`,
+  editable sin tocar código
+- ID de episodio secuencial (EP001, EP002…) en vez de fecha —
+  la fecha cambia si los assets se generan en días distintos
+- `work/canal/` dentro del repo pero ignorado por git (datos
+  generados, no código)
+- `fetch_rss_news` sin cron automático — Alex decide cuándo buscar
+
+**Pendiente Fase B:**
+- `generate_tts` (ElevenLabs API)
+- Credenciales: `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` en `.env`
+- Scope: solo "De texto a voz" + "Voces (leído)" en la API key
+- El DOCX revisado por Alex es el input; extraer solo texto
+  narrable (sin notas de producción, tablas de metadatos)

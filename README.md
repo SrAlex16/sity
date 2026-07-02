@@ -1430,11 +1430,19 @@ A3–A6 parcialmente resueltos (ver commits batch 2). Pendiente: mover instrucci
 directivas del modelo al template persona_system.md (A4, A5, A6 completos) y umbrales
 de estilo a config (B5, B6).
 
-### 16. Canal de divulgación Tech & IA (futuro, a largo plazo)
+### 16. Canal de divulgación Tech & IA (en progreso)
 
 Sity como orquestadora de un canal de YouTube de divulgación tech/IA, con pipeline
 de noticias → guion → audio → vídeo → publicación, todo con confirmación humana en
 pasos críticos. Especificación completa en docs/canal-spec.md.
+
+✓ Fase A — Ingesta RSS + selección editorial + generación de guion
+⏳ Fase B — Audio TTS (ElevenLabs) — siguiente
+○ Fase C — Imágenes y assets visuales (a definir)
+○ Fase D — Montaje de vídeo (manual en PC por ahora)
+○ Fase E — Publicación en YouTube (YouTube Data API v3)
+○ Fase F — Respuesta a comentarios
+○ Fase G — Métricas y datos
 
 ### 17. Fine-tuning con Gemma 3 4B + LoRA (futuro)
 
