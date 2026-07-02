@@ -128,6 +128,9 @@ export function useChat() {
     abortControllerRef.current = controller;
     setCanCancel(true);
 
+    let timedOut = false;
+    const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 5 * 60 * 1000);
+
     try {
       const res = await fetch('/chat/message', {
         method: 'POST',
@@ -145,13 +148,19 @@ export function useChat() {
       setStatus('conectado');
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        setMessages((prev) => [...prev, cancelledMsg()]);
-        setStatus('conectado');
+        if (timedOut) {
+          setMessages((prev) => [...prev, errorMsg('La operación tardó demasiado. Puedes intentarlo de nuevo.')]);
+          setStatus('desconectado');
+        } else {
+          setMessages((prev) => [...prev, cancelledMsg()]);
+          setStatus('conectado');
+        }
       } else {
         setMessages((prev) => [...prev, errorMsg()]);
         setStatus('desconectado');
       }
     } finally {
+      clearTimeout(timeoutId);
       setCanCancel(false);
       abortControllerRef.current = null;
     }
@@ -201,6 +210,9 @@ export function useChat() {
     setMessages((prev) => [...prev, userMsg]);
 
     // 3. Send to chat as voice
+    let timedOut = false;
+    const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 5 * 60 * 1000);
+
     try {
       const res = await fetch('/chat/message', {
         method: 'POST',
@@ -219,13 +231,19 @@ export function useChat() {
       setStatus('conectado');
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        setMessages((prev) => [...prev, cancelledMsg()]);
-        setStatus('conectado');
+        if (timedOut) {
+          setMessages((prev) => [...prev, errorMsg('La operación tardó demasiado. Puedes intentarlo de nuevo.')]);
+          setStatus('desconectado');
+        } else {
+          setMessages((prev) => [...prev, cancelledMsg()]);
+          setStatus('conectado');
+        }
       } else {
         setMessages((prev) => [...prev, errorMsg()]);
         setStatus('desconectado');
       }
     } finally {
+      clearTimeout(timeoutId);
       setCanCancel(false);
       abortControllerRef.current = null;
     }

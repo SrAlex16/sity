@@ -14,7 +14,10 @@ router = APIRouter(prefix="/events", tags=["events"])
 async def chat_events(client_turn_id: str):
     async def event_stream():
         async for event in subscribe(client_turn_id):
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            if event is None:
+                yield ": heartbeat\n\n"
+            else:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
