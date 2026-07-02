@@ -1,0 +1,29 @@
+canal:
+  rss_feeds:
+    - name: "The Verge"
+      url: "https://www.theverge.com/rss/index.xml"
+      category: "tech"
+    - name: "Ars Technica"
+      url: "https://feeds.arstechnica.com/arstechnica/index"
+      category: "tech"
+    - name: "VentureBeat AI"
+      url: "https://venturebeat.com/category/ai/feed/"
+      category: "ai"
+    - name: "Anthropic Blog"
+      url: "https://www.anthropic.com/rss.xml"
+      category: "ai"
+    - name: "OpenAI Blog"
+      url: "https://openai.com/blog/rss"
+      category: "ai"
+    - name: "Google DeepMind"
+      url: "https://deepmind.google/blog/rss.xml"
+      category: "ai"
+    - name: "Hacker News"
+      url: "https://hnrss.org/frontpage"
+      category: "tech"
+  settings:
+    days_back: 7
+    output:
+      guiones: "work/canal/guiones"
+      audio: "work/canal/audio"
+      assets: "work/canal/assets"

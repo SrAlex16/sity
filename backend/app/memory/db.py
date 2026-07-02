@@ -59,11 +59,27 @@ def _migrate_chatmessage() -> None:
         conn.commit()
 
 
+def _migrate_news_items() -> None:
+    """Add indexes on news_items if absent (idempotent)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='newsitem'"))
+        if not result.fetchone():
+            return
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_news_status ON newsitem(status)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_news_created ON newsitem(created_at)"
+        ))
+        conn.commit()
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     _configure_sqlite()
     SQLModel.metadata.create_all(engine)
     _migrate_chatmessage()
+    _migrate_news_items()
 
 
 def get_session():

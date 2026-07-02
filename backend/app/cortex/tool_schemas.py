@@ -1235,6 +1235,62 @@ HA_CALL_SERVICE_TOOL = {
     },
 }
 
+FETCH_RSS_NEWS_TOOL = {
+    "name": "fetch_rss_news",
+    "description": (
+        "Lee los feeds RSS configurados y guarda las noticias de los "
+        "últimos 7 días en la base de datos. Úsala cuando Alex pida "
+        "buscar noticias para el canal. No requiere confirmación — "
+        "es solo lectura y escritura en SQLite local."
+    ),
+    "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+SELECT_NEWS_TOOL = {
+    "name": "select_news",
+    "description": (
+        "Marca noticias como seleccionadas o descartadas para el "
+        "próximo guion. Requiere confirmación. "
+        "Úsala cuando Alex indique qué noticias quiere incluir "
+        "(por número o ID). action='selected' para incluir, "
+        "'discarded' para descartar."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "news_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Lista de IDs de noticias a marcar.",
+            },
+            "action": {
+                "type": "string",
+                "enum": ["selected", "discarded"],
+                "description": "'selected' para incluir en el guion, 'discarded' para descartar.",
+            },
+        },
+        "required": ["news_ids", "action"],
+    },
+}
+
+GENERATE_SCRIPT_TOOL = {
+    "name": "generate_script",
+    "description": (
+        "Genera el guion del episodio usando Claude Sonnet con las "
+        "noticias marcadas como 'selected'. Exporta un DOCX a "
+        "work/canal/guiones/. Requiere confirmación. "
+        "Úsala cuando Alex pida generar el guion tras seleccionar noticias."
+    ),
+    "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+CANAL_TOOLSET = [
+    FETCH_RSS_NEWS_TOOL,
+    SELECT_NEWS_TOOL,
+    GENERATE_SCRIPT_TOOL,
+]
+
 HA_TOOLSET = [
     HA_LIST_ENTITIES_TOOL,
     HA_GET_STATE_TOOL,
@@ -1273,6 +1329,10 @@ BASE_TOOLSET: list[dict] = [
     HA_LIST_ENTITIES_TOOL,
     HA_GET_STATE_TOOL,
     HA_CALL_SERVICE_TOOL,
+    # Canal YouTube tools always available.
+    FETCH_RSS_NEWS_TOOL,
+    SELECT_NEWS_TOOL,
+    GENERATE_SCRIPT_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [

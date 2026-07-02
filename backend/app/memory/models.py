@@ -116,6 +116,19 @@ class ChatMessage(SQLModel, table=True):
     source_channel: str = Field(default="web")        # "web" | "telegram"
 
 
+class NewsItem(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    source: str
+    url: str = Field(unique=True)
+    published_at: Optional[str] = Field(default=None)
+    summary: Optional[str] = Field(default=None)
+    category: Optional[str] = Field(default=None)
+    status: str = Field(default="pending", index=True)
+    episode_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class PendingAction(SQLModel, table=True):
     id: str = Field(primary_key=True)
     action_type: str = Field(index=True)

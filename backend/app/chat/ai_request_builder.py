@@ -119,6 +119,14 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
   - Para temperatura de color: service_data={{"color_temp_kelvin": 2700-6500}}
     (2700K = cálido/naranja, 6500K = frío/blanco)
   - Para color RGB: service_data={{"rgb_color": [R, G, B]}}
+- Canal de YouTube:
+  - fetch_rss_news: busca noticias de los feeds RSS configurados y las guarda en SQLite.
+    Usar cuando Alex pida noticias para el canal. No requiere confirmación.
+  - select_news: marca noticias por ID como 'selected' o 'discarded'. Requiere confirmación.
+    Cuando Alex diga "selecciona las noticias 1, 3 y 5" o "descarta la 2",
+    usar esta tool con los IDs correctos.
+  - generate_script: genera el guion con las noticias seleccionadas y lo exporta a DOCX.
+    Requiere confirmación. Usar solo cuando Alex pida explícitamente generar el guion.
 - Usa search_conversation_history cuando la respuesta requiera información de conversación anterior que no aparece en el historial visible del contexto.
 - Usa no_action_required si solo quiere conversar.
 - Si el usuario adjunta una imagen, tenla en cuenta al decidir: una imagen puede acompañar una petición de búsqueda, análisis de archivo u otra acción. No elijas no_action_required solo porque el mensaje de texto sea corto si hay una imagen adjunta.
