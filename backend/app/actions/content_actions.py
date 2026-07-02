@@ -390,6 +390,7 @@ def _execute_generate_images(payload: dict[str, Any]) -> ContentActionResult:
                     "authorization": f"Bearer {stability_api_key}",
                     "accept": "image/*",
                 },
+                files={"none": ""},
                 data={
                     "prompt": image_prompt,
                     "aspect_ratio": "16:9",
