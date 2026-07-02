@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,38 @@ _TTS_SKIP_PATTERNS = (
     "GANCHO (", "DESARROLLO:", "CIERRE:",
     "INTRO (", "SECCIÓN ", "SHORT ", "OUTRO (", "REFLEXIÓN FINAL",
 )
+
+
+def _clean_for_tts(text: str) -> str:
+    text = re.sub(r'\*\*.*?\*\*', '', text)
+    text = re.sub(r'\*.*?\*', '', text)
+    text = text.replace('*', '').replace('---', '')
+    text = re.sub(r' +', ' ', text).strip()
+    return text
+
+
+def _expand_acronyms_with_claude(text: str, api_key: str) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=len(text) + 500,
+        messages=[{
+            "role": "user",
+            "content": (
+                "El siguiente texto va a ser narrado por una IA de texto a voz "
+                "en español de España. Reescribe el texto expandiendo los acrónimos "
+                "y siglas para que suenen naturales al escucharlos (por ejemplo, "
+                "'HBO' → 'Hachebeo', 'IA' → 'Inteligencia Artificial' si aparece "
+                "por primera vez, etc.). No cambies nada más del texto — solo los "
+                "acrónimos y siglas que sonarían raros al leerlos en voz alta. "
+                "Devuelve únicamente el texto corregido, sin explicaciones.\n\n"
+                f"{text}"
+            ),
+        }],
+    )
+    block = response.content[0]
+    return block.text if hasattr(block, "text") else text  # type: ignore[union-attr]
 
 
 @dataclass
@@ -178,6 +211,7 @@ def _execute_generate_tts(payload: dict[str, Any]) -> ContentActionResult:
     episode_id = payload.get("episode_id")
     script_path = Path(payload.get("script_path", ""))
     audio_path = Path(payload.get("audio_path", ""))
+    script_type = str(payload.get("script_type", "largo"))
 
     if not script_path.exists():
         return ContentActionResult(ok=False, text=f"No se encontró el guion en {script_path}")
@@ -194,13 +228,20 @@ def _execute_generate_tts(payload: dict[str, Any]) -> ContentActionResult:
             continue
         if para.style and para.style.name.startswith("Heading"):
             continue
-        clean = text.replace("**", "").replace("*", "").strip()
+        clean = _clean_for_tts(text)
         if clean:
             narrable_lines.append(clean)
 
     full_text = "\n".join(narrable_lines)
     if not full_text.strip():
         return ContentActionResult(ok=False, text="El guion no tiene texto narrable extraíble.")
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        try:
+            full_text = _expand_acronyms_with_claude(full_text, anthropic_key)
+        except Exception:
+            pass  # fall back to original text
 
     api_key = os.getenv("ELEVENLABS_API_KEY", "")
     voice_id = os.getenv("ELEVENLABS_VOICE_ID", "")
@@ -223,18 +264,22 @@ def _execute_generate_tts(payload: dict[str, Any]) -> ContentActionResult:
     session = next(get_session())
     episode = session.exec(sql_select(Episode).where(Episode.id == episode_id)).first()
     if episode:
-        episode.audio_path = str(audio_path)
-        episode.status = "audio_ready"
+        if script_type == "shorts":
+            episode.audio_shorts_path = str(audio_path)
+        else:
+            episode.audio_path = str(audio_path)
+            episode.status = "audio_ready"
         session.add(episode)
         session.commit()
 
     size_mb = audio_path.stat().st_size / (1024 * 1024)
+    type_label = "shorts" if script_type == "shorts" else "largo"
     return ContentActionResult(
         ok=True,
         text=(
-            f"Audio generado: {audio_path}\n"
+            f"Audio {type_label} generado: {audio_path}\n"
             f"Tamaño: {size_mb:.1f} MB\n"
-            f"Episodio actualizado a status='audio_ready'.\n"
+            f"Episodio actualizado (audio_{type_label}_path).\n"
             f"Escucha el archivo antes de continuar."
         ),
     )

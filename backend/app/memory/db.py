@@ -68,6 +68,8 @@ def _migrate_episode() -> None:
         existing = {row[1] for row in conn.execute(text("PRAGMA table_info(episode)")).fetchall()}
         if "script_shorts_path" not in existing:
             conn.execute(text("ALTER TABLE episode ADD COLUMN script_shorts_path TEXT"))
+        if "audio_shorts_path" not in existing:
+            conn.execute(text("ALTER TABLE episode ADD COLUMN audio_shorts_path TEXT"))
         conn.commit()
 
 

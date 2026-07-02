@@ -123,6 +123,7 @@ class Episode(SQLModel, table=True):
     script_path: Optional[str] = Field(default=None)
     script_shorts_path: Optional[str] = Field(default=None)
     audio_path: Optional[str] = Field(default=None)
+    audio_shorts_path: Optional[str] = Field(default=None)
     video_path: Optional[str] = Field(default=None)
     youtube_id: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now)
