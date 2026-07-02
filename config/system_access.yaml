@@ -35,6 +35,7 @@ file_access:
   - README.md
   - work
   - work/canal/guiones
+  - work/canal/guiones/timestamps
   - work/canal/audio
   - work/canal/assets
   blocked_paths:
