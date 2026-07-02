@@ -1235,6 +1235,16 @@ HA_CALL_SERVICE_TOOL = {
     },
 }
 
+LIST_EPISODES_TOOL = {
+    "name": "list_episodes",
+    "description": (
+        "Lista los episodios del canal con su ID (EP001, EP002…), título y estado. "
+        "Útil para saber en qué punto está cada episodio del pipeline "
+        "(draft / script_ready / audio_ready / video_ready / uploaded / published)."
+    ),
+    "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
 LIST_NEWS_TOOL = {
     "name": "list_news",
     "description": (
@@ -1312,6 +1322,7 @@ GENERATE_SCRIPT_TOOL = {
 }
 
 CANAL_TOOLSET = [
+    LIST_EPISODES_TOOL,
     LIST_NEWS_TOOL,
     FETCH_RSS_NEWS_TOOL,
     SELECT_NEWS_TOOL,
@@ -1357,6 +1368,7 @@ BASE_TOOLSET: list[dict] = [
     HA_GET_STATE_TOOL,
     HA_CALL_SERVICE_TOOL,
     # Canal YouTube tools always available.
+    LIST_EPISODES_TOOL,
     LIST_NEWS_TOOL,
     FETCH_RSS_NEWS_TOOL,
     SELECT_NEWS_TOOL,

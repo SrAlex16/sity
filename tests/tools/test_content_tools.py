@@ -213,8 +213,7 @@ def test_execute_select_news_updates_status() -> None:
 
 def test_execute_generate_script_creates_docx(tmp_path: Path) -> None:
     from app.actions.content_actions import _execute_generate_script
-
-    docx_path = tmp_path / "script.docx"
+    from app.memory.models import Episode
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="# Título\n\nContenido del guion.")]
@@ -225,14 +224,24 @@ def test_execute_generate_script_creates_docx(tmp_path: Path) -> None:
     mock_session = MagicMock()
     mock_session.exec.return_value.first.return_value = MagicMock()
 
+    def mock_flush_sets_id() -> None:
+        # Simulate DB assigning an id on flush by setting id on any Episode added
+        for call in mock_session.add.call_args_list:
+            obj = call[0][0]
+            if isinstance(obj, Episode):
+                obj.id = 1
+
+    mock_session.flush.side_effect = mock_flush_sets_id
+
     with patch("anthropic.Anthropic", return_value=mock_client):
         with patch("app.actions.content_actions.get_session", return_value=iter([mock_session])):
             result = _execute_generate_script({
                 "full_prompt": "Genera un guion sobre: {news_items}",
-                "docx_path": str(docx_path),
+                "output_dir": str(tmp_path),
                 "news_ids": [1],
             })
 
     assert result.ok is True
-    assert docx_path.exists()
-    assert "guardado" in result.text
+    expected_docx = list(tmp_path.glob("EP001-*.docx"))
+    assert expected_docx, f"No EP001-*.docx found in {tmp_path}"
+    assert "EP001" in result.text

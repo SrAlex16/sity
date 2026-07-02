@@ -120,6 +120,9 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
     (2700K = cálido/naranja, 6500K = frío/blanco)
   - Para color RGB: service_data={{"rgb_color": [R, G, B]}}
 - Canal de YouTube:
+  - list_episodes: muestra el historial de episodios (EP001, EP002…) con su estado
+    en el pipeline. Usar cuando Alex pregunte por los episodios existentes o quiera
+    saber el estado de un episodio concreto. No requiere confirmación.
   - list_news: muestra las noticias guardadas en BD filtradas por status
     (pending/selected/used/discarded). Usar cuando Alex quiera ver la lista
     de noticias disponibles para elegir, o cuando necesites los IDs antes

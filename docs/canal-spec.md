@@ -188,6 +188,21 @@ antes de publicar.
 
 **Nota para el dev:** el prompt completo debe vivir en un archivo de configuración (`config/prompts/script_prompt.txt` o similar), no en el código. Así Alex puede ajustarlo sin tocar Python.
 
+#### 4.5 Convención de nombres de archivos
+
+Todos los assets de un episodio usan el mismo prefijo `EP[N]` (número de episodio con 3 dígitos):
+
+```
+EP001-2026-07-02.docx   ← guion
+EP001.mp3               ← audio final
+EP001-short-01.mp3      ← short 1
+EP001-thumbnail.png     ← miniatura
+EP001-broll-01.mp4      ← b-roll 1
+EP001-final.mp4         ← vídeo montado
+```
+
+El ID del episodio en SQLite (`episodes.id`) es la fuente de verdad. Nunca usar fechas como identificador de episodio: la fecha puede aparecer en el nombre del guion como referencia de cuándo se generó, pero el número de episodio es el identificador único.
+
 ---
 
 ### Fase B — Audio / TTS (PRIORIDAD 2, después de Fase A)

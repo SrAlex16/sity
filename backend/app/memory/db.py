@@ -60,17 +60,16 @@ def _migrate_chatmessage() -> None:
 
 
 def _migrate_news_items() -> None:
-    """Add indexes on news_items if absent (idempotent)."""
+    """Add indexes and missing columns to newsitem if absent (idempotent)."""
     with engine.connect() as conn:
         result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='newsitem'"))
         if not result.fetchone():
             return
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_news_status ON newsitem(status)"
-        ))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_news_created ON newsitem(created_at)"
-        ))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_status ON newsitem(status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_created ON newsitem(created_at)"))
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(newsitem)")).fetchall()}
+        if "episode_id" not in existing:
+            conn.execute(text("ALTER TABLE newsitem ADD COLUMN episode_id INTEGER"))
         conn.commit()
 
 

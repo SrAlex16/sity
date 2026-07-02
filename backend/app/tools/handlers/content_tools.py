@@ -9,7 +9,7 @@ import yaml
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.memory.db import get_session
-from app.memory.models import NewsItem
+from app.memory.models import Episode, NewsItem
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
@@ -249,12 +249,11 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
     if not output_dir.is_absolute():
         output_dir = _PROJECT_ROOT / output_dir
     date_str = datetime.now().strftime("%Y-%m-%d")
-    docx_path = output_dir / f"{date_str}.docx"
 
     payload: dict[str, Any] = {
         "action": "generate_script",
         "news_ids": [n.id for n in selected],
-        "docx_path": str(docx_path),
+        "output_dir": str(output_dir),
         "full_prompt": full_prompt,
     }
     dedup_payload: dict[str, Any] = {
@@ -267,8 +266,10 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
     if existing_result:
         return existing_result
 
-    summary = f"Generar guion con {len(selected)} noticia(s) → {docx_path.name}"
-    local_text_extra = f"\nSe guardará en: {docx_path}"
+    summary = (
+        f"Crear EP nuevo y generar guion con {len(selected)} noticia(s) "
+        f"→ EP[N]-{date_str}.docx"
+    )
 
     created = manager.create_pending_action(
         action_type="content",
@@ -278,8 +279,7 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
         trace_id=ctx.trace_id,
     )
     local_text = (
-        f"Acción pendiente creada: {created.summary}"
-        f"{local_text_extra}\n\n"
+        f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"
     )
     result = {
@@ -292,4 +292,31 @@ def handle_generate_script(ctx: ToolContext) -> ToolExecutionResult:
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=local_text,
         updated_parameters=[], raw_result=result,
+    )
+
+
+@tool_handler("list_episodes")
+def handle_list_episodes(ctx: ToolContext) -> ToolExecutionResult:
+    from sqlmodel import col, select as sql_select
+
+    session = next(get_session())
+    episodes = session.exec(
+        sql_select(Episode).order_by(col(Episode.id).desc()).limit(20)
+    ).all()
+
+    if not episodes:
+        msg = "No hay episodios todavía."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    lines = [
+        f"EP{ep.id:03d} | {ep.title or '(sin título)'} | {ep.status} | {str(ep.created_at)[:10]}"
+        for ep in episodes
+    ]
+    output = f"{len(episodes)} episodio(s):\n\n" + "\n".join(lines)
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=output,
+        updated_parameters=[], raw_result={"output": output},
     )

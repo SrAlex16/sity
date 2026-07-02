@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.memory.db import get_session
-from app.memory.models import NewsItem
+from app.memory.models import Episode, NewsItem
 
 
 @dataclass
@@ -51,10 +51,20 @@ def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
     from docx import Document
     from docx.shared import Pt  # noqa: F401
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from sqlmodel import select as sql_select
 
     full_prompt = payload.get("full_prompt", "")
-    docx_path = Path(payload.get("docx_path", "work/canal/guiones/script.docx"))
     news_ids = payload.get("news_ids", [])
+    output_dir = Path(payload.get("output_dir", "work/canal/guiones"))
+
+    session = next(get_session())
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    episode = Episode(status="draft")
+    session.add(episode)
+    session.flush()
+    ep_id = episode.id
+    ep_label = f"EP{ep_id:03d}"
+    docx_path = output_dir / f"{ep_label}-{date_str}.docx"
 
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     response = client.messages.create(
@@ -68,7 +78,7 @@ def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
     docx_path.parent.mkdir(parents=True, exist_ok=True)
     doc = Document()
 
-    title_para = doc.add_heading("GUION — Sity Canal", 0)
+    title_para = doc.add_heading(f"GUION — Sity Canal · {ep_label}", 0)
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     doc.add_paragraph()
@@ -90,20 +100,22 @@ def _execute_generate_script(payload: dict[str, Any]) -> ContentActionResult:
 
     doc.save(str(docx_path))
 
-    from sqlmodel import select as sql_select
+    episode.script_path = str(docx_path)
+    episode.status = "script_ready"
 
-    session = next(get_session())
     for nid in news_ids:
         item = session.exec(sql_select(NewsItem).where(NewsItem.id == nid)).first()
         if item:
             item.status = "used"
+            item.episode_id = ep_id
     session.commit()
 
     return ContentActionResult(
         ok=True,
         text=(
-            f"Guion generado y guardado en {docx_path}.\n"
-            f"{len(news_ids)} noticia(s) marcadas como 'used'.\n"
+            f"Guion generado: {ep_label}\n"
+            f"Archivo: {docx_path}\n"
+            f"{len(news_ids)} noticia(s) vinculadas al episodio.\n"
             f"Abre el archivo para revisarlo antes de continuar."
         ),
     )
