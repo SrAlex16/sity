@@ -283,6 +283,7 @@ function _listenTurn(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const es = new EventSource(`/chat/stream/${turn_id}`);
+    let serverClosedNormally = false;
 
     es.onmessage = (e: MessageEvent) => {
       let ev: SseEvent;
@@ -295,9 +296,11 @@ function _listenTurn(
         setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
         setStatus('conectado');
       } else if (ev.type === 'done' || ev.type === 'cancelled') {
+        serverClosedNormally = true;
         es.close();
         resolve();
       } else if (ev.type === 'error') {
+        serverClosedNormally = true;
         es.close();
         reject(new Error(ev.label ?? 'Error del servidor'));
       }
@@ -305,7 +308,11 @@ function _listenTurn(
 
     es.onerror = () => {
       es.close();
-      reject(new Error('SSE connection error'));
+      if (serverClosedNormally) {
+        resolve();
+      } else {
+        reject(new Error('SSE connection error'));
+      }
     };
 
     signal.addEventListener('abort', () => {
