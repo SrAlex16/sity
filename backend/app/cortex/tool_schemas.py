@@ -1235,6 +1235,32 @@ HA_CALL_SERVICE_TOOL = {
     },
 }
 
+LIST_NEWS_TOOL = {
+    "name": "list_news",
+    "description": (
+        "Lista las noticias guardadas en la base de datos filtrando "
+        "por estado. Usar cuando Alex quiera ver las noticias disponibles "
+        "para seleccionar. status puede ser: 'pending' (por seleccionar), "
+        "'selected' (seleccionadas para el guion), 'used' (ya usadas), "
+        "'discarded' (descartadas). Por defecto muestra 'pending'."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["pending", "selected", "used", "discarded"],
+                "description": "Estado de las noticias a listar. Por defecto 'pending'.",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Máximo de noticias a mostrar. Por defecto 30.",
+            },
+        },
+    },
+}
+
 FETCH_RSS_NEWS_TOOL = {
     "name": "fetch_rss_news",
     "description": (
@@ -1286,6 +1312,7 @@ GENERATE_SCRIPT_TOOL = {
 }
 
 CANAL_TOOLSET = [
+    LIST_NEWS_TOOL,
     FETCH_RSS_NEWS_TOOL,
     SELECT_NEWS_TOOL,
     GENERATE_SCRIPT_TOOL,
@@ -1330,6 +1357,7 @@ BASE_TOOLSET: list[dict] = [
     HA_GET_STATE_TOOL,
     HA_CALL_SERVICE_TOOL,
     # Canal YouTube tools always available.
+    LIST_NEWS_TOOL,
     FETCH_RSS_NEWS_TOOL,
     SELECT_NEWS_TOOL,
     GENERATE_SCRIPT_TOOL,

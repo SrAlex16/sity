@@ -72,6 +72,39 @@ def _pending_action_new(manager: ConfirmationManager, ctx: ToolContext, payload:
     )
 
 
+@tool_handler("list_news")
+def handle_list_news(ctx: ToolContext) -> ToolExecutionResult:
+    from sqlmodel import col, select as sql_select
+
+    status = str(ctx.tool_input.get("status", "pending"))
+    limit = min(int(ctx.tool_input.get("limit", 30)), 100)
+
+    session = next(get_session())
+    items = session.exec(
+        sql_select(NewsItem)
+        .where(NewsItem.status == status)
+        .order_by(col(NewsItem.created_at).desc())
+        .limit(limit)
+    ).all()
+
+    if not items:
+        msg = f"No hay noticias con status='{status}'."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    lines = [
+        f"[{i + 1}] ID:{n.id} | {n.title} | {n.source} ({n.category})"
+        for i, n in enumerate(items)
+    ]
+    output = f"{len(items)} noticia(s) con status='{status}':\n\n" + "\n".join(lines)
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=output,
+        updated_parameters=[], raw_result={"output": output},
+    )
+
+
 @tool_handler("fetch_rss_news")
 def handle_fetch_rss_news(ctx: ToolContext) -> ToolExecutionResult:
     cfg = _load_canal_config()

@@ -120,6 +120,10 @@ Regla de acción directa (máxima prioridad): si el mensaje del usuario contiene
     (2700K = cálido/naranja, 6500K = frío/blanco)
   - Para color RGB: service_data={{"rgb_color": [R, G, B]}}
 - Canal de YouTube:
+  - list_news: muestra las noticias guardadas en BD filtradas por status
+    (pending/selected/used/discarded). Usar cuando Alex quiera ver la lista
+    de noticias disponibles para elegir, o cuando necesites los IDs antes
+    de llamar a select_news. No requiere confirmación.
   - fetch_rss_news: busca noticias de los feeds RSS configurados y las guarda en SQLite.
     Usar cuando Alex pida noticias para el canal. No requiere confirmación.
   - select_news: marca noticias por ID como 'selected' o 'discarded'. Requiere confirmación.
