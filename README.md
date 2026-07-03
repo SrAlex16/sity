@@ -1452,7 +1452,27 @@ Mejoras pendientes del canal:
 - Mejora: generate_tts debería poder generar largo y shorts
   en una sola confirmación
 
-### 17. Fine-tuning con Gemma 3 4B + LoRA (futuro)
+### 17. Tareas largas en background con notificación (pendiente)
+
+Tareas como generate_images (130 imgs, ~20 min) o generate_tts
+bloquean el chat durante su ejecución. El backend ya tiene la
+infraestructura 202+SSE y realtime_events.py.
+Mejora: lanzar estas tareas en un thread separado, responder
+inmediatamente "lanzando en background, te aviso cuando termine",
+y publicar un mensaje nuevo en el chat cuando finalice.
+El chat queda desbloqueado durante la generación.
+
+### 18. Limpieza del sistema (pendiente)
+
+Eliminar archivos huérfanos, servicios/demonios sin uso y
+dependencias innecesarias tanto dentro del proyecto Sity como
+a nivel de sistema operativo de la Pi. Incluye:
+- Dentro del repo: dependencias Python no usadas, archivos
+  temporales, logs antiguos, builds obsoletos
+- A nivel sistema: paquetes apt huérfanos, servicios systemd
+  desactivados pero presentes, cachés del sistema
+
+### 19. Fine-tuning con Gemma 3 4B + LoRA (futuro)
 
 Cuando el dataset esté completo. Dataset multimodal (imágenes) se acumula durante el
 uso actual de la API de Anthropic. Ver docs/decisions.md sección fine-tuning.
