@@ -1437,27 +1437,27 @@ de edición. Ver docs/decisions.md para el análisis completo
 y las lecciones aprendidas. La especificación completa sigue
 en docs/canal-spec.md para retomarlo en el futuro.
 
-### 17. Tareas largas en background con notificación (pendiente)
+### 17. Dataset de audio con ElevenLabs ⏳ (próximo)
 
-Tareas como generate_images (130 imgs, ~20 min) o generate_tts
-bloquean el chat durante su ejecución. El backend ya tiene la
-infraestructura 202+SSE y realtime_events.py.
-Mejora: lanzar estas tareas en un thread separado, responder
+Generar pares (texto, audio) del dataset existente usando ElevenLabs,
+con parámetros de entonación derivados del campo tone_meta de cada
+mensaje. Objetivo: dataset multimodal para fine-tuning de voz.
+
+### 18. Tareas largas en background con notificación (pendiente)
+
+El backend ya tiene la infraestructura 202+SSE y realtime_events.py.
+Mejora: lanzar tareas costosas en un thread separado, responder
 inmediatamente "lanzando en background, te aviso cuando termine",
 y publicar un mensaje nuevo en el chat cuando finalice.
-El chat queda desbloqueado durante la generación.
 
-### 18. Limpieza del sistema (pendiente)
+### 19. Limpieza del sistema ✓ (completada parcialmente — 2026-07-08)
 
-Eliminar archivos huérfanos, servicios/demonios sin uso y
-dependencias innecesarias tanto dentro del proyecto Sity como
-a nivel de sistema operativo de la Pi. Incluye:
-- Dentro del repo: dependencias Python no usadas, archivos
-  temporales, logs antiguos, builds obsoletos
-- A nivel sistema: paquetes apt huérfanos, servicios systemd
-  desactivados pero presentes, cachés del sistema
+Repo: scripts obsoletos, módulo canal YouTube, deploy/audio/ →
+raspberry-setup. Sistema Pi: ~400MB liberados (vscode-server, go,
+Bookshelf, npm cache, CUPS). Ver docs/decisions.md para el detalle.
+Pendiente: dependencias Python no usadas, revisión systemd.
 
-### 19. Fine-tuning con Gemma 3 4B + LoRA (futuro)
+### 20. Fine-tuning con Gemma 3 4B + LoRA (futuro)
 
 Cuando el dataset esté completo. Dataset multimodal (imágenes) se acumula durante el
 uso actual de la API de Anthropic. Ver docs/decisions.md sección fine-tuning.

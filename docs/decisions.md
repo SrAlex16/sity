@@ -694,3 +694,27 @@ que requería semanas por episodio en esta etapa inicial.
 - Para retomar el canal en el futuro: implementar primero el estilo
   de imagen correcto y el montaje automático con MoviePy antes de
   volver a producir contenido
+
+## 2026-07-08 — Limpieza del sistema
+
+### Repo Sity
+- deploy/audio/ movido a github.com/SrAlex16/raspberry-setup —
+  el fix de audio HDMI del RasPad 3 es específico del hardware,
+  no del core de Sity
+- 21 scripts test_*.py/sh eliminados (obsoletos, reemplazados por pytest)
+- services/sity-test/ eliminado (servidor de pruebas obsoleto)
+- Módulo canal YouTube eliminado (ver sección anterior)
+
+### Sistema Pi
+- ~/.vscode-server/ eliminado (337MB, se regenera si se necesita)
+- ~/Bookshelf/ eliminado (PDF suelto)
+- ~/go/ eliminado (caché Go, no se usa Go)
+- ~/.npm/_npx/ eliminado (caché temporal npm)
+- CUPS y printer-driver-* desinstalados (no hay impresora)
+- Resultado: ~400MB liberados, disco al 11% (24GB/235GB)
+
+### Nuevo repo raspberry-setup
+Creado github.com/SrAlex16/raspberry-setup para configuración
+específica del hardware de la Pi (clonado en ~/raspberry-setup).
+Contenido actual: workaround audio HDMI RasPad 3.
+Pendiente añadir: configuración del servidor de Minecraft.
