@@ -718,3 +718,35 @@ Creado github.com/SrAlex16/raspberry-setup para configuración
 específica del hardware de la Pi (clonado en ~/raspberry-setup).
 Contenido actual: workaround audio HDMI RasPad 3.
 Pendiente añadir: configuración del servidor de Minecraft.
+
+## 2026-07-08 — Dataset de audio ElevenLabs (aplazado)
+
+### Análisis del dataset actual
+
+De las 865 respuestas de Sity con tone_meta en la BD:
+- 848 tienen valores por defecto (sarcasm=0.25, mala_leche=0.15,
+  warmth=0.35...) — conversaciones normales sin personalidad ajustada
+- 17 tienen valores distintos — sesiones con sliders en extremos
+
+Total de caracteres: 485.808
+Media por respuesta: 562 chars
+Coste para procesar todo: ~16 meses de plan Starter (30.000 chars/mes)
+
+Registros históricos en BD: algunos tienen el campo 'tsundere'
+en tone_meta (nombre anterior de frialdad_afectiva). El script
+de extracción debe manejar ambos nombres como el mismo parámetro.
+
+### Decisión
+Aplazado hasta tener el modelo local (Gemma fine-tuned) operativo.
+El dataset de audio tiene más valor cuando el modelo local ya
+existe y puede usarse para fine-tuning multimodal.
+
+### Plan cuando se retome
+1. Priorizar las 17 respuestas con personalidad diversa (obligatorias)
+2. Añadir ~muestra representativa de las default para tener el tono base
+3. Claude Haiku decide los parámetros de ElevenLabs (stability,
+   similarity_boost, style) en función del tone_meta de cada respuesta
+4. Script standalone en scripts/generate_audio_dataset.py —
+   ejecutado manualmente desde terminal, no integrado en Sity
+5. Manifest en datasets/sity_audio_v0/manifest.jsonl vinculando
+   cada audio a su chatmessage_id, tone_meta y parámetros usados
