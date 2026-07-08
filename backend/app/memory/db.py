@@ -59,41 +59,11 @@ def _migrate_chatmessage() -> None:
         conn.commit()
 
 
-def _migrate_episode() -> None:
-    """Add missing columns to episode table (idempotent)."""
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='episode'"))
-        if not result.fetchone():
-            return
-        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(episode)")).fetchall()}
-        if "script_shorts_path" not in existing:
-            conn.execute(text("ALTER TABLE episode ADD COLUMN script_shorts_path TEXT"))
-        if "audio_shorts_path" not in existing:
-            conn.execute(text("ALTER TABLE episode ADD COLUMN audio_shorts_path TEXT"))
-        conn.commit()
-
-
-def _migrate_news_items() -> None:
-    """Add indexes and missing columns to newsitem if absent (idempotent)."""
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='newsitem'"))
-        if not result.fetchone():
-            return
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_status ON newsitem(status)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_created ON newsitem(created_at)"))
-        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(newsitem)")).fetchall()}
-        if "episode_id" not in existing:
-            conn.execute(text("ALTER TABLE newsitem ADD COLUMN episode_id INTEGER"))
-        conn.commit()
-
-
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     _configure_sqlite()
     SQLModel.metadata.create_all(engine)
     _migrate_chatmessage()
-    _migrate_episode()
-    _migrate_news_items()
 
 
 def get_session():

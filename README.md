@@ -1430,27 +1430,12 @@ A3–A6 parcialmente resueltos (ver commits batch 2). Pendiente: mover instrucci
 directivas del modelo al template persona_system.md (A4, A5, A6 completos) y umbrales
 de estilo a config (B5, B6).
 
-### 16. Canal de divulgación Tech & IA (en progreso)
+### 16. Canal de divulgación Tech & IA (pausado)
 
-Sity como orquestadora de un canal de YouTube de divulgación tech/IA, con pipeline
-de noticias → guion → audio → vídeo → publicación, todo con confirmación humana en
-pasos críticos. Especificación completa en docs/canal-spec.md.
-
-✓ Fase A — Ingesta RSS + selección editorial + generación de guion
-✓ Fase B — Audio TTS (ElevenLabs largo + shorts)
-✓ Fase C — Imágenes con Stability AI (una por timestamp)
-○ Fase D — Montaje de vídeo (manual en PC por ahora)
-○ Fase E — Publicación en YouTube (YouTube Data API v3)
-○ Fase F — Respuesta a comentarios
-○ Fase G — Métricas y datos
-
-Mejoras pendientes del canal:
-- Fix: encabezado del DOCX se narra en el audio (filtro TTS)
-- Upgrade: reemplazar Turboscribe con Whisper API de OpenAI
-  para automatizar la transcripción con timestamps
-  (coste ~$0.006/min, ~$0.04 por episodio de 7 min)
-- Mejora: generate_tts debería poder generar largo y shorts
-  en una sola confirmación
+Implementado y probado — pausado por limitaciones en la fase
+de edición. Ver docs/decisions.md para el análisis completo
+y las lecciones aprendidas. La especificación completa sigue
+en docs/canal-spec.md para retomarlo en el futuro.
 
 ### 17. Tareas largas en background con notificación (pendiente)
 

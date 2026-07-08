@@ -199,6 +199,7 @@ class ChatAIOrchestrator:
                 tools=selected_tools,
                 prior_messages=planner_prior_messages,
                 max_tokens=_planner_max_tokens,
+                images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
             )
 
             write_log(

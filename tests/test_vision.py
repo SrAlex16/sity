@@ -103,3 +103,29 @@ def test_user_content_block_text_is_last() -> None:
     text_block = result[-1]
     assert text_block["type"] == "text"
     assert text_block["text"] == "¿qué ves?"
+
+
+# ── build_planner_ai_request images propagation ────────────────────────────────
+
+def test_planner_request_includes_images() -> None:
+    from app.chat.ai_request_builder import build_planner_ai_request
+    img = {"media_type": "image/jpeg", "data": _TINY_JPEG_B64}
+    req = build_planner_ai_request(
+        trace_id="t-planner",
+        user_message="¿qué hay en esta imagen?",
+        tools=[],
+        images=[img],
+    )
+    assert len(req.images) == 1
+    assert req.images[0]["media_type"] == "image/jpeg"
+    assert req.images[0]["data"] == _TINY_JPEG_B64
+
+
+def test_planner_request_without_images_defaults_empty() -> None:
+    from app.chat.ai_request_builder import build_planner_ai_request
+    req = build_planner_ai_request(
+        trace_id="t-planner-no-img",
+        user_message="busca algo",
+        tools=[],
+    )
+    assert req.images == []

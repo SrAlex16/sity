@@ -654,3 +654,43 @@ para automatizar completamente el pipeline (ver roadmap).
 Paso manual aún pendiente: recortar el audio antes de transcribir
 para eliminar las partes que Sity lee incorrectamente (marcadores
 entre **). Pendiente de arreglar el filtro TTS (ver roadmap).
+
+## 2026-07-08 — Eliminación del módulo del canal de YouTube
+
+### Motivo
+El pipeline de producción de contenido (guion → audio → imágenes →
+montaje) resultó tener demasiados pasos manuales que no se pueden
+automatizar sin perder el toque personal y creativo necesario para
+un canal de divulgación. El cuello de botella real era la edición,
+que requería semanas por episodio en esta etapa inicial.
+
+### Lo que se implementó (documentado para referencia futura)
+- fetch_rss_news: ingesta de 7 feeds RSS sin Claude (feedparser)
+- list_news / select_news: selección editorial con pending action
+- generate_script: guion largo + shorts via Claude Sonnet → DOCX
+- generate_tts: audio TTS via ElevenLabs (eleven_multilingual_v2),
+  con expansión de acrónimos via Claude Haiku antes de sintetizar
+- generate_images: imágenes 16:9 via Stability AI SD3.5 Medium,
+  con prompts cyberpunk generados por Claude Sonnet por timestamp
+- list_episodes: historial de episodios con estado del pipeline
+- Tablas SQLite: news_items (pending/selected/used/discarded) y
+  episodes (draft/script_ready/audio_ready/video_ready/uploaded/published)
+- Convención de IDs: EP001, EP002... con assets EP001-largo.docx,
+  EP001.mp3, EP001-shorts.mp3, etc.
+
+### Lecciones aprendidas
+- El pipeline técnico funcionó: RSS → guion → audio → imágenes
+  se automatizó correctamente
+- El problema fue la edición de vídeo: marcas de agua, corrección
+  de pronunciación, montaje creativo, música — pasos que requieren
+  criterio humano y no se automatizan bien
+- ElevenLabs plan Starter ($6/mes): la voz generada era buena pero
+  la pronunciación de algunos términos técnicos fallaba
+- Stability AI SD3.5 Medium: las imágenes eran visualmente bonitas
+  pero no narrativas — no comunicaban el contenido del guion
+- El formato de "imágenes simples + narración" requiere un estilo
+  ilustrativo (como MS Paint / doodles) que los modelos de difusión
+  generan mal; DALL-E 3 podría ser mejor opción
+- Para retomar el canal en el futuro: implementar primero el estilo
+  de imagen correcto y el montaje automático con MoviePy antes de
+  volver a producir contenido
