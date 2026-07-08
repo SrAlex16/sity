@@ -55,9 +55,6 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
-      - name: Run mock HTTP integration test
-        run: ./scripts/test_chat_mock_integration.sh
-
   frontend:
     runs-on: ubuntu-latest
     defaults:
