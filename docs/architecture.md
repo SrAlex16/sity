@@ -1,8 +1,22 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-06-28 (model router semi-automático, limpieza TTS markdown, pronunciación fonética en voz, prompt caching).
+Última actualización: 2026-07-08.
 
-Este documento resume la arquitectura objetivo y la arquitectura implementada de Sity.
+## Resumen
+
+Sity es una IA doméstica que corre en una Raspberry Pi 4.
+El backend (FastAPI) es el único punto de verdad — el modelo
+propone acciones, el backend las valida y ejecuta.
+
+```
+Usuario → PWA/Panel → FastAPI → Claude API → Tools → Respuesta
+                                    ↓
+                          Home Assistant → Dispositivos IoT
+                                    ↓
+                          Google APIs → Gmail/Calendar/Drive
+```
+
+Este documento describe la arquitectura objetivo y la implementada.
 
 ## Principio base
 
