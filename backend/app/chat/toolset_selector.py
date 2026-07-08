@@ -79,7 +79,7 @@ _DEBUG_RE = re.compile(
 )
 _PERSONALITY_FIELD_RE = re.compile(
     r"\bsarcasmo\b|\brudeza\b|\bcalidez\b|\bhonestidad\b|\bpaciencia\b"
-    r"|\bmelancolía\b|\bmelancolia\b|\btsundere\b|\bfrialdad afectiva\b|\bfrialdad\b|\bverbosidad\b"
+    r"|\bmelancolía\b|\bmelancolia\b|\bfrialdad afectiva\b|\bfrialdad\b|\bverbosidad\b"
     r"|\bpersonalidad\b|\bmala\s+leche\b",
     re.IGNORECASE,
 )
