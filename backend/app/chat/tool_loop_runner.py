@@ -15,6 +15,7 @@ from typing import Any
 
 from app.api.schemas import ChatArtifact
 from app.chat.tool_loop_step import run_tool_loop_step
+from app.core.cancellation import is_cancelled
 from app.core.tool_executor import ToolExecutor
 from app.cortex.schemas import AIResponse
 from app.cortex.tool_schemas import TOOL_BLOCKING_POLICIES
@@ -74,6 +75,8 @@ def run_tool_loop(
     artifacts: list[ChatArtifact] = []
 
     for tool_call in planner_response.tool_calls[:max_iterations]:
+        if is_cancelled(client_turn_id):
+            break
         step = run_tool_loop_step(
             tool_call=tool_call,
             executor=executor,

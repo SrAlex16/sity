@@ -32,6 +32,7 @@ from app.chat.response_factory import local_tool_response, micro_reaction_respon
 from app.chat.response_guard import has_narrated_search
 from app.chat.routing_decision import ProviderMode
 from app.chat.tool_loop_runner import ToolLoopRunOutcome, get_blocking_policy, run_tool_loop
+from app.core.cancellation import is_cancelled
 from app.chat.turn_context import TurnContext
 from app.core.persona_engine import PersonaDecision, PersonaEngine
 from app.core.tool_executor import ToolExecutor
@@ -565,7 +566,7 @@ class ChatAIOrchestrator:
                     ctx.personality, request.message
                 )
 
-        if tool_results_for_claude:
+        if tool_results_for_claude and not is_cancelled(request.client_turn_id):
             response_after_tools = runner.run_after_tools(
                 request=build_after_tools_ai_request(
                     trace_id=ctx.trace_id,

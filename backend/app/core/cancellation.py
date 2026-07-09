@@ -50,6 +50,14 @@ def cancel_operation(client_turn_id: str) -> bool:
         return True
 
 
+def is_cancelled(client_turn_id: str | None) -> bool:
+    if not client_turn_id:
+        return False
+    with _lock:
+        op = _operations.get(client_turn_id)
+        return bool(op and op.cancelled)
+
+
 def clear_operation(client_turn_id: str) -> None:
     with _lock:
         _operations.pop(client_turn_id, None)
