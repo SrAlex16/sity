@@ -1241,6 +1241,42 @@ HA_TOOLSET = [
     HA_CALL_SERVICE_TOOL,
 ]
 
+SPOTIFY_NOW_PLAYING_TOOL = {
+    "name": "spotify_now_playing",
+    "description": (
+        "Qué está sonando ahora mismo en Spotify del usuario: canción, artista, álbum, "
+        "progreso y si está en pausa. Útil para 'qué está sonando', '¿qué canción es esta?', etc."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
+SPOTIFY_RECENTLY_PLAYED_TOOL = {
+    "name": "spotify_recently_played",
+    "description": "Historial de canciones reproducidas recientemente en Spotify.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "limit": {"type": "integer", "description": "Número de canciones a devolver (máx 50). Por defecto 10."},
+        },
+    },
+}
+
+SPOTIFY_LIST_DEVICES_TOOL = {
+    "name": "spotify_list_devices",
+    "description": (
+        "Lista los dispositivos Spotify disponibles del usuario (nombre, tipo, si está activo, "
+        "device_id). Úsala para resolver 'el altavoz del salón' a un device_id antes de "
+        "controlar la reproducción en un dispositivo concreto."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
 GOOGLE_TOOLSET = [
     GMAIL_SEARCH_TOOL,
     CALENDAR_LIST_EVENTS_TOOL,
@@ -1282,6 +1318,10 @@ BASE_TOOLSET: list[dict] = [
     HA_LIST_ENTITIES_TOOL,
     HA_GET_STATE_TOOL,
     HA_CALL_SERVICE_TOOL,
+    # Spotify tools always available — same reason as Google.
+    SPOTIFY_NOW_PLAYING_TOOL,
+    SPOTIFY_RECENTLY_PLAYED_TOOL,
+    SPOTIFY_LIST_DEVICES_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [

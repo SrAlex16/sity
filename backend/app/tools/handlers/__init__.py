@@ -14,3 +14,4 @@ from app.tools.handlers import trace_tools  # noqa: F401
 from app.tools.handlers import web_search_tools  # noqa: F401
 from app.tools.handlers import google_tools  # noqa: F401
 from app.tools.handlers import ha_tools  # noqa: F401
+from app.tools.handlers import spotify_tools  # noqa: F401
