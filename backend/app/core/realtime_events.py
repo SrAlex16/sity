@@ -80,7 +80,6 @@ async def subscribe_session(session_id: str):
             pending.cancel()
         write_log(level="INFO", module="realtime_events", event="sse_subscriber_disconnected",
                   payload={"session_id": session_id})
-        _session_queues.pop(session_id, None)
 
 
 async def subscribe(client_turn_id: str):

@@ -117,6 +117,14 @@ export function useChat() {
       }
     };
 
+    // On reconnect after a drop, reload history so any background results
+    // saved to DB while disconnected appear without waiting for the next turn.
+    let _reconnecting = false;
+    es.onerror = () => { _reconnecting = true; };
+    es.onopen = () => {
+      if (_reconnecting) { _reconnecting = false; void loadHistory(); }
+    };
+
     return () => {
       es.close();
       if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
