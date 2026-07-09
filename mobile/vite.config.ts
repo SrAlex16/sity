@@ -13,6 +13,7 @@ export default defineConfig({
       '/settings': { target: 'http://localhost:8000', changeOrigin: true },
       '/debug': { target: 'http://localhost:8000', changeOrigin: true },
       '/health': { target: 'http://localhost:8000', changeOrigin: true },
+      '/events': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 });

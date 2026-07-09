@@ -146,6 +146,11 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str) -> None:
     the result (or error) as SSE events before closing with 'done'."""
     from app.memory.db import engine
 
+    # Ensure client_turn_id is always the resolved turn_id so downstream
+    # is_cancelled() checks work (frontend never sends client_turn_id in body).
+    if request.client_turn_id != turn_id:
+        request = request.model_copy(update={"client_turn_id": turn_id})
+
     with Session(engine) as session:
         try:
             result = _chat_message_inner(request=request, session=session)

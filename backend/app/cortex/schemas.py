@@ -14,6 +14,7 @@ class AIRequest(BaseModel):
     tools: list[dict[str, Any]] | None = None
     prior_messages: list[dict[str, Any]] = []
     images: list[dict[str, str]] = []  # [{"media_type": "image/jpeg", "data": "<base64>"}]
+    client_turn_id: Optional[str] = None  # used for mid-stream cancellation checks
 
 
 class AIUsageData(BaseModel):

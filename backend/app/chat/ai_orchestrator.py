@@ -400,6 +400,7 @@ class ChatAIOrchestrator:
                         max_tokens=ctx.max_tokens,
                         prior_messages=prior_messages,
                         images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
+                        client_turn_id=request.client_turn_id,
                     )
                 )
 
@@ -438,6 +439,7 @@ class ChatAIOrchestrator:
                                     tools=selected_tools,
                                     prior_messages=prior_messages,
                                     images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
+                                    client_turn_id=request.client_turn_id,
                                 ),
                                 first_response_content=[
                                     {
@@ -648,6 +650,7 @@ class ChatAIOrchestrator:
                     tools=selected_tools,
                     prior_messages=prior_messages,
                     images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
+                    client_turn_id=request.client_turn_id,
                 ),
                 first_response_content=[
                     {

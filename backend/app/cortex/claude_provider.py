@@ -6,6 +6,7 @@ from typing import Any
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
+from app.core.cancellation import is_cancelled
 from app.cortex.schemas import AIRequest, AIResponse, AIUsageData, AIToolCall
 from app.cortex.tool_schemas import TOOLS
 
@@ -109,14 +110,22 @@ class ClaudeProvider:
             if request.tool_choice:
                 kwargs["tool_choice"] = request.tool_choice
 
-        message = self.client.messages.create(**kwargs)
+        with self.client.messages.stream(**kwargs) as stream:
+            for _chunk in stream:
+                if is_cancelled(request.client_turn_id):
+                    return AIResponse(
+                        ok=False,
+                        provider="anthropic",
+                        model=self.model,
+                        text="",
+                        usage=AIUsageData(),
+                        latency_ms=round((time.perf_counter() - started) * 1000),
+                        error_type="cancelled",
+                    )
+            message = stream.get_final_message()
 
         latency_ms = round((time.perf_counter() - started) * 1000)
-
-        return self._to_ai_response(
-            message=message,
-            latency_ms=latency_ms,
-        )
+        return self._to_ai_response(message=message, latency_ms=latency_ms)
 
     def generate_with_tool_results(
         self,
@@ -134,13 +143,26 @@ class ClaudeProvider:
             {"role": "assistant", "content": first_response_content},
             {"role": "user", "content": tool_results},
         ]
-        message = self.client.messages.create(
+
+        with self.client.messages.stream(
             model=self.model,
             max_tokens=request.max_tokens,
             system=_system_with_cache(request.system_prompt),  # type: ignore[arg-type]
             tools=_tools_with_cache(effective_tools),  # type: ignore[arg-type]
             messages=_msgs,
-        )
+        ) as stream:
+            for _chunk in stream:
+                if is_cancelled(request.client_turn_id):
+                    return AIResponse(
+                        ok=False,
+                        provider="anthropic",
+                        model=self.model,
+                        text="",
+                        usage=AIUsageData(),
+                        latency_ms=round((time.perf_counter() - started) * 1000),
+                        error_type="cancelled",
+                    )
+            message = stream.get_final_message()
 
         latency_ms = round((time.perf_counter() - started) * 1000)
 
