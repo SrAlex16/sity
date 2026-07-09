@@ -184,7 +184,8 @@ def iter_raw_pairs(db_path: Path, *, exclude_sources: set[str] | None = None) ->
     try:
         rows = conn.execute(
             """
-            SELECT id, session_id, role, text, trace_id, created_at, dataset_source
+            SELECT id, session_id, role, text, trace_id, created_at,
+                   dataset_source, dataset_eligible
             FROM chatmessage
             ORDER BY session_id, id ASC
             """
@@ -207,6 +208,9 @@ def iter_raw_pairs(db_path: Path, *, exclude_sources: set[str] | None = None) ->
             if curr["role"] == "user" and nxt["role"] == "sity":
                 src = curr.get("dataset_source") or nxt.get("dataset_source")
                 if src in exclude_sources:
+                    i += 2
+                    continue
+                if not curr.get("dataset_eligible", True) or not nxt.get("dataset_eligible", True):
                     i += 2
                     continue
                 pair_counter += 1
