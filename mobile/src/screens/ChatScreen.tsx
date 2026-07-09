@@ -283,8 +283,10 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
 
           <div className={styles.headerInfo}>
             <span className={styles.headerName}>Sity</span>
-            <StatusBadge status={status} />
-            <BgJobIndicator active={backgroundJobsActive > 0} justFinished={backgroundJustFinished} />
+            <div className={styles.headerStatusRow}>
+              <StatusBadge status={status} />
+              <BgJobIndicator active={backgroundJobsActive > 0} justFinished={backgroundJustFinished} />
+            </div>
           </div>
 
           <div className={styles.headerMenu}>

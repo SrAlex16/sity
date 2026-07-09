@@ -74,6 +74,13 @@
   min-width: 0;
 }
 
+.headerStatusRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
 .headerName {
   font-family: var(--font-display);
   font-size: 1rem;

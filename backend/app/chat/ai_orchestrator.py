@@ -49,12 +49,20 @@ def _detach_tool(
     tool_call: "Any",
     executor: ToolExecutor,
     trace_id: str,
+    runner: "Any",
+    persona_prompt: str,
+    user_message_with_history: str,
+    prior_messages: "list[Any]",
+    selected_tools: "list[Any]",
+    request: ChatMessageRequest,
+    ctx: "Any",
 ) -> ToolLoopRunOutcome:
-    """Submit a detachable tool to the background and return a synthetic outcome.
+    """Submit a detachable tool to background; return a synthetic outcome for the immediate response.
 
-    The synthetic tool_result tells the model the job is in progress so it can
-    respond immediately. When the job finishes, on_done publishes a proactive_message
-    to the session SSE channel for the frontend to display as a new chat message.
+    When the job finishes:
+    1. runner.run_after_tools processes the raw result so Claude generates a natural response.
+    2. The response is saved to DB so the next turn has context.
+    3. A proactive_message SSE event is published for the frontend to display as a new message.
     """
     from app.core.job_manager import Job, get_job_manager
     from app.core.realtime_events import publish_session_event_sync
@@ -62,6 +70,8 @@ def _detach_tool(
     tool_name = tool_call.name
     tool_input = tool_call.input
     bg_trace_id = f"bg_{trace_id}"
+    bg_max_tokens = max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700))
+    bg_images = [{"media_type": img.media_type, "data": img.data} for img in request.images]
 
     def _tool_fn() -> str:
         exec_result = executor.execute_tool_call(
@@ -75,10 +85,64 @@ def _detach_tool(
         return str(exec_result.raw_result.get("text", exec_result.message))
 
     def _on_done(job: Job) -> None:
-        text = job.result_text if job.status == "done" else f"Error al buscar: {job.error}"
+        if job.status != "done":
+            publish_session_event_sync(_BG_SESSION_ID, {
+                "type": "proactive_message",
+                "text": f"No pude completar la búsqueda: {job.error}",
+                "subtype": "job_error",
+                "tool_name": tool_name,
+            })
+            return
+
+        raw_text = job.result_text or ""
+
+        # Pass result through Claude so the user gets a natural-language response
+        try:
+            after_resp = runner.run_after_tools(
+                request=build_after_tools_ai_request(
+                    trace_id=bg_trace_id,
+                    persona_prompt=persona_prompt,
+                    user_message=user_message_with_history,
+                    max_tokens=bg_max_tokens,
+                    tools=selected_tools,
+                    prior_messages=prior_messages,
+                    images=bg_images,
+                ),
+                first_response_content=[{
+                    "type": "tool_use",
+                    "id": tool_call.id,
+                    "name": tool_name,
+                    "input": tool_input,
+                }],
+                tool_results=[{
+                    "type": "tool_result",
+                    "tool_use_id": tool_call.id,
+                    "content": raw_text,
+                }],
+            )
+            final_text = after_resp.text or raw_text
+        except Exception:
+            final_text = raw_text
+
+        # Persist so next turn sees this exchange in its history
+        try:
+            from app.memory.db import engine
+            from app.memory.models import ChatMessage
+            from sqlmodel import Session as _DBSession
+            with _DBSession(engine) as db_sess:
+                db_sess.add(ChatMessage(
+                    session_id=_BG_SESSION_ID,
+                    role="sity",
+                    text=final_text,
+                    trace_id=bg_trace_id,
+                ))
+                db_sess.commit()
+        except Exception:
+            pass
+
         publish_session_event_sync(_BG_SESSION_ID, {
             "type": "proactive_message",
-            "text": text,
+            "text": final_text,
             "subtype": "job_done",
             "tool_name": tool_name,
             "job_id": job.job_id,
@@ -460,6 +524,13 @@ class ChatAIOrchestrator:
                         tool_call=_first_tool,
                         executor=executor,
                         trace_id=ctx.trace_id,
+                        runner=runner,
+                        persona_prompt=persona_decision.system_prompt,
+                        user_message_with_history=user_message_with_history,
+                        prior_messages=prior_messages,
+                        selected_tools=selected_tools,
+                        request=request,
+                        ctx=ctx,
                     )
                 else:
                     _loop = run_tool_loop(
