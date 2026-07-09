@@ -1,5 +1,15 @@
 # Sity · Especificación: Canal de divulgación Tech & IA
 
+> ⚠️ **DESCARTADO — 2026-07-08.** El canal de YouTube fue eliminado
+> del proyecto (ver docs/decisions.md, sección "Eliminación del
+> módulo del canal de YouTube", y docs/project-evolution.md). El
+> cuello de botella real era la edición de vídeo — pasos que
+> requieren criterio humano y no se automatizan bien. Este documento
+> se conserva solo como referencia histórica de lo que se llegó a
+> diseñar e implementar, por si se retoma en el futuro con un enfoque
+> distinto (ver "Lecciones aprendidas" en decisions.md). El código
+> del módulo ya no existe en el repo.
+
 > **Documento de referencia para cualquier dev, IA o colaborador que quiera entender esta feature sin haber estado en la conversación original.**
 >
 > Última actualización: junio 2026  

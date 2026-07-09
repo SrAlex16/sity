@@ -111,7 +111,7 @@ frontend/src/hooks/useVoiceInput.ts    — MediaRecorder hook → POST /audio/tr
 frontend/src/api/chatApi.ts            — transcribeAudio() + voice options en sendChatMessage()
 ```
 
-Tests: `tests/test_edit_distance.py`, `tests/test_audio_transcribe.py`, `tests/test_telegram_voice.py`. Sin llamadas reales a Whisper ni a Telegram.
+Tests: `tests/test_edit_distance.py`, `tests/test_audio_transcribe.py`. Sin llamadas reales a Whisper.
 
 **Voice mode guard (restricción estructural):** cuando `input_mode == "voice"`, `toolset_selector.py` elimina todos los tools de `SENSES_TOOLSET` antes de devolver la selección. El dominio `senses` tampoco aparece en `activated_domains`. Esta restricción se aplica en el backend independientemente del criterio del modelo. Además, `PromptContextBuilder` inyecta `[input_mode: voice]` en el bloque de contexto del mensaje, y `persona_system.md` incluye una regla explícita para interpretar preguntas de confirmación de canal sin disparar tools de captura.
 
@@ -189,8 +189,6 @@ Cuando `output_mode: voice`, `persona_system.md` instruye a Sity a escribir
 palabras técnicas en inglés con su pronunciación fonética en español
 (pipeline → "paip lain", deploy → "diploi", etc.) para que Piper las
 pronuncie correctamente.
-
-**Telegram:** si la respuesta contiene artifacts de audio, el bot los descarga (`gateway.get_tts_artifact`) y los envía como audio vía `reply_audio`. Cuando `voice_include_text == false`, el texto no se envía (`reply(text)` se omite). El `SityGateway` incluye siempre `"source_channel": "telegram"` en el body del POST.
 
 Archivos:
 ```text

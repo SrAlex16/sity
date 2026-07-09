@@ -74,12 +74,12 @@ Ver .env.example para la lista completa.
 
 ## Bugs conocidos activos
 
-- Encabezado del DOCX del canal se narra en el audio TTS
-  (módulo canal pausado, bug documentado para cuando se retome)
-- refusal_mode puede activarse en preguntas legítimas aunque
-  se mejoró con criterio del modelo (ver decisions.md 2026-06-30)
-- search_conversation_history puede usarse como "procrastinación"
-  del planner (mitigado con regla de acción directa)
+Ninguno confirmado a día de hoy. La lista anterior (encabezado DOCX
+narrado en TTS del canal YouTube, refusal_mode con falsos positivos,
+search_conversation_history como procrastinación del planner) quedó
+obsoleta: el canal de YouTube se descartó, el resto no se ha vuelto a
+observar. Ver docs/decisions.md 2026-06-30 y 2026-07-08 para el
+contexto histórico si hace falta.
 
 ## Qué no hacer
 
