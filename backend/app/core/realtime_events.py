@@ -5,6 +5,8 @@ from collections import defaultdict
 from typing import Any
 from uuid import uuid4
 
+from app.trace.logger import write_log
+
 _HEARTBEAT_INTERVAL = 15.0  # seconds between SSE comment heartbeats
 
 _queues: dict[str, asyncio.Queue[dict[str, Any]]] = defaultdict(asyncio.Queue)
@@ -57,6 +59,8 @@ async def subscribe_session(session_id: str):
     the client disconnecting is the only termination signal.
     """
     queue = _session_queues[session_id]
+    write_log(level="INFO", module="realtime_events", event="sse_subscriber_connected",
+              payload={"session_id": session_id, "qsize": queue.qsize()})
     pending: asyncio.Task[dict[str, Any]] | None = None
     try:
         while True:
@@ -74,6 +78,8 @@ async def subscribe_session(session_id: str):
     finally:
         if pending is not None and not pending.done():
             pending.cancel()
+        write_log(level="INFO", module="realtime_events", event="sse_subscriber_disconnected",
+                  payload={"session_id": session_id})
         _session_queues.pop(session_id, None)
 
 

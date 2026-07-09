@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import threading
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
+
+from app.trace.logger import write_log
 
 _singleton: "JobManager | None" = None
 _singleton_lock = threading.Lock()
@@ -56,17 +59,41 @@ class JobManager:
         })
 
         def _run() -> None:
+            write_log(
+                level="INFO",
+                module="job_manager",
+                event="job_started",
+                payload={"job_id": job_id, "tool_name": tool_name, "session_id": session_id},
+            )
             try:
                 result = fn(*args, **(kwargs or {}))
                 with self._lock:
                     job.status = "done"
                     job.result_text = str(result) if result is not None else ""
+                write_log(
+                    level="INFO",
+                    module="job_manager",
+                    event="job_completed",
+                    payload={"job_id": job_id, "tool_name": tool_name},
+                )
                 publish_session_event_sync(session_id, {
                     "type": "job_done",
                     "job_id": job_id,
                     "tool_name": tool_name,
                 })
             except Exception as exc:
+                write_log(
+                    level="ERROR",
+                    module="job_manager",
+                    event="job_failed",
+                    payload={
+                        "job_id": job_id,
+                        "tool_name": tool_name,
+                        "session_id": session_id,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    },
+                )
                 with self._lock:
                     job.status = "error"
                     job.error = str(exc)
@@ -77,11 +104,27 @@ class JobManager:
                     "error": str(exc),
                 })
             finally:
+                write_log(
+                    level="INFO",
+                    module="job_manager",
+                    event="job_finally",
+                    payload={"job_id": job_id, "tool_name": tool_name, "has_on_done": on_done is not None},
+                )
                 if on_done is not None:
                     try:
                         on_done(job)
-                    except Exception:
-                        pass
+                    except Exception as cb_exc:
+                        write_log(
+                            level="ERROR",
+                            module="job_manager",
+                            event="job_on_done_failed",
+                            payload={
+                                "job_id": job_id,
+                                "tool_name": tool_name,
+                                "error": str(cb_exc),
+                                "traceback": traceback.format_exc(),
+                            },
+                        )
 
         self._executor.submit(_run)
         return job_id

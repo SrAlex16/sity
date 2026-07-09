@@ -98,6 +98,9 @@ export function useChat() {
   useEffect(() => {
     const es = new EventSource(`/events/session/${SESSION_ID}`);
 
+    es.onopen = () => console.log('[SSE session] opened', new Date().toISOString());
+    es.onerror = (e) => console.log('[SSE session] error readyState=' + es.readyState, e);
+
     es.onmessage = (e: MessageEvent) => {
       let ev: { type: string; job_id?: string; tool_name?: string; error?: string; text?: string };
       try { ev = JSON.parse(e.data as string); } catch { return; }

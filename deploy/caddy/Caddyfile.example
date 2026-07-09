@@ -7,6 +7,17 @@
 }
 
 sity.tudominio.com:443 {
+    # SSE endpoints — flush_interval -1 disables buffering for streaming responses
+    handle /chat/stream/* {
+        reverse_proxy localhost:8000 {
+            flush_interval -1
+        }
+    }
+    handle /events/* {
+        reverse_proxy localhost:8000 {
+            flush_interval -1
+        }
+    }
     handle /chat/* { reverse_proxy localhost:8000 }
     handle /audio/* { reverse_proxy localhost:8000 }
     handle /settings/* { reverse_proxy localhost:8000 }
@@ -20,6 +31,16 @@ sity.tudominio.com:443 {
 }
 
 sity.tudominio.com:80 {
+    handle /chat/stream/* {
+        reverse_proxy localhost:8000 {
+            flush_interval -1
+        }
+    }
+    handle /events/* {
+        reverse_proxy localhost:8000 {
+            flush_interval -1
+        }
+    }
     handle /chat/* { reverse_proxy localhost:8000 }
     handle /audio/* { reverse_proxy localhost:8000 }
     handle /settings/* { reverse_proxy localhost:8000 }
