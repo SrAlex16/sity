@@ -349,6 +349,7 @@ class ChatAIOrchestrator:
                 prior_messages=planner_prior_messages,
                 max_tokens=_planner_max_tokens,
                 images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
+                client_turn_id=request.client_turn_id,
             )
 
             write_log(
@@ -419,6 +420,7 @@ class ChatAIOrchestrator:
                             user_message=planner_user_message,
                             tools=selected_tools,
                             prior_messages=planner_prior_messages,
+                            client_turn_id=request.client_turn_id,
                         )
                     )
                     if _forced_plan.ok and _forced_plan.tool_calls:

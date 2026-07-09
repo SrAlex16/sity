@@ -198,6 +198,7 @@ def build_planner_ai_request(
     max_tokens: int = 500,
     prior_messages: list[dict[str, Any]] | None = None,
     images: list[dict[str, str]] | None = None,
+    client_turn_id: str | None = None,
 ) -> AIRequest:
     """Action-planner request — tools required, tool_choice=any."""
     return AIRequest(
@@ -211,6 +212,7 @@ def build_planner_ai_request(
         tools=tools,
         prior_messages=prior_messages or [],
         images=images or [],
+        client_turn_id=client_turn_id,
     )
 
 
@@ -221,6 +223,7 @@ def build_forced_search_request(
     tools: list[dict[str, Any]],
     max_tokens: int = 500,
     prior_messages: list[dict[str, Any]] | None = None,
+    client_turn_id: str | None = None,
 ) -> AIRequest:
     """Force a search_conversation_history call when narration without tool use was detected."""
     return AIRequest(
@@ -233,6 +236,7 @@ def build_forced_search_request(
         tool_choice={"type": "tool", "name": "search_conversation_history"},
         tools=tools,
         prior_messages=prior_messages or [],
+        client_turn_id=client_turn_id,
     )
 
 
