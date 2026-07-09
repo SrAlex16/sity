@@ -160,6 +160,7 @@ def _detach_tool(
         module="chat",
         event="tool_detached_to_background",
         trace_id=trace_id,
+        session_id=_BG_SESSION_ID,
         payload={"tool_name": tool_name, "job_id": job_id},
     )
 
