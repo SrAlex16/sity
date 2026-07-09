@@ -1252,6 +1252,15 @@ GOOGLE_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+TOOL_BLOCKING_POLICIES: dict[str, str] = {
+    # "immediate" — no tool execution; planner uses these to skip the tool loop
+    "no_action_required": "immediate",
+    "cancel_pending_action": "immediate",
+    # "detachable" — can be moved to background if it exceeds the watchdog timeout
+    "web_search": "detachable",
+    # Everything else defaults to "blocking" (must finish before the AI responds)
+}
+
 BASE_TOOLSET: list[dict] = [
     # Minimal conversational toolset. No file tools here.
     # FILE_AGENT_TOOLSET is added structurally by toolset_selector:

@@ -8,6 +8,7 @@ from uuid import uuid4
 _HEARTBEAT_INTERVAL = 15.0  # seconds between SSE comment heartbeats
 
 _queues: dict[str, asyncio.Queue[dict[str, Any]]] = defaultdict(asyncio.Queue)
+_session_queues: dict[str, asyncio.Queue[dict[str, Any]]] = defaultdict(asyncio.Queue)
 _loop: asyncio.AbstractEventLoop | None = None
 
 
@@ -36,6 +37,44 @@ def publish_event_sync(client_turn_id: str | None, event: dict[str, Any]) -> Non
     if not client_turn_id or _loop is None:
         return
     asyncio.run_coroutine_threadsafe(publish_event(client_turn_id, event), _loop)
+
+
+async def publish_session_event(session_id: str, event: dict[str, Any]) -> None:
+    if not session_id:
+        return
+    await _session_queues[session_id].put(event)
+
+
+def publish_session_event_sync(session_id: str | None, event: dict[str, Any]) -> None:
+    if not session_id or _loop is None:
+        return
+    asyncio.run_coroutine_threadsafe(publish_session_event(session_id, event), _loop)
+
+
+async def subscribe_session(session_id: str):
+    """Persistent SSE channel for a chat session — never terminates on event type.
+    Unlike subscribe(), the generator continues across job_done/job_error events;
+    the client disconnecting is the only termination signal.
+    """
+    queue = _session_queues[session_id]
+    pending: asyncio.Task[dict[str, Any]] | None = None
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(queue.get())
+            try:
+                event = await asyncio.wait_for(
+                    asyncio.shield(pending), timeout=_HEARTBEAT_INTERVAL
+                )
+                pending = None
+            except asyncio.TimeoutError:
+                yield None
+                continue
+            yield event
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+        _session_queues.pop(session_id, None)
 
 
 async def subscribe(client_turn_id: str):

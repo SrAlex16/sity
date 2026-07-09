@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 export type ChatStatus = 'conectado' | 'procesando' | 'desconectado';
 
+const SESSION_ID = 'default';
+const BG_FLASH_MS = 2000;
+
 // ── Message types ─────────────────────────────────────────────────────────────
 
 interface BaseMsg {
@@ -83,10 +86,37 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<ChatStatus>('desconectado');
   const [canCancel, setCanCancel] = useState(false);
+  const [backgroundJobsActive, setBackgroundJobsActive] = useState(0);
+  const [backgroundJustFinished, setBackgroundJustFinished] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentTurnIdRef = useRef<string | null>(null);
+  const bgFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { void loadHistory(); }, []);
+
+  // Persistent session SSE — receives background job notifications
+  useEffect(() => {
+    const es = new EventSource(`/events/session/${SESSION_ID}`);
+
+    es.onmessage = (e: MessageEvent) => {
+      let ev: { type: string; job_id?: string; tool_name?: string; error?: string };
+      try { ev = JSON.parse(e.data as string); } catch { return; }
+
+      if (ev.type === 'job_start') {
+        setBackgroundJobsActive((n) => n + 1);
+      } else if (ev.type === 'job_done' || ev.type === 'job_error') {
+        setBackgroundJobsActive((n) => Math.max(0, n - 1));
+        setBackgroundJustFinished(true);
+        if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
+        bgFlashTimerRef.current = setTimeout(() => setBackgroundJustFinished(false), BG_FLASH_MS);
+      }
+    };
+
+    return () => {
+      es.close();
+      if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
+    };
+  }, []);
 
   async function loadHistory() {
     try {
@@ -263,7 +293,7 @@ export function useChat() {
     setMessages([]);
   }
 
-  return { messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel };
+  return { messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished };
 }
 
 export type UseChatResult = ReturnType<typeof useChat>;

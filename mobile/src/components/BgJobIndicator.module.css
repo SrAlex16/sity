@@ -1,0 +1,22 @@
+.indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotActive { background: #f0a500; box-shadow: 0 0 6px #f0a500; }
+.dotDone   { background: var(--neon-cyan); box-shadow: 0 0 8px var(--neon-cyan); }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}

@@ -50,6 +50,10 @@ ai:
     strong_model: claude-sonnet-4-6
     model_router_enabled: true
     max_tokens: 4000
+  background:
+    watchdog_secs: 3
+    max_workers: 2
+    message_debounce_ms: 2000
 
 usage:
   daily_token_budget: 1000000

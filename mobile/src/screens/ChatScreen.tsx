@@ -5,6 +5,7 @@ import { useVoice } from '../hooks/useVoice';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { resizeImageToBase64, type ResizedImage } from '../utils/imageResize';
 import { StatusBadge } from '../components/StatusBadge';
+import { BgJobIndicator } from '../components/BgJobIndicator';
 import { BackgroundPicker } from '../components/BackgroundPicker';
 import { FontPicker } from '../components/FontPicker';
 import { MessageList } from '../components/MessageList';
@@ -81,7 +82,7 @@ interface RecordingCtx {
 
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
-export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel }: UseChatResult) {
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished }: UseChatResult) {
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
@@ -283,6 +284,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
           <div className={styles.headerInfo}>
             <span className={styles.headerName}>Sity</span>
             <StatusBadge status={status} />
+            <BgJobIndicator active={backgroundJobsActive > 0} justFinished={backgroundJustFinished} />
           </div>
 
           <div className={styles.headerMenu}>

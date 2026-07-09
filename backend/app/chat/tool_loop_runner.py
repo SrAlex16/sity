@@ -17,6 +17,7 @@ from app.api.schemas import ChatArtifact
 from app.chat.tool_loop_step import run_tool_loop_step
 from app.core.tool_executor import ToolExecutor
 from app.cortex.schemas import AIResponse
+from app.cortex.tool_schemas import TOOL_BLOCKING_POLICIES
 
 
 @dataclass
@@ -52,6 +53,11 @@ class ToolLoopRunOutcome:
 
 
 _DEFAULT_MAX_ITERATIONS = 3
+
+
+def get_blocking_policy(tool_name: str) -> str:
+    """Return the blocking policy for a tool: 'immediate', 'detachable', or 'blocking'."""
+    return TOOL_BLOCKING_POLICIES.get(tool_name, "blocking")
 
 
 def run_tool_loop(
