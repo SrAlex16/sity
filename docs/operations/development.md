@@ -65,6 +65,25 @@ cd mobile && npm run build
 sudo systemctl reload caddy
 ```
 
+**⚠️ El build es obligatorio tras cualquier cambio en `mobile/src/` o
+`mobile/public/`.** Caddy sirve directamente el contenido de
+`mobile/dist/` — Vite genera nombres de archivo con hash de contenido,
+así que sin rebuild el archivo en disco no cambia y ningún cambio de
+código llega al navegador, Service Worker o no.
+
+El servicio systemd `sity-frontend` es **solo el servidor de desarrollo
+de Vite en el puerto 5173** — no tiene ninguna relación con lo que
+Caddy sirve en producción. Reiniciarlo no reconstruye ni redespliega nada.
+
+**Verificar que un build llegó al navegador:**
+1. Comprobar que el hash de `dist/assets/index-*.js` cambió tras el build.
+2. `Shift+F5` en el navegador.
+3. DevTools → Sources → confirmar que el hash del bundle cargado coincide
+   con el recién generado.
+4. Si no coincide: DevTools → Application → Service Workers — puede haber
+   una versión en "waiting to activate". Pulsar "skipWaiting" y recargar.
+   (Ver docs/turn-cancellation.md §7a para el detalle completo.)
+
 ## Qué no subir a git
 
 ```

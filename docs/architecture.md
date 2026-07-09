@@ -39,7 +39,7 @@ Responsabilidades:
 - chat;
 - memoria;
 - tools;
-- confirmaciones;
+- confirmaciones (ver docs/turn-cancellation.md para la cancelación de turnos);
 - proveedores IA;
 - sensores;
 - eventos SSE (ver docs/background-tasks.md para tareas en background);
