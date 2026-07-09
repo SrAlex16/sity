@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from typing import Any
+
+import requests
+
 from app.integrations.spotify_auth import is_spotify_connected, load_credentials
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
-import requests
+_BASE = "https://api.spotify.com/v1"
 
 
 def _not_connected(tool_name: str) -> ToolExecutionResult:
@@ -21,22 +25,38 @@ def _not_connected(tool_name: str) -> ToolExecutionResult:
     )
 
 
-def _api(path: str, *, params: dict | None = None) -> requests.Response:
+def _headers() -> dict[str, str]:
     token = load_credentials()
-    return requests.get(
-        f"https://api.spotify.com/v1{path}",
-        headers={"Authorization": f"Bearer {token['access_token']}"},
-        params=params,
-        timeout=10,
+    return {"Authorization": f"Bearer {token['access_token']}"}
+
+
+def _get(path: str, *, params: dict | None = None) -> requests.Response:
+    return requests.get(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+
+
+def _put(path: str, *, params: dict | None = None, body: dict | None = None) -> requests.Response:
+    return requests.put(
+        f"{_BASE}{path}", headers={**_headers(), "Content-Type": "application/json"},
+        params=params, json=body or {}, timeout=10,
     )
 
+
+def _post(path: str, *, params: dict | None = None) -> requests.Response:
+    return requests.post(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+
+
+def _device_params(device_id: str | None) -> dict[str, Any]:
+    return {"device_id": device_id} if device_id else {}
+
+
+# ── Read tools ────────────────────────────────────────────────────────────────
 
 @tool_handler("spotify_now_playing")
 def handle_spotify_now_playing(ctx: ToolContext) -> ToolExecutionResult:
     if not is_spotify_connected():
         return _not_connected(ctx.tool_name)
 
-    resp = _api("/me/player/currently-playing", params={"market": "ES"})
+    resp = _get("/me/player/currently-playing", params={"market": "ES"})
 
     if resp.status_code == 204 or not resp.content:
         output = "En este momento no hay ninguna canción en reproducción."
@@ -83,7 +103,7 @@ def handle_spotify_recently_played(ctx: ToolContext) -> ToolExecutionResult:
         return _not_connected(ctx.tool_name)
 
     limit = min(int(ctx.tool_input.get("limit", 10)), 50)
-    resp = _api("/me/player/recently-played", params={"limit": limit})
+    resp = _get("/me/player/recently-played", params={"limit": limit})
 
     if not resp.ok:
         msg = f"Error al obtener el historial de Spotify ({resp.status_code})."
@@ -120,7 +140,7 @@ def handle_spotify_list_devices(ctx: ToolContext) -> ToolExecutionResult:
     if not is_spotify_connected():
         return _not_connected(ctx.tool_name)
 
-    resp = _api("/me/player/devices")
+    resp = _get("/me/player/devices")
 
     if not resp.ok:
         msg = f"Error al obtener dispositivos de Spotify ({resp.status_code})."
@@ -151,4 +171,172 @@ def handle_spotify_list_devices(ctx: ToolContext) -> ToolExecutionResult:
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=output,
         updated_parameters=[], raw_result={"output": output},
+    )
+
+
+# ── Control tools ─────────────────────────────────────────────────────────────
+
+def _search_uri(query: str) -> tuple[str, str] | None:
+    """Resolve a text query to (spotify_uri, description).
+
+    Searches tracks first; falls back to albums if no track is found.
+    Returns None if nothing is found.
+    """
+    resp = _get("/search", params={"q": query, "type": "track,album", "limit": 1, "market": "ES"})
+    if not resp.ok:
+        return None
+    data = resp.json()
+
+    tracks = data.get("tracks", {}).get("items", [])
+    if tracks:
+        t = tracks[0]
+        artists = ", ".join(a["name"] for a in t.get("artists", []))
+        desc = f"{t['name']} — {artists}"
+        return t["uri"], desc
+
+    albums = data.get("albums", {}).get("items", [])
+    if albums:
+        a = albums[0]
+        artists = ", ".join(ar["name"] for ar in a.get("artists", []))
+        desc = f"álbum {a['name']} — {artists}"
+        return a["uri"], desc
+
+    return None
+
+
+@tool_handler("spotify_play")
+def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    query: str = str(ctx.tool_input.get("query", "")).strip()
+    device_id: str | None = ctx.tool_input.get("device_id") or None
+    params = _device_params(device_id)
+
+    if query:
+        resolved = _search_uri(query)
+        if resolved is None:
+            msg = f"No encontré nada en Spotify para '{query}'."
+            return ToolExecutionResult(
+                tool_name=ctx.tool_name, ok=False, message=msg,
+                updated_parameters=[], raw_result={"output": msg},
+            )
+        uri, desc = resolved
+        # Track URI → uris list; album/playlist URI → context_uri
+        if ":track:" in uri:
+            body: dict[str, Any] = {"uris": [uri]}
+        else:
+            body = {"context_uri": uri}
+        resp = _put("/me/player/play", params=params, body=body)
+        output = f"Reproduciendo: {desc}."
+    else:
+        resp = _put("/me/player/play", params=params)
+        output = "Reproducción reanudada."
+
+    if resp.status_code in (200, 204):
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    if resp.status_code == 404:
+        msg = "No hay ningún dispositivo Spotify activo. Abre Spotify en algún dispositivo primero."
+    elif resp.status_code == 403:
+        msg = "Operación no permitida. ¿Spotify Premium activo?"
+    else:
+        msg = f"Error al reproducir en Spotify ({resp.status_code})."
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=False, message=msg,
+        updated_parameters=[], raw_result={"output": msg},
+    )
+
+
+@tool_handler("spotify_pause")
+def handle_spotify_pause(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    device_id: str | None = ctx.tool_input.get("device_id") or None
+    resp = _put("/me/player/pause", params=_device_params(device_id))
+
+    if resp.status_code in (200, 204):
+        output = "Reproducción pausada."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    if resp.status_code == 403:
+        msg = "No se puede pausar (¿Spotify Premium activo?)."
+    elif resp.status_code == 404:
+        msg = "No hay ningún dispositivo Spotify activo."
+    else:
+        msg = f"Error al pausar en Spotify ({resp.status_code})."
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=False, message=msg,
+        updated_parameters=[], raw_result={"output": msg},
+    )
+
+
+@tool_handler("spotify_skip")
+def handle_spotify_skip(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    direction = str(ctx.tool_input.get("direction", "next")).lower()
+    if direction not in ("next", "previous"):
+        direction = "next"
+    device_id: str | None = ctx.tool_input.get("device_id") or None
+    params = _device_params(device_id)
+
+    path = "/me/player/next" if direction == "next" else "/me/player/previous"
+    resp = _post(path, params=params)
+
+    if resp.status_code in (200, 204):
+        output = "Canción anterior." if direction == "previous" else "Canción siguiente."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    if resp.status_code == 403:
+        msg = "No se puede saltar de canción (¿Spotify Premium activo?)."
+    elif resp.status_code == 404:
+        msg = "No hay ningún dispositivo Spotify activo."
+    else:
+        msg = f"Error al saltar de canción ({resp.status_code})."
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=False, message=msg,
+        updated_parameters=[], raw_result={"output": msg},
+    )
+
+
+@tool_handler("spotify_set_volume")
+def handle_spotify_set_volume(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    volume = int(ctx.tool_input.get("volume_percent", 50))
+    volume = max(0, min(100, volume))
+    device_id: str | None = ctx.tool_input.get("device_id") or None
+    params = {"volume_percent": volume, **_device_params(device_id)}
+
+    resp = _put("/me/player/volume", params=params)
+
+    if resp.status_code in (200, 204):
+        output = f"Volumen ajustado a {volume}%."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    if resp.status_code == 403:
+        msg = "No se puede cambiar el volumen (¿Spotify Premium activo?)."
+    elif resp.status_code == 404:
+        msg = "No hay ningún dispositivo Spotify activo."
+    else:
+        msg = f"Error al ajustar el volumen ({resp.status_code})."
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=False, message=msg,
+        updated_parameters=[], raw_result={"output": msg},
     )

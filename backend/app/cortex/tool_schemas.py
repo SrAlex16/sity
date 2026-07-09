@@ -1277,6 +1277,62 @@ SPOTIFY_LIST_DEVICES_TOOL = {
     },
 }
 
+SPOTIFY_PLAY_TOOL = {
+    "name": "spotify_play",
+    "description": (
+        "Reproduce música en Spotify. Sin 'query': reanuda la reproducción pausada. "
+        "Con 'query' (nombre de canción, artista o álbum): busca y reproduce el primer "
+        "resultado. La búsqueda es autocontenida — no necesita llamadas previas a search. "
+        "Acepta 'device_id' opcional; sin él actúa sobre el dispositivo activo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query":     {"type": "string", "description": "Canción, artista o álbum a buscar y reproducir. Omitir para reanudar."},
+            "device_id": {"type": "string", "description": "ID del dispositivo destino (de spotify_list_devices). Opcional."},
+        },
+    },
+}
+
+SPOTIFY_PAUSE_TOOL = {
+    "name": "spotify_pause",
+    "description": "Pausa la reproducción de Spotify. Acepta 'device_id' opcional.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "device_id": {"type": "string", "description": "ID del dispositivo. Opcional."},
+        },
+    },
+}
+
+SPOTIFY_SKIP_TOOL = {
+    "name": "spotify_skip",
+    "description": (
+        "Salta a la siguiente o anterior canción en Spotify. "
+        "'direction': 'next' (por defecto) o 'previous'. Acepta 'device_id' opcional."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "direction":  {"type": "string", "enum": ["next", "previous"], "description": "Dirección del salto. Por defecto 'next'."},
+            "device_id":  {"type": "string", "description": "ID del dispositivo. Opcional."},
+        },
+    },
+}
+
+SPOTIFY_SET_VOLUME_TOOL = {
+    "name": "spotify_set_volume",
+    "description": "Cambia el volumen de Spotify (0-100). Acepta 'device_id' opcional.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "volume_percent": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Volumen deseado (0-100)."},
+            "device_id":      {"type": "string", "description": "ID del dispositivo. Opcional."},
+        },
+        "required": ["volume_percent"],
+    },
+}
+
 GOOGLE_TOOLSET = [
     GMAIL_SEARCH_TOOL,
     CALENDAR_LIST_EVENTS_TOOL,
@@ -1322,6 +1378,10 @@ BASE_TOOLSET: list[dict] = [
     SPOTIFY_NOW_PLAYING_TOOL,
     SPOTIFY_RECENTLY_PLAYED_TOOL,
     SPOTIFY_LIST_DEVICES_TOOL,
+    SPOTIFY_PLAY_TOOL,
+    SPOTIFY_PAUSE_TOOL,
+    SPOTIFY_SKIP_TOOL,
+    SPOTIFY_SET_VOLUME_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [
