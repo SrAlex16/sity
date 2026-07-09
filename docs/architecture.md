@@ -42,7 +42,7 @@ Responsabilidades:
 - confirmaciones;
 - proveedores IA;
 - sensores;
-- eventos SSE;
+- eventos SSE (ver docs/background-tasks.md para tareas en background);
 - presupuesto;
 - runtime config.
 

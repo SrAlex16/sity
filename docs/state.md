@@ -4,7 +4,8 @@
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
-docs/architecture.md. Para decisiones ver docs/decisions.md.
+docs/architecture.md. Para decisiones ver docs/decisions.md. Para el
+sistema de tareas en background ver docs/background-tasks.md.
 
 ## Infraestructura activa
 
