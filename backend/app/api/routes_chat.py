@@ -181,10 +181,14 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str) -> None:
                     _skip_history_turns=2,
                     _upgrade_context=_upgrade_ctx,
                 )
-            publish_event_sync(turn_id, {
-                "type": "response",
-                "data": result.model_dump(mode="json"),
-            })
+            # Skip "response" event for cancelled turns — the frontend already
+            # shows a cancelled bubble from the abort handler; emitting here
+            # would cause a duplicate or overwrite it with the empty text.
+            if getattr(result, "error_type", None) != "cancelled":
+                publish_event_sync(turn_id, {
+                    "type": "response",
+                    "data": result.model_dump(mode="json"),
+                })
         except Exception:
             publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
         finally:

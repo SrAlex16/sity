@@ -4,6 +4,7 @@ from typing import Any
 from app.cortex.providers.base import AITextProvider
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest, AIResponse, AIUsageData
+from app.trace.logger import write_log
 
 
 class AIGateway:
@@ -26,6 +27,17 @@ class AIGateway:
                 raise RuntimeError("Empty response from Claude")
             return response
         except Exception as exc:
+            write_log(
+                level="ERROR",
+                module="cortex",
+                event="gateway_exception_caught",
+                trace_id=request.trace_id,
+                payload={
+                    "method": "generate",
+                    "exc_type": exc.__class__.__name__,
+                    "exc_msg": str(exc)[:300],
+                },
+            )
             return AIResponse(
                 ok=False,
                 provider=self.provider.name,
@@ -57,6 +69,17 @@ class AIGateway:
                 raise RuntimeError("Empty response from Claude after tool results")
             return response
         except Exception as exc:
+            write_log(
+                level="ERROR",
+                module="cortex",
+                event="gateway_exception_caught",
+                trace_id=request.trace_id,
+                payload={
+                    "method": "generate_with_tool_results",
+                    "exc_type": exc.__class__.__name__,
+                    "exc_msg": str(exc)[:300],
+                },
+            )
             return AIResponse(
                 ok=False,
                 provider=self.provider.name,

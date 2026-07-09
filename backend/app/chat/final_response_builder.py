@@ -111,7 +111,14 @@ def build_final_ai_response(
     response.text = guard_result.text
 
     # 5. Persist assistant message
-    save_message(role="sity", text=response.text, trace_id=trace_id,
+    # Cancelled turns still need a Sity row so the history never has two
+    # consecutive user messages (which the Anthropic API rejects).
+    _text_to_save = (
+        "Has cancelado la operación."
+        if response.error_type == "cancelled"
+        else response.text
+    )
+    save_message(role="sity", text=_text_to_save, trace_id=trace_id,
                  tone_meta=tone_meta, output_mode=output_mode, source_channel=source_channel)
 
     # 6. Track refusal if applicable

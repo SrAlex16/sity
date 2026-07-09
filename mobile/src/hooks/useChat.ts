@@ -319,6 +319,7 @@ function _listenTurn(
   return new Promise((resolve, reject) => {
     const es = new EventSource(`/chat/stream/${turn_id}`);
     let serverClosedNormally = false;
+    let responseSeen = false;
 
     es.onmessage = (e: MessageEvent) => {
       let ev: SseEvent;
@@ -328,6 +329,7 @@ function _listenTurn(
         return;
       }
       if (ev.type === 'response' && ev.data) {
+        responseSeen = true;
         setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
         setStatus('conectado');
       } else if (ev.type === 'done' || ev.type === 'cancelled') {
@@ -352,6 +354,13 @@ function _listenTurn(
 
     signal.addEventListener('abort', () => {
       es.close();
+      // The abort fires synchronously before any SSE events arrive, so show
+      // the cancelled bubble now. Guard with responseSeen to avoid duplicates
+      // in the (unlikely) race where a 'response' event arrived first.
+      if (!responseSeen) {
+        setMessages((prev) => [...prev, cancelledMsg()]);
+      }
+      setStatus('conectado');
       resolve();
     }, { once: true });
   });

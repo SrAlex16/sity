@@ -110,19 +110,33 @@ class ClaudeProvider:
             if request.tool_choice:
                 kwargs["tool_choice"] = request.tool_choice
 
-        with self.client.messages.stream(**kwargs) as stream:
-            for _chunk in stream:
-                if is_cancelled(request.client_turn_id):
-                    return AIResponse(
-                        ok=False,
-                        provider="anthropic",
-                        model=self.model,
-                        text="",
-                        usage=AIUsageData(),
-                        latency_ms=round((time.perf_counter() - started) * 1000),
-                        error_type="cancelled",
-                    )
-            message = stream.get_final_message()
+        _cancelled: AIResponse | None = None
+        message = None
+        try:
+            with self.client.messages.stream(**kwargs) as stream:
+                for _chunk in stream:
+                    if is_cancelled(request.client_turn_id):
+                        _cancelled = AIResponse(
+                            ok=False,
+                            provider="anthropic",
+                            model=self.model,
+                            text="",
+                            usage=AIUsageData(),
+                            latency_ms=round((time.perf_counter() - started) * 1000),
+                            error_type="cancelled",
+                        )
+                        break
+                else:
+                    message = stream.get_final_message()
+        except Exception:
+            if _cancelled is not None:
+                # Suppress any exception from __exit__ closing a live stream on cancel.
+                pass
+            else:
+                raise
+
+        if _cancelled is not None:
+            return _cancelled
 
         latency_ms = round((time.perf_counter() - started) * 1000)
         return self._to_ai_response(message=message, latency_ms=latency_ms)
@@ -144,28 +158,40 @@ class ClaudeProvider:
             {"role": "user", "content": tool_results},
         ]
 
-        with self.client.messages.stream(
-            model=self.model,
-            max_tokens=request.max_tokens,
-            system=_system_with_cache(request.system_prompt),  # type: ignore[arg-type]
-            tools=_tools_with_cache(effective_tools),  # type: ignore[arg-type]
-            messages=_msgs,
-        ) as stream:
-            for _chunk in stream:
-                if is_cancelled(request.client_turn_id):
-                    return AIResponse(
-                        ok=False,
-                        provider="anthropic",
-                        model=self.model,
-                        text="",
-                        usage=AIUsageData(),
-                        latency_ms=round((time.perf_counter() - started) * 1000),
-                        error_type="cancelled",
-                    )
-            message = stream.get_final_message()
+        _cancelled: AIResponse | None = None
+        message = None
+        try:
+            with self.client.messages.stream(
+                model=self.model,
+                max_tokens=request.max_tokens,
+                system=_system_with_cache(request.system_prompt),  # type: ignore[arg-type]
+                tools=_tools_with_cache(effective_tools),  # type: ignore[arg-type]
+                messages=_msgs,
+            ) as stream:
+                for _chunk in stream:
+                    if is_cancelled(request.client_turn_id):
+                        _cancelled = AIResponse(
+                            ok=False,
+                            provider="anthropic",
+                            model=self.model,
+                            text="",
+                            usage=AIUsageData(),
+                            latency_ms=round((time.perf_counter() - started) * 1000),
+                            error_type="cancelled",
+                        )
+                        break
+                else:
+                    message = stream.get_final_message()
+        except Exception:
+            if _cancelled is not None:
+                pass
+            else:
+                raise
+
+        if _cancelled is not None:
+            return _cancelled
 
         latency_ms = round((time.perf_counter() - started) * 1000)
-
         return self._to_ai_response(
             message=message,
             latency_ms=latency_ms,
