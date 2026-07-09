@@ -889,6 +889,81 @@ el modelo no está seguro de qué hacer.
 
 ---
 
+## Integración Spotify
+
+### Módulos
+
+- `backend/app/integrations/spotify_auth.py` — OAuth2 Authorization Code, refresh automático,
+  token autocontenido (almacena `client_id`/`client_secret` en `data/spotify_token.json` para
+  no necesitar variables de entorno tras el setup)
+- `backend/app/tools/handlers/spotify_tools.py` — 8 handlers (3 lectura + 4 control + 1 contexto)
+- `scripts/spotify_auth_setup.py` — autenticación inicial manual (una vez)
+
+### Flujo de autenticación
+
+```
+python scripts/spotify_auth_setup.py
+  → URL en terminal
+  → autorizar en cualquier navegador (funciona vía SSH)
+  → browser muestra "connection refused" (normal — Redirect URI es http://127.0.0.1:8888/callback)
+  → pegar URL completa de la barra del navegador (o solo el code=...)
+  → token guardado en data/spotify_token.json con client_id/secret incluidos
+  → refresh automático sin intervención del usuario
+```
+
+### Scopes activos
+
+- `user-read-currently-playing`
+- `user-read-playback-state`
+- `user-read-recently-played`
+- `user-modify-playback-state`
+- `playlist-read-private`
+
+### Tools disponibles
+
+| Tool | Acción |
+|------|--------|
+| `spotify_now_playing` | Canción/estado actual |
+| `spotify_recently_played` | Historial reciente (limit opcional) |
+| `spotify_list_devices` | Dispositivos disponibles con IDs |
+| `spotify_play` | Reproducir por búsqueda (query) o reanudar |
+| `spotify_pause` | Pausar |
+| `spotify_skip` | Saltar (next/previous) |
+| `spotify_set_volume` | Cambiar volumen (0-100) |
+| `spotify_resume_previous` | Volver a lo que sonaba antes del último cambio |
+
+### Patrón de diseño
+
+Todas las tools son de ejecución directa — sin pending action ni confirmación.
+`device_id` es opcional en todas las tools de control; si se omite, Spotify actúa
+sobre el dispositivo activo.
+
+`_search_uri(query)` resuelve texto a URI: busca tracks primero, álbumes como fallback.
+Tracks → `uris=[uri]`; álbumes/playlists → `context_uri=uri`.
+
+Las 8 tools están en `BASE_TOOLSET` (siempre disponibles). Misma razón que Google:
+detección por keywords es demasiado frágil con lenguaje natural.
+
+### Contexto de reproducción anterior
+
+Cuando el usuario pide "pon lo que sonaba antes", Sity no tiene memoria implícita
+de qué estaba sonando — cada tool call es autocontenida. Solución: antes de cada
+cambio de reproducción (`spotify_play` con query, `spotify_skip`), se captura el
+estado actual con `GET /me/player/currently-playing` y se persiste en `Setting`
+con key `"spotify:previous_context"` (JSON: `{uri, description, saved_at}`).
+
+- Si hay un `context_uri` activo (playlist, álbum), se guarda ese — permite volver
+  a la playlist completa, no solo a la pista individual.
+- Si es reproducción suelta (sin contexto), se guarda el track uri.
+- Si no hay nada sonando (204), no se guarda nada.
+- `spotify_resume_previous` lee ese Setting y reproduce. Si no existe, responde
+  con un mensaje claro en lugar de preguntar genérico al usuario.
+- Solo se guarda "lo último antes del último cambio" — no hay pila histórica.
+  `spotify_recently_played` cubre el historial más largo.
+- Se usa `Setting` (modelo clave-valor ya existente) — no hace falta un modelo nuevo.
+
+---
+
 ## Domótica (Home Assistant)
 
 ### Flujo

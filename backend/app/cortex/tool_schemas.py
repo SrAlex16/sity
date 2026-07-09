@@ -1333,6 +1333,21 @@ SPOTIFY_SET_VOLUME_TOOL = {
     },
 }
 
+SPOTIFY_RESUME_PREVIOUS_TOOL = {
+    "name": "spotify_resume_previous",
+    "description": (
+        "Reanuda en Spotify lo que sonaba justo antes del último cambio (canción suelta, "
+        "álbum o playlist). Úsala ante frases como 'pon lo que sonaba antes', "
+        "'vuelve a la playlist anterior', 'lo que tenía puesto antes de esto'. "
+        "No acepta parámetros. Si no hay contexto guardado, responde que no tiene registro."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    },
+}
+
 GOOGLE_TOOLSET = [
     GMAIL_SEARCH_TOOL,
     CALENDAR_LIST_EVENTS_TOOL,
@@ -1382,6 +1397,7 @@ BASE_TOOLSET: list[dict] = [
     SPOTIFY_PAUSE_TOOL,
     SPOTIFY_SKIP_TOOL,
     SPOTIFY_SET_VOLUME_TOOL,
+    SPOTIFY_RESUME_PREVIOUS_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [

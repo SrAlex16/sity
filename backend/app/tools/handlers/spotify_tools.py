@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+import time
 from typing import Any
 
 import requests
+from sqlmodel import Session, select
 
 from app.integrations.spotify_auth import is_spotify_connected, load_credentials
+from app.memory.db import engine
+from app.memory.models import Setting, utc_now
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
@@ -47,6 +52,58 @@ def _post(path: str, *, params: dict | None = None) -> requests.Response:
 
 def _device_params(device_id: str | None) -> dict[str, Any]:
     return {"device_id": device_id} if device_id else {}
+
+
+_PREVIOUS_CONTEXT_KEY = "spotify:previous_context"
+
+
+def _capture_current_context() -> dict | None:
+    """Return a snapshot of what's currently playing, or None if nothing is.
+
+    Tries to capture context_uri first (playlist/album), falls back to track uri.
+    """
+    resp = _get("/me/player/currently-playing", params={"market": "ES"})
+    if resp.status_code == 204 or not resp.content:
+        return None
+
+    data = resp.json()
+    item = data.get("item") or {}
+    if not item:
+        return None
+
+    context = data.get("context") or {}
+    context_uri: str | None = context.get("uri")
+
+    track_uri: str = item.get("uri", "")
+    name = item.get("name", "?")
+    artists = ", ".join(a["name"] for a in item.get("artists", []))
+    description = f"{name} — {artists}"
+
+    if context_uri and not context_uri.startswith("spotify:track:"):
+        return {"uri": context_uri, "description": description, "saved_at": time.time()}
+    return {"uri": track_uri, "description": description, "saved_at": time.time()}
+
+
+def _save_previous_context() -> None:
+    snapshot = _capture_current_context()
+    if snapshot is None:
+        return
+    with Session(engine) as db:
+        existing = db.exec(select(Setting).where(Setting.key == _PREVIOUS_CONTEXT_KEY)).first()
+        now = utc_now()
+        if existing:
+            existing.value_json = json.dumps(snapshot)
+            existing.updated_at = now
+            db.add(existing)
+        else:
+            db.add(Setting(key=_PREVIOUS_CONTEXT_KEY, value_json=json.dumps(snapshot), source="spotify", created_at=now, updated_at=now))
+        db.commit()
+
+
+def _load_previous_context() -> dict | None:
+    with Session(engine) as db:
+        row = db.exec(select(Setting).where(Setting.key == _PREVIOUS_CONTEXT_KEY)).first()
+        return json.loads(row.value_json) if row else None
 
 
 # ── Read tools ────────────────────────────────────────────────────────────────
@@ -222,6 +279,7 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
                 updated_parameters=[], raw_result={"output": msg},
             )
         uri, desc = resolved
+        _save_previous_context()
         # Track URI → uris list; album/playlist URI → context_uri
         if ":track:" in uri:
             body: dict[str, Any] = {"uris": [uri]}
@@ -290,6 +348,7 @@ def handle_spotify_skip(ctx: ToolContext) -> ToolExecutionResult:
     params = _device_params(device_id)
 
     path = "/me/player/next" if direction == "next" else "/me/player/previous"
+    _save_previous_context()
     resp = _post(path, params=params)
 
     if resp.status_code in (200, 204):
@@ -305,6 +364,48 @@ def handle_spotify_skip(ctx: ToolContext) -> ToolExecutionResult:
         msg = "No hay ningún dispositivo Spotify activo."
     else:
         msg = f"Error al saltar de canción ({resp.status_code})."
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=False, message=msg,
+        updated_parameters=[], raw_result={"output": msg},
+    )
+
+
+@tool_handler("spotify_resume_previous")
+def handle_spotify_resume_previous(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    snapshot = _load_previous_context()
+    if snapshot is None:
+        msg = "No tengo registro de qué sonaba antes."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    uri: str = snapshot.get("uri", "")
+    desc: str = snapshot.get("description", uri)
+
+    if ":track:" in uri:
+        body: dict[str, Any] = {"uris": [uri]}
+    else:
+        body = {"context_uri": uri}
+
+    resp = _put("/me/player/play", body=body)
+
+    if resp.status_code in (200, 204):
+        output = f"Reanudando: {desc}."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    if resp.status_code == 404:
+        msg = "No hay ningún dispositivo Spotify activo. Abre Spotify en algún dispositivo primero."
+    elif resp.status_code == 403:
+        msg = "Operación no permitida. ¿Spotify Premium activo?"
+    else:
+        msg = f"Error al reanudar en Spotify ({resp.status_code})."
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=False, message=msg,
         updated_parameters=[], raw_result={"output": msg},

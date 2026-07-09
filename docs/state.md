@@ -68,6 +68,8 @@ GOOGLE_CLIENT_ID         — OAuth Google
 GOOGLE_CLIENT_SECRET     — OAuth Google
 HA_TOKEN                 — Home Assistant Long-Lived Token
 HA_URL                   — http://192.168.0.118:8123
+SPOTIFY_CLIENT_ID        — Spotify app Client ID (solo para setup inicial)
+SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
