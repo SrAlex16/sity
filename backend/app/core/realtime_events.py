@@ -34,7 +34,7 @@ def ensure_queue(turn_id: str) -> None:
 
 
 def publish_event_sync(client_turn_id: str | None, event: dict[str, Any]) -> None:
-    if not client_turn_id or _loop is None:
+    if not client_turn_id or _loop is None or not _loop.is_running():
         return
     asyncio.run_coroutine_threadsafe(publish_event(client_turn_id, event), _loop)
 
@@ -46,7 +46,7 @@ async def publish_session_event(session_id: str, event: dict[str, Any]) -> None:
 
 
 def publish_session_event_sync(session_id: str | None, event: dict[str, Any]) -> None:
-    if not session_id or _loop is None:
+    if not session_id or _loop is None or not _loop.is_running():
         return
     asyncio.run_coroutine_threadsafe(publish_session_event(session_id, event), _loop)
 

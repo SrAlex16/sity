@@ -99,7 +99,7 @@ export function useChat() {
     const es = new EventSource(`/events/session/${SESSION_ID}`);
 
     es.onmessage = (e: MessageEvent) => {
-      let ev: { type: string; job_id?: string; tool_name?: string; error?: string };
+      let ev: { type: string; job_id?: string; tool_name?: string; error?: string; text?: string };
       try { ev = JSON.parse(e.data as string); } catch { return; }
 
       if (ev.type === 'job_start') {
@@ -109,6 +109,11 @@ export function useChat() {
         setBackgroundJustFinished(true);
         if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
         bgFlashTimerRef.current = setTimeout(() => setBackgroundJustFinished(false), BG_FLASH_MS);
+      } else if (ev.type === 'proactive_message' && ev.text) {
+        setMessages((prev) => [...prev, {
+          id: uid(), type: 'text' as const, role: 'assistant' as const,
+          text: ev.text!, timestamp: new Date(),
+        }]);
       }
     };
 

@@ -46,16 +46,36 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = job
 
+        # Publish job_start synchronously before thread starts so the frontend
+        # indicator appears before (not after) the AI's immediate response arrives.
+        from app.core.realtime_events import publish_session_event_sync
+        publish_session_event_sync(session_id, {
+            "type": "job_start",
+            "job_id": job_id,
+            "tool_name": tool_name,
+        })
+
         def _run() -> None:
             try:
                 result = fn(*args, **(kwargs or {}))
                 with self._lock:
                     job.status = "done"
                     job.result_text = str(result) if result is not None else ""
+                publish_session_event_sync(session_id, {
+                    "type": "job_done",
+                    "job_id": job_id,
+                    "tool_name": tool_name,
+                })
             except Exception as exc:
                 with self._lock:
                     job.status = "error"
                     job.error = str(exc)
+                publish_session_event_sync(session_id, {
+                    "type": "job_error",
+                    "job_id": job_id,
+                    "tool_name": tool_name,
+                    "error": str(exc),
+                })
             finally:
                 if on_done is not None:
                     try:

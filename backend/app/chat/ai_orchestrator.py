@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from sqlmodel import Session, select
 
@@ -31,13 +31,96 @@ from app.chat.model_router import ModelUpgradeProposal, set_proposal
 from app.chat.response_factory import local_tool_response, micro_reaction_response
 from app.chat.response_guard import has_narrated_search
 from app.chat.routing_decision import ProviderMode
-from app.chat.tool_loop_runner import run_tool_loop
+from app.chat.tool_loop_runner import ToolLoopRunOutcome, get_blocking_policy, run_tool_loop
 from app.chat.turn_context import TurnContext
 from app.core.persona_engine import PersonaDecision, PersonaEngine
 from app.core.tool_executor import ToolExecutor
 from app.memory.models import AIUsage, ChatMessage
 from app.trace.logger import write_log
 from app.trace.redaction import redact_tool_call_input
+
+
+_BG_SESSION_ID = "default"  # DEFAULT_CHAT_SESSION_ID — hardcoded, no session_id in TurnContext
+
+
+def _detach_tool(
+    *,
+    tool_call: "Any",
+    executor: ToolExecutor,
+    trace_id: str,
+) -> ToolLoopRunOutcome:
+    """Submit a detachable tool to the background and return a synthetic outcome.
+
+    The synthetic tool_result tells the model the job is in progress so it can
+    respond immediately. When the job finishes, on_done publishes a proactive_message
+    to the session SSE channel for the frontend to display as a new chat message.
+    """
+    from app.core.job_manager import Job, get_job_manager
+    from app.core.realtime_events import publish_session_event_sync
+
+    tool_name = tool_call.name
+    tool_input = tool_call.input
+    bg_trace_id = f"bg_{trace_id}"
+
+    def _tool_fn() -> str:
+        exec_result = executor.execute_tool_call(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            trace_id=bg_trace_id,
+            client_turn_id=None,
+        )
+        if not exec_result.ok:
+            return f"No se pudo completar la búsqueda: {exec_result.message}"
+        return str(exec_result.raw_result.get("text", exec_result.message))
+
+    def _on_done(job: Job) -> None:
+        text = job.result_text if job.status == "done" else f"Error al buscar: {job.error}"
+        publish_session_event_sync(_BG_SESSION_ID, {
+            "type": "proactive_message",
+            "text": text,
+            "subtype": "job_done",
+            "tool_name": tool_name,
+            "job_id": job.job_id,
+        })
+
+    job_id = get_job_manager().submit(
+        tool_name=tool_name,
+        session_id=_BG_SESSION_ID,
+        fn=_tool_fn,
+        on_done=_on_done,
+    )
+
+    write_log(
+        level="INFO",
+        module="chat",
+        event="tool_detached_to_background",
+        trace_id=trace_id,
+        payload={"tool_name": tool_name, "job_id": job_id},
+    )
+
+    return ToolLoopRunOutcome(
+        early_kind=None,
+        early_tool_name="",
+        local_text="",
+        local_model="",
+        sensor_event_type="",
+        sensor_description="",
+        sensor_artifacts=[],
+        tool_results_for_claude=[{
+            "type": "tool_result",
+            "tool_use_id": tool_call.id,
+            "content": json.dumps({
+                "status": "en_progreso",
+                "job_id": job_id,
+                "message": (
+                    "Búsqueda lanzada en segundo plano. "
+                    "El resultado llegará como notificación en breve."
+                ),
+            }),
+        }],
+        updated_parameters=[],
+        artifacts=[],
+    )
 
 
 def _clean_text_for_tts(text: str) -> str:
@@ -370,13 +453,21 @@ class ChatAIOrchestrator:
 
             else:
                 executor = ToolExecutor(session)
-                _loop = run_tool_loop(
-                    planner_response=planner_response,
-                    executor=executor,
-                    trace_id=ctx.trace_id,
-                    client_turn_id=request.client_turn_id,
-                    max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
-                )
+                _first_tool = planner_response.tool_calls[0]
+                if get_blocking_policy(_first_tool.name) == "detachable":
+                    _loop = _detach_tool(
+                        tool_call=_first_tool,
+                        executor=executor,
+                        trace_id=ctx.trace_id,
+                    )
+                else:
+                    _loop = run_tool_loop(
+                        planner_response=planner_response,
+                        executor=executor,
+                        trace_id=ctx.trace_id,
+                        client_turn_id=request.client_turn_id,
+                        max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
+                    )
 
                 if _loop.early_kind == "local_final":
                     _usage_row = AIUsage(
