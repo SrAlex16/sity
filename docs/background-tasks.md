@@ -1,6 +1,6 @@
 # Tareas en segundo plano
 
-Última actualización: 2026-07-09.
+Última actualización: 2026-07-10.
 
 Cómo y por qué Sity ejecuta ciertas tools en background en vez de
 bloquear la respuesta del turno de chat, y cómo el resultado llega
@@ -163,21 +163,77 @@ multi-sesión, este es el punto a revisar primero.
 
 ## 4. Canal SSE de sesión — `realtime_events.py`
 
-`backend/app/core/realtime_events.py` separa dos tipos de canal SSE:
+`backend/app/core/realtime_events.py` separa dos tipos de canal SSE,
+con implementaciones deliberadamente distintas:
 
 - **`subscribe(client_turn_id)` / `publish_event(_sync)`** — canal por
   turno de chat, vive solo mientras dura un turno normal
-  (`/chat/stream/{turn_id}`), se cierra al recibir `done`/`error`.
+  (`/chat/stream/{turn_id}`), se cierra al recibir `done`/`error`, y
+  su cola (`asyncio.Queue` en un `defaultdict`) se elimina al
+  desconectar (`_queues.pop(client_turn_id, None)` en el `finally`).
+  Efímero por diseño: un turno solo importa mientras el cliente lo
+  está esperando activamente.
+
 - **`subscribe_session(session_id)` / `publish_session_event(_sync)`**
   — canal persistente por sesión (`/events/session/{id}`), **nunca se
   cierra por tipo de evento** — solo termina cuando el cliente
   desconecta. Es el canal que recibe `job_start`, `job_done`,
   `job_error` y `proactive_message`.
 
-Ambos usan colas `asyncio.Queue` en un `defaultdict`, y ambos exponen
-una variante `_sync` para poder publicarse desde fuera del event loop
-de asyncio — necesario porque el `on_done` de `JobManager` corre en un
-thread del `ThreadPoolExecutor`, no en una corutina.
+### `_SessionQueue` — por qué no es un `asyncio.Queue` simple
+
+La primera versión de este canal usaba el mismo patrón que el canal
+por turno: `defaultdict(asyncio.Queue)`, con `pop()` al desconectar.
+Esto causaba pérdida silenciosa de eventos — si el `EventSource` del
+frontend tardaba en (re)conectar, o se caía brevemente (un Service
+Worker reiniciando, una red inestable, el navegador en background),
+cualquier evento publicado en ese hueco se perdía para siempre: la
+cola se borraba al desconectar, y el job en background no reintenta
+la publicación.
+
+El diseño actual usa un wrapper `_SessionQueue` por sesión que
+**sobrevive a la desconexión**:
+
+```python
+@dataclass
+class _SessionQueue:
+    queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    last_active: float = field(default_factory=time.monotonic)
+    subscriber_count: int = 0
+
+_session_queues: dict[str, _SessionQueue] = {}
+```
+
+- **La cola no se borra en el `finally` de `subscribe_session`** —
+  solo se decrementa `subscriber_count` y se actualiza `last_active`.
+  Eventos publicados mientras `subscriber_count == 0` se acumulan y
+  se entregan íntegros en cuanto un nuevo subscriber conecta.
+- **Ring buffer (`_SESSION_QUEUE_MAX_SIZE = 20`)** — al publicar, si
+  la cola ya tiene 20 eventos, se descarta el más antiguo antes de
+  añadir el nuevo (`queue.get_nowait()` en `publish_session_event`).
+  Evita que un job en bucle, o un fallo que genere eventos sin cesar
+  mientras nadie escucha, agote la RAM.
+- **TTL (`_SESSION_QUEUE_TTL_SECONDS = 3600`)** — un `_gc_loop()`
+  arrancado desde `set_event_loop()` corre cada
+  `_SESSION_QUEUE_GC_INTERVAL` (10 min) y llama a `gc_once()`, que
+  elimina las entradas de `_session_queues` con `subscriber_count == 0`
+  y más de una hora sin actividad. `gc_once()` es pública
+  específicamente para poder testearla sin mockear el event loop.
+
+Este diseño resuelve el trade-off: sin TTL ni límite de tamaño, no
+borrar la cola al desconectar sería una fuga de memoria sin límite
+(cualquier `session_id` que dejara de reconectarse para siempre
+crecería indefinidamente); con ambos, la cola sobrevive lo suficiente
+para cubrir desconexiones normales (segundos a minutos) sin arriesgar
+memoria a largo plazo. Hoy el riesgo práctico es bajo porque
+`_BG_SESSION_ID = "default"` es la única sesión que existe
+(hardcodeada), pero el mecanismo ya está listo si en el futuro hay
+multi-sesión real.
+
+Ambos canales exponen una variante `_sync` para poder publicarse
+desde fuera del event loop de asyncio — necesario porque el `on_done`
+de `JobManager` corre en un thread del `ThreadPoolExecutor`, no en
+una corutina.
 
 ```python
 def publish_session_event_sync(session_id, event):
@@ -187,24 +243,31 @@ def publish_session_event_sync(session_id, event):
 ```
 
 `_loop` se registra una sola vez, en el startup de FastAPI
-(`backend/app/main.py`):
+(`backend/app/main.py`), y ese mismo registro arranca el `_gc_loop`:
 
 ```python
-@app.on_event("startup")  # o el hook de lifespan equivalente
-async def startup():
-    set_event_loop(asyncio.get_running_loop())
+def set_event_loop(loop: asyncio.AbstractEventLoop) -> None:
+    global _loop
+    _loop = loop
+    loop.create_task(_gc_loop())
 ```
 
-Sin esto, `publish_session_event_sync` hace `return` silenciosamente
-y ningún evento de background llega nunca a ningún sitio — sin
-lanzar excepción, sin loguear nada por defecto. Es el primer sospechoso
-a revisar si un futuro bug hace que las tareas en background vuelvan
-a quedarse mudas.
+Sin este registro, `publish_session_event_sync` hace `return`
+silenciosamente y ningún evento de background llega nunca a ningún
+sitio — sin lanzar excepción, sin loguear nada por defecto. Es el
+primer sospechoso a revisar si un futuro bug hace que las tareas en
+background vuelvan a quedarse mudas.
 
 `sse_subscriber_connected` / `sse_subscriber_disconnected` se loguean
 en `subscribe_session()` al entrar y al salir (bloque `finally`) —
 es la señal más directa para depurar si el problema es de publicación
-(backend) o de consumo (nadie escuchando en ese momento).
+(backend) o de consumo (nadie escuchando en ese momento). Un patrón a
+vigilar: `qsize` creciendo en sucesivos `session_publish_confirmed`
+sin que aparezca ningún `sse_subscriber_connected` de por medio es la
+prueba de que nadie está conectado — con el diseño actual esto ya no
+implica pérdida de datos (la cola los retiene hasta el TTL), pero
+sigue siendo la señal correcta para saber que el frontend no está
+llegando a conectar.
 
 ## 5. Frontend — `useChat.ts`
 
@@ -225,9 +288,32 @@ useEffect(() => {
       setMessages(prev => [...prev, { /* nuevo ChatMessage */ }]);
     }
   };
+
+  // Segunda capa de recuperación: si el SSE se cae y reconecta, recargar
+  // el historial por si algún resultado ya se guardó en DB mientras la
+  // conexión estaba caída (complementa el buffer de _SessionQueue, no
+  // depende de él).
+  let _reconnecting = false;
+  es.onerror = () => { _reconnecting = true; };
+  es.onopen = () => {
+    if (_reconnecting) { _reconnecting = false; void loadHistory(); }
+  };
+
   return () => es.close();
 }, []);
 ```
+
+Dos capas de recuperación independientes cubren el mismo problema
+(pérdida de eventos durante una desconexión) desde ángulos distintos:
+el **buffer del backend** (`_SessionQueue`, sección 4) entrega los
+eventos acumulados en cuanto el `EventSource` reconecta, mientras que
+el **`onerror`/`onopen` del frontend** fuerza un `loadHistory()` — un
+`GET` que trae el historial completo desde la BD — como red de
+seguridad adicional, por si el evento SSE en sí se perdiera por
+cualquier motivo no cubierto por el buffer (por ejemplo, si el TTL de
+una hora ya expiró la cola). No son redundantes: uno confía en la
+cola en memoria, el otro en la fuente de verdad persistente
+(`chatmessage` en SQLite).
 
 `job_start`/`job_done` alimentan el indicador visual de "tarea en
 curso" (`BgJobIndicator` en `ChatScreen.tsx`). `proactive_message` es
