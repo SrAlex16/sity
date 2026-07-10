@@ -140,6 +140,21 @@ Casos que producen WARN en `audio_capture_finished`: `loopback_device_refused`,
 `timeout`, `arecord_not_found`, `cancelled`, o returncode ≠ 0. Ídem para
 `camera_capture_finished`: `timeout`, `fswebcam_not_found`, `cancelled`, returncode ≠ 0.
 
+### Eventos instrumentados (Fase 2 — audio TTS/STT)
+
+| `module` | `event`                     | Cuándo                                                        |
+|----------|-----------------------------|---------------------------------------------------------------|
+| `audio`  | `tts_synthesis_started`     | Antes de invocar Piper (payload: `text_len`)                  |
+| `audio`  | `tts_synthesis_finished`    | Al terminar síntesis (ok/WARN, `audio_size_bytes`+`duration_ms` o motivo) |
+| `audio`  | `stt_model_loading`         | Antes de cargar WhisperModel (primera vez o cambio de config) |
+| `audio`  | `stt_model_loaded`          | Al terminar la carga (ok/WARN con motivo de fallo)            |
+| `audio`  | `stt_transcription_started` | Antes de transcribir (payload: `audio_size_bytes`)            |
+| `audio`  | `stt_transcription_finished`| Al terminar transcripción (ok/WARN, `transcript_len`+`duration_ms` o motivo) |
+
+**Privacidad**: estos logs contienen únicamente metadatos (longitudes, tamaños,
+duraciones, códigos de error). Ni el texto sintetizado ni la transcripción real
+se escriben en ningún log — solo `text_len` y `transcript_len`.
+
 Los eventos `tool_call_started/finished` cubren automáticamente todas las tools
 actuales y futuras — no hay que tocar los handlers individuales. Los inputs
 sensibles (token, secret, password, authorization, api_key) se redactan como

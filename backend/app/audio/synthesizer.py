@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.settings.config_loader import PROJECT_ROOT, load_default_config
+from app.trace.logger import write_log
 
 
 _SPEAKER_NAME_MAP = {"female": 1, "f": 1, "male": 0, "m": 0}
@@ -67,8 +68,20 @@ def synthesize_text(text: str, cfg: TtsConfig) -> bytes:
 
     Raises RuntimeError if piper is not installed or model is missing.
     """
+    write_log(
+        level="INFO",
+        module="audio",
+        event="tts_synthesis_started",
+        payload={"text_len": len(text)},
+    )
     model_path = Path(cfg.model_path)
     if not model_path.exists():
+        write_log(
+            level="WARN",
+            module="audio",
+            event="tts_synthesis_finished",
+            payload={"ok": False, "reason": "model_not_found"},
+        )
         raise RuntimeError(
             f"TTS model not found: {cfg.model_path}. "
             "Download .onnx and .onnx.json from "
@@ -90,6 +103,13 @@ def synthesize_text(text: str, cfg: TtsConfig) -> bytes:
             timeout=30,
         )
         if result.returncode != 0:
+            write_log(
+                level="WARN",
+                module="audio",
+                event="tts_synthesis_finished",
+                payload={"ok": False, "reason": f"piper_exit_{result.returncode}",
+                         "duration_ms": int((time.monotonic() - t0) * 1000)},
+            )
             raise RuntimeError(
                 f"piper exited with code {result.returncode}: "
                 f"{result.stderr.decode('utf-8', errors='replace')[:200]}"
@@ -103,6 +123,18 @@ def synthesize_text(text: str, cfg: TtsConfig) -> bytes:
             pass
 
     if not audio_bytes:
+        write_log(
+            level="WARN",
+            module="audio",
+            event="tts_synthesis_finished",
+            payload={"ok": False, "reason": "empty_output", "duration_ms": duration_ms},
+        )
         raise RuntimeError("piper produced empty output")
 
+    write_log(
+        level="INFO",
+        module="audio",
+        event="tts_synthesis_finished",
+        payload={"ok": True, "audio_size_bytes": len(audio_bytes), "duration_ms": duration_ms},
+    )
     return audio_bytes
