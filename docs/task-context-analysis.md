@@ -1,6 +1,6 @@
 # Análisis: pérdida de contexto en tareas multi-paso
 
-Última actualización: 2026-07-10.
+Última actualización: 2026-07-10 (rev. 2: SQLite + análisis TTL).
 
 ## Problema documentado
 
@@ -38,18 +38,29 @@ lo lea en texto libre dentro de una ventana de historial limitada.
 
 #### Dónde vive el estado
 
-Estado en memoria de proceso, por sesión:
+Persistido en SQLite usando el modelo `Setting`, con el mismo patrón
+ya implementado en `spotify_tools.py` para `spotify:previous_context`
+(`_save_previous_context` / `_load_previous_context`):
 
 ```python
-# En app/chat/ o app/core/, singleton de proceso
-_task_context: dict[str, dict[str, str]] = {}
-# clave: session_id → valor: dict de pares clave/valor resueltos
+key   = "task_context:{session_id}"   # ej. "task_context:default"
+value_json = json.dumps({"recurso_uri": "...", "dispositivo_id": "..."})
+source = "task_context"
 ```
 
-No se persiste en SQLite. Motivación: es estado transitorio de una
-tarea en curso, no historial conversacional. Sobrevive el tiempo que
-dura la sesión del proceso. Un reinicio del backend limpia el estado —
-aceptable, porque la tarea activa también se interrumpe.
+Un read + un upsert por turno — mismo coste que ya asume
+`spotify:previous_context` en cada llamada a `spotify_play` o
+`spotify_resume_previous`. En SQLite con WAL (modo ya activo en el
+proyecto) esto es una operación de microsegundos, sin impacto
+perceptible en latencia.
+
+**Por qué SQLite en vez de memoria de proceso**: durante el desarrollo
+hay múltiples reinicios de backend al día. En producción también
+ocurren reinicios (deploys, watchdog). Memoria de proceso pierde
+cualquier tarea en curso sin aviso en cada reinicio — un caso real,
+no hipotético, dado lo ocurrido durante el propio día de desarrollo de
+este fix. SQLite es coherente con el resto del proyecto (todo lo que
+importa ya vive ahí) y con el precedente directo de `previous_context`.
 
 Se inyecta en el `planner_user_message` de cada turno mientras haya
 entradas, como bloque explícito antes del mensaje del usuario:
@@ -103,10 +114,10 @@ El estado de tarea se limpia en cualquiera de estas condiciones:
 1. **El handler señala cierre explícito**: devuelve `task_context={}`
    (dict vacío). Convenio: la tarea se completó, borrar todo.
 
-2. **TTL por inactividad de tools**: si transcurren N turnos
-   consecutivos sin ninguna tool_call (el planner responde solo con
-   texto), el estado se considera caducado y se borra. N configurable,
-   propuesta inicial: 3 turnos sin tools.
+2. **TTL por tiempo transcurrido**: si `Setting.updated_at` tiene más
+   de T minutos de antigüedad, el estado se descarta en la lectura del
+   turno siguiente. T configurable en `default.yaml`. Valor propuesto:
+   **30 minutos** (ver análisis abajo).
 
 3. **Cambio de dominio inferido**: si el siguiente turno con tool_calls
    activa un dominio completamente distinto (por ejemplo, el estado
@@ -117,6 +128,69 @@ El estado de tarea se limpia en cualquiera de estas condiciones:
 
    Esta tercera condición es opcional para la implementación inicial.
    Las dos primeras son suficientes para el caso base.
+
+#### Análisis del TTL (condición 2)
+
+La versión inicial del documento proponía "N turnos sin tools" como
+criterio de expiración. Tras análisis, se prefiere **tiempo absoluto**
+sobre conteo de turnos.
+
+**¿Por qué no conteo de turnos?**
+
+El criterio "N turnos sin tool_calls" requiere mantener un contador
+de turnos-desde-última-tool por sesión, o inspeccionar el historial
+reciente para detectar si algún turno anterior usó tools. Ambos añaden
+complejidad sin aportar más precisión que el tiempo. Además, presenta
+un problema estructural: si el usuario hace una pausa corta (una
+pregunta de un turno sin tools: "¿cuántos dispositivos tienes?"), eso
+consume un turno del contador aunque la tarea siga activa. Un TTL de
+3 turnos se agotaría en una secuencia normal de seguimiento.
+
+**¿Por qué tiempo absoluto?**
+
+El campo `Setting.updated_at` ya existe en el modelo y se actualiza
+en cada escritura. La comprobación es una resta de timestamps — sin
+contadores, sin estado adicional. Y es más fiel al comportamiento
+real del usuario: una tarea se abandona cuando el usuario se va a
+hacer otra cosa, no cuando responde N veces sin tools.
+
+**Riesgos de calibración:**
+
+| TTL demasiado corto | TTL demasiado largo |
+|---------------------|---------------------|
+| Se pierde contexto de una tarea legítimamente interrumpida (llamada de teléfono, pausa, pregunta tangencial seguida de retomar la tarea) | Arrastra datos de una tarea completada o abandonada a una conversación distinta posterior — riesgo de confusión: el planner ve `dispositivo_id: f79...` de una sesión de Spotify de hace una hora cuando el usuario está preguntando sobre el calendario |
+| El usuario retoma: "continúa" — el planner ya no tiene el URI ni el device_id → tiene que resolver todo de nuevo | Similar en espíritu al bug de contextopollution HA/Spotify ya documentado: contexto viejo influyendo mal en decisiones nuevas |
+
+**Valor propuesto: 30 minutos.**
+
+Justificación con el mismo criterio que el límite de 10 mensajes del Eje B:
+
+- **5 min**: demasiado agresivo. Una pausa para coger el móvil, ir al
+  baño o revisar algo en el PC supera los 5 minutos. Sity es un
+  asistente doméstico — estas interrupciones son el caso normal.
+- **15 min**: mejor, pero una llamada telefónica media dura más. El
+  usuario volvería a "¿dónde estábamos?" y el contexto ya habría
+  expirado.
+- **30 min**: cubre la inmensa mayoría de interrupciones naturales sin
+  ser una tarea completada. Si el usuario no retoma una tarea en 30
+  minutos, es razonable asumir que ya no la va a retomar en el mismo
+  hilo o que prefiere empezar de nuevo. Coincide con el TTL de
+  inactividad de sesión que usa la mayoría de asistentes domésticos
+  (Alexa, Google Home en modo "continuación de conversación").
+- **60 min**: generoso en exceso. Un contexto de Spotify de hace una
+  hora podría mezclarse con una conversación de Calendar posterior,
+  produciendo exactamente el tipo de confusión que el TTL pretende
+  evitar.
+
+```yaml
+# config/default.yaml
+task_context:
+  ttl_minutes: 30   # tiempo sin actividad para expirar task_state
+```
+
+**Latencia de la comprobación**: una lectura SQLite de un solo row por
+key única (índice existente). Mismo coste que `_load_previous_context`
+de Spotify — microsegundos.
 
 #### Privacidad / logging
 
@@ -281,11 +355,13 @@ documentado:
    el `planner_user_message`.
 3. **Verificar**: log `task_context_cleared` con motivo `explicit_close`.
 
-### Caso 3 — Task state expira si no hay tools durante N turnos
+### Caso 3 — Task state expira por TTL de tiempo
 
-1. Tool C guarda un dato en task_state.
-2. Los siguientes 3 turnos el planner responde solo con texto.
-3. Al turno 4, el task_state ya no se inyecta.
+1. Tool C guarda un dato en task_state (`Setting.updated_at = T`).
+2. Se simula que ha transcurrido el TTL configurado (en tests:
+   manipular `updated_at` directamente, o usar un TTL de test de 0 s).
+3. En el turno siguiente, la lectura del task_state detecta expiración
+   y no inyecta el bloque en `planner_user_message`.
 4. **Verificar**: log `task_context_cleared` con motivo `ttl_expired`.
 
 ### Caso 4 — Ventana ampliada (Eje B) cubre una secuencia de 5 turnos
