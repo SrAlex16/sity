@@ -1,12 +1,13 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-07-08.
+Última actualización: 2026-07-10.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
 docs/architecture.md. Para decisiones ver docs/decisions.md. Para el
 sistema de tareas en background ver docs/background-tasks.md. Para el
-sistema de cancelación de turnos ver docs/turn-cancellation.md.
+sistema de cancelación de turnos ver docs/turn-cancellation.md. Para
+el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
 
 ## Infraestructura activa
 
@@ -42,6 +43,7 @@ sistema de cancelación de turnos ver docs/turn-cancellation.md.
 **STT local:** faster-whisper (modelo small)
 **Domótica:** Home Assistant REST API (HA_TOKEN en .env)
 **Google:** OAuth2 — Gmail readonly, Calendar rw, Drive readonly
+**Spotify:** OAuth2 — lectura (now_playing, recently_played, list_playlists, playlist_tracks, list_devices) + control (play, pause, skip, set_volume, resume_previous)
 
 ## Estado del dataset
 
@@ -53,7 +55,7 @@ sistema de cancelación de turnos ver docs/turn-cancellation.md.
 
 ## Tests y CI
 
-- 897 tests en verde (pytest)
+- 981 tests en verde (pytest)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI

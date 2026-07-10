@@ -38,7 +38,7 @@ Responsabilidades:
 
 - chat;
 - memoria;
-- tools;
+- tools (ver docs/multi-turn-tool-calling.md para encadenar varias tool calls en un turno);
 - confirmaciones (ver docs/turn-cancellation.md para la cancelación de turnos);
 - proveedores IA;
 - sensores;
@@ -896,7 +896,7 @@ el modelo no está seguro de qué hacer.
 - `backend/app/integrations/spotify_auth.py` — OAuth2 Authorization Code, refresh automático,
   token autocontenido (almacena `client_id`/`client_secret` en `data/spotify_token.json` para
   no necesitar variables de entorno tras el setup)
-- `backend/app/tools/handlers/spotify_tools.py` — 8 handlers (3 lectura + 4 control + 1 contexto)
+- `backend/app/tools/handlers/spotify_tools.py` — 10 handlers (5 lectura + 4 control + 1 contexto)
 - `scripts/spotify_auth_setup.py` — autenticación inicial manual (una vez)
 
 ### Flujo de autenticación
@@ -926,11 +926,23 @@ python scripts/spotify_auth_setup.py
 | `spotify_now_playing` | Canción/estado actual |
 | `spotify_recently_played` | Historial reciente (limit opcional) |
 | `spotify_list_devices` | Dispositivos disponibles con IDs |
-| `spotify_play` | Reproducir por búsqueda (query) o reanudar |
+| `spotify_list_playlists` | Lista playlists del usuario (nombre, URI, track count, descripción) |
+| `spotify_playlist_tracks` | Tracks de una playlist concreta (por playlist_id) |
+| `spotify_play` | Reproducir por búsqueda (query), URI directa, o reanudar |
 | `spotify_pause` | Pausar |
 | `spotify_skip` | Saltar (next/previous) |
 | `spotify_set_volume` | Cambiar volumen (0-100) |
 | `spotify_resume_previous` | Volver a lo que sonaba antes del último cambio |
+
+`spotify_list_playlists` y `spotify_playlist_tracks` permiten resolver peticiones vagas
+("pon mi playlist de openings de anime, no recuerdo el nombre exacto") en un solo turno
+del usuario: el bucle multi-turno llama primero a `spotify_list_playlists`, el modelo
+identifica la playlist correcta por nombre/descripción, y a continuación llama a
+`spotify_play` con su URI directamente. Si `query` empieza por `"spotify:"`, `spotify_play`
+usa esa cadena como URI directa sin pasar por `_search_uri`. **Limitación conocida**: si el
+nombre de la playlist no tiene relación textual obvia con lo pedido (ej. nombre de banda
+ficticia de un anime), el modelo puede no identificarla sin usar `spotify_playlist_tracks`
+para confirmar por contenido — ver `docs/decisions.md` para el caso concreto.
 
 ### Patrón de diseño
 

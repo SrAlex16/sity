@@ -1,5 +1,10 @@
 # Análisis de arquitectura: multi-turn tool calling
 
+> **Documento histórico** (2026-07-10): Este es el análisis de pre-implementación.
+> La implementación está completa y documentada en
+> [docs/multi-turn-tool-calling.md](multi-turn-tool-calling.md).
+> El contenido original se conserva a continuación como registro de las decisiones tomadas.
+
 Fecha: 2026-07-10
 
 ---
