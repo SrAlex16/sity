@@ -75,8 +75,8 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
     summaries = []
     for msg_ref in messages:
         msg = _google_call("gmail", "messages.get",
-            lambda m=msg_ref: service.users().messages().get(
-                userId="me", id=m["id"], format="metadata",
+            lambda: service.users().messages().get(
+                userId="me", id=msg_ref["id"], format="metadata",
                 metadataHeaders=["From", "Subject", "Date"],
             ).execute(),
             trace_id=ctx.trace_id)

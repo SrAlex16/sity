@@ -161,3 +161,24 @@ def test_queue_survives_disconnect_and_buffers_new_event():
 
     asyncio.run(_run())
     _remove(sid)
+
+
+# ---------------------------------------------------------------------------
+# cancel endpoint — confirms publish_event_sync is imported (NameError guard)
+# ---------------------------------------------------------------------------
+
+def test_cancel_chat_endpoint_no_name_error() -> None:
+    """POST /events/chat/{id}/cancel must not raise NameError for publish_event_sync.
+
+    This was a real production risk: publish_event_sync was used in
+    cancel_chat_operation() without being imported. mypy caught it; this test
+    catches it at runtime so a future import regression fails immediately.
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app, raise_server_exceptions=True) as client:
+        resp = client.post("/events/chat/test-turn-id/cancel")
+    # 200 OK: cancel_operation returns False for unknown turn, but no NameError
+    assert resp.status_code == 200
+    assert "ok" in resp.json()

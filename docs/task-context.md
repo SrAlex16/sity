@@ -181,6 +181,20 @@ bucle multi-turno — nada de nombrar dominios reales en el mecanismo):
   ya está preparado (la clave incluye `session_id`), sin cambios
   necesarios.
 
-Para el análisis previo a la implementación, con la comparación de
-opciones y el razonamiento detrás de cada decisión, ver
-`docs/task-context-analysis.md`.
+## Proceso de análisis previo
+
+Antes de implementar el mecanismo se evaluaron dos revisiones del
+diseño (`docs/task-context-analysis.md`, 2026-07-10 — ahora eliminado).
+Las dos decisiones clave que se descartaron explícitamente:
+
+- **TTL por turnos sin tool_calls** — descartado. Un turno tangencial
+  sin tools (ej. "¿cuántos dispositivos tienes?") consumiría el contador
+  aunque la tarea siga activa. El tiempo absoluto (`Setting.updated_at`)
+  es más robusto y no requiere contador extra.
+
+- **Memoria de proceso en vez de SQLite** — descartado. El backend se
+  reinicia varias veces al día en desarrollo y en producción. Un caso
+  real de pérdida de tarea-en-curso por reinicio ocurrió durante el
+  mismo día de desarrollo de este fix — no era un riesgo hipotético.
+  SQLite sigue el mismo patrón que `spotify:previous_context` ya
+  establecido.

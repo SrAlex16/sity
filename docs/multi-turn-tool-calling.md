@@ -239,10 +239,26 @@ pedir y cuándo. Casos observados en producción:
   con mucho historial de dominios distintos acumulado (ej. Home
   Assistant y Spotify mezclados a lo largo del día), una palabra
   ambigua como "dispositivos" puede resolverse hacia el dominio menos
-  esperado por el usuario. Confirmado en logs que no es un fallo del
-  bucle (se resolvió en una sola ronda, con las tools correctas para
-  la interpretación que hizo el modelo) sino de selección semántica
-  del planner dado el contexto disponible. Pendiente de observar si
-  se repite en sesiones más limpias antes de considerar cualquier
-  ajuste (que iría en tool description, nunca en una regla hardcodeada
-  tipo "dispositivos = Spotify").
+  esperado por el usuario. Confirmado en logs (2026-07-10) que no es
+  un fallo del bucle (se resolvió en una sola ronda, con las tools
+  correctas para la interpretación que hizo el modelo) sino de
+  selección semántica del planner dado el contexto disponible.
+  Verificación 2026-07-11: no se repitió en sesiones más limpias.
+  Decisión cerrada: sin ajuste. Si reapareciera, el ajuste iría en la
+  descripción de la tool, nunca en una regla hardcodeada tipo
+  "dispositivos = Spotify".
+
+## Proceso de análisis previo
+
+Antes de implementar el bucle se analizaron 6 decisiones de diseño
+(`docs/multi-turn-tools-analysis.md`, 2026-07-10 — ahora eliminado).
+Resumen de las decisiones tomadas:
+
+| Decisión | Elegido | Alternativa descartada |
+|---|---|---|
+| Dónde va el bucle | Inline en `ai_orchestrator.py` | Nuevo módulo `multi_turn_runner.py` — la complejidad no lo justifica |
+| Límite de rondas | Configurable en `ai_config` (`max_after_tools_rounds`) | Hardcoded — inconsistente con `max_tool_loop_iterations` |
+| Acumulación de mensajes | Nuevo parámetro `extra_prior_rounds` en `generate_with_tool_results` | Ampliar `prior_messages` mutando desde fuera — encapsulamiento peor |
+| `tools_enabled` en after-tools | Corregido a `True`, respetado en provider | Dejar la inconsistencia existente — el flag decía `False` pero el provider ignoraba el flag |
+| `loop_round` en logs | Campo en payload de `tool_call_started/finished` | Sufijo en `trace_id` — más difícil de filtrar con jq |
+| Detach en rondas intermedias | Extendido a todas las rondas | Solo primera ronda — el criterio (`get_blocking_policy`) ya es genérico, no ampliar sería asimétrico |

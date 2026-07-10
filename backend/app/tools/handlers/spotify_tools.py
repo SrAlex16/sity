@@ -33,6 +33,8 @@ def _not_connected(tool_name: str) -> ToolExecutionResult:
 
 def _headers() -> dict[str, str]:
     token = load_credentials()
+    if token is None:
+        raise RuntimeError("Spotify no está conectado. Ejecuta scripts/spotify_auth_setup.py")
     return {"Authorization": f"Bearer {token['access_token']}"}
 
 

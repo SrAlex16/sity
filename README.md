@@ -43,8 +43,6 @@ Ver docs/operations/development.md para el flujo completo.
 | docs/decisions.md | Decisiones de diseño y lecciones aprendidas |
 | docs/operations/development.md | Flujo de desarrollo |
 | docs/operations/dataset-capture.md | Captura de dataset |
-| docs/canal-spec.md | Especificación canal YouTube (pausado) |
-
 ## Roadmap
 
 ### ✅ Completado
@@ -62,13 +60,19 @@ Ver docs/operations/development.md para el flujo completo.
 - Refactor 202+SSE (tareas largas sin timeout de Cloudflare)
 - Auditoría de literales hardcodeados (batch 1 y 2)
 - Limpieza del sistema y repo
+- Spotify (playlists, URI directo, resume previous)
+- Audio STT — faster-whisper local, voz en chat y Telegram
+- Telegram bot — acceso remoto, presets, rate limit
+- Bucle multi-turno — tool chaining genérico (lectura → acción en 1 turno)
+- Cancelación mid-stream — botón parar, SSE limpio
+- task_context — memoria estructurada entre turnos para tareas multi-paso
+- Tareas largas en background — respuesta inmediata + notificación al terminar
+- Observabilidad Fase 1 — logging universal tools + APIs + retención 14 días
 
 ### 📋 Pendiente
 
 - **Sistema de alertas del panel** — ampliar: disco >95%, RAM >90%,
   temperatura 70-80°C, zombies >5
-- **Tareas largas en background** — respuesta inmediata + notificación
-  al terminar (generate_tts, generate_images, etc.)
 - **Refactorización persona_engine** — A4-A6, B5-B6 pendientes
 - **Análisis Docker completo** — qué más dockerizar y sandbox para
   ejecución de código generado por el modelo
@@ -77,6 +81,6 @@ Ver docs/operations/development.md para el flujo completo.
 
 - Fine-tuning Gemma 3 4B + LoRA (cuando el dataset esté maduro)
 - Dataset de audio ElevenLabs (cuando haya modelo local)
-- Canal de divulgación Tech & IA (pausado — ver docs/canal-spec.md)
+- ❌ Canal de divulgación Tech & IA — descartado (2026-07-08)
 - Domótica avanzada — dispositivos sin integración HA
 - Soporte Matter

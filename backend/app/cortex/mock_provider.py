@@ -100,6 +100,7 @@ class MockProvider:
         request: AIRequest,
         first_response_content: list,
         tool_results: list[dict],
+        extra_prior_rounds: list[dict] | None = None,
     ) -> AIResponse:
         return AIResponse(
             ok=True,

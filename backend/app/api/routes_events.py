@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.core.cancellation import cancel_operation
-from app.core.realtime_events import subscribe, subscribe_session
+from app.core.realtime_events import subscribe, subscribe_session, publish_event_sync
 
 
 router = APIRouter(prefix="/events", tags=["events"])
