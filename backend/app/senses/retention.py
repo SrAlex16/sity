@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.trace.logger import write_log
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CAPTURES_ROOT = PROJECT_ROOT / "captures"
@@ -90,6 +92,20 @@ def clean_old_captures(
             else:
                 kept.append(str(path))
 
+    _payload: dict[str, Any] = {
+        "dry_run": dry_run,
+        "older_than_days": older_than_days,
+        "deleted_count": len(deleted),
+        "kept_count": len(kept),
+    }
+    if errors:
+        _payload["errors"] = errors
+    write_log(
+        level="INFO" if not errors else "WARN",
+        module="senses",
+        event="senses_retention_cleanup",
+        payload=_payload,
+    )
     return {
         "ok": len(errors) == 0,
         "dry_run": dry_run,

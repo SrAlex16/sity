@@ -115,6 +115,7 @@ Los logs se escriben en `data/logs/` como `.jsonl` (una línea JSON por evento):
 | `backend`   | `backend_shutdown`             | Apagado limpio de FastAPI                         |
 | `tools`     | `tool_call_started`            | Antes de ejecutar cualquier tool                  |
 | `tools`     | `tool_call_finished`           | Después de ejecutar cualquier tool (ok/WARN)      |
+| `tools`     | `tool_chain_continued`         | Bucle multi-turno avanza a ronda siguiente        |
 | `spotify`   | `spotify_api_call`             | Cada llamada HTTP real a `api.spotify.com`        |
 | `google`    | `google_api_call`              | Cada llamada a la Google API (gmail/calendar/drive) |
 | `ha`        | `ha_api_call`                  | Cada llamada HTTP a Home Assistant                |
@@ -122,6 +123,22 @@ Los logs se escriben en `data/logs/` como `.jsonl` (una línea JSON por evento):
 | `realtime_events` | `sse_subscriber_disconnected` | Cliente SSE desconectado                    |
 | `realtime_events` | `session_queues_gc`        | GC de colas SSE inactivas                        |
 | `realtime_events` | `log_files_purged`         | Purga de logs antiguos                           |
+
+### Eventos instrumentados (Fase 2 — senses)
+
+| `module`  | `event`                    | Cuándo                                                    |
+|-----------|----------------------------|-----------------------------------------------------------|
+| `senses`  | `audio_devices_listed`     | Al ejecutar `list_audio_devices` (sources count + errores) |
+| `senses`  | `audio_capture_started`    | Antes de lanzar `arecord` (device, duration_seconds)      |
+| `senses`  | `audio_capture_finished`   | Al terminar la grabación (ok/WARN, file_size o motivo)    |
+| `senses`  | `camera_devices_listed`    | Al ejecutar `list_camera_devices` (device count)          |
+| `senses`  | `camera_capture_started`   | Antes de lanzar `fswebcam` (device, resolution)           |
+| `senses`  | `camera_capture_finished`  | Al terminar la captura (ok/WARN, file_size o motivo)      |
+| `senses`  | `senses_retention_cleanup` | Al ejecutar `clean_old_captures` (WARN si hay errores)    |
+
+Casos que producen WARN en `audio_capture_finished`: `loopback_device_refused`,
+`timeout`, `arecord_not_found`, `cancelled`, o returncode ≠ 0. Ídem para
+`camera_capture_finished`: `timeout`, `fswebcam_not_found`, `cancelled`, returncode ≠ 0.
 
 Los eventos `tool_call_started/finished` cubren automáticamente todas las tools
 actuales y futuras — no hay que tocar los handlers individuales. Los inputs
