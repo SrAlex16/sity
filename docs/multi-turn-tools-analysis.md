@@ -202,11 +202,28 @@ Si la cancelación ocurre **dentro de una ronda after-tools** (mid-stream):
 
 ## 4. Interacción con background tasks y early exits
 
-### Detach (solo primera ronda)
+### Detach — extender a todas las rondas del bucle
 
-La lógica de `detach` (`ai_orchestrator.py:524-527`) solo aplica a `planner_response.tool_calls[0]`. Si el planificador inicial elige una tool detachable, el turno retorna inmediatamente sin entrar en after-tools ni en el bucle. Esto no cambia.
+**Criterio de detach**: no cambia. Sigue siendo exclusivamente `get_blocking_policy(tool_name) == "detachable"` consultando `TOOL_BLOCKING_POLICIES` (`tool_loop_runner.py:59-61`). No se introduce ninguna heurística nueva basada en tiempo acumulado del turno ni en número de rondas.
 
-No se espera que after-tools devuelva una tool detachable (las detachables son herramientas de larga duración como sensor/cámara). Si en el futuro ocurriera, el bucle debería ignorar el atributo detach en rondas intermedias y ejecutarla de forma bloqueante, o abortar el bucle. Por ahora: no tratar ese caso especialmente.
+**Lo que cambia**: hoy el chequeo de detach solo ocurre para `planner_response.tool_calls[0]` en `ai_orchestrator.py:524-527`. Con el bucle multi-turn, una tool detachable (e.g. `web_search`) puede aparecer en la ronda 1, 2 o 3 del bucle after-tools, no solo en la ronda 0. Hay que mover o generalizar ese chequeo para que se aplique en **cada iteración del bucle**.
+
+**Dónde exactamente**: el chequeo debe hacerse en el punto del bucle donde se procesan las `tool_calls` de `after_tools_response`, antes de llamar a `run_tool_loop()` en la siguiente iteración. Es el mismo sitio donde hoy `ai_orchestrator.py:524-527` llama a `_detach_tool` para la primera ronda — pero generalizado a cualquier ronda:
+
+```python
+# Dentro del bucle after-tools, tras comprobar que hay tool_calls:
+first_tc = after_tools_response.tool_calls[0]
+if get_blocking_policy(first_tc.name) == "detachable":
+    # Mismo comportamiento que hoy para la ronda 0:
+    # responder con mensaje sintético "en progreso", lanzar en background,
+    # cerrar el turno sin continuar el bucle.
+    _detach_tool(first_tc, ...)
+    break
+```
+
+**Semántica**: si una ronda intermedia decide usar una tool detachable, el turno se cierra ahí — las rondas anteriores ya ejecutaron sus tools (efectos reales), y la detachable notificará su resultado vía `proactive_message` cuando termine en background. El usuario no espera en el chat; la respuesta sintética de "en progreso" se envía de inmediato.
+
+**Qué NO cambia**: el comportamiento de la ronda 0 (planner inicial) es idéntico a hoy. Las funciones `_detach_tool` y `get_blocking_policy` no necesitan modificarse.
 
 ### `local_final` (confirmaciones de acción pendiente)
 
@@ -328,6 +345,7 @@ Escenario patológico donde el modelo siempre devuelve una nueva tool_call sin p
 | Acumulación de mensajes | ampliar `prior_messages` | nuevo parámetro en `generate_with_tool_results` | **ampliar prior_messages** — no toca claude_provider.py |
 | `tools_enabled` en after-tools | corregir a `True` + respetar en provider | dejar la inconsistencia | **corregir** — intención explícita es más segura |
 | `loop_round` en logs | campo en payload | sufijo en trace_id | **campo en payload** — más fácil de filtrar con jq |
+| Detach en rondas intermedias | mantener solo primera ronda | extender a todas las rondas | **extender a todas las rondas** — mismo criterio (`get_blocking_policy`), sin heurística nueva de tiempo/rondas |
 
 ---
 
