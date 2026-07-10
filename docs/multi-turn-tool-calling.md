@@ -207,16 +207,34 @@ Seis tests, todos con tools ficticias:
 
 El bucle en sí es genérico y no tiene ninguna limitación de dominio,
 pero su eficacia depende de que el **modelo** decida bien qué tools
-pedir y cuándo. Dos casos observados el mismo día del despliegue,
-ninguno es un bug del bucle:
+pedir y cuándo. Casos observados en producción:
 
-- **Reconocimiento cultural en nombres** — si el modelo no reconoce
-  que un nombre de playlist se relaciona con lo pedido (ej. nombres de
-  bandas ficticias de un anime, sin relación textual obvia con
-  "openings de anime"), puede no intentar `spotify_playlist_tracks`
-  para confirmar por contenido y rendirse preguntando al usuario. No
-  se ha resuelto con ninguna heurística hardcodeada a propósito — ver
-  `docs/decisions.md` para el caso concreto.
+- **Reconocimiento cultural en nombres (resuelto parcialmente,
+  2026-07-10)** — al pedir "pon mi playlist de openings de anime",
+  el modelo encontró 5 candidatas por nombre/descripción (Ado,
+  TRAPNEST//NANA, Black Stones - NANA, Nier Replicant/Automata,
+  Carole & Tuesday) pero excluyó "Otako culiao 🤑": el nombre no
+  tiene relación textual obvia con "anime" y la playlist no tiene
+  descripción. Confirmado por logs que el modelo no llamó a
+  `spotify_playlist_tracks` sobre ninguna candidata — la decisión
+  fue puramente por nombre. La causa raíz de la sesión anterior
+  (el modelo decía "no tengo acceso a las canciones") era un 403
+  por scope OAuth ausente (`playlist-read-private`), no falta de
+  esfuerzo: el scope estaba declarado en `spotify_auth.py` pero el
+  token en disco era anterior a su adición. Resuelto tras reauth
+  (`python scripts/spotify_auth_setup.py`). Limitación residual con
+  "Otako culiao": decisión aceptada — añadir una descripción a la
+  playlist en Spotify lo resuelve sin tocar código. No se introduce
+  ninguna heurística hardcodeada.
+
+- **Confusión ID vs URI en `spotify_play` (corregido, commit
+  `ed73db5`, 2026-07-10)** — `spotify_list_playlists` exponía
+  tanto el campo `ID: <id_corto>` como `URI: spotify:playlist:<id>`.
+  El modelo usaba el ID corto como `query`, lo que disparaba
+  `_search_uri` y reproducía contenido incorrecto (caso real:
+  D.Valentino en vez de la playlist pedida). Fix: el campo `ID:`
+  se eliminó del output de texto; solo queda la URI completa.
+
 - **Ambigüedad de lenguaje en sesiones largas** — en una conversación
   con mucho historial de dominios distintos acumulado (ej. Home
   Assistant y Spotify mezclados a lo largo del día), una palabra

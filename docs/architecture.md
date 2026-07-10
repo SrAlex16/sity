@@ -38,7 +38,7 @@ Responsabilidades:
 
 - chat;
 - memoria;
-- tools (ver docs/multi-turn-tool-calling.md para encadenar varias tool calls en un turno);
+- tools (ver docs/multi-turn-tool-calling.md para encadenar varias tool calls en un turno; ver docs/task-context.md para el estado persistente entre turnos);
 - confirmaciones (ver docs/turn-cancellation.md para la cancelación de turnos);
 - proveedores IA;
 - sensores;

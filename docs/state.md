@@ -8,6 +8,7 @@ docs/architecture.md. Para decisiones ver docs/decisions.md. Para el
 sistema de tareas en background ver docs/background-tasks.md. Para el
 sistema de cancelación de turnos ver docs/turn-cancellation.md. Para
 el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
+Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
 
 ## Infraestructura activa
 
@@ -55,7 +56,7 @@ el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
 
 ## Tests y CI
 
-- 981 tests en verde (pytest)
+- 1005 tests en verde (pytest)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI

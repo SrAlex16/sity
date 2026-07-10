@@ -1,5 +1,9 @@
 # Análisis: pérdida de contexto en tareas multi-paso
 
+> **Implementado.** Este documento es el análisis previo a la
+> implementación. Para la documentación de arquitectura definitiva,
+> verificada contra el código real, ver `docs/task-context.md`.
+
 Última actualización: 2026-07-10 (rev. 2: SQLite + análisis TTL).
 
 ## Problema documentado
