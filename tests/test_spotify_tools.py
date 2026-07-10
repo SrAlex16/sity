@@ -277,6 +277,33 @@ def test_play_device_id_optional(mock_search, mock_save, mock_put, _):
     assert call_kwargs.kwargs["params"] == {"device_id": "dev1"}
 
 
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+@patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:playlist:abc123", "Otako culiao"))
+def test_play_404_includes_uri(mock_search, mock_save, mock_put, _):
+    """404 when a URI was resolved must include the URI so the model can retry."""
+    mock_put.return_value = _mock_response(404)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"query": "Otako culiao"}))
+    assert result.ok is False
+    assert "spotify:playlist:abc123" in result.message
+    assert "dispositivo" in result.message.lower()
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+def test_play_404_resume_no_uri(mock_save, mock_put, _):
+    """404 on plain resume (no query) must NOT reference any URI."""
+    mock_put.return_value = _mock_response(404)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {}))
+    assert result.ok is False
+    assert "spotify:" not in result.message
+    assert "dispositivo" in result.message.lower()
+
+
 # ---------------------------------------------------------------------------
 # spotify_pause
 # ---------------------------------------------------------------------------

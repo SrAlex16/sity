@@ -371,6 +371,8 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
     device_id: str | None = ctx.tool_input.get("device_id") or None
     params = _device_params(device_id)
 
+    _play_uri: str | None = None
+
     if query:
         # Short-circuit: if caller already has a Spotify URI, skip the search API.
         if query.startswith("spotify:"):
@@ -384,6 +386,7 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
                     updated_parameters=[], raw_result={"output": msg},
                 )
             uri, desc = resolved
+        _play_uri = uri
         _save_previous_context()
         # Track URI → uris list; album/playlist URI → context_uri
         if ":track:" in uri:
@@ -403,11 +406,20 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if resp.status_code == 404:
-        msg = "No hay ningún dispositivo Spotify activo. Abre Spotify en algún dispositivo primero."
+        if _play_uri:
+            msg = (
+                f"No hay ningún dispositivo Spotify activo. "
+                f"Abre Spotify en algún dispositivo y vuelve a intentarlo con este URI: {_play_uri}"
+            )
+        else:
+            msg = "No hay ningún dispositivo Spotify activo. Abre Spotify en algún dispositivo primero."
     elif resp.status_code == 403:
         msg = "Operación no permitida. ¿Spotify Premium activo?"
     else:
-        msg = f"Error al reproducir en Spotify ({resp.status_code})."
+        if _play_uri:
+            msg = f"Error al reproducir en Spotify ({resp.status_code}). URI intentado: {_play_uri}"
+        else:
+            msg = f"Error al reproducir en Spotify ({resp.status_code})."
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=False, message=msg,
         updated_parameters=[], raw_result={"output": msg},
