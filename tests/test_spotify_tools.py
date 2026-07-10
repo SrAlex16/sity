@@ -604,6 +604,23 @@ def test_list_playlists_happy(mock_get, _):
 
 @patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
 @patch("app.tools.handlers.spotify_tools._get")
+def test_list_playlists_no_bare_id(mock_get, _):
+    """URI is present but bare 'ID: <id>' label is not — prevents model confusing id with URI."""
+    mock_get.return_value = _mock_response(200, {
+        "items": [
+            {"id": "6Ge4eKOxcQ4pSvyuRkoqA6", "uri": "spotify:playlist:6Ge4eKOxcQ4pSvyuRkoqA6",
+             "name": "Otako culiao", "tracks": {"total": 10}, "description": ""},
+        ]
+    })
+    from app.tools.handlers.spotify_tools import handle_spotify_list_playlists
+    result = handle_spotify_list_playlists(_make_ctx("spotify_list_playlists"))
+    assert result.ok is True
+    assert "spotify:playlist:6Ge4eKOxcQ4pSvyuRkoqA6" in result.message
+    assert "ID: 6Ge4eKOxcQ4pSvyuRkoqA6" not in result.message
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
 def test_list_playlists_empty(mock_get, _):
     mock_get.return_value = _mock_response(200, {"items": []})
     from app.tools.handlers.spotify_tools import handle_spotify_list_playlists

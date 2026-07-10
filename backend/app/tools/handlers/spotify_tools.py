@@ -267,14 +267,13 @@ def handle_spotify_list_playlists(ctx: ToolContext) -> ToolExecutionResult:
     lines = []
     for pl in items:
         name = pl.get("name", "?")
-        pl_id = pl.get("id", "")
         uri = pl.get("uri", "")
         tracks_total = pl.get("tracks", {}).get("total", "?")
         desc = pl.get("description", "") or ""
         desc_str = f"\n    Descripción: {desc}" if desc else ""
         lines.append(
             f"{name}\n"
-            f"    ID: {pl_id} | URI: {uri} | Canciones: {tracks_total}{desc_str}"
+            f"    URI: {uri} | Canciones: {tracks_total}{desc_str}"
         )
 
     output = "\n".join(lines)
