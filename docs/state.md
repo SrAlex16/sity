@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-07-10.
+Última actualización: 2026-07-11.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -79,12 +79,26 @@ Ver .env.example para la lista completa.
 
 ## Bugs conocidos activos
 
-Ninguno confirmado a día de hoy. La lista anterior (encabezado DOCX
-narrado en TTS del canal YouTube, refusal_mode con falsos positivos,
-search_conversation_history como procrastinación del planner) quedó
-obsoleta: el canal de YouTube se descartó, el resto no se ha vuelto a
-observar. Ver docs/decisions.md 2026-06-30 y 2026-07-08 para el
-contexto histórico si hace falta.
+Ninguno confirmado a día de hoy.
+
+**Resueltos en la sesión 2026-07-10/11:**
+- Timestamps incorrectos tras F5 (SQLite devuelve datetimes naive → JS
+  los interpretaba como hora local): resuelto con `@field_serializer` en
+  `ChatMessageItem.created_at` (commit `1343ff8`). Confirmado en real.
+- Proactive message de `web_search` no llegaba al frontend tras F5 y
+  recargas: investigado y descartado como bug real — era interferencia
+  de los reinicios del backend durante el proceso de desarrollo. En una
+  prueba limpia sin reinicios (turno "Nannmonee — Wasureranneyo", 22:55
+  UTC), el flujo completo funcionó correctamente: `tool_chain_continued`,
+  búsqueda OK, respuesta correcta ("Chainsmoker Cat" / Yani Neko). El
+  logging nuevo (`bg_after_tools_failed`, `bg_persist_failed`, commit
+  `e521dd8`) está activo para capturar cualquier fallo real futuro.
+
+La lista anterior (encabezado DOCX narrado en TTS del canal YouTube,
+refusal_mode con falsos positivos, search_conversation_history como
+procrastinación del planner) quedó obsoleta: el canal de YouTube se
+descartó, el resto no se ha vuelto a observar. Ver docs/decisions.md
+2026-06-30 y 2026-07-08 para el contexto histórico si hace falta.
 
 ## Qué no hacer
 

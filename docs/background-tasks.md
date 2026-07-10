@@ -258,6 +258,41 @@ sitio — sin lanzar excepción, sin loguear nada por defecto. Es el
 primer sospechoso a revisar si un futuro bug hace que las tareas en
 background vuelvan a quedarse mudas.
 
+### Eventos de error en `_on_done` (commit `e521dd8`)
+
+Los dos bloques `except Exception` de `_on_done` que antes eran mudos
+ahora loguean:
+
+- **`bg_after_tools_failed`** — si `runner.run_after_tools` lanza
+  excepción. Payload: `job_id`, `tool_name`, `error`, `error_type`.
+  Indica que Claude no pudo generar una respuesta en lenguaje natural
+  a partir del resultado crudo; el fallback es devolver ese texto crudo.
+- **`bg_persist_failed`** — si la escritura del `ChatMessage` en DB
+  falla. Payload: igual. Indica que el próximo turno de chat no verá
+  el intercambio en su historial.
+
+Si ninguno de los dos aparece en logs y aun así no llega el
+`proactive_message`, los candidatos son: (a) `publish_session_event_sync`
+devolvió silenciosamente porque `_loop is None or not _loop.is_running()`,
+o (b) el servidor fue reiniciado a mitad del job (ver nota abajo).
+
+### Reinicios del backend durante un job en background
+
+Un reinicio del servidor (p.ej. `systemctl restart sity-backend`) mata el
+proceso FastAPI, incluyendo el `ThreadPoolExecutor` del `JobManager`. Si un
+job está en mitad de `_on_done` cuando llega el SIGTERM:
+
+- El `job_finally` ya se habrá logueado (el `finally` del thread corre).
+- La llamada a Claude en `run_after_tools` puede interrumpirse antes de que
+  `ai_call_started` se logueé, o entre `ai_call_started` y `ai_call_completed`.
+- No aparece `bg_after_tools_failed` porque la excepción no la captura el
+  `except Exception` de `_on_done` — el thread simplemente muere.
+- Patrón en logs: `job_finally` con `has_on_done: true`, seguido de
+  `ai_call_completed` del turno principal, y después nada. Sin
+  `bg_after_tools_failed`, sin `proactive`. Esto **no es un bug del
+  mecanismo** — es la interrupción esperada del proceso. Verificar si hubo
+  un reinicio manual entre las dos entradas de log antes de perseguirlo como bug.
+
 `sse_subscriber_connected` / `sse_subscriber_disconnected` se loguean
 en `subscribe_session()` al entrar y al salir (bloque `finally`) —
 es la señal más directa para depurar si el problema es de publicación

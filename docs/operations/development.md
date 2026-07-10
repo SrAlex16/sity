@@ -262,6 +262,46 @@ cat data/logs/app-$(date -u +%Y-%m-%d).jsonl | grep '"event":"backend_'
 
 ---
 
+## Timestamps: SQLite devuelve datetimes naive
+
+SQLite no almacena información de zona horaria. Cuando SQLModel/SQLAlchemy lee
+un `datetime` de la BD, el objeto Python resultante tiene `tzinfo=None`
+(datetime "naive"). Si ese datetime llega al frontend sin normalización, la
+serialización JSON omite el sufijo de zona (`"2026-07-10T22:42:00"` en vez de
+`"2026-07-10T22:42:00+00:00"`), y JavaScript lo interpreta como hora LOCAL del
+navegador en vez de UTC — lo que produce timestamps incorrectos tras un F5 o
+cualquier carga de historial.
+
+Este patrón apareció dos veces el mismo día (2026-07-11):
+- `task_context.py` → parcheado con `if updated_at.tzinfo is None: updated_at = updated_at.replace(tzinfo=timezone.utc)`
+- `ChatMessageItem.created_at` → parcheado con `@field_serializer` en `schemas.py` (commit `1343ff8`)
+
+**Regla para cualquier endpoint nuevo que exponga datetimes de la BD:**
+
+Normalizar antes de serializar. En Pydantic v2, la forma más limpia es un
+`@field_serializer` en el schema de respuesta:
+
+```python
+from datetime import datetime, timezone
+from pydantic import field_serializer
+
+class MiSchema(BaseModel):
+    created_at: Optional[datetime] = None
+
+    @field_serializer("created_at")
+    def _serialize_created_at(self, v: Optional[datetime]) -> Optional[str]:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.isoformat()
+```
+
+Esto garantiza que el JSON lleve `+00:00` y que `new Date(ts)` en el
+navegador siempre interprete correctamente la cadena como UTC.
+
+---
+
 ## Regla de seguridad operativa
 
 Si hay dos opciones y una toca runtime real, elegir primero

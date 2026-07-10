@@ -697,6 +697,26 @@ Cuándo la usa Sity: información que cambia frecuentemente (precios, fechas,
 puntuaciones, noticias, tiempo), cuando no tiene información suficiente sobre
 algo específico, o cuando el usuario lo pide explícitamente.
 
+### Criterio de uso: conocimiento estable vs. atribución específica
+
+El criterio de cuándo buscar está en la `description` de `WEB_SEARCH_TOOL`
+(commit `a31ec6b`). Distinción clave:
+
+- **Hechos generales estables** (definiciones, historia asentada, conceptos
+  conocidos): Sity puede responder de su propio conocimiento sin buscar.
+- **Atribuciones específicas que vinculan una cosa con otra** (a qué obra/serie
+  pertenece algo, quién hizo qué cosa concreta, qué versión o edición es cuál):
+  Sity debe buscar si esa información no viene ya confirmada en el resultado de
+  otra tool o en la conversación. Creer saberlo no basta — las atribuciones
+  específicas no son conocimiento estable.
+
+Este criterio no contiene detección de keywords ni dominios específicos. Es
+conceptual: "¿el resultado de la tool ya contiene la respuesta, o hay que
+inferirla/verificarla?" Caso concreto que motivó el fix: `spotify_now_playing`
+devuelve título/artista/álbum, pero NO a qué anime/serie pertenece la canción
+salvo que aparezca literalmente en el texto devuelto — si el usuario pregunta
+por el origen y no está en el resultado, hay que buscar.
+
 ---
 
 ## PWA móvil
