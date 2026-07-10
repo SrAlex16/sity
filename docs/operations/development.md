@@ -98,6 +98,101 @@ training/output/
 reports/
 ```
 
+## Observabilidad y logs
+
+### Archivos de log
+
+Los logs se escriben en `data/logs/` como `.jsonl` (una línea JSON por evento):
+
+- `app-YYYY-MM-DD.jsonl` — eventos de aplicación (INFO, WARN, ERROR)
+- `audit-YYYY-MM-DD.jsonl` — eventos de auditoría (cambios de personalidad, etc.)
+
+### Eventos instrumentados (Fase 1)
+
+| `module`    | `event`                        | Cuándo                                            |
+|-------------|--------------------------------|---------------------------------------------------|
+| `backend`   | `backend_started`              | Arranque de FastAPI (incluye `git_commit`)        |
+| `backend`   | `backend_shutdown`             | Apagado limpio de FastAPI                         |
+| `tools`     | `tool_call_started`            | Antes de ejecutar cualquier tool                  |
+| `tools`     | `tool_call_finished`           | Después de ejecutar cualquier tool (ok/WARN)      |
+| `spotify`   | `spotify_api_call`             | Cada llamada HTTP real a `api.spotify.com`        |
+| `google`    | `google_api_call`              | Cada llamada a la Google API (gmail/calendar/drive) |
+| `ha`        | `ha_api_call`                  | Cada llamada HTTP a Home Assistant                |
+| `realtime_events` | `sse_subscriber_connected` | Cliente SSE conectado                          |
+| `realtime_events` | `sse_subscriber_disconnected` | Cliente SSE desconectado                    |
+| `realtime_events` | `session_queues_gc`        | GC de colas SSE inactivas                        |
+| `realtime_events` | `log_files_purged`         | Purga de logs antiguos                           |
+
+Los eventos `tool_call_started/finished` cubren automáticamente todas las tools
+actuales y futuras — no hay que tocar los handlers individuales. Los inputs
+sensibles (token, secret, password, authorization, api_key) se redactan como
+`"***"` antes de loguearse.
+
+### Filtrar logs desde la terminal
+
+```bash
+# Todos los tool_call de hoy
+cat data/logs/app-$(date -u +%Y-%m-%d).jsonl | python3 -c "
+import sys, json
+for l in sys.stdin:
+    d = json.loads(l)
+    if d.get('event') in ('tool_call_started','tool_call_finished'):
+        print(json.dumps(d))
+"
+
+# Solo llamadas Spotify de un trace concreto
+cat data/logs/app-$(date -u +%Y-%m-%d).jsonl | grep 'spotify_api_call' | grep 'trc_XXXX'
+
+# Todos los WARN (errores de API)
+cat data/logs/app-$(date -u +%Y-%m-%d).jsonl | python3 -c "
+import sys, json
+for l in sys.stdin:
+    d = json.loads(l)
+    if d.get('level') == 'WARN':
+        print(json.dumps(d))
+"
+```
+
+### Retención automática de logs
+
+Los `.jsonl` con más de **14 días** se borran automáticamente. La purga corre
+cada 10 minutos desde el `_gc_loop` en `realtime_events.py` (mismo loop que
+limpia las colas SSE inactivas). Para cambiar el periodo:
+
+```python
+# backend/app/core/realtime_events.py, en _gc_loop():
+deleted = purge_old_logs(retention_days=30)  # cambiar aquí
+```
+
+### Logs de servicios systemd (journalctl)
+
+Los eventos de arranque/parada/fallo de los servicios los gestiona systemd.
+Comandos de referencia:
+
+```bash
+# Últimas 50 líneas de cada servicio
+sudo journalctl -u sity-backend -n 50 --no-pager
+sudo journalctl -u caddy -n 50 --no-pager
+sudo journalctl -u cloudflared -n 50 --no-pager
+
+# Seguir logs en tiempo real
+sudo journalctl -u sity-backend -f
+
+# Eventos de la última hora de todos los servicios Sity
+sudo journalctl -u sity-backend -u caddy -u cloudflared --since "1 hour ago"
+
+# Ver si un servicio falló recientemente
+sudo journalctl -u sity-backend -p err --since today
+```
+
+Para ver el `backend_started`/`backend_shutdown` registrados por la propia app:
+
+```bash
+cat data/logs/app-$(date -u +%Y-%m-%d).jsonl | grep '"event":"backend_'
+```
+
+---
+
 ## Regla de seguridad operativa
 
 Si hay dos opciones y una toca runtime real, elegir primero

@@ -7,6 +7,7 @@ import httpx
 from app.actions.confirmation_manager import ConfirmationManager
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
+from app.trace.logger import write_log
 
 _HA_URL   = os.getenv("HA_URL", "http://localhost:8123")
 _HA_TOKEN = os.getenv("HA_TOKEN", "")
@@ -30,6 +31,8 @@ _REQUIRES_CONFIRMATION = {
 def _ha_get(path: str) -> dict | list:
     url = f"{_HA_URL}/api/{path}"
     resp = httpx.get(url, headers=_HEADERS, timeout=10)
+    write_log(level="INFO" if resp.is_success else "WARN", module="ha", event="ha_api_call",
+              payload={"method": "GET", "path": path, "status_code": resp.status_code, "ok": resp.is_success})
     resp.raise_for_status()
     return resp.json()
 
@@ -37,6 +40,8 @@ def _ha_get(path: str) -> dict | list:
 def _ha_post(path: str, data: dict) -> dict | list:
     url = f"{_HA_URL}/api/{path}"
     resp = httpx.post(url, headers=_HEADERS, json=data, timeout=10)
+    write_log(level="INFO" if resp.is_success else "WARN", module="ha", event="ha_api_call",
+              payload={"method": "POST", "path": path, "status_code": resp.status_code, "ok": resp.is_success})
     resp.raise_for_status()
     return resp.json()
 

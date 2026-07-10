@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,3 +50,17 @@ def write_log(
 
     with file_path.open("a", encoding="utf-8") as file:
         file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def purge_old_logs(retention_days: int = 14) -> int:
+    """Delete .jsonl log files older than retention_days. Returns count of deleted files."""
+    cutoff = time.time() - retention_days * 86400
+    deleted = 0
+    for f in LOG_DIR.glob("*.jsonl"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                deleted += 1
+        except OSError:
+            pass
+    return deleted

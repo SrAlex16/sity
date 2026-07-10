@@ -2,6 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
+_SENSITIVE_KEYS = frozenset({"token", "secret", "password", "authorization", "api_key"})
+
+
+def _redact_sensitive(data: Any) -> Any:
+    """Recursively replace values whose key contains a sensitive word with '***'."""
+    if isinstance(data, dict):
+        return {
+            k: "***" if any(s in k.lower() for s in _SENSITIVE_KEYS) else _redact_sensitive(v)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_redact_sensitive(item) for item in data]
+    return data
+
 from sqlmodel import Session
 
 from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
@@ -52,11 +66,36 @@ class ToolExecutor:
                 "can_cancel": tool_name in {"record_audio_sample", "capture_camera_snapshot"},
             })
 
+        write_log(
+            level="INFO",
+            module="tools",
+            event="tool_call_started",
+            trace_id=trace_id,
+            payload={
+                "tool_name": tool_name,
+                "tool_input": _redact_sensitive(tool_input),
+                "client_turn_id": client_turn_id,
+            },
+        )
+
         result = self._dispatch_tool_call(
             tool_name=tool_name,
             tool_input=tool_input,
             trace_id=trace_id,
             client_turn_id=client_turn_id,
+        )
+
+        write_log(
+            level="INFO" if result.ok else "WARN",
+            module="tools",
+            event="tool_call_finished",
+            trace_id=trace_id,
+            payload={
+                "tool_name": tool_name,
+                "ok": result.ok,
+                "message": result.message,
+                "raw_result_summary": self._summarize_payload(result.raw_result),
+            },
         )
 
         if tool_name in TOOL_LABELS:

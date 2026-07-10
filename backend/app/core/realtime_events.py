@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
-from app.trace.logger import write_log
+from app.trace.logger import purge_old_logs, write_log
 
 _HEARTBEAT_INTERVAL = 15.0          # seconds between SSE comment heartbeats
 _SESSION_QUEUE_MAX_SIZE = 20        # oldest event dropped on overflow
@@ -138,6 +138,10 @@ async def _gc_loop() -> None:
     while True:
         await asyncio.sleep(_SESSION_QUEUE_GC_INTERVAL)
         gc_once()
+        deleted = purge_old_logs()
+        if deleted:
+            write_log(level="INFO", module="realtime_events", event="log_files_purged",
+                      payload={"deleted": deleted})
 
 
 async def subscribe(client_turn_id: str):

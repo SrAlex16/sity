@@ -12,6 +12,7 @@ from app.memory.db import engine
 from app.memory.models import Setting, utc_now
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
+from app.trace.logger import write_log
 
 _BASE = "https://api.spotify.com/v1"
 
@@ -36,18 +37,27 @@ def _headers() -> dict[str, str]:
 
 
 def _get(path: str, *, params: dict | None = None) -> requests.Response:
-    return requests.get(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+    resp = requests.get(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+    write_log(level="INFO" if resp.ok else "WARN", module="spotify", event="spotify_api_call",
+              payload={"method": "GET", "path": path, "status_code": resp.status_code, "ok": resp.ok})
+    return resp
 
 
 def _put(path: str, *, params: dict | None = None, body: dict | None = None) -> requests.Response:
-    return requests.put(
+    resp = requests.put(
         f"{_BASE}{path}", headers={**_headers(), "Content-Type": "application/json"},
         params=params, json=body or {}, timeout=10,
     )
+    write_log(level="INFO" if resp.ok else "WARN", module="spotify", event="spotify_api_call",
+              payload={"method": "PUT", "path": path, "status_code": resp.status_code, "ok": resp.ok})
+    return resp
 
 
 def _post(path: str, *, params: dict | None = None) -> requests.Response:
-    return requests.post(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+    resp = requests.post(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+    write_log(level="INFO" if resp.ok else "WARN", module="spotify", event="spotify_api_call",
+              payload={"method": "POST", "path": path, "status_code": resp.status_code, "ok": resp.ok})
+    return resp
 
 
 def _device_params(device_id: str | None) -> dict[str, Any]:

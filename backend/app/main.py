@@ -35,16 +35,33 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     import asyncio
+    import subprocess
     from app.api.routes_audio import cleanup_stored_audio
     set_event_loop(asyncio.get_running_loop())
     init_db()
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=str(PROJECT_ROOT), text=True
+        ).strip()
+    except Exception:
+        git_commit = "unknown"
     write_log(
         level="INFO",
         module="backend",
-        event="startup",
-        payload={"service": "sity-backend", "version": "0.1.0"},
+        event="backend_started",
+        payload={"service": "sity-backend", "version": "0.1.0", "git_commit": git_commit},
     )
     await cleanup_stored_audio()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    write_log(
+        level="INFO",
+        module="backend",
+        event="backend_shutdown",
+        payload={"service": "sity-backend"},
+    )
 
 
 @app.get("/health")

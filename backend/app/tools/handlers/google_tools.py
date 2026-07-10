@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from googleapiclient.discovery import build
 
@@ -9,6 +9,22 @@ from app.actions.confirmation_manager import ConfirmationManager
 from app.integrations.google_auth import is_google_connected, load_credentials
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
+from app.trace.logger import write_log
+
+_T = TypeVar("_T")
+
+
+def _google_call(service: str, operation: str, fn: Callable[[], _T], *, trace_id: str | None = None) -> _T:
+    """Execute a Google API call, logging outcome. Re-raises on error."""
+    try:
+        result = fn()
+        write_log(level="INFO", module="google", event="google_api_call", trace_id=trace_id,
+                  payload={"service": service, "operation": operation, "ok": True})
+        return result
+    except Exception as exc:
+        write_log(level="WARN", module="google", event="google_api_call", trace_id=trace_id,
+                  payload={"service": service, "operation": operation, "ok": False, "error": str(exc)})
+        raise
 
 
 def _not_connected(tool_name: str) -> ToolExecutionResult:
@@ -44,9 +60,9 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
     creds = load_credentials()
     service = build("gmail", "v1", credentials=creds)
 
-    results = service.users().messages().list(
-        userId="me", q=query, maxResults=max_results,
-    ).execute()
+    results = _google_call("gmail", "messages.list",
+        lambda: service.users().messages().list(userId="me", q=query, maxResults=max_results).execute(),
+        trace_id=ctx.trace_id)
 
     messages = results.get("messages", [])
     if not messages:
@@ -58,10 +74,12 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
 
     summaries = []
     for msg_ref in messages:
-        msg = service.users().messages().get(
-            userId="me", id=msg_ref["id"], format="metadata",
-            metadataHeaders=["From", "Subject", "Date"],
-        ).execute()
+        msg = _google_call("gmail", "messages.get",
+            lambda m=msg_ref: service.users().messages().get(
+                userId="me", id=m["id"], format="metadata",
+                metadataHeaders=["From", "Subject", "Date"],
+            ).execute(),
+            trace_id=ctx.trace_id)
         headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
         snippet = msg.get("snippet", "")[:200]
         summaries.append(
@@ -90,10 +108,12 @@ def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
     creds = load_credentials()
     service = build("calendar", "v3", credentials=creds)
 
-    events_result = service.events().list(
-        calendarId="primary", timeMin=now, timeMax=end,
-        singleEvents=True, orderBy="startTime", maxResults=20,
-    ).execute()
+    events_result = _google_call("calendar", "events.list",
+        lambda: service.events().list(
+            calendarId="primary", timeMin=now, timeMax=end,
+            singleEvents=True, orderBy="startTime", maxResults=20,
+        ).execute(),
+        trace_id=ctx.trace_id)
 
     events = events_result.get("items", [])
     if not events:
@@ -217,7 +237,9 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     if not query:
         list_kwargs["orderBy"] = "modifiedTime desc"
 
-    results = service.files().list(**list_kwargs).execute()
+    results = _google_call("drive", "files.list",
+        lambda: service.files().list(**list_kwargs).execute(),
+        trace_id=ctx.trace_id)
 
     files = results.get("files", [])
     if not files:
@@ -238,15 +260,19 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     )
 
 
-def _resolve_event_id_by_title(service: Any, event_title: str) -> tuple[str, str]:
+def _resolve_event_id_by_title(
+    service: Any, event_title: str, *, trace_id: str | None = None
+) -> tuple[str, str]:
     """Return (event_id, error_message). error_message is empty on success."""
     import datetime as dt
     now = dt.datetime.utcnow().isoformat() + "Z"
     end = (dt.datetime.utcnow() + dt.timedelta(days=365)).isoformat() + "Z"
-    results = service.events().list(
-        calendarId="primary", timeMin=now, timeMax=end,
-        singleEvents=True, orderBy="startTime", maxResults=50,
-    ).execute()
+    results = _google_call("calendar", "events.list",
+        lambda: service.events().list(
+            calendarId="primary", timeMin=now, timeMax=end,
+            singleEvents=True, orderBy="startTime", maxResults=50,
+        ).execute(),
+        trace_id=trace_id)
     matched = [
         e for e in results.get("items", [])
         if event_title.lower() in e.get("summary", "").lower()
@@ -288,7 +314,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
     if not event_id and event_title:
         creds = load_credentials()
         service = build("calendar", "v3", credentials=creds)
-        event_id, err = _resolve_event_id_by_title(service, event_title)
+        event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
@@ -372,7 +398,7 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
     if not event_id and event_title:
         creds = load_credentials()
         service = build("calendar", "v3", credentials=creds)
-        event_id, err = _resolve_event_id_by_title(service, event_title)
+        event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
@@ -470,23 +496,27 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
 
     # Listar Drive raíz cuando no hay carpeta concreta o se pide la raíz
     if not folder_id and folder_name.lower() in _ROOT_ALIASES:
-        res = service.files().list(
-            q="'root' in parents and trashed = false",
-            pageSize=max_results,
-            orderBy="folder,modifiedTime desc",
-            fields="files(id, name, mimeType, modifiedTime)",
-        ).execute()
+        res = _google_call("drive", "files.list",
+            lambda: service.files().list(
+                q="'root' in parents and trashed = false",
+                pageSize=max_results,
+                orderBy="folder,modifiedTime desc",
+                fields="files(id, name, mimeType, modifiedTime)",
+            ).execute(),
+            trace_id=ctx.trace_id)
         return _format_files(res.get("files", []), "Mi Drive (raíz)")
 
     actual_folder_name = folder_name
     if not folder_id and folder_name:
         safe = folder_name.replace("'", "\\'")
-        res = service.files().list(
-            q=(f"name contains '{safe}' and mimeType = 'application/vnd.google-apps.folder'"
-               " and trashed = false"),
-            orderBy="modifiedTime desc",
-            fields="files(id, name)",
-        ).execute()
+        res = _google_call("drive", "files.list",
+            lambda: service.files().list(
+                q=(f"name contains '{safe}' and mimeType = 'application/vnd.google-apps.folder'"
+                   " and trashed = false"),
+                orderBy="modifiedTime desc",
+                fields="files(id, name)",
+            ).execute(),
+            trace_id=ctx.trace_id)
         folders = res.get("files", [])
         if not folders:
             output = f"No se encontró ninguna carpeta llamada '{folder_name}'."
@@ -504,10 +534,13 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
             updated_parameters=[], raw_result={"output": output},
         )
 
-    res = service.files().list(
-        q=f"'{folder_id}' in parents and trashed = false",
-        pageSize=max_results,
-        orderBy="folder,modifiedTime desc",
-        fields="files(id, name, mimeType, modifiedTime)",
-    ).execute()
+    fid = folder_id
+    res = _google_call("drive", "files.list",
+        lambda: service.files().list(
+            q=f"'{fid}' in parents and trashed = false",
+            pageSize=max_results,
+            orderBy="folder,modifiedTime desc",
+            fields="files(id, name, mimeType, modifiedTime)",
+        ).execute(),
+        trace_id=ctx.trace_id)
     return _format_files(res.get("files", []), actual_folder_name or folder_id)
