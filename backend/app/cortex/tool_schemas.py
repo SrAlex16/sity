@@ -990,8 +990,14 @@ WEB_SEARCH_TOOL = {
         "pregunte por algo que puede haber cambiado recientemente (noticias, "
         "precios, eventos, tiempo, personas públicas, software), cuando necesites "
         "datos actuales que no están en tu historial de conversación, o cuando "
-        "el usuario lo pida explícitamente. NO la uses para conversación general, "
-        "conocimiento estable o cosas que ya sabes con certeza."
+        "el usuario lo pida explícitamente. También úsala para atribuciones "
+        "específicas que vinculan una cosa con otra — a qué obra, categoría o "
+        "serie pertenece algo; quién hizo qué cosa concreta; qué versión o "
+        "edición es cuál — si esa información no aparece ya confirmada en el "
+        "resultado de otra tool o en la conversación. Creer saberlo no basta: "
+        "las atribuciones específicas no son conocimiento estable. "
+        "NO la uses para conversación general ni para hechos generales ampliamente "
+        "conocidos (definiciones, historia asentada, conceptos)."
     ),
     "input_schema": {
         "type": "object",
@@ -1245,7 +1251,11 @@ SPOTIFY_NOW_PLAYING_TOOL = {
     "name": "spotify_now_playing",
     "description": (
         "Qué está sonando ahora mismo en Spotify del usuario: canción, artista, álbum, "
-        "progreso y si está en pausa. Útil para 'qué está sonando', '¿qué canción es esta?', etc."
+        "progreso y si está en pausa. Útil para 'qué está sonando', '¿qué canción es esta?', etc. "
+        "El resultado contiene datos de reproducción (título, artista, álbum) — no indica "
+        "a qué obra pertenece la canción (anime, serie, película, videojuego) salvo que esa "
+        "información aparezca literalmente en el texto devuelto. Si el usuario pregunta por "
+        "el origen de la canción y no está en el resultado, usa web_search para verificarlo."
     ),
     "input_schema": {
         "type": "object",
