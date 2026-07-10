@@ -43,6 +43,13 @@ def _count_total_messages() -> int:
         return 0
 
 
+def _build_task_context_block(ctx: dict[str, str] | None) -> str:
+    if not ctx:
+        return ""
+    lines = "\n".join(f"- {k}: {v}" for k, v in ctx.items())
+    return f"Contexto de tarea activa (datos ya resueltos en este hilo):\n{lines}"
+
+
 def _build_planner_memory_ctx(n_total: int, history_limit: int, visible_count: int) -> str:
     return (
         "Contexto estructural de memoria:\n"
@@ -79,6 +86,7 @@ class PromptContextBuilder:
         input_mode: str = "text",
         output_mode: str = "text",
         skip_last_turns: int = 0,
+        task_context: dict[str, str] | None = None,
     ) -> PromptContext:
         recent_history = self._load_history(session=session, limit=history_limit, skip_last=skip_last_turns)
         planner_history = self._load_history(session=session, limit=planner_history_limit, skip_last=skip_last_turns)
@@ -110,7 +118,12 @@ class PromptContextBuilder:
             history_limit=history_limit,
             visible_count=len(planner_history),
         )
-        planner_user_message = f"{planner_mem_ctx}\n\n{message}"
+        task_ctx_block = _build_task_context_block(task_context)
+        planner_user_message = (
+            f"{planner_mem_ctx}\n\n{task_ctx_block}\n\n{message}"
+            if task_ctx_block
+            else f"{planner_mem_ctx}\n\n{message}"
+        )
 
         return PromptContext(
             recent_history=recent_history,

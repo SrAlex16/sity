@@ -43,6 +43,7 @@ ai:
   max_output_tokens_short: 220
   max_tool_loop_iterations: 3
   planner_max_tokens: 500
+  planner_history_limit: 10
   after_tools_min_tokens: 700
   history_limit_file_path: 2
   claude:
@@ -68,6 +69,9 @@ tokens:
   max_recent_turns: 4
   max_relevant_memories: 5
   max_input_tokens_interactive: 3000
+
+task_context:
+  ttl_minutes: 30
 
 debug:
   enabled: true

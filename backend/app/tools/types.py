@@ -11,3 +11,4 @@ class ToolExecutionResult:
     message: str
     updated_parameters: list[str]
     raw_result: dict[str, Any]
+    task_context: dict[str, str] | None = None

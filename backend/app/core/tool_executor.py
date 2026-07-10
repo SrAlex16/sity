@@ -26,9 +26,12 @@ from app.actions.capture_retention_actions import execute_capture_retention_acti
 from app.actions.file_actions import execute_file_action
 from app.actions.sense_actions import execute_sense_action
 from app.core.realtime_events import publish_event_sync
+from app.core.task_context import clear_task_context, save_task_context
 from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 from app.tools.types import ToolExecutionResult
+
+_TASK_CONTEXT_SESSION_ID = "default"
 
 
 ALLOWED_OPERATIONS = {
@@ -106,6 +109,20 @@ class ToolExecutor:
                 "type": "tool_finished",
                 "tool": tool_name,
             })
+
+        if result.task_context is not None:
+            if result.task_context:
+                save_task_context(
+                    _TASK_CONTEXT_SESSION_ID,
+                    result.task_context,
+                    trace_id=trace_id,
+                )
+            else:
+                clear_task_context(
+                    _TASK_CONTEXT_SESSION_ID,
+                    reason="explicit_close",
+                    trace_id=trace_id,
+                )
 
         return result
 

@@ -26,6 +26,7 @@ from app.chat.toolset_selector import (
 from app.chat.turn_context import TurnContext
 from app.core.persona_engine import PersonaDecision
 from app.core.runtime_config import RuntimeConfig, get_runtime_config
+from app.core.task_context import load_task_context
 from app.cortex.ai_gateway import AIGateway
 from app.cortex.providers.factory import build_ai_provider
 from app.settings.schemas import VoiceSettings
@@ -85,17 +86,19 @@ def build_ai_turn_prep(
     if message_mentions_file_path(request.message):
         history_limit = ctx.ai_config.get("history_limit_file_path", 2)
 
+    task_ctx = load_task_context(DEFAULT_CHAT_SESSION_ID)
     prompt_context = PromptContextBuilder(
         get_recent_messages=get_recent_db_messages,
     ).build(
         session=session,
         message=request.message,
         history_limit=history_limit,
-        planner_history_limit=4,
+        planner_history_limit=ctx.ai_config.get("planner_history_limit", 10),
         trace_id=ctx.trace_id,
         input_mode=request.input_mode,
         output_mode=output_mode,
         skip_last_turns=skip_history_turns,
+        task_context=task_ctx,
     )
 
     write_log(
