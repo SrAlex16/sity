@@ -56,7 +56,7 @@ Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
 
 ## Tests y CI
 
-- 1005 tests en verde (pytest)
+- 1012 tests en verde (pytest)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI
