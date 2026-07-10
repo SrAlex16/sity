@@ -1281,14 +1281,15 @@ SPOTIFY_PLAY_TOOL = {
     "name": "spotify_play",
     "description": (
         "Reproduce música en Spotify. Sin 'query': reanuda la reproducción pausada. "
-        "Con 'query' (nombre de canción, artista o álbum): busca y reproduce el primer "
-        "resultado. La búsqueda es autocontenida — no necesita llamadas previas a search. "
+        "Con 'query': busca por texto libre (canción, artista, álbum) y reproduce el primer "
+        "resultado; o pasa directamente una URI o ID de playlist/álbum/canción ya conocido "
+        "(ej. 'spotify:playlist:37i9dQZF1DX...' o solo el ID). "
         "Acepta 'device_id' opcional; sin él actúa sobre el dispositivo activo."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "query":     {"type": "string", "description": "Canción, artista o álbum a buscar y reproducir. Omitir para reanudar."},
+            "query":     {"type": "string", "description": "Texto libre a buscar, o URI/ID de Spotify ya conocido. Omitir para reanudar."},
             "device_id": {"type": "string", "description": "ID del dispositivo destino (de spotify_list_devices). Opcional."},
         },
     },
@@ -1330,6 +1331,38 @@ SPOTIFY_SET_VOLUME_TOOL = {
             "device_id":      {"type": "string", "description": "ID del dispositivo. Opcional."},
         },
         "required": ["volume_percent"],
+    },
+}
+
+SPOTIFY_LIST_PLAYLISTS_TOOL = {
+    "name": "spotify_list_playlists",
+    "description": (
+        "Devuelve las playlists de la biblioteca del usuario: nombre, ID, URI, "
+        "número de canciones y descripción (si la tiene). "
+        "Acepta 'limit' opcional (máx. 50, por defecto 50)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Número máximo de playlists a devolver. Por defecto 50."},
+        },
+    },
+}
+
+SPOTIFY_PLAYLIST_TRACKS_TOOL = {
+    "name": "spotify_playlist_tracks",
+    "description": (
+        "Devuelve las canciones de una playlist dado su ID. "
+        "Incluye título y artista de cada canción. "
+        "Acepta 'limit' opcional (máx. 50, por defecto 25)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "playlist_id": {"type": "string", "description": "ID de la playlist (de spotify_list_playlists)."},
+            "limit":       {"type": "integer", "minimum": 1, "maximum": 50, "description": "Número máximo de canciones a devolver. Por defecto 25."},
+        },
+        "required": ["playlist_id"],
     },
 }
 
@@ -1398,6 +1431,8 @@ BASE_TOOLSET: list[dict] = [
     SPOTIFY_SKIP_TOOL,
     SPOTIFY_SET_VOLUME_TOOL,
     SPOTIFY_RESUME_PREVIOUS_TOOL,
+    SPOTIFY_LIST_PLAYLISTS_TOOL,
+    SPOTIFY_PLAYLIST_TRACKS_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [

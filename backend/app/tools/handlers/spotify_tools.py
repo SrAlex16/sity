@@ -231,6 +231,97 @@ def handle_spotify_list_devices(ctx: ToolContext) -> ToolExecutionResult:
     )
 
 
+@tool_handler("spotify_list_playlists")
+def handle_spotify_list_playlists(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    limit = min(int(ctx.tool_input.get("limit", 50)), 50)
+    resp = _get("/me/playlists", params={"limit": limit})
+
+    if not resp.ok:
+        msg = f"Error al obtener playlists de Spotify ({resp.status_code})."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    items = resp.json().get("items", [])
+    if not items:
+        output = "No hay playlists en la biblioteca."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    lines = []
+    for pl in items:
+        name = pl.get("name", "?")
+        pl_id = pl.get("id", "")
+        uri = pl.get("uri", "")
+        tracks_total = pl.get("tracks", {}).get("total", "?")
+        desc = pl.get("description", "") or ""
+        desc_str = f"\n    Descripción: {desc}" if desc else ""
+        lines.append(
+            f"{name}\n"
+            f"    ID: {pl_id} | URI: {uri} | Canciones: {tracks_total}{desc_str}"
+        )
+
+    output = "\n".join(lines)
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=output,
+        updated_parameters=[], raw_result={"output": output},
+    )
+
+
+@tool_handler("spotify_playlist_tracks")
+def handle_spotify_playlist_tracks(ctx: ToolContext) -> ToolExecutionResult:
+    if not is_spotify_connected():
+        return _not_connected(ctx.tool_name)
+
+    playlist_id: str = str(ctx.tool_input.get("playlist_id", "")).strip()
+    if not playlist_id:
+        msg = "Falta el parámetro 'playlist_id'."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    limit = min(int(ctx.tool_input.get("limit", 25)), 50)
+    resp = _get(f"/playlists/{playlist_id}/tracks", params={"limit": limit, "fields": "items(track(name,artists,uri)),total", "market": "ES"})
+
+    if not resp.ok:
+        msg = f"Error al obtener canciones de la playlist ({resp.status_code})."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={"output": msg},
+        )
+
+    data = resp.json()
+    total = data.get("total", "?")
+    items = data.get("items", [])
+
+    if not items:
+        output = "La playlist está vacía."
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=True, message=output,
+            updated_parameters=[], raw_result={"output": output},
+        )
+
+    lines = [f"Mostrando {len(items)} de {total} canciones:"]
+    for entry in items:
+        track = (entry.get("track") or {})
+        name = track.get("name", "?")
+        artists = ", ".join(a["name"] for a in track.get("artists", []))
+        lines.append(f"  {name} — {artists}")
+
+    output = "\n".join(lines)
+    return ToolExecutionResult(
+        tool_name=ctx.tool_name, ok=True, message=output,
+        updated_parameters=[], raw_result={"output": output},
+    )
+
+
 # ── Control tools ─────────────────────────────────────────────────────────────
 
 def _search_uri(query: str) -> tuple[str, str] | None:
@@ -271,14 +362,18 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
     params = _device_params(device_id)
 
     if query:
-        resolved = _search_uri(query)
-        if resolved is None:
-            msg = f"No encontré nada en Spotify para '{query}'."
-            return ToolExecutionResult(
-                tool_name=ctx.tool_name, ok=False, message=msg,
-                updated_parameters=[], raw_result={"output": msg},
-            )
-        uri, desc = resolved
+        # Short-circuit: if caller already has a Spotify URI, skip the search API.
+        if query.startswith("spotify:"):
+            uri, desc = query, query
+        else:
+            resolved = _search_uri(query)
+            if resolved is None:
+                msg = f"No encontré nada en Spotify para '{query}'."
+                return ToolExecutionResult(
+                    tool_name=ctx.tool_name, ok=False, message=msg,
+                    updated_parameters=[], raw_result={"output": msg},
+                )
+            uri, desc = resolved
         _save_previous_context()
         # Track URI → uris list; album/playlist URI → context_uri
         if ":track:" in uri:

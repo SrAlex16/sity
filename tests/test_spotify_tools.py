@@ -492,3 +492,132 @@ def test_save_overwrites_existing(mock_get):
     with Session(engine) as db:
         rows = db.exec(select(Setting).where(Setting.key == "spotify:previous_context")).all()
         assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# spotify_list_playlists
+# ---------------------------------------------------------------------------
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_list_playlists_happy(mock_get, _):
+    mock_get.return_value = _mock_response(200, {
+        "items": [
+            {"id": "pl1", "uri": "spotify:playlist:pl1", "name": "Openings Anime",
+             "tracks": {"total": 42}, "description": "Los mejores openings"},
+            {"id": "pl2", "uri": "spotify:playlist:pl2", "name": "Workout",
+             "tracks": {"total": 30}, "description": ""},
+        ]
+    })
+    from app.tools.handlers.spotify_tools import handle_spotify_list_playlists
+    result = handle_spotify_list_playlists(_make_ctx("spotify_list_playlists"))
+    assert result.ok is True
+    assert "Openings Anime" in result.message
+    assert "pl1" in result.message
+    assert "42" in result.message
+    assert "Los mejores openings" in result.message
+    assert "Workout" in result.message
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_list_playlists_empty(mock_get, _):
+    mock_get.return_value = _mock_response(200, {"items": []})
+    from app.tools.handlers.spotify_tools import handle_spotify_list_playlists
+    result = handle_spotify_list_playlists(_make_ctx("spotify_list_playlists"))
+    assert result.ok is True
+    assert "no hay" in result.message.lower()
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_list_playlists_error(mock_get, _):
+    mock_get.return_value = _mock_response(401)
+    from app.tools.handlers.spotify_tools import handle_spotify_list_playlists
+    result = handle_spotify_list_playlists(_make_ctx("spotify_list_playlists"))
+    assert result.ok is False
+    assert "401" in result.message
+
+
+# ---------------------------------------------------------------------------
+# spotify_playlist_tracks
+# ---------------------------------------------------------------------------
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_playlist_tracks_happy(mock_get, _):
+    mock_get.return_value = _mock_response(200, {
+        "total": 42,
+        "items": [
+            {"track": {"name": "Silhouette", "uri": "spotify:track:s1", "artists": [{"name": "KANA-BOON"}]}},
+            {"track": {"name": "Blue Bird", "uri": "spotify:track:s2", "artists": [{"name": "Ikimono-gakari"}]}},
+        ]
+    })
+    from app.tools.handlers.spotify_tools import handle_spotify_playlist_tracks
+    result = handle_spotify_playlist_tracks(_make_ctx("spotify_playlist_tracks", {"playlist_id": "pl1"}))
+    assert result.ok is True
+    assert "Silhouette" in result.message
+    assert "KANA-BOON" in result.message
+    assert "Blue Bird" in result.message
+    assert "2 de 42" in result.message
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_playlist_tracks_empty(mock_get, _):
+    mock_get.return_value = _mock_response(200, {"total": 0, "items": []})
+    from app.tools.handlers.spotify_tools import handle_spotify_playlist_tracks
+    result = handle_spotify_playlist_tracks(_make_ctx("spotify_playlist_tracks", {"playlist_id": "pl1"}))
+    assert result.ok is True
+    assert "vacía" in result.message.lower()
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+def test_playlist_tracks_missing_id(_):
+    from app.tools.handlers.spotify_tools import handle_spotify_playlist_tracks
+    result = handle_spotify_playlist_tracks(_make_ctx("spotify_playlist_tracks", {}))
+    assert result.ok is False
+    assert "playlist_id" in result.message
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_playlist_tracks_error(mock_get, _):
+    mock_get.return_value = _mock_response(404)
+    from app.tools.handlers.spotify_tools import handle_spotify_playlist_tracks
+    result = handle_spotify_playlist_tracks(_make_ctx("spotify_playlist_tracks", {"playlist_id": "bad_id"}))
+    assert result.ok is False
+    assert "404" in result.message
+
+
+# ---------------------------------------------------------------------------
+# spotify_play — URI short-circuit
+# ---------------------------------------------------------------------------
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+@patch("app.tools.handlers.spotify_tools._search_uri")
+def test_play_with_spotify_uri_skips_search(mock_search, mock_save, mock_put, _):
+    """Passing a spotify: URI directly must NOT call _search_uri."""
+    mock_put.return_value = _mock_response(204)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"query": "spotify:playlist:pl1"}))
+    assert result.ok is True
+    mock_search.assert_not_called()
+    call_kwargs = mock_put.call_args
+    assert call_kwargs.kwargs["body"] == {"context_uri": "spotify:playlist:pl1"}
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+@patch("app.tools.handlers.spotify_tools._search_uri")
+def test_play_with_track_uri_skips_search(mock_search, mock_save, mock_put, _):
+    mock_put.return_value = _mock_response(204)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"query": "spotify:track:t1"}))
+    assert result.ok is True
+    mock_search.assert_not_called()
+    call_kwargs = mock_put.call_args
+    assert call_kwargs.kwargs["body"] == {"uris": ["spotify:track:t1"]}
