@@ -304,6 +304,62 @@ def test_play_404_resume_no_uri(mock_save, mock_put, _):
     assert "dispositivo" in result.message.lower()
 
 
+# task_context — Eje A integration
+# ---------------------------------------------------------------------------
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+@patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:playlist:pl1", "Mi playlist"))
+def test_play_task_context_uri_on_success(mock_search, mock_save, mock_put, _):
+    """Successful play sets task_context with the resolved URI."""
+    mock_put.return_value = _mock_response(204)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"query": "Mi playlist"}))
+    assert result.ok is True
+    assert result.task_context is not None
+    assert result.task_context.get("spotify_uri") == "spotify:playlist:pl1"
+    assert "spotify_device_id" not in result.task_context
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+@patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:track:t1", "Canción X"))
+def test_play_task_context_uri_and_device_on_success(mock_search, mock_save, mock_put, _):
+    """Successful play with explicit device_id stores both URI and device_id."""
+    mock_put.return_value = _mock_response(204)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"query": "Canción X", "device_id": "dev_abc"}))
+    assert result.ok is True
+    assert result.task_context == {"spotify_uri": "spotify:track:t1", "spotify_device_id": "dev_abc"}
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+@patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:playlist:pl1", "Mi playlist"))
+def test_play_task_context_uri_on_404(mock_search, mock_save, mock_put, _):
+    """Failed 404 play still saves the resolved URI so the next turn can retry."""
+    mock_put.return_value = _mock_response(404)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"query": "Mi playlist"}))
+    assert result.ok is False
+    assert result.task_context == {"spotify_uri": "spotify:playlist:pl1"}
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+def test_play_resume_no_task_context(mock_save, mock_put, _):
+    """Plain resume (no query) does not emit any task_context."""
+    mock_put.return_value = _mock_response(204)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {}))
+    assert result.ok is True
+    assert result.task_context is None
+
+
 # ---------------------------------------------------------------------------
 # spotify_pause
 # ---------------------------------------------------------------------------

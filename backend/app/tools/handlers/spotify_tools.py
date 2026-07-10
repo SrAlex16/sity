@@ -400,9 +400,15 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
         output = "Reproducción reanudada."
 
     if resp.status_code in (200, 204):
+        task_ctx: dict[str, str] | None = None
+        if _play_uri:
+            task_ctx = {"spotify_uri": _play_uri}
+            if device_id:
+                task_ctx["spotify_device_id"] = device_id
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=True, message=output,
             updated_parameters=[], raw_result={"output": output},
+            task_context=task_ctx,
         )
 
     if resp.status_code == 404:
@@ -423,6 +429,7 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=False, message=msg,
         updated_parameters=[], raw_result={"output": msg},
+        task_context={"spotify_uri": _play_uri} if _play_uri else None,
     )
 
 
