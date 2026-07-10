@@ -121,7 +121,10 @@ def _detach_tool(
                 }],
             )
             final_text = after_resp.text or raw_text
-        except Exception:
+        except Exception as _bg_exc:
+            write_log(level="ERROR", module="chat", event="bg_after_tools_failed",
+                      payload={"job_id": job.job_id, "tool_name": tool_name,
+                               "error": str(_bg_exc), "error_type": type(_bg_exc).__name__})
             final_text = raw_text
 
         # Persist so next turn sees this exchange in its history
@@ -137,8 +140,10 @@ def _detach_tool(
                     trace_id=bg_trace_id,
                 ))
                 db_sess.commit()
-        except Exception:
-            pass
+        except Exception as _db_exc:
+            write_log(level="ERROR", module="chat", event="bg_persist_failed",
+                      payload={"job_id": job.job_id, "tool_name": tool_name,
+                               "error": str(_db_exc), "error_type": type(_db_exc).__name__})
 
         publish_session_event_sync(_BG_SESSION_ID, {
             "type": "proactive_message",
