@@ -8,14 +8,17 @@ Verifies:
 - Sity role messages still carry tone_meta (pre-existing field).
 - created_at is set on every message.
 - dataset_eligible defaults to True.
+- ChatMessageItem serializes naive datetimes (from SQLite) as UTC with offset.
 """
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 from sqlmodel import Session, select
 
+from app.api.schemas import ChatMessageItem
 from app.memory.message_metadata import MessageMetadata, build_message_metadata
 from app.memory.models import ChatMessage
 
@@ -408,5 +411,43 @@ def test_save_chat_message_sity_inherits_source_channel(db_session: Session) -> 
     ).first()
     assert row is not None
     assert row.source_channel == "telegram"
+
+
+# ---------------------------------------------------------------------------
+# ChatMessageItem datetime serialization — timezone safety
+# ---------------------------------------------------------------------------
+
+def test_chat_message_item_naive_datetime_serializes_as_utc() -> None:
+    """SQLite returns naive datetimes; confirm JSON output carries UTC offset.
+
+    Without this fix, `new Date("2026-07-10T22:42:00")` in the browser
+    would be interpreted as local time instead of UTC, breaking timestamps
+    after a page reload.
+    """
+    naive_dt = datetime(2026, 7, 10, 22, 42, 0)  # as returned by SQLite
+    item = ChatMessageItem(role="user", text="hola", created_at=naive_dt)
+    payload = json.loads(item.model_dump_json())
+    ts = payload["created_at"]
+    assert ts is not None
+    assert "+00:00" in ts or ts.endswith("Z"), (
+        f"created_at should include UTC offset but got: {ts!r}"
+    )
+    assert "2026-07-10T22:42:00" in ts
+
+
+def test_chat_message_item_aware_datetime_serializes_unchanged() -> None:
+    """Already-aware datetimes (UTC) must pass through without mutation."""
+    aware_dt = datetime(2026, 7, 10, 22, 42, 0, tzinfo=timezone.utc)
+    item = ChatMessageItem(role="sity", text="hola", created_at=aware_dt)
+    payload = json.loads(item.model_dump_json())
+    ts = payload["created_at"]
+    assert "+00:00" in ts or ts.endswith("Z")
+    assert "2026-07-10T22:42:00" in ts
+
+
+def test_chat_message_item_none_datetime_stays_none() -> None:
+    item = ChatMessageItem(role="user", text="hola", created_at=None)
+    payload = json.loads(item.model_dump_json())
+    assert payload["created_at"] is None
 
 

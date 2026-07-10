@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class ChatHistoryItem(BaseModel):
@@ -15,6 +15,14 @@ class ChatMessageItem(BaseModel):
     trace_id: Optional[str] = None
     created_at: Optional[datetime] = None
     audio_filename: Optional[str] = None
+
+    @field_serializer("created_at")
+    def _serialize_created_at(self, v: Optional[datetime]) -> Optional[str]:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.isoformat()
 
 
 class CurrentChatResponse(BaseModel):
