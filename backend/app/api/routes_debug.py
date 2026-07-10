@@ -1,9 +1,13 @@
+import time
+from collections import deque
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
 from sqlmodel import Session, col, select
 from typing import Optional
+
+from app.trace.logger import write_log
 
 from app.debug.schemas import LastTraceResponse, RecentEventsResponse, TraceEvent
 from app.memory.db import get_session
@@ -21,6 +25,18 @@ from app.training.demo_cleanup import run_demo_cleanup
 
 
 router = APIRouter(prefix="/debug", tags=["debug"])
+
+# Simple in-memory rate limiter: max 20 frontend errors per 60 s (resets on restart)
+_fe_error_times: deque[float] = deque()
+_FE_RATE_WINDOW = 60
+_FE_RATE_MAX = 20
+
+
+class FrontendErrorReport(BaseModel):
+    message: str
+    stack: Optional[str] = None
+    url: Optional[str] = None
+    user_agent: Optional[str] = None
 
 
 class DatasetCaptureRequest(BaseModel):
@@ -71,6 +87,26 @@ def _ctx_to_response(ctx: DatasetCaptureContext) -> dict:
 
 def _is_demo_active(ctx: DatasetCaptureContext) -> bool:
     return ctx.enabled and ctx.dataset_source == "demo_session"
+
+
+@router.post("/frontend-error")
+def frontend_error(body: FrontendErrorReport) -> dict:
+    """Receive an unhandled JS error from the PWA and log it as a WARN."""
+    now = time.time()
+    while _fe_error_times and _fe_error_times[0] < now - _FE_RATE_WINDOW:
+        _fe_error_times.popleft()
+    if len(_fe_error_times) >= _FE_RATE_MAX:
+        return {"ok": False, "reason": "rate_limited"}
+    _fe_error_times.append(now)
+
+    payload: dict = {"message": body.message[:500]}
+    if body.stack:
+        payload["stack"] = body.stack[:2000]
+    if body.url:
+        payload["url"] = body.url
+
+    write_log(level="WARN", module="frontend", event="frontend_error", payload=payload)
+    return {"ok": True}
 
 
 @router.get("/events/recent", response_model=RecentEventsResponse)

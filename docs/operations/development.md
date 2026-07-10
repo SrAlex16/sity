@@ -177,6 +177,21 @@ el caso se repite.
 no historial de terceros). El contenido de los fragmentos recuperados **no se
 loguea** — solo cantidades y metadatos.
 
+### Eventos instrumentados (Fase 2 — frontend JS)
+
+| `module`    | `event`           | Cuándo                                                           |
+|-------------|-------------------|------------------------------------------------------------------|
+| `frontend`  | `frontend_error`  | Error JS no manejado o promesa rechazada sin catch en la PWA     |
+
+Capturado vía `window.addEventListener('error')` y `unhandledrejection` en
+`mobile/src/main.tsx`. El endpoint `POST /debug/frontend-error` acepta el
+mensaje (truncado a 500 chars), stack trace (truncado a 2000 chars) y URL.
+Rate limit: 20 errores/minuto en memoria (se resetea al reiniciar el backend).
+
+**Alcance**: solo errores JS no capturados. No es un sistema de analytics ni de
+logging de comportamiento normal — solo fallos inesperados que de otra forma
+serían invisibles.
+
 Los eventos `tool_call_started/finished` cubren automáticamente todas las tools
 actuales y futuras — no hay que tocar los handlers individuales. Los inputs
 sensibles (token, secret, password, authorization, api_key) se redactan como

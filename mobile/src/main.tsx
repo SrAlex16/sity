@@ -6,6 +6,22 @@ import './styles/global.css';
 import './styles/animations.css';
 import App from './App';
 
+function _reportError(message: string, stack?: string): void {
+  fetch('/debug/frontend-error', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, stack, url: window.location.href }),
+  }).catch(() => {});
+}
+
+window.addEventListener('error', (event) => {
+  _reportError(event.message, event.error?.stack);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  _reportError(String(event.reason), event.reason?.stack);
+});
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
