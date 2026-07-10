@@ -170,6 +170,53 @@ def test_list_devices_none(mock_get, _):
     assert "no hay" in result.message.lower()
 
 
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_list_devices_single_sets_task_context(mock_get, _):
+    """Single device → task_context contains its ID; model doesn't need to copy it from text."""
+    mock_get.return_value = _mock_response(200, {
+        "devices": [
+            {"id": "f7957618abc", "name": "ALEX", "type": "Computer", "is_active": False, "volume_percent": 72},
+        ]
+    })
+    from app.tools.handlers.spotify_tools import handle_spotify_list_devices
+    result = handle_spotify_list_devices(_make_ctx("spotify_list_devices"))
+    assert result.ok is True
+    assert result.task_context == {"spotify_device_id": "f7957618abc"}
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_list_devices_multi_active_sets_task_context(mock_get, _):
+    """Multiple devices but one active → task_context contains the active device's ID."""
+    mock_get.return_value = _mock_response(200, {
+        "devices": [
+            {"id": "dev_idle", "name": "Phone", "type": "Smartphone", "is_active": False, "volume_percent": 50},
+            {"id": "dev_active", "name": "ALEX", "type": "Computer", "is_active": True, "volume_percent": 72},
+        ]
+    })
+    from app.tools.handlers.spotify_tools import handle_spotify_list_devices
+    result = handle_spotify_list_devices(_make_ctx("spotify_list_devices"))
+    assert result.ok is True
+    assert result.task_context == {"spotify_device_id": "dev_active"}
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._get")
+def test_list_devices_multi_none_active_no_task_context(mock_get, _):
+    """Multiple devices, none active → ambiguous which to use; task_context is None."""
+    mock_get.return_value = _mock_response(200, {
+        "devices": [
+            {"id": "dev_a", "name": "Phone", "type": "Smartphone", "is_active": False, "volume_percent": 50},
+            {"id": "dev_b", "name": "ALEX", "type": "Computer", "is_active": False, "volume_percent": 72},
+        ]
+    })
+    from app.tools.handlers.spotify_tools import handle_spotify_list_devices
+    result = handle_spotify_list_devices(_make_ctx("spotify_list_devices"))
+    assert result.ok is True
+    assert result.task_context is None
+
+
 # ---------------------------------------------------------------------------
 # _search_uri
 # ---------------------------------------------------------------------------
@@ -302,6 +349,20 @@ def test_play_404_resume_no_uri(mock_save, mock_put, _):
     assert result.ok is False
     assert "spotify:" not in result.message
     assert "dispositivo" in result.message.lower()
+
+
+@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._put")
+@patch("app.tools.handlers.spotify_tools._save_previous_context")
+def test_play_404_with_device_id_reports_invalid_device(mock_save, mock_put, _):
+    """404 when device_id was explicitly provided → message says device not found, not 'no active device'."""
+    mock_put.return_value = _mock_response(404)
+    from app.tools.handlers.spotify_tools import handle_spotify_play
+    result = handle_spotify_play(_make_ctx("spotify_play", {"device_id": "ALEX"}))
+    assert result.ok is False
+    assert "ALEX" in result.message
+    assert "spotify_list_devices" in result.message
+    assert "No hay ningún dispositivo" not in result.message
 
 
 # task_context — Eje A integration

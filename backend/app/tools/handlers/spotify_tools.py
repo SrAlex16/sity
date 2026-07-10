@@ -235,9 +235,19 @@ def handle_spotify_list_devices(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     output = "\n".join(lines)
+
+    task_ctx: dict[str, str] | None = None
+    if len(devices) == 1:
+        task_ctx = {"spotify_device_id": devices[0]["id"]}
+    else:
+        active_dev = next((d for d in devices if d.get("is_active")), None)
+        if active_dev:
+            task_ctx = {"spotify_device_id": active_dev["id"]}
+
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=output,
         updated_parameters=[], raw_result={"output": output},
+        task_context=task_ctx,
     )
 
 
@@ -411,7 +421,12 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if resp.status_code == 404:
-        if _play_uri:
+        if device_id:
+            msg = (
+                f"No encuentro ese dispositivo (ID: {device_id}). "
+                "Prueba con spotify_list_devices para ver los IDs disponibles."
+            )
+        elif _play_uri:
             msg = (
                 f"No hay ningún dispositivo Spotify activo. "
                 f"Abre Spotify en algún dispositivo y vuelve a intentarlo con este URI: {_play_uri}"
