@@ -11,6 +11,7 @@ from sqlalchemy import text as sa_text
 
 from app.chat.prompt_context import is_operational_guard_message
 from app.memory.db import engine
+from app.trace.logger import write_log
 
 log = logging.getLogger(__name__)
 
@@ -240,6 +241,17 @@ def read_conversation_window(
             message_id=msg_id,
         ))
 
+    write_log(
+        level="INFO",
+        module="memory",
+        event="memory_window_read",
+        payload={
+            "center_message_id": center_message_id,
+            "before": before,
+            "after": after,
+            "messages_returned": len(messages),
+        },
+    )
     return messages
 
 
@@ -256,18 +268,26 @@ def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list
         return []
 
     limit = max(_LIMIT_MIN, min(limit, _LIMIT_MAX))
+    write_log(
+        level="INFO",
+        module="memory",
+        event="memory_search_started",
+        payload={"query": query, "limit": limit},
+    )
     use_fts = _setup_fts()
     # Oversample to compensate for filtered operational messages
     fetch_n = min(limit * 3, 30)
 
     results: list[SearchResult] = []
     seen_ids: set[int] = set()
+    _fts_used = False
 
     with engine.connect() as conn:
         rows: list = []
         if use_fts:
             try:
                 rows = _search_fts(conn, query, fetch_n)
+                _fts_used = bool(rows)
             except Exception as exc:
                 log.warning("FTS5 query failed, falling back to LIKE: %s", exc)
 
@@ -295,6 +315,12 @@ def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list
             if len(results) >= limit:
                 break
 
+    write_log(
+        level="INFO" if results else "WARN",
+        module="memory",
+        event="memory_search_finished",
+        payload={"query": query, "count": len(results), "fts_used": _fts_used},
+    )
     return results
 
 
@@ -305,5 +331,9 @@ def rebuild_fts() -> None:
             conn.execute(sa_text("INSERT INTO chatmessage_fts(chatmessage_fts) VALUES ('rebuild')"))
             conn.commit()
         log.info("FTS5 chatmessage_fts rebuilt (on-demand)")
+        write_log(level="INFO", module="memory", event="memory_fts_rebuild",
+                  payload={"ok": True, "trigger": "on_demand"})
     except Exception as exc:
         log.warning("FTS5 on-demand rebuild failed: %s", exc)
+        write_log(level="WARN", module="memory", event="memory_fts_rebuild",
+                  payload={"ok": False, "reason": str(exc)[:200]})

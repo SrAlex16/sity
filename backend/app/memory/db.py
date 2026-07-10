@@ -3,6 +3,8 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlmodel import SQLModel, Session, create_engine
 
+from app.trace.logger import write_log
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data"
@@ -53,17 +55,28 @@ def _migrate_chatmessage() -> None:
         existing = {row[1] for row in result.fetchall()}
         if not existing:
             return  # table not yet created; create_all handles the full schema
+        added: list[str] = []
         for col_name, col_type in new_columns:
             if col_name not in existing:
                 conn.execute(text(f"ALTER TABLE chatmessage ADD COLUMN {col_name} {col_type}"))
+                added.append(col_name)
         conn.commit()
+    if added:
+        write_log(level="INFO", module="memory", event="db_migration_applied",
+                  payload={"added_columns": added})
 
 
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
-    _configure_sqlite()
-    SQLModel.metadata.create_all(engine)
-    _migrate_chatmessage()
+    try:
+        _configure_sqlite()
+        SQLModel.metadata.create_all(engine)
+        _migrate_chatmessage()
+    except Exception as exc:
+        write_log(level="WARN", module="memory", event="db_initialized",
+                  payload={"ok": False, "reason": str(exc)[:200]})
+        raise
+    write_log(level="INFO", module="memory", event="db_initialized", payload={"ok": True})
 
 
 def get_session():

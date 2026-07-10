@@ -155,6 +155,28 @@ Casos que producen WARN en `audio_capture_finished`: `loopback_device_refused`,
 duraciones, códigos de error). Ni el texto sintetizado ni la transcripción real
 se escriben en ningún log — solo `text_len` y `transcript_len`.
 
+### Eventos instrumentados (Fase 2 — memory)
+
+| `module`  | `event`                    | Cuándo                                                              |
+|-----------|----------------------------|---------------------------------------------------------------------|
+| `memory`  | `db_initialized`           | Al terminar `init_db()` (ok/WARN con motivo si falla el arranque)  |
+| `memory`  | `db_migration_applied`     | Si `_migrate_chatmessage` añadió columnas nuevas (lista en payload) |
+| `memory`  | `memory_search_started`    | Antes de buscar en historial (payload: `query`, `limit`)            |
+| `memory`  | `memory_search_finished`   | Al terminar búsqueda (`count`, `fts_used`; **WARN si count=0**)    |
+| `memory`  | `memory_window_read`       | Al leer ventana de contexto alrededor de un anchor                  |
+| `memory`  | `memory_fts_rebuild`       | Al reconstruir el índice FTS5 (ok/WARN)                             |
+| `memory`  | `memory_recall_started`    | Antes del ciclo iterativo de recall (`query`, `trace_id`)           |
+| `memory`  | `memory_recall_finished`   | Al terminar recall (`status`, `confidence`, `fragments`, `windows`) |
+
+`memory_search_finished` emite **WARN** cuando `count=0` — esta es la condición
+de riesgo de alucinación: el modelo recibió cero fragmentos reales pero puede
+responder de todas formas. Ver la `query` en el payload para diagnosticar si
+el caso se repite.
+
+**Privacidad**: la query de búsqueda se loguea (es lo que el usuario pidió buscar,
+no historial de terceros). El contenido de los fragmentos recuperados **no se
+loguea** — solo cantidades y metadatos.
+
 Los eventos `tool_call_started/finished` cubren automáticamente todas las tools
 actuales y futuras — no hay que tocar los handlers individuales. Los inputs
 sensibles (token, secret, password, authorization, api_key) se redactan como

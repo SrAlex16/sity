@@ -19,6 +19,7 @@ from app.memory.search import (
     read_conversation_window,
     search_conversation_history,
 )
+from app.trace.logger import write_log
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,12 @@ class MemoryRecallRunner:
         log.info(
             "memory_recall_started trace_id=%s query=%r",
             trace_id, query[:80],
+        )
+        write_log(
+            level="INFO",
+            module="memory",
+            event="memory_recall_started",
+            payload={"trace_id": trace_id, "query": query[:80]},
         )
 
         queries = self._generate_queries(query)
@@ -179,6 +186,19 @@ class MemoryRecallRunner:
             "memory_recall_finished trace_id=%s status=%s confidence=%.2f "
             "fragments=%d windows=%d",
             trace_id, status, ev_confidence, len(fragments), windows_read,
+        )
+        write_log(
+            level="INFO",
+            module="memory",
+            event="memory_recall_finished",
+            payload={
+                "trace_id": trace_id,
+                "status": status,
+                "confidence": round(ev_confidence, 2),
+                "fragments": len(fragments),
+                "windows": windows_read,
+                "queries_tried": len(queries_tried),
+            },
         )
 
         return MemoryRecallResult(
