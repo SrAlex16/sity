@@ -28,6 +28,7 @@ class AITextProvider(Protocol):
         request: AIRequest,
         first_response_content: list[dict],
         tool_results: list[dict],
+        extra_prior_rounds: list[dict] | None = None,
     ) -> AIResponse:
         """Follow-up call after the tool loop has collected results."""
         ...

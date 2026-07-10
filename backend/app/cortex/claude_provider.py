@@ -147,6 +147,7 @@ class ClaudeProvider:
         request: AIRequest,
         first_response_content: list[Any],
         tool_results: list[dict[str, Any]],
+        extra_prior_rounds: list[dict[str, Any]] | None = None,
     ) -> AIResponse:
         started = time.perf_counter()
 
@@ -154,20 +155,24 @@ class ClaudeProvider:
         _msgs: list[Any] = [
             *_messages_with_history_cache(request.prior_messages, request.user_message),
             {"role": "user", "content": _user_content_block(request)},
+            *(extra_prior_rounds or []),
             {"role": "assistant", "content": first_response_content},
             {"role": "user", "content": tool_results},
         ]
 
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": request.max_tokens,
+            "system": _system_with_cache(request.system_prompt),  # type: ignore[arg-type]
+            "messages": _msgs,
+        }
+        if request.tools_enabled and effective_tools:
+            kwargs["tools"] = _tools_with_cache(effective_tools)  # type: ignore[arg-type]
+
         _cancelled: AIResponse | None = None
         message = None
         try:
-            with self.client.messages.stream(
-                model=self.model,
-                max_tokens=request.max_tokens,
-                system=_system_with_cache(request.system_prompt),  # type: ignore[arg-type]
-                tools=_tools_with_cache(effective_tools),  # type: ignore[arg-type]
-                messages=_msgs,
-            ) as stream:
+            with self.client.messages.stream(**kwargs) as stream:
                 for _chunk in stream:
                     if is_cancelled(request.client_turn_id):
                         _cancelled = AIResponse(

@@ -57,6 +57,7 @@ class ToolExecutor:
         tool_input: dict[str, Any],
         trace_id: str,
         client_turn_id: str | None = None,
+        loop_round: int = 0,
     ) -> ToolExecutionResult:
         if tool_name in TOOL_LABELS:
             publish_event_sync(client_turn_id, {
@@ -73,6 +74,7 @@ class ToolExecutor:
             trace_id=trace_id,
             payload={
                 "tool_name": tool_name,
+                "loop_round": loop_round,
                 "tool_input": _redact_sensitive(tool_input),
                 "client_turn_id": client_turn_id,
             },
@@ -92,6 +94,7 @@ class ToolExecutor:
             trace_id=trace_id,
             payload={
                 "tool_name": tool_name,
+                "loop_round": loop_round,
                 "ok": result.ok,
                 "message": result.message,
                 "raw_result_summary": self._summarize_payload(result.raw_result),

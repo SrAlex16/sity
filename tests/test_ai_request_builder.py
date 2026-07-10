@@ -114,11 +114,11 @@ def test_after_tools_request_prompt_structure() -> None:
     assert "confirmation_phrase" in req.system_prompt
 
 
-def test_after_tools_request_no_tools_by_default() -> None:
+def test_after_tools_request_tools_enabled_by_default() -> None:
     req = build_after_tools_ai_request(
         trace_id="t", persona_prompt="Eres Sity.", user_message="x", max_tokens=700,
     )
-    assert req.tools_enabled is False
+    assert req.tools_enabled is True
     assert req.tools is None
 
 

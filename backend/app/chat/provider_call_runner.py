@@ -94,12 +94,14 @@ class ProviderCallRunner:
         request: AIRequest,
         first_response_content: list[Any],
         tool_results: list[dict[str, Any]],
+        extra_prior_rounds: list[dict[str, Any]] | None = None,
     ) -> AIResponse:
         """Final response after the tool loop has collected results."""
         return self._gateway.generate_with_tool_results(
             request=request,
             first_response_content=first_response_content,
             tool_results=tool_results,
+            extra_prior_rounds=extra_prior_rounds,
         )
 
     # ------------------------------------------------------------------

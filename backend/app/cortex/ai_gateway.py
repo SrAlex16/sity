@@ -56,12 +56,14 @@ class AIGateway:
         request: AIRequest,
         first_response_content: list,
         tool_results: list[dict],
+        extra_prior_rounds: list[dict] | None = None,
     ) -> AIResponse:
         try:
             response = self.provider.generate_with_tool_results(
                 request=request,
                 first_response_content=first_response_content,
                 tool_results=tool_results,
+                extra_prior_rounds=extra_prior_rounds,
             )
             if not response.ok:
                 return response  # provider returned a controlled error; propagate as-is

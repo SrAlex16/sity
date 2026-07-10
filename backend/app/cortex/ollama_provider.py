@@ -163,6 +163,7 @@ class OllamaProvider:
         request: AIRequest,
         first_response_content: list[dict],
         tool_results: list[dict],
+        extra_prior_rounds: list[dict] | None = None,
     ) -> AIResponse:
         return self._error(
             self._effective_model(),

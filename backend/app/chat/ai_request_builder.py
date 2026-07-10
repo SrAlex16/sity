@@ -258,7 +258,7 @@ def build_after_tools_ai_request(
         system_prompt=persona_prompt + _AFTER_TOOLS_PROMPT_SUFFIX,
         user_message=user_message,
         max_tokens=max_tokens,
-        tools_enabled=False,
+        tools_enabled=True,
         tools=tools,
         prior_messages=prior_messages or [],
         images=images or [],

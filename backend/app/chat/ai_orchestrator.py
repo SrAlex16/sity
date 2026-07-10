@@ -189,6 +189,13 @@ def _detach_tool(
     )
 
 
+def _tool_use_blocks(response: "Any") -> "list[dict[str, Any]]":
+    return [
+        {"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.input}
+        for tc in response.tool_calls
+    ]
+
+
 def _clean_text_for_tts(text: str) -> str:
     text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
     text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', text)
@@ -643,35 +650,99 @@ class ChatAIOrchestrator:
                 )
 
         if tool_results_for_claude and not is_cancelled(request.client_turn_id):
-            response_after_tools = runner.run_after_tools(
-                request=build_after_tools_ai_request(
-                    trace_id=ctx.trace_id,
-                    persona_prompt=persona_decision.system_prompt,
-                    user_message=user_message_with_history,
-                    max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
-                    tools=selected_tools,
-                    prior_messages=prior_messages,
-                    images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
-                    client_turn_id=request.client_turn_id,
-                ),
-                first_response_content=[
-                    {
-                        "type": "tool_use",
-                        "id": tool_call.id,
-                        "name": tool_call.name,
-                        "input": tool_call.input,
-                    }
-                    for tool_call in response.tool_calls
-                ],
-                tool_results=tool_results_for_claude,
-            )
+            max_after_tools_rounds: int = ctx.ai_config.get("max_after_tools_rounds", 3)
+            source_response = response
+            accumulated_tool_rounds: list[dict[str, Any]] = []
 
-            response.text = response_after_tools.text
-            response.usage.input_tokens += response_after_tools.usage.input_tokens
-            response.usage.output_tokens += response_after_tools.usage.output_tokens
-            response.latency_ms += response_after_tools.latency_ms
-            response.error_type = response_after_tools.error_type
-            response.error_message = response_after_tools.error_message
+            for _round in range(max_after_tools_rounds):
+                if is_cancelled(request.client_turn_id):
+                    break
+
+                response_after_tools = runner.run_after_tools(
+                    request=build_after_tools_ai_request(
+                        trace_id=ctx.trace_id,
+                        persona_prompt=persona_decision.system_prompt,
+                        user_message=user_message_with_history,
+                        max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
+                        tools=selected_tools,
+                        prior_messages=prior_messages,
+                        images=[{"media_type": img.media_type, "data": img.data} for img in request.images],
+                        client_turn_id=request.client_turn_id,
+                    ),
+                    first_response_content=_tool_use_blocks(source_response),
+                    tool_results=tool_results_for_claude,
+                    extra_prior_rounds=accumulated_tool_rounds or None,
+                )
+
+                response.usage.input_tokens += response_after_tools.usage.input_tokens
+                response.usage.output_tokens += response_after_tools.usage.output_tokens
+                response.latency_ms += response_after_tools.latency_ms
+                response.error_type = response_after_tools.error_type
+                response.error_message = response_after_tools.error_message
+                response.text = response_after_tools.text
+
+                if not response_after_tools.tool_calls or is_cancelled(request.client_turn_id):
+                    break
+
+                write_log(
+                    level="INFO",
+                    module="tools",
+                    event="tool_chain_continued",
+                    trace_id=ctx.trace_id,
+                    payload={
+                        "round": _round + 1,
+                        "tool_calls_requested": [tc.name for tc in response_after_tools.tool_calls],
+                    },
+                )
+
+                accumulated_tool_rounds = accumulated_tool_rounds + [
+                    {"role": "assistant", "content": _tool_use_blocks(source_response)},
+                    {"role": "user",      "content": tool_results_for_claude},
+                ]
+
+                _first_tc = response_after_tools.tool_calls[0]
+                if get_blocking_policy(_first_tc.name) == "detachable":
+                    _det_loop = _detach_tool(
+                        tool_call=_first_tc,
+                        executor=executor,
+                        trace_id=ctx.trace_id,
+                        runner=runner,
+                        persona_prompt=persona_decision.system_prompt,
+                        user_message_with_history=user_message_with_history,
+                        prior_messages=prior_messages,
+                        selected_tools=selected_tools,
+                        request=request,
+                        ctx=ctx,
+                    )
+                    tool_results_for_claude = _det_loop.tool_results_for_claude
+                    source_response = response_after_tools
+                    continue
+
+                _loop = run_tool_loop(
+                    planner_response=response_after_tools,
+                    executor=executor,
+                    trace_id=ctx.trace_id,
+                    client_turn_id=request.client_turn_id,
+                    max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
+                    loop_round=_round + 1,
+                )
+
+                if _loop.early_kind == "local_final":
+                    response.text = _loop.local_text
+                    break
+
+                if _loop.early_kind in ("sensor_cancelled", "sensor_finished"):
+                    _personality_dict = ctx.personality if isinstance(ctx.personality, dict) else {}
+                    response.text = runner.run_micro_reaction(
+                        event_type=_loop.sensor_event_type,
+                        event_description=_loop.sensor_description,
+                        personality=_personality_dict,
+                        trace_id=ctx.trace_id,
+                    )
+                    break
+
+                tool_results_for_claude = _loop.tool_results_for_claude
+                source_response = response_after_tools
 
         ctx.persistence.tag_sity_with_model(response.model)
         chat_result = build_final_ai_response(

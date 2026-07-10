@@ -68,6 +68,7 @@ def run_tool_loop(
     trace_id: str,
     client_turn_id: str | None,
     max_iterations: int = _DEFAULT_MAX_ITERATIONS,
+    loop_round: int = 0,
 ) -> ToolLoopRunOutcome:
     """Run every tool call in planner_response and return a ToolLoopRunOutcome."""
     tool_results_for_claude: list[dict[str, Any]] = []
@@ -82,6 +83,7 @@ def run_tool_loop(
             executor=executor,
             trace_id=trace_id,
             client_turn_id=client_turn_id,
+            loop_round=loop_round,
         )
 
         if step.early_kind is not None:

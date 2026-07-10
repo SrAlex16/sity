@@ -60,6 +60,7 @@ def run_tool_loop_step(
     executor: ToolExecutor,
     trace_id: str,
     client_turn_id: str | None,
+    loop_round: int = 0,
 ) -> ToolLoopStepOutcome:
     """Execute one tool call and return a normalised outcome."""
     result = executor.execute_tool_call(
@@ -67,6 +68,7 @@ def run_tool_loop_step(
         tool_input=tool_call.input,
         trace_id=trace_id,
         client_turn_id=client_turn_id,
+        loop_round=loop_round,
     )
 
     raw = result.raw_result
