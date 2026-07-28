@@ -1,5 +1,36 @@
 # Decisiones de arquitectura
 
+## 2026-07-28
+
+### Revisión del dataset pre-fine-tuning (Fase 3)
+
+Análisis cuantitativo sobre los 2029 mensajes `role="user"` de la BD
+(post-migración Fase 2, todos bajo `session_id="user:1"`):
+
+| Segmento | Mensajes | Acción |
+|----------|----------|--------|
+| `dataset_source IS NULL` (pre-instrumentación) | 1159 user + 1174 sity | **Excluidos** (`eligible=0`) |
+| `dataset_source='debug_test'` | 176 (162 ya excluidos, 14 ok) | Sin cambio |
+| `dataset_source='normal_use'` | 663 | Candidatos para export |
+| `dataset_source='synthetic_claude_user'` | 27 | Candidatos para export |
+| `dataset_source='human_guest'` | 4 (`speaker_label='Mama'`) | Ya excluidos (`eligible=0`) |
+| `dataset_eligible=0` total (user) | **1326** | Fuera del export |
+| `dataset_eligible=1` total (user) | **703** | Candidatos para export |
+
+**Identidad de los mensajes etiquetados**: de los 755 con `speaker_label` relleno,
+el 85% son claramente Alex (`Alex`/`alex` = 640). Únicos terceros identificados:
+`Mama` (4, ya excluidos), `guest_confused_01` (84, demo), `claude_ext` (18, sintéticos),
+`alex_demo_session_test` (9, demo).
+
+**Decisión sobre los 1159 NULL**: excluidos por precaución. Corresponden a
+conversaciones reales de Alex previas a la instrumentación de `dataset_source`
+(antes de mayo 2026), pero sin etiquetas de calidad verificadas. Se pueden
+recuperar para fine-tuning futuro revisándolos manualmente. Se marcaron AMBOS
+lados del par (user + sity) para consistencia con el criterio de limpieza anterior.
+
+**Rango temporal**: 2026-05-17 al 2026-07-28. Punto de corte v1 (2026-05-31):
+1051 mensajes antes / 978 después.
+
 ## 2026-06-29
 
 ### Imágenes (visión)
