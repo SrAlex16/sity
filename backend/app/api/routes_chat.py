@@ -224,7 +224,7 @@ def _chat_message_inner(
 
     ctx = build_turn_context(session, request, _strong_model, session_id=_session_id)
 
-    persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message)
+    persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id)
     persona_prompt = persona_decision.system_prompt
 
     if _upgrade_context:

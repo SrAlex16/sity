@@ -99,6 +99,7 @@ def build_ai_turn_prep(
         output_mode=output_mode,
         skip_last_turns=skip_history_turns,
         task_context=task_ctx,
+        session_id=ctx.session_id,
     )
 
     write_log(

@@ -649,7 +649,7 @@ class ChatAIOrchestrator:
 
                 ctx.personality = ctx.settings_service.get_personality()
                 persona_decision = PersonaEngine().build_persona_prompt(
-                    ctx.personality, request.message
+                    ctx.personality, request.message, session_id=ctx.session_id
                 )
 
         if tool_results_for_claude and not is_cancelled(request.client_turn_id):

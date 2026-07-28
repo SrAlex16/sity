@@ -34,10 +34,15 @@ def _history_to_messages(items: list[ChatHistoryItem]) -> list[dict]:
     return result
 
 
-def _count_total_messages() -> int:
+def _count_total_messages(session_id: str = "") -> int:
     try:
         from app.memory.db import engine
         with engine.connect() as conn:
+            if session_id:
+                return conn.execute(
+                    sa_text("SELECT COUNT(*) FROM chatmessage WHERE session_id = :sid"),
+                    {"sid": session_id},
+                ).scalar() or 0
             return conn.execute(sa_text("SELECT COUNT(*) FROM chatmessage")).scalar() or 0
     except Exception:
         return 0
@@ -87,6 +92,7 @@ class PromptContextBuilder:
         output_mode: str = "text",
         skip_last_turns: int = 0,
         task_context: dict[str, str] | None = None,
+        session_id: str = "",
     ) -> PromptContext:
         recent_history = self._load_history(session=session, limit=history_limit, skip_last=skip_last_turns)
         planner_history = self._load_history(session=session, limit=planner_history_limit, skip_last=skip_last_turns)
@@ -96,7 +102,7 @@ class PromptContextBuilder:
         raw_msgs = self.get_recent_messages(session, limit=10)
         time_block = render_time_context(build_time_context(raw_msgs))
 
-        n_total = _count_total_messages()
+        n_total = _count_total_messages(session_id)
         memory_ctx = (
             f"Contexto de memoria: estás en el mensaje {n_total} de esta conversación. "
             f"Solo ves los últimos {history_limit} mensajes en el historial de abajo."

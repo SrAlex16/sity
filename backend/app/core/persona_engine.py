@@ -200,6 +200,7 @@ class PersonaEngine:
         user_message: str,
         *,
         refusal_mode_override: bool | None = None,
+        session_id: str = "",
     ) -> PersonaDecision:
         """
         Build the system prompt and decide refusal_mode for this turn.
@@ -253,6 +254,16 @@ class PersonaEngine:
         order_override_instruction = _ORDER_OVERRIDE if order_override_active else ""
         refusal_instruction = _REFUSAL_ACTIVE if refusal_mode else _REFUSAL_INACTIVE
 
+        if session_id.startswith("guest:"):
+            interlocutor_block = (
+                "No tienes datos de sesión que identifiquen a tu interlocutor. "
+                "No asumas quién es — si alguien pregunta por su identidad, "
+                "por si \"ya os conocéis\" o por cuántos mensajes lleváis juntos, "
+                "responde honestamente que no tienes información de identidad para esta sesión."
+            )
+        else:
+            interlocutor_block = "Tu interlocutor es Alex, una única persona."
+
         system_prompt = _load_persona_template().format_map({
             "sarcasm_pct":           pct(sarcasm),
             "rudeness_pct":          pct(rudeness),
@@ -273,6 +284,7 @@ class PersonaEngine:
             "order_override_instruction": order_override_instruction,
             "project_root":               str(get_runtime_config().project_root),
             "allowed_systemd_services":   _format_services(get_allowed_systemd_services()),
+            "interlocutor_block":         interlocutor_block,
         }).strip()
 
         tone_snapshot = {
