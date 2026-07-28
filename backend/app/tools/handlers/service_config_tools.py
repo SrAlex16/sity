@@ -28,7 +28,7 @@ def _handle_allowed_service_change(ctx: ToolContext) -> ToolExecutionResult:
     verb = "Añadir" if tool_name == "add_allowed_service" else "Quitar"
     preposition = "a" if tool_name == "add_allowed_service" else "de"
 
-    created = ConfirmationManager(ctx.executor.session).create_pending_action(
+    created = ConfirmationManager(ctx.executor.session, ctx.executor.session_id).create_pending_action(
         action_type="system_config",
         risk_level="critical",
         summary=f"{verb} {service_name} {preposition} servicios permitidos",

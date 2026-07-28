@@ -167,7 +167,7 @@ def handle_ha_call_service(ctx: ToolContext) -> ToolExecutionResult:
             "service": f"{domain}.{action}",
             "service_data": service_data,
         }
-        manager  = ConfirmationManager(ctx.executor.session)
+        manager  = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
         existing = manager.find_equivalent_pending_action(action_type="ha", payload=payload)
         if existing:
             local_text = (

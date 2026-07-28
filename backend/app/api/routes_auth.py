@@ -55,6 +55,7 @@ from app.trace.logger import new_trace_id, write_log
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _COOKIE_NAME = "sity_session"
+_GUEST_COOKIE_NAME = "sity_guest_session"
 _COOKIE_MAX_AGE = 72 * 3600  # seconds
 
 
@@ -87,6 +88,10 @@ def _set_cookie(response: Response, token: str) -> None:
 
 def _clear_cookie(response: Response) -> None:
     response.delete_cookie(key=_COOKIE_NAME, path="/")
+
+
+def _clear_guest_cookie(response: Response) -> None:
+    response.delete_cookie(key=_GUEST_COOKIE_NAME, path="/")
 
 
 def _validate_email(email: str) -> bool:
@@ -145,6 +150,7 @@ def register(
 
     assert user.id is not None  # guaranteed after commit+refresh
     _set_cookie(response, create_token(user.id, user.role))
+    _clear_guest_cookie(response)
     return {"ok": True, "id": user.id, "email": user.email, "role": user.role}
 
 
@@ -174,6 +180,7 @@ def login(
 
     assert user.id is not None  # user was fetched from DB so id is always set
     _set_cookie(response, create_token(user.id, user.role))
+    _clear_guest_cookie(response)
     return {"ok": True, "id": user.id, "email": user.email, "role": user.role}
 
 

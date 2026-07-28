@@ -18,7 +18,8 @@ from app.trace.trace_reader import (
     get_last_trace_id,
     get_recent_events,
 )
-from app.chat.chat_persistence import DEFAULT_CHAT_SESSION_ID, get_today_token_usage
+from app.auth.dependencies import CurrentUser, get_current_user
+from app.chat.chat_persistence import get_today_token_usage
 from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureService
 from app.training.dataset_stats import compute_dataset_stats
 from app.training.demo_cleanup import run_demo_cleanup
@@ -209,7 +210,10 @@ def budget(session: Session = Depends(get_session)):
 
 
 @router.get("/dataset-stats")
-def dataset_stats(session: Session = Depends(get_session)):
+def dataset_stats(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
     """Return read-only dataset statistics for the single Sity timeline.
 
     Computes usable user→Sity pairs, per-bucket counts and progress
@@ -217,7 +221,7 @@ def dataset_stats(session: Session = Depends(get_session)):
     """
     messages = list(session.exec(
         select(ChatMessage)
-        .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
+        .where(ChatMessage.session_id == current.session_id)
         .order_by(col(ChatMessage.id))
     ))
     stats = compute_dataset_stats(messages)

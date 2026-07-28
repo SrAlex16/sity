@@ -36,12 +36,14 @@ class TurnContext:
     capture_ctx: DatasetCaptureContext
     settings_service: SettingsService
     voice_settings: VoiceSettings
+    session_id: str = "default"
 
 
 def build_turn_context(
     session: Session,
     request: ChatMessageRequest,
     strong_model: str | None,  # noqa: ARG001 — reserved for future routing decisions
+    session_id: str = "default",
 ) -> TurnContext:
     trace_id = new_trace_id()
     config: dict[str, Any] = load_default_config()
@@ -51,7 +53,7 @@ def build_turn_context(
 
     _capture_svc = DatasetCaptureService(session)
     _capture_ctx = _capture_svc.get()
-    persistence = ChatTurnPersistence(session, _capture_ctx, _capture_svc)
+    persistence = ChatTurnPersistence(session, _capture_ctx, _capture_svc, session_id)
 
     write_log(
         level="INFO",
@@ -94,4 +96,5 @@ def build_turn_context(
         capture_ctx=_capture_ctx,
         settings_service=settings_service,
         voice_settings=voice_settings,
+        session_id=session_id,
     )

@@ -1,13 +1,73 @@
 # Sistema de autenticación y roles
 
-Última actualización: 2026-07-11.
+Última actualización: 2026-07-28.
 
-Implementación de la Fase 1 del sistema de usuarios de Sity: tabla
-`User`, hashing de contraseñas, sesiones JWT en cookie, seis endpoints
-de auth, dependencia `get_current_user` reutilizable, y seeding del
-Admin único. El repo de Sity es público en el portfolio de Alex — esta
-fase protege el sistema antes de exponer las rutas de chat/tools al
-sistema de roles en fases posteriores.
+Implementación de las Fases 1 y 2 del sistema de usuarios de Sity:
+tabla `User`, hashing de contraseñas, sesiones JWT en cookie, siete
+endpoints de auth, dependencia `get_current_user` reutilizable,
+seeding del Admin único (Fase 1); y migración de `session_id="default"`
+a session_ids reales por usuario, aislamiento completo de historial de
+chat entre usuarios y Guests (Fase 2). El repo de Sity es público en
+el portfolio de Alex — estas fases protegen el sistema antes de exponer
+las rutas de chat/tools al sistema de roles en fases posteriores.
+
+## Fase 2 — Session IDs reales (completada 2026-07-28)
+
+Toda la capa de chat usa ahora un `session_id` real en vez de la
+constante `"default"` hardcodeada.
+
+### Estrategia de session_id
+
+| Rol | session_id | Cookie |
+|---|---|---|
+| User/Admin | `f"user:{user_id}"` | —, estable entre sesiones |
+| Guest | `f"guest:{uuid4().hex}"` | `sity_guest_session` (session cookie sin Max-Age) |
+
+**Guest UUID:** generado en el backend en la primera petición que pasa
+por `get_current_user`. Se almacena en la cookie `sity_guest_session`
+(httpOnly, SameSite=lax, sin Max-Age → dura hasta cerrar la pestaña).
+Cada pestaña/navegador/TestClient nuevo tiene su propio UUID.
+
+**Guest cookie al hacer login/register:** `routes_auth.py` llama a
+`response.delete_cookie("sity_guest_session")` al completar login o
+register con éxito. El historial del Guest NO se migra a la cuenta de
+usuario — es efímero por diseño.
+
+### Cascada de cambios (Fase 2)
+
+- `app/auth/dependencies.py` — `CurrentUser.session_id`, cookie guest
+- `app/api/routes_auth.py` — borra `sity_guest_session` en login/register
+- `app/chat/turn_context.py` — `TurnContext.session_id` + `build_turn_context(session_id=...)`
+- `app/chat/chat_persistence.py` — `get_or_create_chat_session(session, session_id)`, `save_chat_message(..., session_id=...)`, `get_recent_db_messages(session, session_id, ...)`
+- `app/chat/turn_persistence.py` — `ChatTurnPersistence(session, capture_ctx, capture_svc, session_id)`
+- `app/chat/ai_turn_prep.py` — usa `ctx.session_id` para task_context y prompt_context
+- `app/chat/ai_orchestrator.py` — `_BG_SESSION_ID` eliminado; `ctx.session_id` en closure de `_detach_tool`
+- `app/core/tool_executor.py` — `ToolExecutor(session, session_id)`
+- `app/actions/confirmation_manager.py` — `ConfirmationManager(session, session_id)`, `_last_sity_message_references_action` usa `self._session_id`
+- `app/chat/pre_ai_flow.py` — `ConfirmationManager(session, ctx.session_id)`
+- `app/api/routes_chat.py` — inyecta `get_current_user`, pasa `session_id` al thread de fondo
+- `app/api/routes_debug.py` — `dataset_stats` filtra por `current.session_id`
+- Todos los handlers de tools — `ConfirmationManager(ctx.executor.session, ctx.executor.session_id)`
+
+### Migración de datos
+
+```bash
+# Desde la raíz del proyecto, con venv activo:
+python scripts/migrate_default_session.py --dry-run   # preview
+python scripts/migrate_default_session.py              # ejecutar
+```
+
+Migra `session_id="default"` → `session_id="user:{admin_id}"`.
+Idempotente: seguro re-ejecutar si se interrumpe.
+
+### Tests
+
+`tests/test_session_isolation.py` — 10 tests:
+- Guest obtiene UUID único y estable
+- Dos Guests no se ven el historial
+- Dos usuarios no se ven el historial
+- Cookie guest borrada en login/register
+- Mensajes guardados bajo session_id correcto en DB
 
 ## Roles — tres, fijos
 

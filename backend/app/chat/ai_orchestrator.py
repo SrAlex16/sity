@@ -41,9 +41,6 @@ from app.trace.logger import write_log
 from app.trace.redaction import redact_tool_call_input
 
 
-_BG_SESSION_ID = "default"  # DEFAULT_CHAT_SESSION_ID — hardcoded, no session_id in TurnContext
-
-
 def _detach_tool(
     *,
     tool_call: "Any",
@@ -86,7 +83,7 @@ def _detach_tool(
 
     def _on_done(job: Job) -> None:
         if job.status != "done":
-            publish_session_event_sync(_BG_SESSION_ID, {
+            publish_session_event_sync(ctx.session_id, {
                 "type": "proactive_message",
                 "text": f"No pude completar la búsqueda: {job.error}",
                 "subtype": "job_error",
@@ -134,7 +131,7 @@ def _detach_tool(
             from sqlmodel import Session as _DBSession
             with _DBSession(engine) as db_sess:
                 db_sess.add(ChatMessage(
-                    session_id=_BG_SESSION_ID,
+                    session_id=ctx.session_id,
                     role="sity",
                     text=final_text,
                     trace_id=bg_trace_id,
@@ -145,7 +142,7 @@ def _detach_tool(
                       payload={"job_id": job.job_id, "tool_name": tool_name,
                                "error": str(_db_exc), "error_type": type(_db_exc).__name__})
 
-        publish_session_event_sync(_BG_SESSION_ID, {
+        publish_session_event_sync(ctx.session_id, {
             "type": "proactive_message",
             "text": final_text,
             "subtype": "job_done",
@@ -155,7 +152,7 @@ def _detach_tool(
 
     job_id = get_job_manager().submit(
         tool_name=tool_name,
-        session_id=_BG_SESSION_ID,
+        session_id=ctx.session_id,
         fn=_tool_fn,
         on_done=_on_done,
     )
@@ -165,7 +162,7 @@ def _detach_tool(
         module="chat",
         event="tool_detached_to_background",
         trace_id=trace_id,
-        session_id=_BG_SESSION_ID,
+        session_id=ctx.session_id,
         payload={"tool_name": tool_name, "job_id": job_id},
     )
 
@@ -438,7 +435,7 @@ class ChatAIOrchestrator:
                     if _forced_plan.ok and _forced_plan.tool_calls:
                         _guard_loop = run_tool_loop(
                             planner_response=_forced_plan,
-                            executor=ToolExecutor(session),
+                            executor=ToolExecutor(session, ctx.session_id),
                             trace_id=ctx.trace_id,
                             client_turn_id=request.client_turn_id,
                             max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
@@ -534,7 +531,7 @@ class ChatAIOrchestrator:
                 )
 
             else:
-                executor = ToolExecutor(session)
+                executor = ToolExecutor(session, ctx.session_id)
                 _first_tool = planner_response.tool_calls[0]
                 if get_blocking_policy(_first_tool.name) == "detachable":
                     _loop = _detach_tool(

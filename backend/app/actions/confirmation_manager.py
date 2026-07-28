@@ -29,8 +29,9 @@ CONFIRMATION_PREFIX = "confirmo ejecutar"
 
 
 class ConfirmationManager:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, session_id: str = "default"):
         self.session = session
+        self._session_id = session_id
 
     def message_starts_with_confirmation_prefix(self, message: str) -> bool:
         return message.strip().lower().startswith(CONFIRMATION_PREFIX)
@@ -176,7 +177,7 @@ class ConfirmationManager:
     def _last_sity_message_references_action(self, action_id: str) -> bool:
         statement = (
             select(ChatMessage)
-            .where(ChatMessage.session_id == "default")
+            .where(ChatMessage.session_id == self._session_id)
             .where(ChatMessage.role == "sity")
             .order_by(col(ChatMessage.id).desc())
             .limit(1)

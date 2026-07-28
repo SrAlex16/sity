@@ -162,7 +162,7 @@ def handle_calendar_create_event(ctx: ToolContext) -> ToolExecutionResult:
         "end_iso": end_iso,
         "description": description,
     }
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(
         action_type="google", payload=create_payload,
     )
@@ -333,7 +333,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
     if description: payload["description"] = description
     if location:    payload["location"]    = location
 
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(action_type="google", payload=payload)
     if existing:
         local_text = (
@@ -412,7 +412,7 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
     payload: dict = {"action": "calendar_delete_event", "event_id": event_id}
     if event_title: payload["event_title"] = event_title
 
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(action_type="google", payload=payload)
     if existing:
         local_text = (

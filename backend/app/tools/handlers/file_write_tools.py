@@ -35,7 +35,7 @@ def handle_write_file(ctx: ToolContext) -> ToolExecutionResult:
         "content": content,
         "create_parent_dirs": create_parent_dirs,
     }
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(
         action_type="file",
         payload=write_payload,
@@ -141,7 +141,7 @@ def handle_apply_text_patch(ctx: ToolContext) -> ToolExecutionResult:
         "old_text": old_text,
         "new_text": new_text,
     }
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(
         action_type="file",
         payload=patch_payload,
@@ -239,7 +239,7 @@ def handle_apply_unified_diff(ctx: ToolContext) -> ToolExecutionResult:
         "action": "apply_unified_diff",
         "diff": diff_text,
     }
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(
         action_type="file",
         payload=unified_payload,
@@ -354,7 +354,7 @@ def handle_apply_multi_file_unified_diff_plan(ctx: ToolContext) -> ToolExecution
             },
         )
 
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     created_actions = []
 
     for item in items:

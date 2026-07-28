@@ -13,7 +13,7 @@ from typing import Any
 from sqlmodel import Session
 
 from app.api.schemas import ChatMessageRequest
-from app.chat.chat_persistence import DEFAULT_CHAT_SESSION_ID, get_recent_db_messages
+from app.chat.chat_persistence import get_recent_db_messages
 from app.chat.local_provider_config import resolve_local_provider_model
 from app.chat.prompt_context import PromptContext, PromptContextBuilder
 from app.chat.provider_call_runner import ProviderCallRunner
@@ -86,9 +86,9 @@ def build_ai_turn_prep(
     if message_mentions_file_path(request.message):
         history_limit = ctx.ai_config.get("history_limit_file_path", 2)
 
-    task_ctx = load_task_context(DEFAULT_CHAT_SESSION_ID)
+    task_ctx = load_task_context(ctx.session_id)
     prompt_context = PromptContextBuilder(
-        get_recent_messages=get_recent_db_messages,
+        get_recent_messages=lambda sess, limit=20: get_recent_db_messages(sess, ctx.session_id, limit=limit),
     ).build(
         session=session,
         message=request.message,
@@ -107,7 +107,7 @@ def build_ai_turn_prep(
         event="history_injected",
         trace_id=ctx.trace_id,
         payload={
-            "session_id": DEFAULT_CHAT_SESSION_ID,
+            "session_id": ctx.session_id,
             "history_limit": history_limit,
             "history_count": len(prompt_context.recent_history),
             "planner_history_count": len(prompt_context.planner_history),

@@ -268,10 +268,9 @@ def test_disable_idempotent_when_already_disabled(client) -> None:
 # ---------------------------------------------------------------------------
 
 def _last_pair(db_session: Session) -> tuple[ChatMessage | None, ChatMessage | None]:
-    """Return the last saved (user, sity) ChatMessage pair."""
+    """Return the last saved (user, sity) ChatMessage pair across any session."""
     rows = list(db_session.exec(
         select(ChatMessage)
-        .where(ChatMessage.session_id == "default")
         .order_by(ChatMessage.id.desc())
         .limit(2)
     ))

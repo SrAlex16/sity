@@ -400,16 +400,23 @@ def test_delete_account_login_fails_after():
 # ---------------------------------------------------------------------------
 
 
+def _mock_response():
+    """Minimal Response stub for calling get_current_user() directly in tests."""
+    from fastapi import Response
+    return Response()
+
+
 def test_dependency_no_cookie_is_guest():
     from app.auth.dependencies import CurrentUser, get_current_user
     from sqlmodel import Session as _Session
 
     with _Session(engine) as session:
-        result = get_current_user(sity_session=None, session=session)
+        result = get_current_user(response=_mock_response(), sity_session=None, session=session)
     assert isinstance(result, CurrentUser)
     assert result.is_guest is True
     assert result.role == "guest"
     assert result.user_id is None
+    assert result.session_id.startswith("guest:")
 
 
 def test_dependency_invalid_cookie_is_guest():
@@ -417,7 +424,7 @@ def test_dependency_invalid_cookie_is_guest():
     from sqlmodel import Session as _Session
 
     with _Session(engine) as session:
-        result = get_current_user(sity_session="not.a.valid.jwt", session=session)
+        result = get_current_user(response=_mock_response(), sity_session="not.a.valid.jwt", session=session)
     assert result.is_guest is True
 
 
@@ -433,12 +440,13 @@ def test_dependency_valid_cookie_resolves_user():
 
     token = create_token(user_id=user_id, role="user")
     with _Session(engine) as session:
-        result = get_current_user(sity_session=token, session=session)
+        result = get_current_user(response=_mock_response(), sity_session=token, session=session)
 
     assert result.is_guest is False
     assert result.is_authenticated is True
     assert result.role == "user"
     assert result.user_id == user_id
+    assert result.session_id == f"user:{user_id}"
     assert result.is_admin is False
 
 
@@ -454,5 +462,5 @@ def test_dependency_expired_token_is_guest():
 
     token = create_token(user_id=user_id, role="user", expiry_hours=-1)  # already expired
     with _Session(engine) as session:
-        result = get_current_user(sity_session=token, session=session)
+        result = get_current_user(response=_mock_response(), sity_session=token, session=session)
     assert result.is_guest is True

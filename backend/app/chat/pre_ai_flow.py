@@ -24,7 +24,7 @@ class ChatPreAIFlow:
     def __init__(self, session: Session, ctx: TurnContext) -> None:
         self.session = session
         self.ctx = ctx
-        self.confirmation_manager = ConfirmationManager(session)
+        self.confirmation_manager = ConfirmationManager(session, ctx.session_id)
         self.local_flow = ChatLocalFlow(self.confirmation_manager)
         self.runtime_config: RuntimeConfig = get_runtime_config()
 

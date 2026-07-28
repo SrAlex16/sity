@@ -29,7 +29,7 @@ def handle_cancel_pending_action(ctx: ToolContext) -> ToolExecutionResult:
             raw_result=result,
         )
 
-    manager = ConfirmationManager(executor.session)
+    manager = ConfirmationManager(executor.session, executor.session_id)
     action = manager.find_action_by_id(action_id)
 
     if not action or action.status != "pending":

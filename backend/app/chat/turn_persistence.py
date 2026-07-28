@@ -14,7 +14,7 @@ from typing import Optional
 
 from sqlmodel import Session
 
-from app.chat.chat_persistence import save_chat_message
+from app.chat.chat_persistence import DEFAULT_CHAT_SESSION_ID, save_chat_message
 from app.memory.message_metadata import MessageMetadata
 from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureService
 
@@ -27,8 +27,10 @@ class ChatTurnPersistence:
         session: Session,
         capture_ctx: DatasetCaptureContext,
         capture_svc: DatasetCaptureService,
+        session_id: str = DEFAULT_CHAT_SESSION_ID,
     ) -> None:
         self._session = session
+        self._session_id = session_id
         self._user_metadata = capture_svc.build_user_metadata(capture_ctx)
         self._sity_metadata = capture_svc.build_sity_metadata(capture_ctx)
 
@@ -63,6 +65,7 @@ class ChatTurnPersistence:
             metadata = self._sity_metadata if role == "sity" else self._user_metadata
         save_chat_message(
             self._session,
+            session_id=self._session_id,
             role=role,
             text=text,
             trace_id=trace_id,

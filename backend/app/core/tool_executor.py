@@ -31,7 +31,7 @@ from app.trace.logger import write_log
 from app.trace.trace_reader import get_events_by_trace_id, get_recent_events
 from app.tools.types import ToolExecutionResult
 
-_TASK_CONTEXT_SESSION_ID = "default"
+_DEFAULT_SESSION_ID = "default"
 
 
 ALLOWED_OPERATIONS = {
@@ -49,8 +49,9 @@ TOOL_LABELS: dict[str, str] = {
 
 
 class ToolExecutor:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, session_id: str = _DEFAULT_SESSION_ID):
         self.session = session
+        self.session_id = session_id
         self.settings_service = SettingsService(session)
 
     def execute_tool_call(
@@ -113,13 +114,13 @@ class ToolExecutor:
         if result.task_context is not None:
             if result.task_context:
                 save_task_context(
-                    _TASK_CONTEXT_SESSION_ID,
+                    self.session_id,
                     result.task_context,
                     trace_id=trace_id,
                 )
             else:
                 clear_task_context(
-                    _TASK_CONTEXT_SESSION_ID,
+                    self.session_id,
                     reason="explicit_close",
                     trace_id=trace_id,
                 )
@@ -473,7 +474,7 @@ class ToolExecutor:
             payload["commit_message"] = commit_message
             payload["files"] = files
 
-        created = ConfirmationManager(self.session).create_pending_action(
+        created = ConfirmationManager(self.session, self.session_id).create_pending_action(
             action_type="git",
             risk_level=risk_level,
             summary=summary or f"Git action {action} on {repo_path}",
@@ -588,7 +589,7 @@ class ToolExecutor:
             "service_name": service_name,
         }
 
-        created = ConfirmationManager(self.session).create_pending_action(
+        created = ConfirmationManager(self.session, self.session_id).create_pending_action(
             action_type="system",
             risk_level=risk_level,
             summary=summary or f"{action} {service_name}",

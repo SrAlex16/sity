@@ -51,7 +51,7 @@ def handle_rollback_latest_file_change(ctx: ToolContext) -> ToolExecutionResult:
         "action": "rollback_file_change",
         "backup_path": backup_path,
     }
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(
         action_type="file",
         payload=rollback_payload,
@@ -156,7 +156,7 @@ def handle_rollback_file_change(ctx: ToolContext) -> ToolExecutionResult:
         "action": "rollback_file_change",
         "backup_path": backup_path,
     }
-    manager = ConfirmationManager(ctx.executor.session)
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
     existing = manager.find_equivalent_pending_action(
         action_type="file",
         payload=rollback_payload,

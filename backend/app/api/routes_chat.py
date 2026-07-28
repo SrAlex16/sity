@@ -4,7 +4,7 @@ import asyncio
 import json
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, col, select
 
 from app.api.schemas import (
@@ -14,9 +14,10 @@ from app.api.schemas import (
     ChatMessageResponse,
     CurrentChatResponse,
 )
+from app.auth.dependencies import CurrentUser, get_current_user
 from app.chat.chat_persistence import (
     DEFAULT_CHAT_SESSION_ID,
-    get_or_create_default_chat_session,
+    get_or_create_chat_session,
 )
 from app.chat.model_router import LocalFlowSignal, clear_proposal
 from app.chat.ai_turn_prep import _should_synthesize  # noqa: F401
@@ -62,12 +63,16 @@ def _validate_images(images: list[ChatImageInput]) -> str | None:
 
 
 @router.get("/current", response_model=CurrentChatResponse)
-def current_chat(session: Session = Depends(get_session)):
-    get_or_create_default_chat_session(session)
+def current_chat(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    session_id = current.session_id
+    get_or_create_chat_session(session, session_id)
 
     statement = (
         select(ChatMessage)
-        .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
+        .where(ChatMessage.session_id == session_id)
         .order_by(col(ChatMessage.id).desc())
         .limit(200)
     )
@@ -88,13 +93,16 @@ def current_chat(session: Session = Depends(get_session)):
 
     return CurrentChatResponse(
         ok=True,
-        session_id=DEFAULT_CHAT_SESSION_ID,
+        session_id=session_id,
         messages=messages,
     )
 
 
 @router.post("/message", status_code=202)
-async def chat_message(request: ChatMessageRequest):
+async def chat_message(
+    request: ChatMessageRequest,
+    current: CurrentUser = Depends(get_current_user),
+):
     if err := _validate_images(request.images):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=err)
@@ -103,10 +111,13 @@ async def chat_message(request: ChatMessageRequest):
     ensure_queue(turn_id)
     register_operation(turn_id)
 
+    session_id = current.session_id
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_turn_in_background, request, turn_id)
+    loop.run_in_executor(None, _run_turn_in_background, request, turn_id, session_id)
 
-    return JSONResponse(status_code=202, content={"turn_id": turn_id, "status": "processing"})
+    # Return dict (not JSONResponse) so FastAPI merges dependency-set cookies
+    # (e.g. sity_guest_session from get_current_user) into the actual 202 response.
+    return {"turn_id": turn_id, "status": "processing"}
 
 
 @router.get("/stream/{turn_id}")
@@ -141,7 +152,7 @@ def cancel_stream(turn_id: str):
     return {"ok": ok}
 
 
-def _run_turn_in_background(request: ChatMessageRequest, turn_id: str) -> None:
+def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID) -> None:
     """Worker that runs the full chat turn in a thread pool and publishes
     the result (or error) as SSE events before closing with 'done'."""
     from app.memory.db import engine
@@ -153,7 +164,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str) -> None:
 
     with Session(engine) as session:
         try:
-            result = _chat_message_inner(request=request, session=session)
+            result = _chat_message_inner(request=request, session=session, _session_id=session_id)
             if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
                 original_message = result.original_message
                 strong_model = result.strong_model
@@ -180,6 +191,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str) -> None:
                     _strong_model=strong_model,
                     _skip_history_turns=2,
                     _upgrade_context=_upgrade_ctx,
+                    _session_id=session_id,
                 )
             # Skip "response" event for cancelled turns — the frontend already
             # shows a cancelled bubble from the abort handler; emitting here
@@ -203,13 +215,14 @@ def _chat_message_inner(
     _strong_model: str | None = None,
     _skip_history_turns: int = 0,
     _upgrade_context: str | None = None,
+    _session_id: str = DEFAULT_CHAT_SESSION_ID,
 ):
     from app.chat.turn_context import build_turn_context
     from app.chat.pre_ai_flow import ChatPreAIFlow
     from app.chat.ai_turn_prep import build_ai_turn_prep
     from app.chat.ai_orchestrator import ChatAIOrchestrator
 
-    ctx = build_turn_context(session, request, _strong_model)
+    ctx = build_turn_context(session, request, _strong_model, session_id=_session_id)
 
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message)
     persona_prompt = persona_decision.system_prompt

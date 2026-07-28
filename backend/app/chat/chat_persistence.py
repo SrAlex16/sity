@@ -18,22 +18,27 @@ from app.memory.models import AIUsage, ChatMessage, ChatSession, utc_now
 DEFAULT_CHAT_SESSION_ID = "default"
 
 
-def get_or_create_default_chat_session(session: Session) -> ChatSession:
-    chat_session = session.get(ChatSession, DEFAULT_CHAT_SESSION_ID)
+def get_or_create_chat_session(session: Session, session_id: str) -> ChatSession:
+    chat_session = session.get(ChatSession, session_id)
 
     if chat_session:
         return chat_session
 
-    chat_session = ChatSession(id=DEFAULT_CHAT_SESSION_ID)
+    chat_session = ChatSession(id=session_id)
     session.add(chat_session)
     session.commit()
     session.refresh(chat_session)
     return chat_session
 
 
+def get_or_create_default_chat_session(session: Session) -> ChatSession:
+    return get_or_create_chat_session(session, DEFAULT_CHAT_SESSION_ID)
+
+
 def save_chat_message(
     session: Session,
     *,
+    session_id: str = DEFAULT_CHAT_SESSION_ID,
     role: str,
     text: str,
     trace_id: Optional[str] = None,
@@ -49,11 +54,11 @@ def save_chat_message(
     if metadata is None:
         metadata = build_message_metadata(role=role)
 
-    get_or_create_default_chat_session(session)
+    get_or_create_chat_session(session, session_id)
 
     session.add(
         ChatMessage(
-            session_id=DEFAULT_CHAT_SESSION_ID,
+            session_id=session_id,
             role=role,
             text=text,
             trace_id=trace_id,
@@ -75,7 +80,7 @@ def save_chat_message(
         )
     )
 
-    chat_session = session.get(ChatSession, DEFAULT_CHAT_SESSION_ID)
+    chat_session = session.get(ChatSession, session_id)
     if chat_session:
         chat_session.updated_at = utc_now()
         session.add(chat_session)
@@ -83,10 +88,10 @@ def save_chat_message(
     session.commit()
 
 
-def get_recent_db_messages(session: Session, limit: int = 20) -> list[ChatMessage]:
+def get_recent_db_messages(session: Session, session_id: str, limit: int = 20) -> list[ChatMessage]:
     statement = (
         select(ChatMessage)
-        .where(ChatMessage.session_id == DEFAULT_CHAT_SESSION_ID)
+        .where(ChatMessage.session_id == session_id)
         .order_by(col(ChatMessage.id).desc())
         .limit(limit)
     )
