@@ -81,7 +81,7 @@ def handle_search_conversation_history(ctx: ToolContext) -> ToolExecutionResult:
             raw_result={"success": False, "text": "No he encontrado nada en el historial sobre eso."},
         )
 
-    result = MemoryRecallRunner().recall(query=query, trace_id=trace_id)
+    result = MemoryRecallRunner().recall(query=query, trace_id=trace_id, session_id=ctx.executor.session_id)
     text = _fmt_recall_result(result)
 
     return ToolExecutionResult(

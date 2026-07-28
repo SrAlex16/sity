@@ -68,7 +68,7 @@ def _extract_tokens(text: str) -> set[str]:
 class MemoryRecallRunner:
     """Execute iterative searches and aggregate results into a MemoryRecallResult."""
 
-    def recall(self, *, query: str, trace_id: str) -> MemoryRecallResult:
+    def recall(self, *, query: str, trace_id: str, session_id: str = "") -> MemoryRecallResult:
         log.info(
             "memory_recall_started trace_id=%s query=%r",
             trace_id, query[:80],
@@ -95,7 +95,7 @@ class MemoryRecallRunner:
                 continue
             queries_tried.append(q)
 
-            results = search_conversation_history(q, limit=5)
+            results = search_conversation_history(q, limit=5, session_id=session_id)
             new_count = 0
 
             for r in results:
@@ -137,7 +137,7 @@ class MemoryRecallRunner:
             anchor_message_ids.append(anchor_id)
 
             window = read_conversation_window(
-                anchor_id, before=_WINDOW_BEFORE, after=_WINDOW_AFTER
+                anchor_id, before=_WINDOW_BEFORE, after=_WINDOW_AFTER, session_id=session_id
             )
             new_from_window = 0
             for ctx in window:

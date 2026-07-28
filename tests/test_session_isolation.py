@@ -20,6 +20,7 @@ from sqlmodel import Session, select
 from app.main import app
 from app.memory.db import engine
 from app.memory.models import ChatMessage
+from app.memory.search import search_conversation_history
 
 
 # ---------------------------------------------------------------------------
@@ -231,3 +232,65 @@ def test_messages_saved_under_guest_session_id():
         ))
     assert len(msgs) >= 1
     assert any("comprobación guest db" in (m.text or "") for m in msgs)
+
+
+# ---------------------------------------------------------------------------
+# search_conversation_history must NOT leak cross-session data
+# Reproduces the exact security bug found in production (2026-07-28):
+# a Guest called search_conversation_history and received 80 fragments
+# from the Admin's history because the search had no session_id filter.
+# ---------------------------------------------------------------------------
+
+
+def test_search_conversation_history_does_not_leak_other_session():
+    """Guest search must return zero results from another user's history."""
+    # Create Admin-like messages under a known session_id
+    owner_session = f"user:search_test_{_uid()}"
+    with Session(engine) as db:
+        from app.chat.chat_persistence import get_or_create_chat_session, save_chat_message
+        get_or_create_chat_session(db, owner_session)
+        save_chat_message(db, session_id=owner_session, role="user",
+                          text="Soy Alex, el dueño de este sistema")
+        save_chat_message(db, session_id=owner_session, role="sity",
+                          text="Hola Alex, te recuerdo perfectamente")
+
+    # A guest with a completely different session_id searches for identity info
+    guest_session = f"guest:{_uid()}"
+    results = search_conversation_history(
+        "quien soy nombre identidad Alex dueño",
+        limit=5,
+        session_id=guest_session,
+    )
+
+    # The guest must find NOTHING from the owner's session
+    found_texts = [r.match.text for r in results]
+    for text in found_texts:
+        assert owner_session not in text
+        assert "Alex" not in text or guest_session in owner_session, (
+            f"Guest search leaked owner data: {text!r}"
+        )
+    assert len(results) == 0, (
+        f"Guest got {len(results)} result(s) from another session: {found_texts}"
+    )
+
+
+def test_search_conversation_history_finds_own_session_data():
+    """Positive control: search within own session must still work after the fix."""
+    own_session = f"user:search_own_{_uid()}"
+    with Session(engine) as db:
+        from app.chat.chat_persistence import get_or_create_chat_session, save_chat_message
+        get_or_create_chat_session(db, own_session)
+        save_chat_message(db, session_id=own_session, role="user",
+                          text="recuerda esto: el código secreto es naranja")
+        save_chat_message(db, session_id=own_session, role="sity",
+                          text="Anotado: naranja es el código secreto")
+
+    results = search_conversation_history(
+        "código secreto naranja",
+        limit=5,
+        session_id=own_session,
+    )
+
+    assert len(results) >= 1, "Own session search must return results"
+    all_text = " ".join(r.match.text for r in results)
+    assert "naranja" in all_text

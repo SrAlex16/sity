@@ -170,7 +170,7 @@ def test_phase1_exhausts_all_queries_regardless_of_evidence() -> None:
     runner = _runner()
     calls: list[str] = []
 
-    def mock_search(query, limit):
+    def mock_search(query, limit, session_id=""):
         calls.append(query)
         # Return highly informative result — would have triggered early exit before
         return [_make_search_result(
@@ -190,7 +190,7 @@ def test_continues_after_noise_fragments() -> None:
     runner = _runner()
     calls: list[str] = []
 
-    def mock_search(query, limit):
+    def mock_search(query, limit, session_id=""):
         calls.append(query)
         return [_make_search_result("busqué referencia clave resultado", i) for i in range(2)]
 
@@ -217,7 +217,7 @@ def test_deduplicates_across_attempts() -> None:
 def test_attempts_capped_at_max() -> None:
     calls: list[str] = []
 
-    def mock_search(query, limit):
+    def mock_search(query, limit, session_id=""):
         calls.append(query)
         return []
 
@@ -423,7 +423,7 @@ def test_windows_capped_at_max() -> None:
     runner = _runner()
     window_calls: list[int] = []
 
-    def mock_window(center_id, before, after):
+    def mock_window(center_id, before, after, session_id=""):
         window_calls.append(center_id)
         return []
 
@@ -457,7 +457,7 @@ def test_overlap_dedup_skips_nearby_anchors() -> None:
     runner = _runner()
     window_calls: list[int] = []
 
-    def mock_window(center_id, before, after):
+    def mock_window(center_id, before, after, session_id=""):
         window_calls.append(center_id)
         return []
 
@@ -481,7 +481,7 @@ def test_phase1_runs_all_attempts_then_opens_windows() -> None:
     search_calls: list[str] = []
     window_calls: list[int] = []
 
-    def mock_search(query, limit):
+    def mock_search(query, limit, session_id=""):
         search_calls.append(query)
         if len(search_calls) == 1:
             # First call: high-novel anchor (would have triggered "sufficient" early exit before)
@@ -491,7 +491,7 @@ def test_phase1_runs_all_attempts_then_opens_windows() -> None:
         # Later calls: distinct far anchor
         return [_make_search_result("fragmento distinto separado remoto otro", msg_id=500)]
 
-    def mock_window(center_id, before, after):
+    def mock_window(center_id, before, after, session_id=""):
         window_calls.append(center_id)
         return []
 

@@ -125,7 +125,7 @@ def _setup_fts() -> bool:
         return False
 
 
-def _search_fts(conn, query: str, limit: int) -> list:
+def _search_fts(conn, query: str, limit: int, session_id: str) -> list:
     # OR queries must not be quoted — quoting turns them into a phrase search
     fts_query = query if " OR " in query else '"' + query.replace('"', " ") + '"'
     return conn.execute(
@@ -134,14 +134,15 @@ def _search_fts(conn, query: str, limit: int) -> list:
             "FROM chatmessage_fts fts "
             "JOIN chatmessage c ON c.id = fts.rowid "
             "WHERE chatmessage_fts MATCH :q "
+            "AND c.session_id = :sid "
             "ORDER BY rank "
             "LIMIT :n"
         ),
-        {"q": fts_query, "n": limit},
+        {"q": fts_query, "n": limit, "sid": session_id},
     ).fetchall()
 
 
-def _search_like_tokens(conn, query: str, limit: int) -> list:
+def _search_like_tokens(conn, query: str, limit: int, session_id: str) -> list:
     """LIKE search per token — avoids treating the full OR-joined string as a phrase."""
     # Strip FTS boolean operators, then extract tokens of at least 3 chars
     clean = re.sub(r"\b(?:OR|AND|NOT)\b", " ", query)
@@ -155,9 +156,9 @@ def _search_like_tokens(conn, query: str, limit: int) -> list:
         for row in conn.execute(
             sa_text(
                 "SELECT id, role, text, created_at FROM chatmessage "
-                "WHERE text LIKE :q ORDER BY id DESC LIMIT :n"
+                "WHERE text LIKE :q AND session_id = :sid ORDER BY id DESC LIMIT :n"
             ),
-            {"q": f"%{token}%", "n": limit},
+            {"q": f"%{token}%", "n": limit, "sid": session_id},
         ).fetchall():
             if row[0] not in seen_ids:
                 seen_ids.add(row[0])
@@ -167,20 +168,20 @@ def _search_like_tokens(conn, query: str, limit: int) -> list:
     return rows[:limit]
 
 
-def _adjacent(conn, msg_id: int) -> tuple[Optional[tuple], Optional[tuple]]:
+def _adjacent(conn, msg_id: int, session_id: str) -> tuple[Optional[tuple], Optional[tuple]]:
     prev = conn.execute(
         sa_text(
             "SELECT role, text, created_at FROM chatmessage "
-            "WHERE id < :mid ORDER BY id DESC LIMIT 1"
+            "WHERE id < :mid AND session_id = :sid ORDER BY id DESC LIMIT 1"
         ),
-        {"mid": msg_id},
+        {"mid": msg_id, "sid": session_id},
     ).fetchone()
     nxt = conn.execute(
         sa_text(
             "SELECT role, text, created_at FROM chatmessage "
-            "WHERE id > :mid ORDER BY id ASC LIMIT 1"
+            "WHERE id > :mid AND session_id = :sid ORDER BY id ASC LIMIT 1"
         ),
-        {"mid": msg_id},
+        {"mid": msg_id, "sid": session_id},
     ).fetchone()
     return prev, nxt
 
@@ -189,6 +190,7 @@ def read_conversation_window(
     center_message_id: int,
     before: int = 10,
     after: int = 30,
+    session_id: str = "",
 ) -> list[MessageContext]:
     """Read a chronological window of messages around center_message_id.
 
@@ -196,32 +198,37 @@ def read_conversation_window(
     Operational messages are filtered out.
     before clamped to [0, _WINDOW_BEFORE_MAX], after to [0, _WINDOW_AFTER_MAX].
     Total result clamped to _WINDOW_LIMIT_MAX.
+    session_id must be provided to restrict results to the caller's session.
     """
     before = max(0, min(before, _WINDOW_BEFORE_MAX))
     after = max(0, min(after, _WINDOW_AFTER_MAX))
 
+    sid_filter = "AND session_id = :sid" if session_id else ""
+    params_base: dict = {"sid": session_id} if session_id else {}
+
     with engine.connect() as conn:
         prev_rows = conn.execute(
             sa_text(
-                "SELECT id, role, text, created_at FROM chatmessage "
-                "WHERE id < :mid ORDER BY id DESC LIMIT :n"
+                f"SELECT id, role, text, created_at FROM chatmessage "
+                f"WHERE id < :mid {sid_filter} ORDER BY id DESC LIMIT :n"
             ),
-            {"mid": center_message_id, "n": before},
+            {**params_base, "mid": center_message_id, "n": before},
         ).fetchall()
 
         center_row = conn.execute(
             sa_text(
-                "SELECT id, role, text, created_at FROM chatmessage WHERE id = :mid"
+                f"SELECT id, role, text, created_at FROM chatmessage "
+                f"WHERE id = :mid {sid_filter}"
             ),
-            {"mid": center_message_id},
+            {**params_base, "mid": center_message_id},
         ).fetchone()
 
         next_rows = conn.execute(
             sa_text(
-                "SELECT id, role, text, created_at FROM chatmessage "
-                "WHERE id > :mid ORDER BY id ASC LIMIT :n"
+                f"SELECT id, role, text, created_at FROM chatmessage "
+                f"WHERE id > :mid {sid_filter} ORDER BY id ASC LIMIT :n"
             ),
-            {"mid": center_message_id, "n": after},
+            {**params_base, "mid": center_message_id, "n": after},
         ).fetchall()
 
     # Combine in chronological order: prev (reversed), center, next
@@ -255,9 +262,14 @@ def read_conversation_window(
     return messages
 
 
-def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list[SearchResult]:
+def search_conversation_history(
+    query: str,
+    limit: int = _LIMIT_DEFAULT,
+    session_id: str = "",
+) -> list[SearchResult]:
     """Search conversation history using FTS5 (falls back to LIKE per token).
 
+    session_id must be provided to restrict search to the caller's session.
     Returns up to `limit` results, each with prev/next message context.
     Operational guard messages are filtered from results and adjacents.
     Message text is truncated to _MAX_TEXT_CHARS characters.
@@ -286,13 +298,13 @@ def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list
         rows: list = []
         if use_fts:
             try:
-                rows = _search_fts(conn, query, fetch_n)
+                rows = _search_fts(conn, query, fetch_n, session_id)
                 _fts_used = bool(rows)
             except Exception as exc:
                 log.warning("FTS5 query failed, falling back to LIKE: %s", exc)
 
         if not rows:
-            rows = _search_like_tokens(conn, query, fetch_n)
+            rows = _search_like_tokens(conn, query, fetch_n, session_id)
 
         for row in rows:
             msg_id, role, text, created_at = row[0], row[1], row[2], row[3]
@@ -300,7 +312,7 @@ def search_conversation_history(query: str, limit: int = _LIMIT_DEFAULT) -> list
                 continue
             seen_ids.add(msg_id)
 
-            prev_row, next_row = _adjacent(conn, msg_id)
+            prev_row, next_row = _adjacent(conn, msg_id, session_id)
 
             results.append(SearchResult(
                 match=MessageContext(
