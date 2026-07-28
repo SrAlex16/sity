@@ -29,6 +29,7 @@ from sqlmodel import Session
 
 from app.memory.db import get_session
 from app.auth.jwt_utils import decode_token
+from app.trace.logger import write_log
 
 if TYPE_CHECKING:
     from app.memory.models import User as UserModel
@@ -90,6 +91,12 @@ def get_current_user(
             samesite="lax",
             path="/",
             # No max_age → session cookie (deleted when browser tab closes)
+        )
+        write_log(
+            level="INFO",
+            module="auth",
+            event="guest_session_created",
+            payload={"session_id": guest_id},
         )
 
     return CurrentUser(session_id=guest_id)

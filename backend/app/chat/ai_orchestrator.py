@@ -372,6 +372,7 @@ class ChatAIOrchestrator:
                     "task_type": "action_planner",
                     "max_tokens": _planner_max_tokens,
                     "verbosity_level": float(ctx.personality.get("verbosity_level", 0.45)),
+                    "session_id": ctx.session_id,
                 },
             )
 

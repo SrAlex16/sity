@@ -81,6 +81,7 @@ class ToolExecutor:
                 "loop_round": loop_round,
                 "tool_input": _redact_sensitive(tool_input),
                 "client_turn_id": client_turn_id,
+                "session_id": self.session_id,
             },
         )
 
@@ -102,6 +103,7 @@ class ToolExecutor:
                 "ok": result.ok,
                 "message": result.message,
                 "raw_result_summary": self._summarize_payload(result.raw_result),
+                "session_id": self.session_id,
             },
         )
 

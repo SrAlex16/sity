@@ -113,8 +113,8 @@ Los logs se escriben en `data/logs/` como `.jsonl` (una línea JSON por evento):
 |-------------|--------------------------------|---------------------------------------------------|
 | `backend`   | `backend_started`              | Arranque de FastAPI (incluye `git_commit`)        |
 | `backend`   | `backend_shutdown`             | Apagado limpio de FastAPI                         |
-| `tools`     | `tool_call_started`            | Antes de ejecutar cualquier tool                  |
-| `tools`     | `tool_call_finished`           | Después de ejecutar cualquier tool (ok/WARN)      |
+| `tools`     | `tool_call_started`            | Antes de ejecutar cualquier tool (payload: `session_id`) |
+| `tools`     | `tool_call_finished`           | Después de ejecutar cualquier tool (ok/WARN, `session_id`) |
 | `tools`     | `tool_chain_continued`         | Bucle multi-turno avanza a ronda siguiente        |
 | `spotify`   | `spotify_api_call`             | Cada llamada HTTP real a `api.spotify.com`        |
 | `google`    | `google_api_call`              | Cada llamada a la Google API (gmail/calendar/drive) |
@@ -191,6 +191,17 @@ Rate limit: 20 errores/minuto en memoria (se resetea al reiniciar el backend).
 **Alcance**: solo errores JS no capturados. No es un sistema de analytics ni de
 logging de comportamiento normal — solo fallos inesperados que de otra forma
 serían invisibles.
+
+### Eventos instrumentados (Fase 2 — auth/sesión)
+
+| `module` | `event`                | Cuándo                                                         |
+|----------|------------------------|----------------------------------------------------------------|
+| `auth`   | `guest_session_created`| Primera visita de un Guest: se genera `sity_guest_session` UUID nuevo |
+
+Solo se emite en la **primera** petición de una sesión Guest (cookie ausente).
+Las resoluciones posteriores (cookie ya existente) no loguean nada — serían
+ruido excesivo. El `session_id` del Guest (`guest:uuid`) viaja en los eventos
+`tool_call_started/finished` y `ai_call_started` de cada turno.
 
 Los eventos `tool_call_started/finished` cubren automáticamente todas las tools
 actuales y futuras — no hay que tocar los handlers individuales. Los inputs
