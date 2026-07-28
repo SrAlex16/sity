@@ -62,7 +62,6 @@ Ver docs/operations/development.md para el flujo completo.
 - Limpieza del sistema y repo
 - Spotify (playlists, URI directo, resume previous)
 - Audio STT — faster-whisper local, voz en chat y Telegram
-- Telegram bot — acceso remoto, presets, rate limit
 - Bucle multi-turno — tool chaining genérico (lectura → acción en 1 turno)
 - Cancelación mid-stream — botón parar, SSE limpio
 - task_context — memoria estructurada entre turnos para tareas multi-paso
