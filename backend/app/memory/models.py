@@ -116,6 +116,25 @@ class ChatMessage(SQLModel, table=True):
     source_channel: str = Field(default="web")        # "web" | "telegram"
 
 
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True)
+    password_hash: str
+    role: str = Field(default="user")       # "user" | "admin" — Guest has no row
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    last_login_at: Optional[datetime] = Field(default=None)
+
+
+class PasswordResetToken(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token: str = Field(index=True, unique=True)
+    user_id: int = Field(index=True)
+    expires_at: datetime                            # naive UTC, see routes_auth._naive_utc_now
+    used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class PendingAction(SQLModel, table=True):
     id: str = Field(primary_key=True)
     action_type: str = Field(index=True)

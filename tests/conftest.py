@@ -12,6 +12,8 @@ if str(BACKEND) not in sys.path:
 
 os.environ.setdefault("SITY_PROJECT_ROOT", str(ROOT))
 os.environ.setdefault("SITY_AI_PROVIDER", "mock")
+# Disable Secure cookie flag so TestClient (HTTP) sends the session cookie correctly
+os.environ.setdefault("SITY_COOKIE_SECURE", "false")
 
 # Redirect the DB to a pytest-local file so tests NEVER write to data/app.db.
 # Must be set before app.memory.db is imported for the first time (module-level

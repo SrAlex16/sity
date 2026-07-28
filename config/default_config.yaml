@@ -73,6 +73,13 @@ tokens:
 task_context:
   ttl_minutes: 30
 
+auth:
+  jwt_expiry_hours: 72                # cookie lifetime; set SITY_JWT_SECRET in .env
+  user_daily_message_limit: 100       # Fase 3: enforced when auth is wired to /chat
+  guest_daily_message_limit: 20       # Fase 3: enforced per-IP for unauthenticated requests
+  password_reset_expiry_minutes: 60   # PasswordResetToken TTL
+  registration_open: true             # set false to disable new registrations
+
 debug:
   enabled: true
   log_level: INFO
