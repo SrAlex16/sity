@@ -264,6 +264,25 @@ class PersonaEngine:
         else:
             interlocutor_block = "Tu interlocutor es Alex, una única persona."
 
+        if session_id.startswith("user:"):
+            turn_load_instruction = (
+                "\nINSTRUCCIÓN INTERNA — ETIQUETA DE CARGA CONVERSACIONAL:\n"
+                "Al final de CADA respuesta tuya, como último elemento del texto, añade exactamente:\n"
+                "<R:N>\n"
+                "donde N es un entero entre -2 y +2 que refleja tu lectura emocional del turno:\n"
+                "  -2  turno muy negativo (conflicto explícito, frustración marcada)\n"
+                "  -1  turno algo tenso o incómodo\n"
+                "   0  turno neutro\n"
+                "  +1  turno positivo (humor, buen feeling, colaboración)\n"
+                "  +2  turno muy positivo (gratitud, celebración)\n"
+                "Reglas:\n"
+                "- El tag va siempre al final, sin nada después.\n"
+                "- No lo menciones ni lo expliques. El sistema lo elimina antes de mostrar la respuesta.\n"
+                "- Inclúyelo aunque el output_mode sea voz; el sistema lo filtra antes de la síntesis."
+            )
+        else:
+            turn_load_instruction = ""
+
         system_prompt = _load_persona_template().format_map({
             "sarcasm_pct":           pct(sarcasm),
             "rudeness_pct":          pct(rudeness),
@@ -285,6 +304,7 @@ class PersonaEngine:
             "project_root":               str(get_runtime_config().project_root),
             "allowed_systemd_services":   _format_services(get_allowed_systemd_services()),
             "interlocutor_block":         interlocutor_block,
+            "turn_load_instruction":      turn_load_instruction,
         }).strip()
 
         tone_snapshot = {

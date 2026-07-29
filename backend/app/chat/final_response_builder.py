@@ -19,9 +19,11 @@ Does NOT handle:
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any, Callable
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.api.schemas import ChatArtifact, ChatMessageResponse
 from app.chat.budget_snapshot import build_budget_snapshot
@@ -29,8 +31,34 @@ from app.chat.response_factory import ai_final_response
 from app.chat.response_guard import ResponseGuard
 from app.core.refusal_tracker import set_last_refusal
 from app.cortex.schemas import AIResponse
-from app.memory.models import AIUsage
+from app.memory.models import AIUsage, SocialProfile
 from app.trace.logger import write_log
+
+_TURN_LOAD_RE = re.compile(r"<R:([+-]?\d+)>\s*\Z")
+
+
+def _strip_turn_load_tag(text: str) -> tuple[str, str | None]:
+    """Strip trailing <R:N> tag. Returns (cleaned_text, raw_N_or_None)."""
+    m = _TURN_LOAD_RE.search(text)
+    if m:
+        return _TURN_LOAD_RE.sub("", text).rstrip(), m.group(1)
+    return text, None
+
+
+def _append_pending_load(session: Session, session_id: str, load: int) -> None:
+    """Add a turn_load to SocialProfile.pending_loads_json (committed with the next save)."""
+    try:
+        user_id = int(session_id.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return
+    profile = session.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
+    if profile is None:
+        profile = SocialProfile(user_id=user_id, pending_loads_json=json.dumps([load]))
+    else:
+        loads: list[int] = json.loads(profile.pending_loads_json)
+        loads.append(load)
+        profile.pending_loads_json = json.dumps(loads)
+    session.add(profile)
 
 
 def build_final_ai_response(
@@ -50,6 +78,7 @@ def build_final_ai_response(
     tone_meta: str | None = None,
     output_mode: str = "text",
     source_channel: str = "web",
+    session_id: str = "",
 ) -> ChatMessageResponse:
     # 1. Persist AIUsage row
     usage_row = AIUsage(
@@ -109,6 +138,34 @@ def build_final_ai_response(
             payload={"reason": guard_result.reason},
         )
     response.text = guard_result.text
+
+    # 4.5. Strip <R:N> turn-load tag — must happen before save_message and before
+    # the text reaches the user or TTS. The strip is unconditional when the tag is
+    # present; storing the load value only happens for user: sessions with valid values.
+    response.text, _raw_load = _strip_turn_load_tag(response.text)
+    if _raw_load is not None:
+        try:
+            _load_val = int(_raw_load)
+            if not (-2 <= _load_val <= 2):
+                raise ValueError(f"out of range: {_load_val}")
+            if session_id.startswith("user:"):
+                _append_pending_load(session, session_id, _load_val)
+        except (ValueError, TypeError):
+            write_log(
+                level="WARN",
+                module="social",
+                event="turn_load_tag_invalid",
+                trace_id=trace_id,
+                payload={"raw_value": _raw_load, "session_id": session_id},
+            )
+    elif session_id.startswith("user:"):
+        write_log(
+            level="WARN",
+            module="social",
+            event="turn_load_tag_missing",
+            trace_id=trace_id,
+            payload={"session_id": session_id},
+        )
 
     # 5. Persist assistant message
     # Cancelled turns still need a Sity row so the history never has two

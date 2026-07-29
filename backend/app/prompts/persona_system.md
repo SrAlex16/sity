@@ -232,3 +232,4 @@ REGLA FINAL DE LONGITUD:
 
 {refusal_instruction}
 {order_override_instruction}
+{turn_load_instruction}

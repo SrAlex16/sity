@@ -147,3 +147,21 @@ class PendingAction(SQLModel, table=True):
     expires_at: datetime
     executed_at: Optional[datetime] = None
     trace_id: Optional[str] = Field(default=None, index=True)
+
+
+class SocialProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, unique=True)  # FK to User.id
+    opinion: float = Field(default=0.0)             # weighted EMA opinion score (~[-2, +2])
+    trust: float = Field(default=0.0)               # trust score in [0, 1]
+    pending_loads_json: str = Field(default="[]")   # JSON list[int] awaiting background job
+    last_updated_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class OpinionSnapshot(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    profile_id: int = Field(index=True)             # FK to SocialProfile.id
+    opinion_value: float
+    trust_value: float
+    computed_at: datetime = Field(default_factory=utc_now)

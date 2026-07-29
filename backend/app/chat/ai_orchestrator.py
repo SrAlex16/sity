@@ -764,6 +764,7 @@ class ChatAIOrchestrator:
             tone_meta=json.dumps(persona_decision.tone_snapshot),
             output_mode=output_mode,
             source_channel=request.source_channel,
+            session_id=ctx.session_id,
         )
 
         # TTS post-processing: reuse the decision already made before generation.
