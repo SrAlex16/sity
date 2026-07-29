@@ -80,6 +80,9 @@ auth:
   password_reset_expiry_minutes: 60   # PasswordResetToken TTL
   registration_open: true             # set false to disable new registrations
 
+social:
+  update_threshold_turns: 10    # fire background update when pending_loads_json reaches this count
+
 debug:
   enabled: true
   log_level: INFO

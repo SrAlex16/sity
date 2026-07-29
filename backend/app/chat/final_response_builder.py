@@ -195,6 +195,12 @@ def build_final_ai_response(
             trace_id=trace_id,
         )
 
+    # 6.5. Trigger background social profile update if pending_loads threshold reached.
+    # save_message (step 5) already committed, so the pending load is visible to the query.
+    if session_id.startswith("user:"):
+        from app.social.update import maybe_trigger_social_update
+        maybe_trigger_social_update(session, session_id, trace_id)
+
     # 7. Return response
     return ai_final_response(
         trace_id=trace_id,
