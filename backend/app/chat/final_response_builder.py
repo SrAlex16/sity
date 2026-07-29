@@ -19,11 +19,12 @@ Does NOT handle:
 
 from __future__ import annotations
 
-import json
 import re
+from datetime import datetime, timezone
 from typing import Any, Callable
 
-from sqlmodel import Session, select
+from sqlalchemy import text
+from sqlmodel import Session
 
 from app.api.schemas import ChatArtifact, ChatMessageResponse
 from app.chat.budget_snapshot import build_budget_snapshot
@@ -31,7 +32,7 @@ from app.chat.response_factory import ai_final_response
 from app.chat.response_guard import ResponseGuard
 from app.core.refusal_tracker import set_last_refusal
 from app.cortex.schemas import AIResponse
-from app.memory.models import AIUsage, SocialProfile
+from app.memory.models import AIUsage
 from app.trace.logger import write_log
 
 _TURN_LOAD_RE = re.compile(r"<R:([+-]?\d+)>\s*\Z")
@@ -46,19 +47,27 @@ def _strip_turn_load_tag(text: str) -> tuple[str, str | None]:
 
 
 def _append_pending_load(session: Session, session_id: str, load: int) -> None:
-    """Add a turn_load to SocialProfile.pending_loads_json (committed with the next save)."""
+    """Atomically append a turn_load to SocialProfile.pending_loads_json.
+
+    Uses a single INSERT...ON CONFLICT...DO UPDATE with json_insert so that
+    concurrent calls for the same user_id cannot lose each other's writes.
+    SQLite serializes all writes; the single statement is the critical unit.
+    """
     try:
         user_id = int(session_id.split(":", 1)[1])
     except (IndexError, ValueError):
         return
-    profile = session.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
-    if profile is None:
-        profile = SocialProfile(user_id=user_id, pending_loads_json=json.dumps([load]))
-    else:
-        loads: list[int] = json.loads(profile.pending_loads_json)
-        loads.append(load)
-        profile.pending_loads_json = json.dumps(loads)
-    session.add(profile)
+    now_str = datetime.now(timezone.utc).isoformat()
+    session.execute(
+        text(
+            "INSERT INTO socialprofile (user_id, opinion, trust, pending_loads_json, created_at)"
+            " VALUES (:uid, 0.0, 0.0, json_array(:load), :now)"
+            " ON CONFLICT(user_id) DO UPDATE"
+            " SET pending_loads_json ="
+            "   json_insert(COALESCE(socialprofile.pending_loads_json, '[]'), '$[#]', :load)"
+        ),
+        {"uid": user_id, "load": load, "now": now_str},
+    )
 
 
 def build_final_ai_response(

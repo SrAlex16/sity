@@ -7,12 +7,14 @@ Verified properties:
 4. Out-of-range value (<R:99>) logs WARN and still strips the malformed tag.
 5. Guest session never gets a SocialProfile row.
 6. Persona prompt includes turn_load_instruction for user: sessions only.
+7. _append_pending_load is safe under concurrent calls (atomic SQL upsert).
 """
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlmodel import Session, select
@@ -238,6 +240,61 @@ def test_invalid_tag_value_logs_warning(db_session: Session) -> None:
     ]
     assert len(invalid_calls) == 1
     assert invalid_calls[0].kwargs["payload"]["raw_value"] == "99"
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: atomic upsert preserves both loads
+# ---------------------------------------------------------------------------
+
+def test_concurrent_writes_preserve_all_loads() -> None:
+    """Two threads writing to the same user_id must not lose each other's loads.
+
+    The old read-modify-write pattern (SELECT → json.loads → append → UPDATE)
+    would silently drop the first load if the second thread read before the
+    first committed.  The atomic INSERT...ON CONFLICT...DO UPDATE with
+    json_insert fixes this: each call is a single SQL statement that SQLite
+    executes as one serialised unit.
+    """
+    from app.memory.db import engine
+
+    uid = 9960
+    # Clean up any leftover state from previous runs
+    with Session(engine) as setup_sess:
+        existing = setup_sess.exec(
+            select(SocialProfile).where(SocialProfile.user_id == uid)
+        ).first()
+        if existing:
+            setup_sess.delete(existing)
+            setup_sess.commit()
+
+    errors: list[Exception] = []
+
+    def write_load(load: int) -> None:
+        try:
+            with Session(engine) as sess:
+                _append_pending_load(sess, f"user:{uid}", load)
+                sess.commit()
+        except Exception as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=write_load, args=(1,))
+    t2 = threading.Thread(target=write_load, args=(2,))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert not errors, f"concurrent writes raised: {errors}"
+
+    with Session(engine) as verify_sess:
+        profile = verify_sess.exec(
+            select(SocialProfile).where(SocialProfile.user_id == uid)
+        ).first()
+        assert profile is not None
+        loads = json.loads(profile.pending_loads_json)
+        assert 1 in loads, f"load 1 missing from {loads}"
+        assert 2 in loads, f"load 2 missing from {loads}"
+        assert len(loads) == 2, f"expected exactly 2 loads, got {loads}"
 
 
 # ---------------------------------------------------------------------------
