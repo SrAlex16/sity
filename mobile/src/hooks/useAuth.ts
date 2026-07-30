@@ -51,6 +51,9 @@ interface MeResponse {
 export function useAuth() {
   // null = loading; CurrentUser = resolved
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [guestOptedIn, setGuestOptedIn] = useState(
+    () => sessionStorage.getItem('sity_guest_opted_in') === 'true',
+  );
 
   useEffect(() => {
     void fetchMe();
@@ -97,8 +100,8 @@ export function useAuth() {
 
   async function logout(): Promise<void> {
     await apiFetch('/auth/logout', { method: 'POST' });
-    // Clear guest opt-in so the auth screen is shown again
     sessionStorage.removeItem('sity_guest_opted_in');
+    setGuestOptedIn(false);
     await fetchMe();
   }
 
@@ -122,12 +125,12 @@ export function useAuth() {
 
   function continueAsGuest() {
     sessionStorage.setItem('sity_guest_opted_in', 'true');
-    // currentUser is already { role: 'guest' } — just mark the choice
-    setCurrentUser((u) => u ?? { role: 'guest' });
+    setGuestOptedIn(true);
   }
 
   return {
     currentUser,
+    guestOptedIn,
     login,
     register,
     logout,
