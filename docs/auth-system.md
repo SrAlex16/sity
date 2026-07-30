@@ -334,6 +334,72 @@ backend/app/api/
 - **Dependencia:** sin cookie → Guest, token inválido → Guest, token
   válido → CurrentUser correcto, token expirado → Guest
 
+## Bloqueante conocido: personalidad no aislada por sesión
+
+**Estado:** bug de seguridad activo. No resuelto. Planificado como Fase 2b.
+
+### El bug exacto
+
+`Setting.key` tiene una constraint `unique=True` global sin ninguna columna
+`session_id`. Las claves de personalidad (`personality.sarcasm_level`, etc.)
+viven como una única fila por parámetro en la tabla `Setting`. Cuando
+`SettingsService.adjust_personality()` escribe un nuevo valor, lo hace sobre
+esa fila global con un simple `WHERE key = ?` — sin partición por sesión.
+
+**Consecuencia directa:** cualquier usuario, incluido un Guest anónimo, que
+mueva un slider de personalidad en la pantalla `PersonalityScreen` cambia la
+configuración de Sity para **todos los usuarios simultáneamente**, incluido
+Admin. El cambio es persistente en SQLite. No hay aislamiento.
+
+### Por qué no se arregla aquí
+
+Es la misma envergadura que la Fase 2 del historial de chat. Requiere:
+
+1. **Migración de esquema** — añadir columna `session_id TEXT NULL` a
+   `Setting`, cambiar la unique constraint de `(key)` a `(key, session_id)`,
+   migrar rows existentes a `session_id = NULL` como valor global de fallback.
+2. **Reescritura de `SettingsService`** — el constructor necesita `session_id`,
+   todos los reads usan una cadena de fallback (primero fila con
+   `session_id = ?`, luego fila con `session_id IS NULL`), los writes
+   usan el `session_id` de la sesión activa.
+3. **Pipeline de IA** — el punto de consumo de la personalidad (persona engine /
+   `prompt_context.py`) lee hoy el estado global; tiene que recibir el
+   `session_id` de la petición y leer el override correcto.
+4. **Endpoints** — `GET /settings/personality`, `POST /settings/personality/adjust`
+   y `GET /settings` necesitan `Depends(get_current_user)` para extraer el
+   `session_id` del caller.
+5. **Tests** — todos los tests de personalidad actuales usan estado global y
+   necesitan actualización.
+
+Hacer esto correctamente como parche dentro del Paso 2 de la Fase 5 no cabe.
+Hacerlo mal (p.ej. añadir `require_admin` a `/settings/personality/adjust`
+como parche rápido) sería arquitectónicamente incorrecto porque la decisión
+de diseño ya tomada es que **cualquier rol puede ajustar la personalidad,
+pero solo dentro de su propia sesión**.
+
+### El riesgo real
+
+Este sistema de auth se construye exactamente para permitir acceso de
+terceros de forma controlada: reclutadores, conocidos o cualquier visitante
+que llegue a la URL desde el portfolio de Alex — que está público en GitHub.
+
+Mientras este bug exista, **cualquier Guest que use la demo puede alterar la
+personalidad de Sity de forma persistente y visible para Alex y para
+cualquier otro usuario que abra la app a continuación**. No es un riesgo
+teórico de "entorno doméstico con gente de confianza" — es exactamente el
+escenario que el sistema de auth existe para prevenir en todos los demás
+aspectos del sistema.
+
+### Plan
+
+**Fase 2b — Personality isolation:** milestone propio, a implementar antes
+de considerar el sistema de auth completo. No queda como "nice to have"
+indefinido. La Fase 2b debe completarse antes de abrir el acceso de la
+aplicación a usuarios externos.
+
+Mitigación temporal: ninguna disponible que no sea incorrecta de diseño.
+El bug está documentado aquí y en `docs/state.md`.
+
 ## Fases posteriores
 
 - **Fase 2:** asociar `ChatMessage`/`Setting` a `user_id` real;

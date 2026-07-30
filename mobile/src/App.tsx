@@ -14,6 +14,23 @@ import styles from './App.module.css';
 export type Screen = 'chat' | 'personality' | 'voice' | 'dataset';
 type AuthView = 'login' | 'register';
 
+const _ADMIN_SCREENS = new Set<Screen>(['voice', 'dataset']);
+
+function AccessDenied() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '100%', gap: '0.75rem',
+      fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)',
+      fontSize: '0.8rem', letterSpacing: '0.05em', textAlign: 'center',
+      padding: '2rem',
+    }}>
+      <span style={{ fontSize: '2rem', opacity: 0.3 }}>[ acceso denegado ]</span>
+      <span>Esta sección requiere permisos de administrador.</span>
+    </div>
+  );
+}
+
 const screenVariants = {
   initial: { opacity: 0, y: 16 },
   animate: { opacity: 1, y: 0 },
@@ -77,10 +94,21 @@ export default function App() {
     );
   }
 
+  const role = auth.currentUser.role;
+  const isAdmin = role === 'admin';
+
+  // If the user's role dropped below admin while on a restricted screen
+  // (e.g. logout while on VoiceScreen), fall back to chat silently.
+  const effectiveScreen: Screen =
+    _ADMIN_SCREENS.has(activeScreen) && !isAdmin ? 'chat' : activeScreen;
+
   // Authenticated user or guest who chose to skip login → show full app
   function renderScreen(screen: Screen) {
+    // Defense-in-depth: even if a restricted tab is somehow reachable,
+    // never render its content for non-admin callers.
+    if (_ADMIN_SCREENS.has(screen) && !isAdmin) return <AccessDenied />;
     switch (screen) {
-      case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} />;
+      case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} />;
       case 'personality': return <PersonalityScreen />;
       case 'voice':       return <VoiceScreen />;
       case 'dataset':     return <DatasetScreen />;
@@ -92,7 +120,7 @@ export default function App() {
       <main className={styles.screenContainer}>
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeScreen}
+            key={effectiveScreen}
             className={styles.screenWrapper}
             variants={screenVariants}
             initial="initial"
@@ -100,11 +128,11 @@ export default function App() {
             exit="exit"
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
-            {renderScreen(activeScreen)}
+            {renderScreen(effectiveScreen)}
           </motion.div>
         </AnimatePresence>
       </main>
-      <BottomNav active={activeScreen} onNavigate={setActiveScreen} />
+      <BottomNav active={effectiveScreen} onNavigate={setActiveScreen} role={role} />
     </div>
   );
 }

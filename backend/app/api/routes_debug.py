@@ -18,7 +18,7 @@ from app.trace.trace_reader import (
     get_last_trace_id,
     get_recent_events,
 )
-from app.auth.dependencies import CurrentUser, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.chat.chat_persistence import get_today_token_usage
 from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureService
 from app.training.dataset_stats import compute_dataset_stats
@@ -111,13 +111,16 @@ def frontend_error(body: FrontendErrorReport) -> dict:
 
 
 @router.get("/events/recent", response_model=RecentEventsResponse)
-def recent_events(limit: int = Query(default=100, ge=1, le=500)):
+def recent_events(
+    limit: int = Query(default=100, ge=1, le=500),
+    _: CurrentUser = Depends(require_admin),
+):
     events = [TraceEvent(**event) for event in get_recent_events(limit=limit)]
     return RecentEventsResponse(ok=True, events=events)
 
 
 @router.get("/last-trace", response_model=LastTraceResponse)
-def last_trace():
+def last_trace(_: CurrentUser = Depends(require_admin)):
     trace_id = get_last_trace_id()
 
     if not trace_id:
@@ -128,13 +131,16 @@ def last_trace():
 
 
 @router.get("/traces/{trace_id}", response_model=LastTraceResponse)
-def trace_by_id(trace_id: str):
+def trace_by_id(trace_id: str, _: CurrentUser = Depends(require_admin)):
     events = [TraceEvent(**event) for event in get_events_by_trace_id(trace_id)]
     return LastTraceResponse(ok=True, trace_id=trace_id, events=events)
 
 
 @router.get("/dataset-capture")
-def get_dataset_capture(session: Session = Depends(get_session)):
+def get_dataset_capture(
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
+):
     """Return the current dataset capture context."""
     ctx = DatasetCaptureService(session).get()
     return _ctx_to_response(ctx)
@@ -144,6 +150,7 @@ def get_dataset_capture(session: Session = Depends(get_session)):
 def put_dataset_capture(
     body: DatasetCaptureRequest,
     session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
 ):
     """Persist a new dataset capture context.
 
@@ -186,7 +193,10 @@ def put_dataset_capture(
 
 
 @router.post("/dataset-capture/disable")
-def disable_dataset_capture(session: Session = Depends(get_session)):
+def disable_dataset_capture(
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
+):
     """Disable capture mode. Triggers demo cleanup if demo_session was active."""
     svc = DatasetCaptureService(session)
     old_ctx = svc.get()
@@ -201,7 +211,10 @@ def disable_dataset_capture(session: Session = Depends(get_session)):
 
 
 @router.get("/budget")
-def budget(session: Session = Depends(get_session)):
+def budget(
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
+):
     """Return today's token usage and the configured daily budget."""
     used = get_today_token_usage(session)
     cfg = load_default_config()

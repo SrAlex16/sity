@@ -80,7 +80,28 @@ Ver .env.example para la lista completa.
 
 ## Bugs conocidos activos
 
-Ninguno confirmado a día de hoy.
+### [SEGURIDAD] Personalidad no aislada por sesión — Fase 2b pendiente
+
+**Gravedad:** alta. **Descubierto:** 2026-07-30.
+
+`Setting.key` tiene unique constraint global sin `session_id`. Cualquier
+usuario (incluido Guest anónimo) que ajuste un slider de personalidad
+modifica la configuración de Sity para **todos los usuarios** de forma
+persistente — incluido Admin. El cambio sobrevive reinicios del servidor.
+
+Esto contradice directamente la decisión de diseño tomada ("cada sesión
+puede ajustar la personalidad, pero solo dentro de su propia sesión") y
+es un riesgo real porque el repo y la URL son públicos en el portfolio.
+
+**No tiene parche inmediato correcto** — require_admin sería
+arquitectónicamente incorrecto. El fix real requiere migración de esquema
+(columna `session_id` en `Setting`, unique constraint compuesta),
+reescritura de `SettingsService` con fallback chain, y cambios en el
+pipeline de IA. Planificado como **Fase 2b** (antes de abrir acceso a
+terceros).
+
+Ver detalles completos en `docs/auth-system.md` → sección
+"Bloqueante conocido: personalidad no aislada por sesión".
 
 **Resueltos en la sesión 2026-07-10/11:**
 - Timestamps incorrectos tras F5 (SQLite devuelve datetimes naive → JS

@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { UseChatResult } from '../hooks/useChat';
+import type { CurrentUser } from '../hooks/useAuth';
 import { useVoice } from '../hooks/useVoice';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { resizeImageToBase64, type ResizedImage } from '../utils/imageResize';
@@ -84,9 +85,10 @@ interface RecordingCtx {
 
 interface ChatScreenProps extends UseChatResult {
   onLogout?: () => void;
+  currentUser?: CurrentUser | null;
 }
 
-export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout }: ChatScreenProps) {
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout, currentUser }: ChatScreenProps) {
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
@@ -291,6 +293,13 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
               <StatusBadge status={status} />
               <BgJobIndicator active={backgroundJobsActive > 0} justFinished={backgroundJustFinished} />
             </div>
+            {currentUser && (
+              <span className={`${styles.identityBadge} ${currentUser.role === 'guest' ? styles.identityGuest : styles.identityUser}`}>
+                {currentUser.role === 'guest'
+                  ? 'Invitado'
+                  : currentUser.displayName ?? currentUser.email ?? currentUser.role}
+              </span>
+            )}
           </div>
 
           <div className={styles.headerMenu}>

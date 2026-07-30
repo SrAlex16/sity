@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.models import ChatMessage
-from helpers import chat_post_and_drain
+from helpers import chat_post_and_drain, make_admin_token
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,8 @@ _ENABLE_SYNTHETIC = {
 
 @pytest.fixture()
 def client():
-    with TestClient(app, raise_server_exceptions=True) as c:
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True, cookies={"sity_session": token}) as c:
         # Reset capture to a known default state before every test.
         c.put("/debug/dataset-capture", json={
             "enabled": False,

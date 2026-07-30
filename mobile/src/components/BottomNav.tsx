@@ -85,15 +85,21 @@ const TABS: Omit<NavTabProps, 'isActive' | 'onNavigate'>[] = [
   { id: 'dataset', label: 'Datos', icon: IconDataset },
 ];
 
+const ADMIN_ONLY_TABS = new Set<Screen>(['voice', 'dataset']);
+
 interface BottomNavProps {
   active: Screen;
   onNavigate: (screen: Screen) => void;
+  role: string;
 }
 
-export function BottomNav({ active, onNavigate }: BottomNavProps) {
+export function BottomNav({ active, onNavigate, role }: BottomNavProps) {
+  const visibleTabs = TABS.filter(
+    (tab) => !ADMIN_ONLY_TABS.has(tab.id) || role === 'admin',
+  );
   return (
     <nav className={styles.nav}>
-      {TABS.map((tab) => (
+      {visibleTabs.map((tab) => (
         <NavTab
           key={tab.id}
           {...tab}

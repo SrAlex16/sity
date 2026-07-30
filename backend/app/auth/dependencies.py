@@ -24,7 +24,7 @@ import os
 from typing import Optional, TYPE_CHECKING
 from uuid import uuid4
 
-from fastapi import Cookie, Depends, Response
+from fastapi import Cookie, Depends, HTTPException, Response
 from sqlmodel import Session
 
 from app.memory.db import get_session
@@ -100,3 +100,10 @@ def get_current_user(
         )
 
     return CurrentUser(session_id=guest_id)
+
+
+def require_admin(current: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    """Dependency that raises 403 for non-admin callers (guest or regular user)."""
+    if not current.is_admin:
+        raise HTTPException(status_code=403, detail="Requiere permisos de administrador.")
+    return current

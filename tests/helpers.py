@@ -5,6 +5,51 @@ import json
 from typing import Any
 
 
+def make_admin_token() -> str:
+    """Return a JWT for a test admin user, creating the DB row if needed."""
+    from sqlmodel import Session, select
+    from app.memory.db import engine
+    from app.memory.models import User
+    from app.auth.hashing import hash_password
+    from app.auth.jwt_utils import create_token
+
+    _ADMIN_EMAIL = "_pytest_admin@sity-test.invalid"
+    with Session(engine) as session:
+        admin = session.exec(select(User).where(User.email == _ADMIN_EMAIL)).first()
+        if not admin:
+            admin = User(
+                email=_ADMIN_EMAIL,
+                password_hash=hash_password("AdminTest1"),
+                role="admin",
+            )
+            session.add(admin)
+            session.commit()
+            session.refresh(admin)
+        return create_token(admin.id, "admin")
+
+
+def make_user_token() -> str:
+    """Return a JWT for a throw-away regular user (non-admin)."""
+    import uuid
+    from sqlmodel import Session
+    from app.memory.db import engine
+    from app.memory.models import User
+    from app.auth.hashing import hash_password
+    from app.auth.jwt_utils import create_token
+
+    email = f"_pytest_user_{uuid.uuid4().hex[:8]}@sity-test.invalid"
+    with Session(engine) as session:
+        user = User(
+            email=email,
+            password_hash=hash_password("UserTest1"),
+            role="user",
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return create_token(user.id, "user")
+
+
 def chat_post_and_drain(client: Any, message: str, **kwargs: Any) -> dict[str, Any]:
     """POST /chat/message (202) then drain /chat/stream until done.
 
