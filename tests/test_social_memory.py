@@ -712,8 +712,8 @@ class TestSocialContextBlock:
         block = _build_social_context_block(_make_mock_session(0.34, 0.55), "user:1")
         assert "positiva" in block
         assert "consolidada" in block
-        assert "0.34" in block
-        assert "0.55" in block
+        assert "0.34" not in block, "numeric opinion must not appear in the block"
+        assert "0.55" not in block, "numeric trust must not appear in the block"
         assert "no citar" in block
 
     def test_profile_negative_opinion(self) -> None:

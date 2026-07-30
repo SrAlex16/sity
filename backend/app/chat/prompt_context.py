@@ -102,11 +102,11 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
         return ""
     opinion, trust = row[0], row[1]
     return (
-        "Contexto de relación (uso interno — informa tono y disposición, no citar directamente):\n"
-        f"- Disposición hacia este interlocutor: {_opinion_label(opinion)} ({opinion:.2f})\n"
-        f"- Confianza acumulada: {_trust_label(trust)} ({trust:.2f})\n"
+        "Contexto de relación (uso interno — informa tono y disposición, no citar):\n"
+        f"- Disposición hacia este interlocutor: {_opinion_label(opinion)}\n"
+        f"- Confianza acumulada: {_trust_label(trust)}\n"
         "Deja que esto module el tono con el que te expresas; "
-        "no menciones estos valores salvo que resulte muy natural."
+        "no menciones esta evaluación explícitamente."
     )
 
 
