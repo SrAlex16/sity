@@ -82,7 +82,11 @@ interface RecordingCtx {
 
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
-export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished }: UseChatResult) {
+interface ChatScreenProps extends UseChatResult {
+  onLogout?: () => void;
+}
+
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout }: ChatScreenProps) {
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
@@ -317,6 +321,17 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setFontPickerOpen(true); }}>
                     Cambiar fuente
                   </button>
+                  {onLogout && (
+                    <>
+                      <div className={styles.menuDivider} />
+                      <button
+                        className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                        onClick={() => { setMenuOpen(false); void onLogout(); }}
+                      >
+                        Cerrar sesión
+                      </button>
+                    </>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

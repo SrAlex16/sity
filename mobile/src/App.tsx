@@ -80,7 +80,7 @@ export default function App() {
   // Authenticated user or guest who chose to skip login → show full app
   function renderScreen(screen: Screen) {
     switch (screen) {
-      case 'chat':        return <ChatScreen {...chat} />;
+      case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} />;
       case 'personality': return <PersonalityScreen />;
       case 'voice':       return <VoiceScreen />;
       case 'dataset':     return <DatasetScreen />;

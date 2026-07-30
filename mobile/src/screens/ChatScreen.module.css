@@ -147,6 +147,21 @@
   border-top: 1px solid var(--color-border);
 }
 
+.menuDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0;
+}
+
+.menuItemDanger {
+  color: #ff4d6d;
+}
+
+.menuItemDanger:hover {
+  background: rgba(255, 77, 109, 0.1);
+  color: #ff4d6d;
+}
+
 /* ── Messages ────────────────────────────────────────────────────────────── */
 
 .messages {

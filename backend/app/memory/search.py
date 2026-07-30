@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -16,6 +17,7 @@ from app.trace.logger import write_log
 log = logging.getLogger(__name__)
 
 _FTS_READY: bool = False
+_FTS_LOCK = threading.Lock()
 
 _MAX_TEXT_CHARS = 1000
 _LIMIT_MIN = 1
@@ -74,55 +76,66 @@ def _make_ctx(row: Optional[tuple]) -> Optional[MessageContext]:
 
 
 def _setup_fts() -> bool:
-    """Create FTS5 virtual table + triggers if not present. Returns True if FTS5 available."""
+    """Create FTS5 virtual table + triggers if not present. Returns True if FTS5 available.
+
+    Thread-safe via _FTS_LOCK. Called from init_db() at startup so worker threads
+    always find _FTS_READY=True and never contend on the initial write.
+    """
     global _FTS_READY
     if _FTS_READY:
         return True
 
-    try:
-        with engine.connect() as conn:
-            conn.execute(sa_text(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS chatmessage_fts "
-                "USING fts5(text, content='chatmessage', content_rowid='id')"
-            ))
-            # Triggers keep FTS in sync with chatmessage for all future writes
-            conn.execute(sa_text(
-                "CREATE TRIGGER IF NOT EXISTS chatmessage_fts_ai "
-                "AFTER INSERT ON chatmessage BEGIN "
-                "  INSERT INTO chatmessage_fts(rowid, text) VALUES (new.id, new.text); "
-                "END"
-            ))
-            conn.execute(sa_text(
-                "CREATE TRIGGER IF NOT EXISTS chatmessage_fts_ad "
-                "AFTER DELETE ON chatmessage BEGIN "
-                "  INSERT INTO chatmessage_fts(chatmessage_fts, rowid, text) "
-                "  VALUES ('delete', old.id, old.text); "
-                "END"
-            ))
-            conn.execute(sa_text(
-                "CREATE TRIGGER IF NOT EXISTS chatmessage_fts_au "
-                "AFTER UPDATE ON chatmessage BEGIN "
-                "  INSERT INTO chatmessage_fts(chatmessage_fts, rowid, text) "
-                "  VALUES ('delete', old.id, old.text); "
-                "  INSERT INTO chatmessage_fts(rowid, text) VALUES (new.id, new.text); "
-                "END"
-            ))
-            conn.commit()
+    with _FTS_LOCK:
+        if _FTS_READY:  # double-check after acquiring lock
+            return True
 
-            # Always rebuild at startup: COUNT(*) on a content table reads from the source
-            # table, not the FTS index — the index can be empty while COUNT returns non-zero.
-            # Rebuild is idempotent and fast for our dataset size (~ms per 1k messages).
-            conn.execute(
-                sa_text("INSERT INTO chatmessage_fts(chatmessage_fts) VALUES ('rebuild')")
-            )
-            conn.commit()
-            log.info("FTS5 chatmessage_fts rebuilt")
+        try:
+            with engine.connect() as conn:
+                conn.execute(sa_text(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS chatmessage_fts "
+                    "USING fts5(text, content='chatmessage', content_rowid='id')"
+                ))
+                # Triggers keep FTS in sync with chatmessage for all future writes
+                conn.execute(sa_text(
+                    "CREATE TRIGGER IF NOT EXISTS chatmessage_fts_ai "
+                    "AFTER INSERT ON chatmessage BEGIN "
+                    "  INSERT INTO chatmessage_fts(rowid, text) VALUES (new.id, new.text); "
+                    "END"
+                ))
+                conn.execute(sa_text(
+                    "CREATE TRIGGER IF NOT EXISTS chatmessage_fts_ad "
+                    "AFTER DELETE ON chatmessage BEGIN "
+                    "  INSERT INTO chatmessage_fts(chatmessage_fts, rowid, text) "
+                    "  VALUES ('delete', old.id, old.text); "
+                    "END"
+                ))
+                conn.execute(sa_text(
+                    "CREATE TRIGGER IF NOT EXISTS chatmessage_fts_au "
+                    "AFTER UPDATE ON chatmessage BEGIN "
+                    "  INSERT INTO chatmessage_fts(chatmessage_fts, rowid, text) "
+                    "  VALUES ('delete', old.id, old.text); "
+                    "  INSERT INTO chatmessage_fts(rowid, text) VALUES (new.id, new.text); "
+                    "END"
+                ))
+                conn.commit()
 
-        _FTS_READY = True
-        return True
-    except Exception as exc:
-        log.warning("FTS5 not available, will fall back to LIKE: %s", exc)
-        return False
+                # Always rebuild: COUNT(*) on a content table reads from the source
+                # table, not the FTS index — the index can be empty while COUNT returns non-zero.
+                conn.execute(
+                    sa_text("INSERT INTO chatmessage_fts(chatmessage_fts) VALUES ('rebuild')")
+                )
+                conn.commit()
+                log.info("FTS5 chatmessage_fts rebuilt")
+                write_log(level="INFO", module="memory", event="fts_ready",
+                          payload={"action": "rebuild_completed"})
+
+            _FTS_READY = True
+            return True
+        except Exception as exc:
+            log.warning("FTS5 not available, will fall back to LIKE: %s", exc)
+            write_log(level="WARN", module="memory", event="fts_unavailable",
+                      payload={"reason": str(exc)[:200]})
+            return False
 
 
 def _search_fts(conn, query: str, limit: int, session_id: str) -> list:

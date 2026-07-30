@@ -20,7 +20,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 engine = create_engine(
     _DB_URL,
     echo=False,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 10},
 )
 
 
@@ -87,6 +87,9 @@ def init_db() -> None:
         SQLModel.metadata.create_all(engine)
         _migrate_chatmessage()
         _migrate_user()
+        # Set up FTS5 at startup so worker threads never contend on first-time setup.
+        from app.memory.search import _setup_fts
+        _setup_fts()
     except Exception as exc:
         write_log(level="WARN", module="memory", event="db_initialized",
                   payload={"ok": False, "reason": str(exc)[:200]})
