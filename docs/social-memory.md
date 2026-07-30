@@ -269,16 +269,73 @@ Orden en el mensaje: tiempo → memoria → **social** → [voice flags] → men
 
 ---
 
-## Contexto sobre terceros (pendiente — Paso 4b)
+## Paso 4b — Tool `social_recall_impression` (terceros)
 
-Cuando el interlocutor A menciona a otro usuario conocido B, Sity puede
-acceder al SocialProfile de B **solo mediante una tool explícita**
-(`social_get_relationship_context`) que el modelo decide cuándo invocar.
+**Ficheros:** `backend/app/tools/handlers/social_tools.py`,
+`backend/app/cortex/tool_schemas.py` (en `BASE_TOOLSET`)
 
-El handler de la tool aplica filtrado antes de devolver nada:
-- Calcula confianza relativa entre A y B
-- Con trust relativa baja: impresión muy genérica o "no tengo suficiente contexto"
-- Con trust relativa alta: impresión algo más elaborada (sin datos concretos)
-- El límite duro (sin datos verificables sobre B) aplica siempre
+### Prerequisito — `User.display_name`
 
-Este mecanismo está pendiente de implementación.
+Campo añadido a la tabla `User` (`Optional[str]`, índice). Derivación automática:
+- **Admin (Alex):** seeder `admin_seeder.py` siembra `"Alex"` (nuevo y backfill de instancias existentes)
+- **Registro:** `display_name = email.split("@")[0]` — prefijo del email como nombre inicial
+- **Edición:** pendiente (PATCH `/auth/me` — Fase 5)
+
+Migración: `_migrate_user()` en `db.py`, mismo patrón que `_migrate_chatmessage()`.
+
+### Mecanismo
+
+El modelo invoca `social_recall_impression(username: str)` cuando el interlocutor
+menciona a alguien y necesita contexto. El modelo decide cuándo llamarla — no hay
+detección de menciones en el backend.
+
+```
+A = session actual (session_id "user:N")
+B = usuario buscado por display_name (case-insensitive, exacto)
+```
+
+### Fórmula de confianza relativa
+
+```
+disclosure = trust_A × trust_B
+```
+
+Actúa como doble cerrojo: ambas relaciones deben estar establecidas para
+que aumente el nivel de detalle. Si cualquiera de las dos es nueva, la
+divulgación queda en el mínimo.
+
+Umbrales:
+
+| Rango | Nivel | Contenido devuelto |
+|---|---|---|
+| `< 0.05` | LOW | Solo la etiqueta de opinión; sin nombrar a B |
+| `0.05 – 0.20` | MEDIUM | Etiqueta + nombre de B + frase de familiaridad |
+| `≥ 0.20` | HIGH | Todo lo anterior + una línea cualitativa de matiz |
+
+Ejemplos numéricos:
+- trust_A=0.05, trust_B=0.05 → 0.0025 → LOW
+- trust_A=0.30, trust_B=0.30 → 0.09 → MEDIUM
+- trust_A=0.60, trust_B=0.60 → 0.36 → HIGH
+
+### Casos especiales
+
+| Caso | Respuesta |
+|---|---|
+| Sesión guest | "No tengo memoria de relaciones en esta sesión." |
+| A == B (pregunta por sí mismo) | "Estás preguntando por ti mismo." |
+| Nombre no reconocido | "No conozco a nadie con el nombre X." |
+| B sin SocialProfile | "No tengo ninguna impresión formada sobre X todavía." |
+
+### Límite duro — aplicado siempre, en todos los niveles
+
+**NUNCA** se incluye contenido literal de mensajes de B, hechos concretos,
+fechas, ni ningún dato verificable sobre B. Solo etiquetas cualitativas
+derivadas de `opinion` y `trust`. El handler no consulta la tabla
+`chatmessage` para B — solo `socialprofile`.
+
+### Restricción de rol
+
+El handler comprueba `session_id.startswith("user:")` al inicio. No hay
+mecanismo genérico de restricción por rol en el toolset — este es el
+primer caso que lo necesita. Si en el futuro más tools requieren restricción
+por rol, ese sería el momento de generalizarlo en `toolset_selector.py`.

@@ -138,6 +138,7 @@ def register(
         email=body.email,
         password_hash=hash_password(body.password),
         role="user",
+        display_name=body.email.split("@")[0],
     )
     session.add(user)
     session.commit()

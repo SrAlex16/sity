@@ -1411,6 +1411,29 @@ TOOL_BLOCKING_POLICIES: dict[str, str] = {
     # Everything else defaults to "blocking" (must finish before the AI responds)
 }
 
+SOCIAL_RECALL_IMPRESSION_TOOL = {
+    "name": "social_recall_impression",
+    "description": (
+        "Recupera la impresión cualitativa que Sity tiene sobre un tercero (otro usuario conocido) "
+        "cuando el interlocutor actual lo menciona por nombre. "
+        "Úsala SOLO cuando el interlocutor mencione a alguien y necesites contexto sobre esa persona "
+        "para responder con naturalidad — nunca de forma proactiva ni para todos los nombres posibles. "
+        "El resultado es una impresión cualitativa filtrada; nunca incluye contenido literal "
+        "de conversaciones ni datos concretos sobre la persona consultada."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "username": {
+                "type": "string",
+                "description": "Nombre (display_name) de la persona sobre la que se consulta.",
+            },
+        },
+        "required": ["username"],
+    },
+}
+
 BASE_TOOLSET: list[dict] = [
     # Minimal conversational toolset. No file tools here.
     # FILE_AGENT_TOOLSET is added structurally by toolset_selector:
@@ -1443,6 +1466,8 @@ BASE_TOOLSET: list[dict] = [
     SPOTIFY_RESUME_PREVIOUS_TOOL,
     SPOTIFY_LIST_PLAYLISTS_TOOL,
     SPOTIFY_PLAYLIST_TRACKS_TOOL,
+    # Social memory — impression of third-party users (user: sessions only, checked in handler).
+    SOCIAL_RECALL_IMPRESSION_TOOL,
 ]
 
 PENDING_ACTION_TOOLSET: list[dict] = [

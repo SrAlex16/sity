@@ -31,12 +31,18 @@ def seed_admin() -> None:
     with Session(engine) as session:
         existing = session.exec(select(User).where(User.role == "admin")).first()
         if existing:
+            # Backfill display_name for existing admin installs that predate the field.
+            if existing.display_name is None:
+                existing.display_name = "Alex"
+                session.add(existing)
+                session.commit()
             return
 
         admin = User(
             email=email,
             password_hash=hash_password(password),
             role="admin",
+            display_name="Alex",
         )
         session.add(admin)
         session.commit()

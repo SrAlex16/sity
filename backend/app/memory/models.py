@@ -122,6 +122,7 @@ class User(SQLModel, table=True):
     password_hash: str
     role: str = Field(default="user")       # "user" | "admin" — Guest has no row
     is_active: bool = Field(default=True)
+    display_name: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     last_login_at: Optional[datetime] = Field(default=None)
 

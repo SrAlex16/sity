@@ -66,12 +66,27 @@ def _migrate_chatmessage() -> None:
                   payload={"added_columns": added})
 
 
+def _migrate_user() -> None:
+    """Add display_name column to user table if absent (idempotent ALTER TABLE)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(user)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return
+        if "display_name" not in existing:
+            conn.execute(text("ALTER TABLE user ADD COLUMN display_name TEXT"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"added_columns": ["display_name"], "table": "user"})
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
         _configure_sqlite()
         SQLModel.metadata.create_all(engine)
         _migrate_chatmessage()
+        _migrate_user()
     except Exception as exc:
         write_log(level="WARN", module="memory", event="db_initialized",
                   payload={"ok": False, "reason": str(exc)[:200]})
