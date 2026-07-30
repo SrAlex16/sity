@@ -186,7 +186,9 @@ def build_ai_turn_prep(
 
     # Inject propose_model_upgrade when model_router_enabled, but NOT on strong-model re-runs
     # (strong_model is set) to prevent Sonnet from proposing a further upgrade.
-    if ctx.ai_config.get("claude", {}).get("model_router_enabled", False) and not strong_model:
+    # Also excluded for guest sessions — budget cost must not fall on the expensive model for anonymous users.
+    _is_guest = ctx.session_id.startswith("guest:")
+    if ctx.ai_config.get("claude", {}).get("model_router_enabled", False) and not strong_model and not _is_guest:
         from app.cortex.tool_schemas import PROPOSE_MODEL_UPGRADE_TOOL
         if not any(t.get("name") == "propose_model_upgrade" for t in selected_tools):
             selected_tools = selected_tools + [PROPOSE_MODEL_UPGRADE_TOOL]
