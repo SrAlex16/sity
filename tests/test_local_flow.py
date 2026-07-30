@@ -73,6 +73,32 @@ def test_affirmative_returns_model_upgrade_accepted(msg: str):
     assert result.strong_model == "claude-sonnet-4-6"
 
 
+def test_affirmative_persists_confirmation_message():
+    """The 'Sí' confirmation is saved to DB so the chat history stays coherent."""
+    ctx = _ctx("sí")
+    set_proposal(_active_proposal())
+    _flow().try_handle(ctx)
+    ctx.save_message.assert_called_once_with(
+        role="user", text="sí", trace_id="trc_test"
+    )
+
+
+def test_affirmative_propagates_selected_tools():
+    """LocalFlowSignal carries the toolset from the proposal."""
+    _tools = [{"name": "update_personality_settings"}, {"name": "no_action_required"}]
+    from app.chat.model_router import ModelUpgradeProposal
+    proposal = ModelUpgradeProposal(
+        original_message="ponle más calidez",
+        strong_model="claude-sonnet-4-6",
+        reason="test",
+        selected_tools=_tools,
+    )
+    set_proposal(proposal)
+    result = _flow().try_handle(_ctx("sí"))
+    assert isinstance(result, LocalFlowSignal)
+    assert result.selected_tools == _tools
+
+
 def test_affirmative_clears_proposal():
     from app.chat.model_router import get_proposal
     set_proposal(_active_proposal())

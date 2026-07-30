@@ -485,6 +485,7 @@ class ChatAIOrchestrator:
                     original_message=request.message,
                     strong_model=_strong,
                     reason=_reason,
+                    selected_tools=list(prep.selected_tools),
                 ))
                 _proposal_text = (
                     f"Esta tarea se beneficiaría del modelo más potente ({_strong}). "

@@ -65,6 +65,7 @@ def build_ai_turn_prep(
     upgrade_context: str | None = None,  # noqa: ARG001
     persona_prompt: str,  # noqa: ARG001
     persona_decision: PersonaDecision,
+    forced_tools: list[dict] | None = None,
 ) -> AITurnPrep:
     runtime_config = get_runtime_config()
 
@@ -136,15 +137,18 @@ def build_ai_turn_prep(
         )
 
     # Persist the user message before any provider call.
-    ctx.persistence.save(
-        role="user",
-        text=request.message,
-        trace_id=ctx.trace_id,
-        input_mode=request.input_mode,
-        voice_transcript_original=request.voice_transcript_original,
-        edit_distance_pct=_voice_edit_pct,
-        source_channel=request.source_channel,
-    )
+    # On model-upgrade re-runs (skip_history_turns > 0) the original message is
+    # already in DB from the Haiku turn — skip to avoid a duplicate entry.
+    if not skip_history_turns:
+        ctx.persistence.save(
+            role="user",
+            text=request.message,
+            trace_id=ctx.trace_id,
+            input_mode=request.input_mode,
+            voice_transcript_original=request.voice_transcript_original,
+            edit_distance_pct=_voice_edit_pct,
+            source_channel=request.source_channel,
+        )
 
     # Local provider — only when SITY_LOCAL_AI_ENABLED=true.
     # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
@@ -176,7 +180,16 @@ def build_ai_turn_prep(
 
     # Toolset selection and special tool injection.
     toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
-    selected_tools: list[Any] = list(toolset_selection.tools)
+    if forced_tools is not None:
+        # Model-upgrade re-run: restore the toolset from the original Haiku turn.
+        # The original message is typically too vague to re-derive the correct toolset
+        # (e.g. "Yo que sé, lo que tú veas" has no personality keywords). Strip
+        # propose_model_upgrade — it must never reach the strong model.
+        selected_tools: list[Any] = [
+            t for t in forced_tools if t.get("name") != "propose_model_upgrade"
+        ]
+    else:
+        selected_tools = list(toolset_selection.tools)
 
     # Inject read_own_trace only when dataset_source == "debug_test".
     if ctx.capture_ctx.dataset_source == "debug_test":

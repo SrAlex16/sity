@@ -168,6 +168,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
             if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
                 original_message = result.original_message
                 strong_model = result.strong_model
+                forced_tools = result.selected_tools or None
                 write_log(
                     level="INFO", module="chat", event="model_upgrade_accepted",
                     trace_id=turn_id,
@@ -189,9 +190,10 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     request=upgraded,
                     session=session,
                     _strong_model=strong_model,
-                    _skip_history_turns=2,
+                    _skip_history_turns=3,
                     _upgrade_context=_upgrade_ctx,
                     _session_id=session_id,
+                    _forced_tools=forced_tools,
                 )
             # Skip "response" event for cancelled turns — the frontend already
             # shows a cancelled bubble from the abort handler; emitting here
@@ -216,6 +218,7 @@ def _chat_message_inner(
     _skip_history_turns: int = 0,
     _upgrade_context: str | None = None,
     _session_id: str = DEFAULT_CHAT_SESSION_ID,
+    _forced_tools: list[dict] | None = None,
 ):
     from app.chat.turn_context import build_turn_context
     from app.chat.pre_ai_flow import ChatPreAIFlow
@@ -253,6 +256,7 @@ def _chat_message_inner(
         skip_history_turns=_skip_history_turns,
         persona_prompt=persona_prompt,
         persona_decision=persona_decision,
+        forced_tools=_forced_tools,
     )
 
     orchestrator = ChatAIOrchestrator(

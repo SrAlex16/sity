@@ -17,6 +17,7 @@ class ModelUpgradeProposal:
     original_message: str
     strong_model: str
     reason: str
+    selected_tools: list[dict] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
     expires_at: datetime = field(
         default_factory=lambda: datetime.utcnow() + timedelta(minutes=5)
@@ -32,6 +33,7 @@ class LocalFlowSignal:
     kind: str
     original_message: str
     strong_model: str
+    selected_tools: list[dict] = field(default_factory=list)
 
 
 _pending_proposal: Optional[ModelUpgradeProposal] = None

@@ -47,11 +47,13 @@ class ChatLocalFlow:
                 ctx.trace_id, msg_lower, is_affirmative, is_negative,
             )
             if is_affirmative:
+                ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
                 clear_proposal()
                 return LocalFlowSignal(
                     kind="model_upgrade_accepted",
                     original_message=proposal.original_message,
                     strong_model=proposal.strong_model,
+                    selected_tools=proposal.selected_tools,
                 )
             elif is_negative:
                 clear_proposal()
