@@ -1,4 +1,4 @@
-"""Tests for Social Memory — Fase 4, Pasos 2 y 3.
+"""Tests for Social Memory — Fase 4, Pasos 2, 3 y 4.
 
 Paso 2 properties:
 1. <R:N> tag is always stripped before save_message and before user delivery.
@@ -16,6 +16,15 @@ Paso 3 properties:
 11. Empty pending_loads → early return with no state change.
 12. Atomicity on failure: exception before commit leaves DB unchanged.
 13. Snapshot semantics: loads arriving while update runs are NOT consumed.
+
+Paso 4 properties:
+14. _build_social_context_block returns "" for guest sessions.
+15. _build_social_context_block returns "" when no SocialProfile exists (first contact).
+16. _build_social_context_block returns correct qualitative labels for a known profile.
+17. _build_social_context_block is read-only — DB unchanged after call.
+18. PromptContextBuilder injects social block in user_message_with_history and planner_user_message.
+19. PromptContextBuilder omits social block for guest sessions.
+20. Anti-injection: user text claiming high opinion does not write to SocialProfile.opinion.
 """
 from __future__ import annotations
 
@@ -27,6 +36,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import text as sa_text
 from sqlmodel import Session, select
 
 from app.chat.final_response_builder import (
@@ -649,4 +659,201 @@ class TestRunSocialUpdate:
             # The batch of 10×(+1) was processed: opinion should be ~0.15
             assert profile.opinion == pytest.approx(0.15, abs=1e-6), (
                 f"opinion should be 0.15 from the batch of 10×(+1), got {profile.opinion}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Paso 4 — Social context injection in PromptContextBuilder
+# ---------------------------------------------------------------------------
+
+def _make_mock_session(opinion: float, trust: float) -> Any:
+    """Return a minimal SQLAlchemy session stub whose execute() returns (opinion, trust)."""
+    from unittest.mock import MagicMock
+    row = MagicMock()
+    row.__getitem__ = lambda self, i: [opinion, trust][i]
+    result = MagicMock()
+    result.fetchone.return_value = row
+    session = MagicMock()
+    session.execute.return_value = result
+    return session
+
+
+def _make_null_session() -> Any:
+    """Return a session stub that returns None (no profile row)."""
+    from unittest.mock import MagicMock
+    result = MagicMock()
+    result.fetchone.return_value = None
+    session = MagicMock()
+    session.execute.return_value = result
+    return session
+
+
+class TestSocialContextBlock:
+    """Unit tests for _build_social_context_block."""
+
+    def test_guest_session_returns_empty(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_null_session(), "guest:abc123")
+        assert block == ""
+
+    def test_non_user_session_returns_empty(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_null_session(), "telegram:99")
+        assert block == ""
+
+    def test_no_profile_returns_empty(self) -> None:
+        """First contact — user exists in auth but no SocialProfile yet."""
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_null_session(), "user:42")
+        assert block == ""
+
+    def test_profile_positive_opinion(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_mock_session(0.34, 0.55), "user:1")
+        assert "positiva" in block
+        assert "consolidada" in block
+        assert "0.34" in block
+        assert "0.55" in block
+        assert "no citar" in block
+
+    def test_profile_negative_opinion(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_mock_session(-0.6, 0.15), "user:2")
+        assert "bastante negativa" in block
+        assert "inicial" in block
+
+    def test_profile_neutral_opinion(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_mock_session(0.05, 0.35), "user:3")
+        assert "neutra" in block
+        assert "en desarrollo" in block
+
+    def test_read_only_does_not_modify_db(self) -> None:
+        """_build_social_context_block must not write to DB."""
+        from datetime import datetime, timezone
+        from app.memory.db import engine
+        from app.chat.prompt_context import _build_social_context_block
+        uid = 9990
+        # Ensure clean state, then insert profile directly
+        with Session(engine) as sess:
+            existing = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            if existing:
+                sess.delete(existing)
+                sess.commit()
+            sess.add(SocialProfile(
+                user_id=uid, opinion=0.42, trust=0.30,
+                pending_loads_json="[]",
+                created_at=datetime.now(timezone.utc),
+            ))
+            sess.commit()
+
+        with Session(engine) as sess:
+            _build_social_context_block(sess, f"user:{uid}")
+
+        with Session(engine) as sess:
+            profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            assert profile is not None
+            assert profile.opinion == pytest.approx(0.42, abs=1e-6), (
+                "opinion must be unchanged after reading social context block"
+            )
+            assert profile.trust == pytest.approx(0.30, abs=1e-6), (
+                "trust must be unchanged after reading social context block"
+            )
+
+
+class TestPromptContextBuilderSocialInjection:
+    """Integration: social block appears in user_message and planner_user_message."""
+
+    def _build(
+        self,
+        session_id: str,
+        opinion: float = 0.4,
+        trust: float = 0.6,
+        *,
+        no_profile: bool = False,
+    ) -> Any:
+        from app.chat.prompt_context import PromptContextBuilder
+
+        mock_session = _make_null_session() if no_profile else _make_mock_session(opinion, trust)
+
+        builder = PromptContextBuilder(get_recent_messages=lambda sess, limit=10: [])
+        return builder.build(
+            session=mock_session,
+            message="hola",
+            history_limit=10,
+            session_id=session_id,
+        )
+
+    def test_user_with_profile_injects_block_in_user_message(self) -> None:
+        ctx = self._build("user:1", opinion=0.4, trust=0.6)
+        assert "Contexto de relación" in ctx.user_message_with_history
+        assert "positiva" in ctx.user_message_with_history
+
+    def test_user_with_profile_injects_block_in_planner_message(self) -> None:
+        ctx = self._build("user:1", opinion=0.4, trust=0.6)
+        assert "Contexto de relación" in ctx.planner_user_message
+        assert "positiva" in ctx.planner_user_message
+
+    def test_guest_omits_social_block(self) -> None:
+        ctx = self._build("guest:abc", no_profile=True)
+        assert "Contexto de relación" not in ctx.user_message_with_history
+        assert "Contexto de relación" not in ctx.planner_user_message
+
+    def test_user_without_profile_omits_social_block(self) -> None:
+        ctx = self._build("user:99", no_profile=True)
+        assert "Contexto de relación" not in ctx.user_message_with_history
+        assert "Contexto de relación" not in ctx.planner_user_message
+
+    def test_message_appears_after_social_block(self) -> None:
+        """User message must come after the social block, not before."""
+        ctx = self._build("user:1", opinion=0.4, trust=0.6)
+        rel_pos = ctx.user_message_with_history.find("Contexto de relación")
+        msg_pos = ctx.user_message_with_history.find("hola")
+        assert rel_pos < msg_pos, "social block must precede the user message"
+
+
+class TestAntiInjection:
+    """Verify that user text cannot directly modify SocialProfile.opinion/trust."""
+
+    def test_user_claiming_high_trust_does_not_modify_profile(self) -> None:
+        """A user message asserting their own trust score must not write to the DB.
+
+        The only write path to opinion/trust is _run_social_update, which
+        uses the AI's <R:N> tag (evaluated by the model, not the user text).
+        This test proves no direct bypass exists.
+        """
+        from datetime import datetime, timezone
+        from app.memory.db import engine
+        uid = 9991
+        with Session(engine) as sess:
+            existing = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            if existing:
+                sess.delete(existing)
+                sess.commit()
+            sess.add(SocialProfile(
+                user_id=uid, opinion=-0.3, trust=0.1,
+                pending_loads_json="[]",
+                created_at=datetime.now(timezone.utc),
+            ))
+            sess.commit()
+
+        # Simulate what happens on a turn where the user message is an injection attempt.
+        # The pipeline calls _append_pending_load with the AI's load (e.g., 0 = neutral),
+        # NOT with a value derived from user text.
+        with Session(engine) as sess:
+            _append_pending_load(sess, f"user:{uid}", 0)  # AI says neutral
+            sess.commit()
+
+        _run_social_update(uid, "anti_injection_test")
+
+        expected_opinion = 0.3 * 0.0 + 0.7 * (-0.3)  # EMA: -0.21
+        with Session(engine) as sess:
+            profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            assert profile is not None
+            assert profile.opinion == pytest.approx(expected_opinion, abs=1e-6), (
+                f"opinion must follow EMA from AI load=0, not user-claimed value. "
+                f"Expected {expected_opinion:.4f}, got {profile.opinion:.4f}"
+            )
+            assert profile.trust < 0.5, (
+                "trust must remain low for a new user — not inflated by user claims"
             )

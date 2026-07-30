@@ -413,6 +413,12 @@ Búsqueda de memoria implementada:
 
 La búsqueda de memoria es on-demand. El modelo llama a `search_conversation_history` cuando detecta que falta contexto. No hay inyección proactiva automática ni listas de triggers.
 
+**Memoria social** (ver `docs/social-memory.md`):
+- `backend/app/memory/models.py` — tablas `SocialProfile` y `OpinionSnapshot`
+- `backend/app/social/update.py` — job de background: EMA de opinion + trust
+- `backend/app/chat/prompt_context.py` — `_build_social_context_block`: inyección en prompt para sesiones `user:` con perfil existente
+- El modelo emite `<R:N>` (carga conversacional -2..+2) al final de cada respuesta; el sistema lo extrae, lo almacena, y lo procesa cuando `pending_loads_json` alcanza el umbral
+
 ### Historial estructurado
 
 El historial de conversación se envía al proveedor IA como mensajes estructurados (`prior_messages`), no como texto concatenado dentro del mensaje del usuario.

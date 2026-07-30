@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from sqlalchemy import text as sa_text
+from sqlmodel import Session
 
 from app.api.schemas import ChatHistoryItem
 from app.chat.time_context import build_time_context, render_time_context
@@ -53,6 +54,60 @@ def _build_task_context_block(ctx: dict[str, str] | None) -> str:
         return ""
     lines = "\n".join(f"- {k}: {v}" for k, v in ctx.items())
     return f"Contexto de tarea activa (datos ya resueltos en este hilo):\n{lines}"
+
+
+def _opinion_label(v: float) -> str:
+    if v <= -0.5:
+        return "bastante negativa"
+    if v <= -0.1:
+        return "algo negativa"
+    if v < 0.1:
+        return "neutra"
+    if v < 0.5:
+        return "positiva"
+    return "muy positiva"
+
+
+def _trust_label(v: float) -> str:
+    if v < 0.2:
+        return "inicial (poca historia compartida)"
+    if v < 0.4:
+        return "en desarrollo"
+    if v < 0.7:
+        return "consolidada"
+    return "alta"
+
+
+def _build_social_context_block(session: Session, session_id: str) -> str:
+    """Return a social relationship context block for user: sessions with an existing profile.
+
+    Returns "" for guest sessions or users with no SocialProfile yet (first contact).
+    Read-only — never modifies the DB.
+    """
+    if not session_id.startswith("user:"):
+        return ""
+    try:
+        user_id = int(session_id.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return ""
+    try:
+        row = session.execute(
+            sa_text("SELECT opinion, trust FROM socialprofile WHERE user_id = :uid"),
+            {"uid": user_id},
+        ).fetchone()
+    except Exception:
+        log.exception("social_context_read_error user_id=%s", user_id)
+        return ""
+    if row is None:
+        return ""
+    opinion, trust = row[0], row[1]
+    return (
+        "Contexto de relación (uso interno — informa tono y disposición, no citar directamente):\n"
+        f"- Disposición hacia este interlocutor: {_opinion_label(opinion)} ({opinion:.2f})\n"
+        f"- Confianza acumulada: {_trust_label(trust)} ({trust:.2f})\n"
+        "Deja que esto module el tono con el que te expresas; "
+        "no menciones estos valores salvo que resulte muy natural."
+    )
 
 
 def _build_planner_memory_ctx(n_total: int, history_limit: int, visible_count: int) -> str:
@@ -108,7 +163,11 @@ class PromptContextBuilder:
             f"Solo ves los últimos {history_limit} mensajes en el historial de abajo."
         )
 
+        social_block = _build_social_context_block(session, session_id)
+
         parts = [time_block, memory_ctx]
+        if social_block:
+            parts.append(social_block)
         if input_mode == "voice":
             parts.append("[input_mode: voice]")
         if output_mode == "voice":
@@ -125,11 +184,13 @@ class PromptContextBuilder:
             visible_count=len(planner_history),
         )
         task_ctx_block = _build_task_context_block(task_context)
-        planner_user_message = (
-            f"{planner_mem_ctx}\n\n{task_ctx_block}\n\n{message}"
-            if task_ctx_block
-            else f"{planner_mem_ctx}\n\n{message}"
-        )
+        planner_parts = [planner_mem_ctx]
+        if task_ctx_block:
+            planner_parts.append(task_ctx_block)
+        if social_block:
+            planner_parts.append(social_block)
+        planner_parts.append(message)
+        planner_user_message = "\n\n".join(planner_parts)
 
         return PromptContext(
             recent_history=recent_history,

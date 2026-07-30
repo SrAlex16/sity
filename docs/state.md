@@ -9,6 +9,7 @@ sistema de tareas en background ver docs/background-tasks.md. Para el
 sistema de cancelación de turnos ver docs/turn-cancellation.md. Para
 el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
 Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
+Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-memory.md.
 
 ## Infraestructura activa
 
