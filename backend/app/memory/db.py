@@ -80,6 +80,49 @@ def _migrate_user() -> None:
                       payload={"added_columns": ["display_name"], "table": "user"})
 
 
+def _migrate_setting() -> None:
+    """Convert Setting from (key UNIQUE) to (key, session_id UNIQUE) composite key.
+
+    SQLite cannot DROP or ALTER constraints, so we rebuild the table.
+    All existing rows (global personality/voice) get session_id=NULL (global fallback).
+    This migration is idempotent: if session_id already exists the function returns early.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(setting)"))
+        cols = {row[1] for row in result.fetchall()}
+        if not cols:
+            return  # table not yet created; create_all handles full schema
+        if "session_id" in cols:
+            return  # already migrated
+
+        conn.execute(text("""
+            CREATE TABLE setting_new (
+                id      INTEGER PRIMARY KEY,
+                key     TEXT    NOT NULL,
+                value_json TEXT NOT NULL,
+                source  TEXT    NOT NULL DEFAULT 'default',
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL,
+                session_id TEXT DEFAULT NULL,
+                CONSTRAINT uq_setting_key_session UNIQUE (key, session_id)
+            )
+        """))
+        conn.execute(text("""
+            INSERT INTO setting_new (id, key, value_json, source, created_at, updated_at, session_id)
+            SELECT id, key, value_json, source, created_at, updated_at, NULL
+            FROM setting
+        """))
+        conn.execute(text("DROP TABLE setting"))
+        conn.execute(text("ALTER TABLE setting_new RENAME TO setting"))
+        conn.execute(text("CREATE INDEX ix_setting_key ON setting (key)"))
+        conn.execute(text("CREATE INDEX ix_setting_session_id ON setting (session_id)"))
+        conn.commit()
+
+    write_log(level="INFO", module="memory", event="db_migration_applied",
+              payload={"table": "setting", "added_columns": ["session_id"],
+                       "constraint_change": "key_unique → (key, session_id)_composite"})
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
@@ -87,6 +130,7 @@ def init_db() -> None:
         SQLModel.metadata.create_all(engine)
         _migrate_chatmessage()
         _migrate_user()
+        _migrate_setting()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()

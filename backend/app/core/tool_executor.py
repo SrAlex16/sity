@@ -227,6 +227,7 @@ class ToolExecutor:
                 operation=operation,
                 amount=amount,
                 source="claude_tool",
+                session_id=self.session_id,
             )
 
             updated_parameters.append(parameter)

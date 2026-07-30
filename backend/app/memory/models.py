@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -10,11 +11,14 @@ def utc_now() -> datetime:
 
 class Setting(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    key: str = Field(index=True, unique=True)
+    key: str = Field(index=True)                        # uniqueness via __table_args__
     value_json: str
     source: str = "default"
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+    session_id: Optional[str] = Field(default=None, index=True)  # None = global fallback
+
+    __table_args__ = (UniqueConstraint("key", "session_id", name="uq_setting_key_session"),)
 
 
 class AIUsage(SQLModel, table=True):

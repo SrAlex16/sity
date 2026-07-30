@@ -48,7 +48,7 @@ def build_turn_context(
     trace_id = new_trace_id()
     config: dict[str, Any] = load_default_config()
     settings_service = SettingsService(session)
-    personality: dict[str, Any] = settings_service.get_personality()
+    personality: dict[str, Any] = settings_service.get_personality(session_id=session_id)
     voice_settings = settings_service.get_voice_settings()
 
     _capture_svc = DatasetCaptureService(session)

@@ -1,9 +1,12 @@
-"""Tests for require_admin access control on the 6 restricted endpoints.
+"""Tests for require_admin access control on restricted endpoints.
 
 For each endpoint:
   - Guest (no cookie)      → 403
   - Authenticated User     → 403
-  - Authenticated Admin    → 2xx (same behaviour as before — not 403)
+  - Authenticated Admin    → 2xx
+
+Exception: POST /settings/personality/reset is open to all roles
+(each caller resets their own session). See test_personality_isolation.py.
 """
 
 from __future__ import annotations
@@ -84,23 +87,6 @@ def test_put_voice_user_403(user: TestClient) -> None:
 
 def test_put_voice_admin_ok(admin: TestClient) -> None:
     assert admin.put("/settings/voice", json=_VOICE_PAYLOAD).status_code == 200
-
-
-# ---------------------------------------------------------------------------
-# POST /settings/personality/reset
-# ---------------------------------------------------------------------------
-
-
-def test_reset_personality_guest_403(guest: TestClient) -> None:
-    assert guest.post("/settings/personality/reset").status_code == 403
-
-
-def test_reset_personality_user_403(user: TestClient) -> None:
-    assert user.post("/settings/personality/reset").status_code == 403
-
-
-def test_reset_personality_admin_ok(admin: TestClient) -> None:
-    assert admin.post("/settings/personality/reset").status_code == 200
 
 
 # ---------------------------------------------------------------------------

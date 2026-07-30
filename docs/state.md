@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-07-11.
+Última actualización: 2026-07-30.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1012 tests en verde (pytest)
+- 1166 tests en verde (pytest)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI
@@ -80,28 +80,15 @@ Ver .env.example para la lista completa.
 
 ## Bugs conocidos activos
 
-### [SEGURIDAD] Personalidad no aislada por sesión — Fase 2b pendiente
+Ninguno confirmado a día de hoy.
 
-**Gravedad:** alta. **Descubierto:** 2026-07-30.
+**Resueltos recientemente:**
 
-`Setting.key` tiene unique constraint global sin `session_id`. Cualquier
-usuario (incluido Guest anónimo) que ajuste un slider de personalidad
-modifica la configuración de Sity para **todos los usuarios** de forma
-persistente — incluido Admin. El cambio sobrevive reinicios del servidor.
-
-Esto contradice directamente la decisión de diseño tomada ("cada sesión
-puede ajustar la personalidad, pero solo dentro de su propia sesión") y
-es un riesgo real porque el repo y la URL son públicos en el portfolio.
-
-**No tiene parche inmediato correcto** — require_admin sería
-arquitectónicamente incorrecto. El fix real requiere migración de esquema
-(columna `session_id` en `Setting`, unique constraint compuesta),
-reescritura de `SettingsService` con fallback chain, y cambios en el
-pipeline de IA. Planificado como **Fase 2b** (antes de abrir acceso a
-terceros).
-
-Ver detalles completos en `docs/auth-system.md` → sección
-"Bloqueante conocido: personalidad no aislada por sesión".
+- **[SEGURIDAD] Personalidad no aislada por sesión** (Fase 2b, 2026-07-30): `Setting.key`
+  tenía unique constraint global; cualquier Guest podía modificar la personalidad de Sity
+  para todos los usuarios de forma persistente. Resuelto con migración de esquema a
+  `(key, session_id)` composite unique + reescritura de `SettingsService` con fallback
+  chain. Ver `docs/personality-isolation.md` y `docs/auth-system.md` § Fase 2b.
 
 **Resueltos en la sesión 2026-07-10/11:**
 - Timestamps incorrectos tras F5 (SQLite devuelve datetimes naive → JS

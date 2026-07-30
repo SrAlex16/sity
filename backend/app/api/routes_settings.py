@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
-from app.auth.dependencies import CurrentUser, require_admin
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.memory.db import get_session
 from app.settings.schemas import PersonalityAdjustRequest, PersonalityAdjustResponse, PersonalitySettings, VoiceSettings
 from app.settings.settings_service import SettingsService
@@ -12,21 +12,28 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 
 @router.get("")
-def get_settings(session: Session = Depends(get_session)):
+def get_settings(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
     service = SettingsService(session)
-    return service.get_all_settings()
+    return service.get_all_settings(session_id=current.session_id)
 
 
 @router.get("/personality")
-def get_personality(session: Session = Depends(get_session)):
+def get_personality(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
     service = SettingsService(session)
-    return service.get_personality()
+    return service.get_personality(session_id=current.session_id)
 
 
 @router.post("/personality/adjust", response_model=PersonalityAdjustResponse)
 def adjust_personality(
     request: PersonalityAdjustRequest,
     session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
 ):
     trace_id = new_trace_id()
     service = SettingsService(session)
@@ -37,6 +44,7 @@ def adjust_personality(
             operation=request.operation,
             amount=request.amount,
             source=request.source,
+            session_id=current.session_id,
         )
     except ValueError as exc:
         write_log(
@@ -87,11 +95,14 @@ def adjust_personality(
 @router.post("/personality/reset", response_model=PersonalitySettings)
 def reset_personality(
     session: Session = Depends(get_session),
-    _: CurrentUser = Depends(require_admin),
+    current: CurrentUser = Depends(get_current_user),
 ):
-    """Restore all personality parameters to canonical values."""
+    """Remove session personality overrides, falling back to the global default.
+
+    Accessible to all roles — each session resets its own overrides only.
+    """
     service = SettingsService(session)
-    return service.reset_personality(source="ui")
+    return service.reset_personality(session_id=current.session_id, source="ui")
 
 
 @router.get("/voice", response_model=VoiceSettings)

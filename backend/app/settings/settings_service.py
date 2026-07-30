@@ -1,7 +1,7 @@
 import json
-from typing import Any
+from typing import Any, Optional
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.memory.models import Setting, utc_now
 from app.settings.config_loader import load_default_config
@@ -42,6 +42,12 @@ CANONICAL_PERSONALITY: dict[str, float] = {
     "skepticism_level":          0.20,
 }
 
+_DEPRECATED_KEYS = frozenset({
+    "personality.glados_mode",
+    "personality.autonomy_level",
+    "personality.proactivity_level",
+})
+
 
 def clamp_01(value: float) -> float:
     return max(0.0, min(1.0, value))
@@ -51,25 +57,36 @@ class SettingsService:
     def __init__(self, session: Session):
         self.session = session
 
-    def get_all_settings(self) -> dict[str, Any]:
+    # ── Global settings view (for admin endpoints / GET /settings) ────────────
+
+    def get_all_settings(self, session_id: Optional[str] = None) -> dict[str, Any]:
+        """Return merged config: defaults → global DB rows → session overrides."""
         config = load_default_config()
 
-        stored_settings = self.session.exec(select(Setting)).all()
-        for row in stored_settings:
-            # Ignore old deprecated personality keys if they still exist in SQLite.
-            if row.key in {
-                "personality.glados_mode",
-                "personality.autonomy_level",
-                "personality.proactivity_level",
-            }:
+        global_rows = self.session.exec(
+            select(Setting).where(col(Setting.session_id).is_(None))
+        ).all()
+        for row in global_rows:
+            if row.key in _DEPRECATED_KEYS:
                 continue
-
             self._set_nested(config, row.key, json.loads(row.value_json))
+
+        if session_id is not None:
+            session_rows = self.session.exec(
+                select(Setting).where(Setting.session_id == session_id)
+            ).all()
+            for row in session_rows:
+                if row.key in _DEPRECATED_KEYS:
+                    continue
+                self._set_nested(config, row.key, json.loads(row.value_json))
 
         return config
 
-    def get_personality(self) -> dict[str, float]:
-        settings = self.get_all_settings()
+    # ── Personality — session-isolated ────────────────────────────────────────
+
+    def get_personality(self, session_id: Optional[str] = None) -> dict[str, float]:
+        """Return personality dict: global defaults overlaid by session-specific values."""
+        settings = self.get_all_settings(session_id=session_id)
         personality = settings.get("personality", {})
         return {key: float(personality[key]) for key in PERSONALITY_KEYS if key in personality}
 
@@ -79,11 +96,12 @@ class SettingsService:
         operation: str,
         amount: float,
         source: str = "ui",
+        session_id: Optional[str] = None,
     ) -> tuple[float, float]:
         if parameter not in PERSONALITY_KEYS:
             raise ValueError(f"Unknown personality parameter: {parameter}")
 
-        personality = self.get_personality()
+        personality = self.get_personality(session_id=session_id)
         old_value = float(personality[parameter])
 
         if operation == "increase_relative":
@@ -100,20 +118,61 @@ class SettingsService:
             raise ValueError(f"Unsupported operation: {operation}")
 
         new_value = clamp_01(round(new_value, 4))
-        self.set_setting(f"personality.{parameter}", new_value, source=source)
+        self.set_setting(f"personality.{parameter}", new_value, source=source, session_id=session_id)
 
         return old_value, new_value
 
-    def reset_personality(self, source: str = "ui") -> dict[str, float]:
-        """Set all personality parameters to canonical values. Returns the new state."""
-        for key, value in CANONICAL_PERSONALITY.items():
-            self.set_setting(f"personality.{key}", value, source=source)
-        return self.get_personality()
+    def reset_personality(
+        self,
+        session_id: Optional[str] = None,
+        source: str = "ui",
+    ) -> dict[str, float]:
+        """Reset personality for a session or for the global fallback.
 
-    def set_setting(self, key: str, value: Any, source: str = "ui") -> None:
-        existing = self.session.exec(select(Setting).where(Setting.key == key)).first()
+        session_id is not None → delete session overrides (falls back to global).
+        session_id is None     → rewrite global rows with canonical values.
+        """
+        if session_id is not None:
+            session_rows = self.session.exec(
+                select(Setting).where(
+                    Setting.session_id == session_id,
+                    col(Setting.key).like("personality.%"),
+                )
+            ).all()
+            for row in session_rows:
+                self.session.delete(row)
+            self.session.commit()
+        else:
+            for key, value in CANONICAL_PERSONALITY.items():
+                self.set_setting(f"personality.{key}", value, source=source, session_id=None)
+
+        return self.get_personality(session_id=session_id)
+
+    # ── Generic setting write — session-aware ─────────────────────────────────
+
+    def set_setting(
+        self,
+        key: str,
+        value: Any,
+        source: str = "ui",
+        session_id: Optional[str] = None,
+    ) -> None:
+        if session_id is None:
+            existing = self.session.exec(
+                select(Setting).where(
+                    Setting.key == key,
+                    col(Setting.session_id).is_(None),
+                )
+            ).first()
+        else:
+            existing = self.session.exec(
+                select(Setting).where(
+                    Setting.key == key,
+                    Setting.session_id == session_id,
+                )
+            ).first()
+
         now = utc_now()
-
         if existing:
             existing.value_json = json.dumps(value)
             existing.source = source
@@ -125,6 +184,7 @@ class SettingsService:
                     key=key,
                     value_json=json.dumps(value),
                     source=source,
+                    session_id=session_id,
                     created_at=now,
                     updated_at=now,
                 )
@@ -132,19 +192,26 @@ class SettingsService:
 
         self.session.commit()
 
+    # ── Voice settings — global only (admin-only endpoints) ───────────────────
+
     def get_voice_settings(self) -> VoiceSettings:
         defaults = VoiceSettings()
         keys = ("voice_response_mode", "voice_include_text", "voice_long_response_action", "audio_cleanup_days")
         data: dict[str, Any] = {}
         for key in keys:
-            row = self.session.exec(select(Setting).where(Setting.key == f"voice.{key}")).first()
+            row = self.session.exec(
+                select(Setting).where(
+                    Setting.key == f"voice.{key}",
+                    col(Setting.session_id).is_(None),
+                )
+            ).first()
             if row is not None:
                 data[key] = json.loads(row.value_json)
         return VoiceSettings(**{**defaults.model_dump(), **data})
 
     def set_voice_settings(self, settings: VoiceSettings, source: str = "ui") -> VoiceSettings:
         for key, value in settings.model_dump().items():
-            self.set_setting(f"voice.{key}", value, source=source)
+            self.set_setting(f"voice.{key}", value, source=source, session_id=None)
         return settings
 
     @staticmethod
