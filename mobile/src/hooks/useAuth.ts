@@ -71,10 +71,10 @@ export function useAuth() {
     }
   }
 
-  async function login(email: string, password: string): Promise<AuthResult> {
+  async function login(email: string, password: string, recaptchaToken = ''): Promise<AuthResult> {
     const { data, error } = await apiFetch<{ ok: boolean; role: string }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
     });
     if (data?.ok) {
       await fetchMe();
@@ -83,10 +83,10 @@ export function useAuth() {
     return { ok: false, error: error ?? 'Error al iniciar sesión' };
   }
 
-  async function register(email: string, password: string): Promise<AuthResult> {
+  async function register(email: string, password: string, recaptchaToken = ''): Promise<AuthResult> {
     const { data, error } = await apiFetch<{ ok: boolean }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
     });
     if (data?.ok) {
       await fetchMe();

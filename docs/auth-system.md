@@ -221,18 +221,31 @@ Guest. Las decisiones de acceso son responsabilidad del endpoint.
 ni ninguna ruta existente — solo existe y se demuestra con tests.
 El enganche a las rutas existentes ocurre en Fase 3.
 
-## Captcha
+## reCAPTCHA v3
 
-`RegisterRequest` y `LoginRequest` aceptan un campo opcional
-`captcha_token`. La validación es un stub que siempre pasa. Para
-activar hCaptcha o reCAPTCHA:
+`RegisterRequest` y `LoginRequest` envían un campo `recaptcha_token: str`
+(default `""`). El backend lo verifica en `app/auth/recaptcha.py` contra
+`https://www.google.com/recaptcha/api/siteverify`.
 
-1. Crear una cuenta en hCaptcha/reCAPTCHA y obtener las claves.
-2. Añadir `SITY_CAPTCHA_SECRET` al `.env`.
-3. Implementar la validación en `routes_auth.py` — el TODO está marcado
-   en `schemas_auth.py`.
+**Modo bypass:** si `RECAPTCHA_SECRET_KEY` no está configurada, la función
+devuelve `True` e imprime un WARN en el log. Esto permite que el sistema
+funcione en desarrollo y tests sin claves reales.
 
-Esto no bloquea el resto de la Fase 1.
+**Configuración para producción:**
+
+1. Ir a <https://www.google.com/recaptcha/admin> y crear un sitio de tipo
+   **reCAPTCHA v3**.
+2. Copiar las dos claves generadas:
+   - `RECAPTCHA_SECRET_KEY` → backend (`.env`)
+   - `VITE_RECAPTCHA_SITE_KEY` → frontend (`.env` del proyecto mobile,
+     prefix `VITE_` obligatorio para que Vite lo exponga al bundle)
+3. Opcionalmente ajustar el umbral de score (default 0.5):
+   `RECAPTCHA_SCORE_THRESHOLD=0.5` en `.env`.
+4. Reconstruir el frontend: `npm run build` en `mobile/`.
+
+El widget v3 es invisible — el usuario no ve ningún reto. Si la clave de
+sitio no está en el bundle, `getRecaptchaToken()` devuelve `""` y el backend
+lo acepta por bypass.
 
 ## Email de recuperación
 

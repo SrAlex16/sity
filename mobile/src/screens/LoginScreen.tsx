@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
+import { getRecaptchaToken } from '../utils/recaptcha';
 import styles from './AuthForm.module.css';
 
 interface Props {
@@ -8,24 +9,15 @@ interface Props {
   onSwitchToRegister: () => void;
 }
 
-function generateCaptcha(): { a: number; b: number; answer: number } {
-  const a = Math.floor(Math.random() * 10) + 1;
-  const b = Math.floor(Math.random() * 10) + 1;
-  return { a, b, answer: a + b };
-}
-
 export function LoginScreen({ auth, onSwitchToRegister }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStatus, setForgotStatus] = useState<'idle' | 'sent' | 'error'>('idle');
-
-  const captcha = useMemo(() => generateCaptcha(), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,13 +27,10 @@ export function LoginScreen({ auth, onSwitchToRegister }: Props) {
       setError('Email y contraseña son obligatorios.');
       return;
     }
-    if (parseInt(captchaAnswer, 10) !== captcha.answer) {
-      setError('Captcha incorrecto.');
-      return;
-    }
 
     setLoading(true);
-    const result = await auth.login(email, password);
+    const token = await getRecaptchaToken('login');
+    const result = await auth.login(email, password, token);
     setLoading(false);
     if (!result.ok) setError(result.error ?? 'Error al iniciar sesión.');
   }
@@ -97,24 +86,6 @@ export function LoginScreen({ auth, onSwitchToRegister }: Props) {
             >
               He olvidado la contraseña
             </button>
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label}>Verificación</label>
-            {/* TODO: Replace with hCaptcha/reCAPTCHA once Alex configures a site key */}
-            <div className={styles.captchaRow}>
-              <span className={styles.captchaQuestion}>{captcha.a} + {captcha.b} =</span>
-              <input
-                className={styles.captchaInput}
-                type="number"
-                inputMode="numeric"
-                placeholder="?"
-                value={captchaAnswer}
-                onChange={(e) => setCaptchaAnswer(e.target.value)}
-                disabled={loading}
-                aria-label="Resultado de la suma"
-              />
-            </div>
           </div>
 
           <button type="submit" className={styles.btnPrimary} disabled={loading}>

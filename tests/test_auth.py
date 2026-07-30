@@ -464,3 +464,124 @@ def test_dependency_expired_token_is_guest():
     with _Session(engine) as session:
         result = get_current_user(response=_mock_response(), sity_session=token, session=session)
     assert result.is_guest is True
+
+
+# ---------------------------------------------------------------------------
+# reCAPTCHA v3
+# ---------------------------------------------------------------------------
+
+
+def _mock_httpx_response(success: bool, score: float, error_codes: list | None = None):
+    """Return a mock httpx.Response-like object."""
+    import httpx
+
+    class _Resp:
+        def json(self):
+            body = {"success": success, "score": score}
+            if error_codes is not None:
+                body["error-codes"] = error_codes
+            return body
+
+    return _Resp()
+
+
+def test_recaptcha_bypass_when_no_key():
+    """Without RECAPTCHA_SECRET_KEY, verify_recaptcha_token always passes."""
+    import app.auth.recaptcha as rc
+
+    original = rc._SECRET_KEY
+    rc._SECRET_KEY = ""
+    try:
+        assert rc.verify_recaptcha_token("any-token") is True
+    finally:
+        rc._SECRET_KEY = original
+
+
+def test_recaptcha_valid_token(monkeypatch):
+    """Score 0.8 with success=True → True."""
+    import app.auth.recaptcha as rc
+
+    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setattr(
+        "app.auth.recaptcha.httpx.post",
+        lambda *a, **kw: _mock_httpx_response(success=True, score=0.8),
+    )
+    assert rc.verify_recaptcha_token("valid-token") is True
+
+
+def test_recaptcha_success_false(monkeypatch):
+    """success=False from Google → False."""
+    import app.auth.recaptcha as rc
+
+    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setattr(
+        "app.auth.recaptcha.httpx.post",
+        lambda *a, **kw: _mock_httpx_response(success=False, score=0.0, error_codes=["invalid-input-response"]),
+    )
+    assert rc.verify_recaptcha_token("bad-token") is False
+
+
+def test_recaptcha_low_score(monkeypatch):
+    """Score below threshold (0.3 < 0.5) → False even when success=True."""
+    import app.auth.recaptcha as rc
+
+    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setattr(rc, "_SCORE_THRESHOLD", 0.5)
+    monkeypatch.setattr(
+        "app.auth.recaptcha.httpx.post",
+        lambda *a, **kw: _mock_httpx_response(success=True, score=0.3),
+    )
+    assert rc.verify_recaptcha_token("bot-token") is False
+
+
+def test_recaptcha_network_error(monkeypatch):
+    """Network exception → False (fail-closed)."""
+    import app.auth.recaptcha as rc
+
+    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+
+    def _raise(*a, **kw):
+        raise ConnectionError("timeout")
+
+    monkeypatch.setattr("app.auth.recaptcha.httpx.post", _raise)
+    assert rc.verify_recaptcha_token("any-token") is False
+
+
+def test_register_blocked_by_recaptcha(monkeypatch):
+    """With a key configured, a bad reCAPTCHA token blocks /auth/register."""
+    import app.auth.recaptcha as rc
+
+    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setattr(
+        "app.auth.recaptcha.httpx.post",
+        lambda *a, **kw: _mock_httpx_response(success=False, score=0.0),
+    )
+    with _client() as c:
+        resp = c.post(
+            "/auth/register",
+            json={"email": _email("rc_reg"), "password": "Str0ngPass1", "recaptcha_token": "bad"},
+        )
+    assert resp.status_code == 403
+    assert "seguridad" in resp.json()["detail"]
+
+
+def test_login_blocked_by_recaptcha(monkeypatch):
+    """With a key configured, a bad reCAPTCHA token blocks /auth/login."""
+    import app.auth.recaptcha as rc
+
+    email = _email("rc_login")
+    with _client() as c:
+        _register(c, email)
+
+    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setattr(
+        "app.auth.recaptcha.httpx.post",
+        lambda *a, **kw: _mock_httpx_response(success=False, score=0.0),
+    )
+    with _client() as c:
+        resp = c.post(
+            "/auth/login",
+            json={"email": email, "password": "Str0ngPass1", "recaptcha_token": "bad"},
+        )
+    assert resp.status_code == 403
+    assert "seguridad" in resp.json()["detail"]

@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
+import { getRecaptchaToken } from '../utils/recaptcha';
 import styles from './AuthForm.module.css';
 
 interface Props {
@@ -17,23 +18,14 @@ function checkPasswordStrength(password: string): string | null {
   return null;
 }
 
-function generateCaptcha(): { a: number; b: number; answer: number } {
-  const a = Math.floor(Math.random() * 10) + 1;
-  const b = Math.floor(Math.random() * 10) + 1;
-  return { a, b, answer: a + b };
-}
-
 export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [rgpdChecked, setRgpdChecked] = useState(false);
   const [rgpdOpen, setRgpdOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const captcha = useMemo(() => generateCaptcha(), []);
 
   const pwError = password ? checkPasswordStrength(password) : null;
   const pwMismatch = confirmPassword && password !== confirmPassword;
@@ -48,10 +40,10 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
     if (strengthError) { setError(strengthError); return; }
     if (password !== confirmPassword) { setError('Las contraseñas no coinciden.'); return; }
     if (!rgpdChecked) { setError('Debes aceptar la política de privacidad.'); return; }
-    if (parseInt(captchaAnswer, 10) !== captcha.answer) { setError('Captcha incorrecto.'); return; }
 
     setLoading(true);
-    const result = await auth.register(email, password);
+    const token = await getRecaptchaToken('register');
+    const result = await auth.register(email, password, token);
     setLoading(false);
     if (!result.ok) setError(result.error ?? 'Error al registrarse.');
   }
@@ -130,24 +122,6 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
                 política de privacidad
               </button>
             </label>
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label}>Verificación</label>
-            {/* TODO: Replace with hCaptcha/reCAPTCHA once Alex configures a site key */}
-            <div className={styles.captchaRow}>
-              <span className={styles.captchaQuestion}>{captcha.a} + {captcha.b} =</span>
-              <input
-                className={styles.captchaInput}
-                type="number"
-                inputMode="numeric"
-                placeholder="?"
-                value={captchaAnswer}
-                onChange={(e) => setCaptchaAnswer(e.target.value)}
-                disabled={loading}
-                aria-label="Resultado de la suma"
-              />
-            </div>
           </div>
 
           <button type="submit" className={styles.btnPrimary} disabled={loading}>

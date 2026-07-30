@@ -104,39 +104,6 @@
   color: #ff4466;
 }
 
-/* Captcha row */
-.captchaRow {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.captchaQuestion {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--neon-cyan);
-  white-space: nowrap;
-}
-
-.captchaInput {
-  width: 80px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0.55rem 0.7rem;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  text-align: center;
-  outline: none;
-  -webkit-appearance: none;
-  transition: border-color 0.2s;
-}
-
-.captchaInput:focus {
-  border-color: var(--neon-cyan);
-}
-
 /* Checkbox + RGPD */
 .checkRow {
   display: flex;

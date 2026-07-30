@@ -5,13 +5,13 @@ from pydantic import BaseModel
 class RegisterRequest(BaseModel):
     email: str
     password: str
-    captcha_token: Optional[str] = None  # TODO: validate via hCaptcha/reCAPTCHA once Alex adds site key
+    recaptcha_token: str = ""
 
 
 class LoginRequest(BaseModel):
     email: str
     password: str
-    captcha_token: Optional[str] = None  # TODO: validate via hCaptcha/reCAPTCHA once Alex adds site key
+    recaptcha_token: str = ""
 
 
 class MeResponse(BaseModel):

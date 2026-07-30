@@ -12,10 +12,10 @@ Password policy:
   ≥ 8 chars, at least one uppercase, one lowercase, one digit.
   Error messages are explicit so the frontend can show them as a popup.
 
-Captcha:
-  RegisterRequest and LoginRequest accept an optional captcha_token field.
-  Validation is a stub (always passes). To activate, wire send_password_reset_email
-  equivalent for the captcha provider — see the TODO in schemas_auth.py.
+reCAPTCHA v3:
+  register and login verify a reCAPTCHA v3 token via verify_recaptcha_token().
+  If RECAPTCHA_SECRET_KEY is not set, bypass mode is active (always passes,
+  logs a WARN). See app/auth/recaptcha.py.
 
 Admin account:
   Created at startup via admin_seeder.py from SITY_ADMIN_EMAIL / SITY_ADMIN_PASSWORD.
@@ -48,6 +48,7 @@ from app.auth.dependencies import CurrentUser, get_current_user
 from app.auth.email_stub import send_password_reset_email
 from app.auth.hashing import hash_password, verify_password
 from app.auth.jwt_utils import create_token
+from app.auth.recaptcha import verify_recaptcha_token
 from app.memory.db import get_session
 from app.memory.models import PasswordResetToken, User
 from app.trace.logger import new_trace_id, write_log
@@ -131,6 +132,9 @@ def register(
     if pw_error:
         raise HTTPException(status_code=422, detail=pw_error)
 
+    if not verify_recaptcha_token(body.recaptcha_token):
+        raise HTTPException(status_code=403, detail="Verificación de seguridad fallida")
+
     if session.exec(select(User).where(User.email == body.email)).first():
         raise HTTPException(status_code=409, detail="Este email ya está registrado")
 
@@ -162,6 +166,9 @@ def login(
     session: Session = Depends(get_session),
 ):
     trace_id = new_trace_id()
+
+    if not verify_recaptcha_token(body.recaptcha_token):
+        raise HTTPException(status_code=403, detail="Verificación de seguridad fallida")
 
     user = session.exec(select(User).where(User.email == body.email)).first()
     if not user or not verify_password(body.password, user.password_hash):
