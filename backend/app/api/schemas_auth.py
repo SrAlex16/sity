@@ -18,6 +18,7 @@ class MeResponse(BaseModel):
     role: str              # "guest" | "user" | "admin"
     id: Optional[int] = None
     email: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 class ForgotPasswordRequest(BaseModel):

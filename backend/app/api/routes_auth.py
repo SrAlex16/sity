@@ -196,7 +196,8 @@ def me(current: CurrentUser = Depends(get_current_user)) -> MeResponse:
     if current.is_guest:
         return MeResponse(role="guest")
     assert current.user is not None  # guaranteed: is_guest == (user is None)
-    return MeResponse(role=current.role, id=current.user_id, email=current.user.email)
+    return MeResponse(role=current.role, id=current.user_id, email=current.user.email,
+                      display_name=current.user.display_name)
 
 
 @router.post("/forgot-password")
