@@ -61,6 +61,7 @@ interface ApiChatResponse {
   text: string;
   trace_id?: string;
   artifacts?: ApiArtifact[];
+  personality_updated?: boolean;
 }
 
 interface ApiChatAccepted {
@@ -339,6 +340,9 @@ function _listenTurn(
       if (ev.type === 'response' && ev.data) {
         responseSeen = true;
         setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
+        if (ev.data.personality_updated) {
+          window.dispatchEvent(new CustomEvent('sity:personality-updated'));
+        }
         setStatus('conectado');
       } else if (ev.type === 'done' || ev.type === 'cancelled') {
         serverClosedNormally = true;

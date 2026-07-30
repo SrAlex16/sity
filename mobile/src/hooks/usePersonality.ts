@@ -21,7 +21,12 @@ export function usePersonality() {
   const [settings, setSettings] = useState<PersonalitySettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    const handler = () => void load();
+    window.addEventListener('sity:personality-updated', handler);
+    return () => window.removeEventListener('sity:personality-updated', handler);
+  }, []);
 
   async function load() {
     setIsLoading(true);
