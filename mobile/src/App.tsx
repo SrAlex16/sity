@@ -43,7 +43,7 @@ export default function App() {
   }
 
   // Guest who has never actively chosen to continue as guest → show auth screens
-  const guestOptedIn = localStorage.getItem('sity_guest_opted_in') === 'true';
+  const guestOptedIn = sessionStorage.getItem('sity_guest_opted_in') === 'true';
   const isGuest = auth.currentUser.role === 'guest';
   const showAuth = isGuest && !guestOptedIn;
 

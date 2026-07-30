@@ -98,7 +98,7 @@ export function useAuth() {
   async function logout(): Promise<void> {
     await apiFetch('/auth/logout', { method: 'POST' });
     // Clear guest opt-in so the auth screen is shown again
-    localStorage.removeItem('sity_guest_opted_in');
+    sessionStorage.removeItem('sity_guest_opted_in');
     await fetchMe();
   }
 
@@ -121,7 +121,7 @@ export function useAuth() {
   }
 
   function continueAsGuest() {
-    localStorage.setItem('sity_guest_opted_in', 'true');
+    sessionStorage.setItem('sity_guest_opted_in', 'true');
     // currentUser is already { role: 'guest' } — just mark the choice
     setCurrentUser((u) => u ?? { role: 'guest' });
   }
