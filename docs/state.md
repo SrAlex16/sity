@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-07-30.
+Última actualización: 2026-07-31.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1166 tests en verde (pytest)
+- 1168 tests en verde (pytest)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI
@@ -80,10 +80,32 @@ Ver .env.example para la lista completa.
 
 ## Bugs conocidos activos
 
-Ninguno confirmado a día de hoy.
+Ninguno activo conocido.
 
-**Resueltos recientemente:**
+**Resueltos recientemente (2026-07-31):**
 
+- **Sliders personalidad no se sincronizaban tras escalado con mensaje vago:** Sonnet
+  recibía solo BASE_TOOLSET (igual que Haiku — keyword matching no activaba
+  PERSONALITY_TOOLSET para mensajes vagos como "cambia otra cosa"). Raíz real: Fix A
+  almacenaba el toolset de Haiku en la propuesta, pero Haiku tenía BASE_TOOLSET porque
+  las keywords no coincidían → Sonnet tampoco tenía `update_personality_settings` →
+  llamaba `no_action_required` → `personality_updated=false` → CustomEvent nunca se
+  disparaba. Fix: mergear siempre PERSONALITY_TOOLSET en re-runs de escalado, deduplicando
+  (`no_action_required` ya está en BASE). Coste neto: +474 tokens cacheados (≈$0.000002).
+  Confirmado en producción con logs: Sonnet llama `update_personality_settings` y
+  `personality_updated=true` → CustomEvent → sliders actualizados.
+  `backend/app/chat/ai_turn_prep.py`.
+- **H1 — Escalado Haiku→Sonnet perdía herramientas y duplicaba mensajes:** Sonnet
+  recibía toolset re-derivado del mensaje vago (sin keywords) → no tenía `PERSONALITY_TOOLSET`
+  → decía "no tengo herramientas" → respuesta "Bien.". Mensaje original guardado dos veces
+  en DB. "Sí" de confirmación nunca guardado. Fix: `ModelUpgradeProposal.selected_tools`,
+  `forced_tools` en `build_ai_turn_prep`, skip del save en re-run, persistencia del "Sí",
+  `_skip_history_turns` 2→3. 1168 tests.
+- **H2 — Guests podían disparar escalado a Sonnet:** `propose_model_upgrade` se inyectaba
+  para todos. Fix: `and not ctx.session_id.startswith("guest:")` en `ai_turn_prep.py`.
+- **H3 — Prompt persona describía sensores como propios de Sity:** "la cámara de la Raspberry"
+  → "la cámara del servidor donde corre el backend"; instrucción explícita de no usar
+  "mis sensores" ni "mi cámara".
 - **[SEGURIDAD] Personalidad no aislada por sesión** (Fase 2b, 2026-07-30): `Setting.key`
   tenía unique constraint global; cualquier Guest podía modificar la personalidad de Sity
   para todos los usuarios de forma persistente. Resuelto con migración de esquema a

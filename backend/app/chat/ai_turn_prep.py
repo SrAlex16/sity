@@ -181,13 +181,21 @@ def build_ai_turn_prep(
     # Toolset selection and special tool injection.
     toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
     if forced_tools is not None:
-        # Model-upgrade re-run: restore the toolset from the original Haiku turn.
-        # The original message is typically too vague to re-derive the correct toolset
-        # (e.g. "Yo que sé, lo que tú veas" has no personality keywords). Strip
-        # propose_model_upgrade — it must never reach the strong model.
-        selected_tools: list[Any] = [
-            t for t in forced_tools if t.get("name") != "propose_model_upgrade"
-        ]
+        # Model-upgrade re-run: merge Haiku's toolset with PERSONALITY_TOOLSET.
+        # Keyword matching fails for vague follow-ups ("cambia otra cosa", "otra vez")
+        # even when the intent is personality-related — Haiku had BASE_TOOLSET,
+        # so forced_tools is also BASE_TOOLSET without update_personality_settings.
+        # no_action_required is already in BASE_TOOLSET and gets deduped.
+        # Cost: +1 tool schema (~474 tokens), cached after first re-run.
+        from app.cortex.tool_schemas import PERSONALITY_TOOLSET
+        _seen: set[str] = set()
+        selected_tools: list[Any] = []
+        for _t in forced_tools + PERSONALITY_TOOLSET:
+            _name = _t.get("name", "")
+            if _name == "propose_model_upgrade" or _name in _seen:
+                continue
+            _seen.add(_name)
+            selected_tools.append(_t)
     else:
         selected_tools = list(toolset_selection.tools)
 
