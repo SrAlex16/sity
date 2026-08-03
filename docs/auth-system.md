@@ -235,17 +235,26 @@ funcione en desarrollo y tests sin claves reales.
 
 1. Ir a <https://www.google.com/recaptcha/admin> y crear un sitio de tipo
    **reCAPTCHA v3**.
-2. Copiar las dos claves generadas:
-   - `RECAPTCHA_SECRET_KEY` → backend (`.env`)
-   - `VITE_RECAPTCHA_SITE_KEY` → frontend (`.env` del proyecto mobile,
-     prefix `VITE_` obligatorio para que Vite lo exponga al bundle)
+2. Copiar las dos claves generadas y añadirlas al `.env` de la **raíz del repo**
+   (`~/projects/sity/.env`), no en `mobile/.env`:
+   - `VITE_RECAPTCHA_SITE_KEY=<site_key>` — el prefijo `VITE_` es obligatorio
+     para que Vite lo exponga al bundle; sin él, Vite ignora la variable
+     silenciosamente aunque esté en el archivo.
+   - `RECAPTCHA_SECRET_KEY=<secret_key>` — la usa el backend directamente.
 3. Opcionalmente ajustar el umbral de score (default 0.5):
    `RECAPTCHA_SCORE_THRESHOLD=0.5` en `.env`.
-4. Reconstruir el frontend: `npm run build` en `mobile/`.
+4. Reconstruir el frontend: `npm run build` en `mobile/` (o `./deploy.sh`).
+   El valor de `VITE_RECAPTCHA_SITE_KEY` se compila en el bundle en tiempo de
+   build; un rebuild es obligatorio tras cualquier cambio en la clave.
 
-El widget v3 es invisible — el usuario no ve ningún reto. Si la clave de
-sitio no está en el bundle, `getRecaptchaToken()` devuelve `""` y el backend
-lo acepta por bypass.
+**Nota de configuración Vite:** `mobile/vite.config.ts` tiene `envDir: '../'`
+para que Vite lea el `.env` de la raíz del repo en vez de buscar en `mobile/`.
+Sin esto, Vite usaría su comportamiento por defecto (buscar en el directorio
+donde está `vite.config.ts`) y nunca encontraría las variables.
+
+El widget v3 es invisible — el usuario no ve ningún reto. Si `VITE_RECAPTCHA_SITE_KEY`
+no está en el bundle, `getRecaptchaToken()` devuelve `""` y el backend lo acepta
+por bypass (sin marca de agua visible en login/registro).
 
 ## Email de recuperación
 

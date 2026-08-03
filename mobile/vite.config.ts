@@ -4,6 +4,7 @@ import mkcert from 'vite-plugin-mkcert';
 
 export default defineConfig({
   plugins: [react(), mkcert()],
+  envDir: '../',   // read .env from repo root, same file as the backend uses
   server: {
     host: true,
     port: 5174,
