@@ -357,11 +357,14 @@ Migración `_migrate_setting()` en `db.py` reconstruye la tabla sin pérdida de 
 
 ## Fases posteriores
 
-- **Fase 2:** asociar `ChatMessage`/`Setting` a `user_id` real;
-  completar el borrado de datos en DELETE /auth/me.
-- **Fase 3:** enganchar `get_current_user` a `/chat/*`, `/events/*`,
-  `/settings/*`; implementar los límites de uso por rol; rate limiting
-  de Guest por IP.
-- **Fase 4:** memoria social/opinión/confianza por usuario (fuera de
-  alcance de las fases de auth).
-- **Fase 5:** UI de login/registro en el frontend.
+- ✅ **Fase 2:** `session_id` real por usuario en todo el sistema,
+  migración de producción ejecutada y verificada.
+- ✅ **Fase 3:** revisión manual del dataset existente.
+- ✅ **Fase 4:** memoria social — opinión + confianza por usuario.
+- ✅ **Fase 5:** UI de login/registro/roles en el frontend — login,
+  registro, invitado, logout, adaptación por rol, reCAPTCHA v3
+  activo.
+- ✅ **Fase 2b:** aislamiento de personalidad por sesión.
+- **Fase 6 (futuro):** sistema de integraciones self-service — cada
+  usuario conecta sus propias cuentas de Google/Spotify/Home
+  Assistant con permisos que él mismo configure.

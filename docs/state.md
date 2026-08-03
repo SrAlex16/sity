@@ -78,6 +78,43 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 
 Ver .env.example para la lista completa.
 
+## Mejoras pendientes
+
+- **Integraciones self-service por usuario** — permitir que cada
+  usuario (no solo Admin) conecte sus propias cuentas de Google
+  Drive/Gmail/Calendar, Spotify, Home Assistant, etc., configurando
+  él mismo los permisos, de forma lo más user-friendly posible. Ver
+  docs/auth-system.md, sección "Fases posteriores" (Fase 6).
+- **Compartir conversaciones vía enlace** — botón para generar un
+  enlace público/de solo lectura a una conversación (o fragmento) con
+  Sity. Pendiente de diseñar: qué se comparte, si expira, y evitar
+  que sea una vía nueva de fuga de privacidad entre usuarios.
+- **Modo de voz en tiempo real (estilo "Live" de ChatGPT)** —
+  estudiar el streaming bidireccional de audio sin turnos discretos
+  de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
+  soportaría con la latencia necesaria.
+- **Protección contra phishing/enlaces maliciosos vía web_search** —
+  Sity puede buscar y potencialmente seguir enlaces en internet; una
+  página maliciosa podría intentar prompt injection en su contenido o
+  inducir a Alex a hacer clic en algo dañino creyendo que Sity lo
+  validó. Pendiente: tratar el contenido de páginas web como no
+  confiable, lista de dominios de confianza o aviso explícito ante
+  enlaces no verificados, y valorar aislar el proceso de
+  fetch/búsqueda del resto del sistema.
+- **Límites de uso por rol (mensajes/tokens diarios)** — decidido
+  hace varias sesiones, nunca implementado. Riesgo real dado el
+  registro libre y el repo público: un User o Guest sin límite puede
+  agotar el presupuesto diario de tokens de Admin.
+- **Rate limiting de Guest por IP** — complementario al punto
+  anterior: sin esto, alguien puede generar sesiones de Guest nuevas
+  indefinidamente (cada una con su propio contador) para saltarse
+  cualquier límite por sesión.
+- **Modo "en desarrollo" / kill-switch de acceso público** — poder
+  bloquear el acceso público cuando se esté desarrollando, apoyándose
+  en el rol Admin ya existente.
+- **Auditoría de cobertura de tests y CI/CD** — barrido sistemático
+  pendiente, nunca realizado.
+
 ## Bugs conocidos activos
 
 Ninguno activo conocido.
