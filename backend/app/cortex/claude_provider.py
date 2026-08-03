@@ -88,7 +88,11 @@ class ClaudeProvider:
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-        self.client = Anthropic(api_key=api_key, timeout=600)
+        # 120s read-timeout: max silence between stream chunks.
+        # max_tokens=1500 at ~50 tok/s → real stream ≤30s; 120s catches a hung
+        # stream 4× faster than the SDK default (600s) while never cutting a
+        # valid response. User cancellation handles intentional long waits.
+        self.client = Anthropic(api_key=api_key, timeout=120)
         self.model = model
 
     def generate(self, request: AIRequest) -> AIResponse:

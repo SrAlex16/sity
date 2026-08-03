@@ -321,13 +321,16 @@ Cubierto por 2 tests en `test_tool_loop_step.py`:
 | web_search (`web_search_tools.py`) | 15 s (configurable vía YAML) |
 | Home Assistant (`ha_tools.py`) | 10 s |
 | Google API (google-api-python-client) | 30 s (`httplib2.Http(timeout=30)`) |
-| Claude API (Anthropic SDK) | 600 s explícito (`Anthropic(timeout=600)`) |
+| Claude API (Anthropic SDK) | 120 s explícito (`Anthropic(timeout=120)`) |
 
 **Fix aplicado (2026-08-03):** Las 6 llamadas a `build(...)` en
 `google_tools.py` ahora reciben `http=httplib2.Http(timeout=30)`. Se crea
 una instancia nueva por llamada (no singleton compartido) para seguridad en
-concurrencia. El `Anthropic()` en `claude_provider.py` recibe `timeout=600`
-explícito — idéntico al default del SDK pero ya no implícito.
+concurrencia. El `Anthropic()` en `claude_provider.py` recibe `timeout=120`
+explícito. El valor 120s es el silencio máximo entre chunks de stream:
+`max_tokens=1500` a ~50 tok/s → stream real ≤30s; 120s detecta un stream
+colgado 5× más rápido que el default del SDK (600s) sin cortar respuestas
+válidas. La cancelación manual del usuario cubre esperas intencionales.
 
 **Resultado:** ✅
 
@@ -398,4 +401,4 @@ o `error` de la respuesta no contenga esa información.
 
 1. **SEC-11/12:** ~~Sin gating por rol en el toolset selector.~~ → **CERRADO.** GIT/FILE/SERVICE_CONTROL toolsets ahora requieren `role=="admin"`. La cadena `is_admin` propaga desde `routes_chat.py` → `TurnContext` → `select_toolset_with_metadata`.
 2. **SEC-15:** ~~`_redact_sensitive` no cubre `raw_result`.~~ → **CERRADO.** Se aplica ahora en `tool_loop_step.py` antes del `json.dumps`.
-3. **SEC-16:** ~~Google API y Claude SDK sin timeout explícito.~~ → **CERRADO.** `httplib2.Http(timeout=30)` en 6 calls de `google_tools.py`; `Anthropic(timeout=600)` en `claude_provider.py`.
+3. **SEC-16:** ~~Google API y Claude SDK sin timeout explícito.~~ → **CERRADO.** `httplib2.Http(timeout=30)` en 6 calls de `google_tools.py`; `Anthropic(timeout=120)` en `claude_provider.py` (120s = silencio entre chunks; real stream ≤30s para max_tokens=1500).
