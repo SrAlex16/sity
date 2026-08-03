@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-07-31.
+Última actualización: 2026-08-03.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1168 tests en verde (pytest)
+- 1170 tests en verde (pytest, excluyendo 28 pre-existentes de test_auth/test_session_isolation)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI
@@ -94,13 +94,7 @@ Ver .env.example para la lista completa.
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
   soportaría con la latencia necesaria.
 - **Protección contra phishing/enlaces maliciosos vía web_search** —
-  Sity puede buscar y potencialmente seguir enlaces en internet; una
-  página maliciosa podría intentar prompt injection en su contenido o
-  inducir a Alex a hacer clic en algo dañino creyendo que Sity lo
-  validó. Pendiente: tratar el contenido de páginas web como no
-  confiable, lista de dominios de confianza o aviso explícito ante
-  enlaces no verificados, y valorar aislar el proceso de
-  fetch/búsqueda del resto del sistema.
+  ✅ implementada (2026-08-03). Ver "Resueltos recientemente" abajo.
 - **Límites de uso por rol (mensajes/tokens diarios)** — decidido
   hace varias sesiones, nunca implementado. Riesgo real dado el
   registro libre y el repo público: un User o Guest sin límite puede
@@ -118,6 +112,22 @@ Ver .env.example para la lista completa.
 ## Bugs conocidos activos
 
 Ninguno activo conocido.
+
+**Resueltos recientemente (2026-08-03):**
+
+- **Protección contra prompt injection y phishing en web_search** (2026-08-03):
+  Tres capas de defensa sin filtrado de keywords:
+  (1) El texto del resultado de búsqueda devuelto al modelo ahora va envuelto en
+  un header explícito que lo marca como "contenido de terceros, no instrucciones"
+  — refuerza que el modelo no debe tratar snippets de internet como directivas del
+  sistema (`web_search_tools.py`). (2) La descripción del tool `WEB_SEARCH_TOOL` en
+  `tool_schemas.py` instruye a Sity a aclarar que los enlaces de resultados no han
+  sido verificados como seguros, y a ser honesta cuando el usuario pregunta si un
+  enlace es seguro. (3) Los dominios de los resultados servidos en cada búsqueda se
+  loguean como `event="web_search_domains"` (a nivel INFO) para trazabilidad futura
+  — no bloquea nada, da datos reales para decidir si una lista de dominios
+  bloqueados sería útil más adelante. 2 tests nuevos. 1170 tests.
+  Motivado por el hackeo de Discord de un conocido de Alex.
 
 **Resueltos recientemente (2026-07-31):**
 

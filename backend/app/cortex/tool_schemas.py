@@ -997,7 +997,11 @@ WEB_SEARCH_TOOL = {
         "resultado de otra tool o en la conversación. Creer saberlo no basta: "
         "las atribuciones específicas no son conocimiento estable. "
         "NO la uses para conversación general ni para hechos generales ampliamente "
-        "conocidos (definiciones, historia asentada, conceptos)."
+        "conocidos (definiciones, historia asentada, conceptos). "
+        "Al mencionar o citar un enlace de los resultados, indica que proviene de "
+        "una búsqueda automática sin verificación de seguridad propia. Si el usuario "
+        "pregunta explícitamente si un enlace es seguro, responde con honestidad: "
+        "no tienes forma de verificarlo con certeza."
     ),
     "input_schema": {
         "type": "object",
