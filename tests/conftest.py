@@ -14,6 +14,11 @@ os.environ.setdefault("SITY_PROJECT_ROOT", str(ROOT))
 os.environ.setdefault("SITY_AI_PROVIDER", "mock")
 # Disable Secure cookie flag so TestClient (HTTP) sends the session cookie correctly
 os.environ.setdefault("SITY_COOKIE_SECURE", "false")
+# Force reCAPTCHA bypass in tests: app/main.py calls load_dotenv() which would
+# otherwise load RECAPTCHA_SECRET_KEY from .env (present on the Pi but not in CI),
+# causing auth endpoints to reject requests with real-key verification.
+# setdefault wins because load_dotenv() does not override existing env vars.
+os.environ.setdefault("RECAPTCHA_SECRET_KEY", "")
 
 # Redirect the DB to a pytest-local file so tests NEVER write to data/app.db.
 # Must be set before app.memory.db is imported for the first time (module-level

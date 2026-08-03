@@ -268,7 +268,7 @@ class TestUpdatePersonalitySettings:
     def test_invalid_parameter_skipped(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "nonexistent", "operation": "set_absolute", "value": 0.5}]},
+            tool_input={"updates": [{"parameter": "nonexistent", "operation": "set_absolute", "value": 0.73}]},
             trace_id="trc",
         )
         assert result.ok is False
@@ -278,7 +278,7 @@ class TestUpdatePersonalitySettings:
     def test_invalid_operation_skipped(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "explode", "value": 0.5}]},
+            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "explode", "value": 0.73}]},
             trace_id="trc",
         )
         assert result.ok is False
@@ -328,7 +328,7 @@ class TestUpdatePersonalitySettings:
     def test_valid_single_update_success(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.5}]},
+            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.73}]},
             trace_id="trc",
         )
         assert result.ok is True
