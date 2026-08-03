@@ -191,16 +191,15 @@ class TestRemoveAllowedService:
 # ---------------------------------------------------------------------------
 
 class TestWriteConfig:
-    def test_write_config_opens_correct_file(self):
-        from app.actions.system_config_actions import _write_config, SYSTEM_ACCESS_CONFIG
-        import yaml
-
+    def test_write_config_calls_yaml_safe_dump(self):
+        from pathlib import Path
         config_data = {"system_access": {}}
         m = mock_open()
-        with patch("builtins.open", m), \
+        # _write_config uses Path.open(), not builtins.open — patch the method on Path
+        with patch.object(Path, "open", m), \
              patch("app.actions.system_config_actions.yaml.safe_dump") as mock_dump:
+            from app.actions.system_config_actions import _write_config
             _write_config(config_data)
 
         mock_dump.assert_called_once()
-        dumped_args = mock_dump.call_args[0]
-        assert dumped_args[0] == config_data
+        assert mock_dump.call_args[0][0] == config_data
