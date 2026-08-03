@@ -37,6 +37,7 @@ class TurnContext:
     settings_service: SettingsService
     voice_settings: VoiceSettings
     session_id: str = "default"
+    is_admin: bool = False
 
 
 def build_turn_context(
@@ -44,6 +45,7 @@ def build_turn_context(
     request: ChatMessageRequest,
     strong_model: str | None,  # noqa: ARG001 — reserved for future routing decisions
     session_id: str = "default",
+    is_admin: bool = False,
 ) -> TurnContext:
     trace_id = new_trace_id()
     config: dict[str, Any] = load_default_config()
@@ -97,4 +99,5 @@ def build_turn_context(
         settings_service=settings_service,
         voice_settings=voice_settings,
         session_id=session_id,
+        is_admin=is_admin,
     )

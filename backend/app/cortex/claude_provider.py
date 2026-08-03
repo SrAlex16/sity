@@ -88,7 +88,7 @@ class ClaudeProvider:
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-        self.client = Anthropic(api_key=api_key)
+        self.client = Anthropic(api_key=api_key, timeout=600)
         self.model = model
 
     def generate(self, request: AIRequest) -> AIResponse:

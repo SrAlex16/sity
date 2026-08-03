@@ -104,6 +104,24 @@ def _strip_sensor_tools(tools: list[dict]) -> list[dict]:
     return [t for t in tools if t.get("name") not in _VOICE_EXCLUDED_TOOL_NAMES]
 
 
+# ── Admin-only toolset gating ──────────────────────────────────────────────────
+# GIT_TOOLSET, FILE_AGENT_TOOLSET, SERVICE_CONTROL_TOOLSET require admin role.
+# Non-admin sessions (guest and regular user) never receive these tools.
+_ADMIN_ONLY_TOOL_NAMES: frozenset[str] = (
+    frozenset(
+        str(t["name"])
+        for toolset in [GIT_TOOLSET, FILE_AGENT_TOOLSET, SERVICE_CONTROL_TOOLSET]
+        for t in toolset
+    )
+    - frozenset(str(t["name"]) for t in BASE_TOOLSET)
+)
+_ADMIN_ONLY_DOMAINS: frozenset[str] = frozenset({"git", "file", "service_control"})
+
+
+def _strip_admin_only_tools(tools: list[dict]) -> list[dict]:
+    return [t for t in tools if t.get("name") not in _ADMIN_ONLY_TOOL_NAMES]
+
+
 # ── Structural signal helpers ──────────────────────────────────────────────────
 
 def _dedupe_tools(tools: list[dict]) -> list[dict]:
@@ -200,7 +218,7 @@ def select_structural_toolsets_for_message(message: str) -> list[dict]:
     return _dedupe_tools(selected)
 
 
-def select_toolset_for_message(message: str, input_mode: str = "text") -> list[dict]:
+def select_toolset_for_message(message: str, input_mode: str = "text", is_admin: bool = False) -> list[dict]:
     selected = select_structural_toolsets_for_message(message)
 
     # Legacy NL keyword fallback — see _legacy_keyword_toolsets docstring.
@@ -210,6 +228,8 @@ def select_toolset_for_message(message: str, input_mode: str = "text") -> list[d
     result = _dedupe_tools(selected)
     if input_mode == "voice":
         result = _strip_sensor_tools(result)
+    if not is_admin:
+        result = _strip_admin_only_tools(result)
     return result
 
 
@@ -249,10 +269,10 @@ class ToolsetSelection:
     'action_id_detected', 'keyword:<domain>'."""
 
 
-def select_toolset_with_metadata(message: str, input_mode: str = "text") -> ToolsetSelection:
+def select_toolset_with_metadata(message: str, input_mode: str = "text", is_admin: bool = False) -> ToolsetSelection:
     """Select tools for a message and return structured metadata.
 
-    *tools* is identical to select_toolset_for_message(message, input_mode) — callers
+    *tools* is identical to select_toolset_for_message(message, input_mode, is_admin) — callers
     that only need the list should use that function instead.
 
     *activated_domains* is the set of non-base domains selected.  Use this
@@ -261,7 +281,7 @@ def select_toolset_with_metadata(message: str, input_mode: str = "text") -> Tool
     *reasons* lists why each domain was added, in activation order.
     """
     # Delegate tool list to the existing implementation for exact compatibility.
-    tools = select_toolset_for_message(message, input_mode=input_mode)
+    tools = select_toolset_for_message(message, input_mode=input_mode, is_admin=is_admin)
 
     # Compute metadata independently (same logic, domain/reason tracking).
     activated_domains: set[str] = set()
@@ -310,6 +330,8 @@ def select_toolset_with_metadata(message: str, input_mode: str = "text") -> Tool
 
     if input_mode == "voice":
         activated_domains.discard("senses")
+    if not is_admin:
+        activated_domains -= _ADMIN_ONLY_DOMAINS
 
     return ToolsetSelection(
         tools=tools,

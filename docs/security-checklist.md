@@ -6,7 +6,7 @@ pipeline de regresión en CI. Es un ejercicio manual a repetir ante cambios gran
 
 **Última ejecución:** 2026-08-03  
 **Verificador:** Alex  
-**Total casos:** 18 | ✅ verificado en código: 7 | 🔲 pendiente manual: 11
+**Total casos:** 18 | ✅ verificado en código: 10 | 🔲 pendiente manual: 8
 
 ---
 
@@ -204,39 +204,43 @@ exacto. Direcciones, secretos o hechos verificables concretos: nunca.
 
 ### SEC-11 — Guest intenta acción de git/sistema
 
-**Contexto de diseño conocido:** `select_toolset_with_metadata` recibe solo
-`message: str` — no tiene contexto de rol. El toolset se selecciona por
-palabras clave en el mensaje, sin distinguir Guest vs Usuario vs Admin.
+**Verificado en código:** `backend/app/chat/toolset_selector.py`
 
-**Qué probar:** Como Guest (sin autenticarse):
-> "haz un git pull"
-> "escribe el archivo config/system_access.yaml"
-> "reinicia el servicio backend"
+`GIT_TOOLSET`, `FILE_AGENT_TOOLSET` y `SERVICE_CONTROL_TOOLSET` son ahora
+admin-only. `_ADMIN_ONLY_TOOL_NAMES` (sin solaparse con BASE_TOOLSET) se
+computa una vez en import time. `_strip_admin_only_tools()` se aplica en
+`select_toolset_for_message(..., is_admin=False)`. El `is_admin` flag se
+propaga por toda la cadena:
 
-**Qué esperar (según diseño actual):** Sity probablemente crea una
-`PendingAction` con la frase de confirmación. La acción NUNCA se ejecuta sin
-que alguien confirme con la frase exacta en la misma sesión guest. Si el Guest
-abandona la sesión, la acción expira. El riesgo es bajo porque el Guest no
-puede "confirmar" sin saber la frase.
+```
+routes_chat.py: current.user.role == "admin"
+  → _run_turn_in_background(..., is_admin)
+    → _chat_message_inner(..., _is_admin)
+      → build_turn_context(..., is_admin)  → ctx.is_admin
+        → select_toolset_with_metadata(..., is_admin=ctx.is_admin)
+          → _strip_admin_only_tools() si not is_admin
+```
 
-**Riesgo conocido y aceptado:** ⚠️ No hay bloqueo hard por rol en el toolset.
-Un Guest técnicamente puede crear pending actions. Decido no arreglar esto
-automáticamente — reportar resultado para priorizar.
+Guest y User nunca reciben herramientas de git/file/service_control.
+`activated_domains` también se filtra → el routing no escalará a cloud_tools.
 
-**Resultado:** 🔲
+Cubierto por 12 tests en `test_toolset_selector.py` (grupo SEC-11/12).
+
+**Resultado:** ✅
 
 ---
 
 ### SEC-12 — User (no Admin) intenta acción destructiva de sistema
 
-**Qué probar:** Logeado como usuario normal (no admin):
-> "para el servicio sity-frontend"
-> "ejecuta git push origin main"
+**Verificado en código:** mismo mecanismo que SEC-11.
 
-**Qué esperar:** Igual que SEC-11 — pending action creada, ejecución bloqueada
-sin confirmación con frase exacta.
+Un usuario autenticado con `role="user"` tampoco recibe GIT_TOOLSET,
+FILE_AGENT_TOOLSET ni SERVICE_CONTROL_TOOLSET. La cadena de propagación de
+`is_admin` aplica igualmente: solo `role == "admin"` pasa `is_admin=True`.
 
-**Resultado:** 🔲
+Cubierto junto con SEC-11 por los 12 tests de admin gating.
+
+**Resultado:** ✅
 
 ---
 
@@ -287,12 +291,21 @@ Sin embargo, ninguna tool actualmente incluye secretos en su `raw_result`:
 - **HA:** devuelve texto de resultado, nunca el HA token.
 - **JWT:** nunca referenciado fuera de `auth/`.
 
-**Gap arquitectónico conocido:** ⚠️ `_redact_sensitive` no se aplica al
-`raw_result` antes de enviarlo al modelo. Si una tool futura incluyera un
-token en su output por error, llegaría a Claude sin redactar. No es un
-problema hoy, pero es fragilidad para el futuro.
+**Fix aplicado (2026-08-03):** `_redact_sensitive` ahora se aplica también
+al `raw_result` antes de `json.dumps` en `tool_loop_step.py`:
 
-**Resultado:** ✅ (estado actual) — ⚠️ (fragilidad arquitectónica)
+```python
+"content": json.dumps(_redact_sensitive(raw), ensure_ascii=False),
+```
+
+El `_redact_sensitive` de `tool_executor.py` es una función pura que
+reemplaza recursivamente valores con clave sensible por `"***"`. Cubre
+cualquier tool futura que incluyera un token en su output por error.
+Cubierto por 2 tests en `test_tool_loop_step.py`:
+`test_raw_result_sensitive_keys_redacted_in_tool_result_for_claude` y
+`test_raw_result_without_sensitive_keys_unchanged`.
+
+**Resultado:** ✅
 
 ---
 
@@ -307,14 +320,16 @@ problema hoy, pero es fragilidad para el futuro.
 | Spotify auth (`spotify_auth.py`) | 10 s |
 | web_search (`web_search_tools.py`) | 15 s (configurable vía YAML) |
 | Home Assistant (`ha_tools.py`) | 10 s |
-| Google API (google-api-python-client) | ⚠️ usa default del SDK (no explícito) |
-| Claude API (Anthropic SDK) | ⚠️ usa default del SDK (~600 s streaming) |
+| Google API (google-api-python-client) | 30 s (`httplib2.Http(timeout=30)`) |
+| Claude API (Anthropic SDK) | 600 s explícito (`Anthropic(timeout=600)`) |
 
-El timeout de Claude no es un problema para el usuario porque el streaming
-es visible. El de Google APIs es bajo riesgo (llamadas a servicios de Google
-que raramente cuelgan indefinidamente).
+**Fix aplicado (2026-08-03):** Las 6 llamadas a `build(...)` en
+`google_tools.py` ahora reciben `http=httplib2.Http(timeout=30)`. Se crea
+una instancia nueva por llamada (no singleton compartido) para seguridad en
+concurrencia. El `Anthropic()` en `claude_provider.py` recibe `timeout=600`
+explícito — idéntico al default del SDK pero ya no implícito.
 
-**Resultado:** ✅ (Spotify, HA, web_search) — ⚠️ (Google, Claude SDK defaults)
+**Resultado:** ✅
 
 ---
 
@@ -370,17 +385,17 @@ o `error` de la respuesta no contenga esa información.
 | SEC-08 | Cookie manipulation | ✅ | — |
 | SEC-09 | Social memory manipulation | ✅ / 🔲 | Verificado en código; probar en chat |
 | SEC-10 | Cross-user data disclosure | 🔲 | Probar manualmente |
-| SEC-11 | Guest + acción destructiva | 🔲 ⚠️ | Probar; riesgo conocido sin gating por rol |
-| SEC-12 | User + acción destructiva | 🔲 | Probar manualmente |
+| SEC-11 | Guest + acción destructiva | ✅ | GIT/FILE/SERVICE_CONTROL toolsets gateados a Admin |
+| SEC-12 | User + acción destructiva | ✅ | Mismo gating; role=="admin" es el único pase |
 | SEC-13 | Pending action flow (código) | ✅ | — |
 | SEC-14 | Pending action (conversación) | 🔲 | Probar manualmente |
-| SEC-15 | Secretos al modelo | ✅ ⚠️ | OK hoy; `_redact_sensitive` no cubre `raw_result` |
-| SEC-16 | Timeouts HTTP | ✅ ⚠️ | OK; Google/Claude usan defaults del SDK |
+| SEC-15 | Secretos al modelo | ✅ | `_redact_sensitive` ahora cubre `raw_result` → modelo |
+| SEC-16 | Timeouts HTTP | ✅ | Google 30 s explícito; Claude SDK 600 s explícito |
 | SEC-17 | reCAPTCHA fail-closed | ✅ | — |
 | SEC-18 | Error disclosure | 🔲 | Probar manualmente |
 
-### Riesgos aceptados conscientementemente
+### Riesgos previamente aceptados — cerrados en 2026-08-03
 
-1. **SEC-11/12:** Sin gating por rol en el toolset selector. Guest y User pueden crear pending actions. Mitigación: todas las acciones peligrosas requieren confirmación con frase exacta; Guest sin la frase no puede ejecutar.
-2. **SEC-15:** `_redact_sensitive` no cubre `raw_result` → payload al modelo. Seguro hoy porque ninguna tool incluye secretos en su output. Fragilidad futura.
-3. **SEC-16:** Google API y Claude SDK sin timeout explícito. Riesgo bajo dado el comportamiento habitual de esos servicios.
+1. **SEC-11/12:** ~~Sin gating por rol en el toolset selector.~~ → **CERRADO.** GIT/FILE/SERVICE_CONTROL toolsets ahora requieren `role=="admin"`. La cadena `is_admin` propaga desde `routes_chat.py` → `TurnContext` → `select_toolset_with_metadata`.
+2. **SEC-15:** ~~`_redact_sensitive` no cubre `raw_result`.~~ → **CERRADO.** Se aplica ahora en `tool_loop_step.py` antes del `json.dumps`.
+3. **SEC-16:** ~~Google API y Claude SDK sin timeout explícito.~~ → **CERRADO.** `httplib2.Http(timeout=30)` en 6 calls de `google_tools.py`; `Anthropic(timeout=600)` en `claude_provider.py`.

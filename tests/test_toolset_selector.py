@@ -48,15 +48,16 @@ def schema_tool_names() -> set[str]:
     return tools
 
 
-def selected_tool_names(message: str, *, structural: bool = False) -> set[str]:
-    selector = (
-        select_structural_toolsets_for_message
-        if structural
-        else select_toolset_for_message
-    )
+def selected_tool_names(message: str, *, structural: bool = False, is_admin: bool = False) -> set[str]:
+    if structural:
+        return {
+            str(tool.get("name", ""))
+            for tool in select_structural_toolsets_for_message(message)
+            if tool.get("name")
+        }
     return {
         str(tool.get("name", ""))
-        for tool in selector(message)
+        for tool in select_toolset_for_message(message, is_admin=is_admin)
         if tool.get("name")
     }
 
@@ -111,14 +112,14 @@ def test_casual_esta_no_file_or_cancel_tools() -> None:
 
 
 def test_explicit_file_tool_names_activate_file_agent() -> None:
-    assert "read_file" in selected_tool_names("usa la herramienta read_file para leer README.md")
-    assert "write_file" in selected_tool_names("usa la herramienta write_file")
-    assert "list_directory" in selected_tool_names("usa la herramienta list_directory")
+    assert "read_file" in selected_tool_names("usa la herramienta read_file para leer README.md", is_admin=True)
+    assert "write_file" in selected_tool_names("usa la herramienta write_file", is_admin=True)
+    assert "list_directory" in selected_tool_names("usa la herramienta list_directory", is_admin=True)
 
 
 def test_file_path_in_message_activates_file_agent() -> None:
-    assert "read_file" in selected_tool_names("¿qué hay en backend/app?")
-    assert "read_file" in selected_tool_names("lee el archivo README.md")
+    assert "read_file" in selected_tool_names("¿qué hay en backend/app?", is_admin=True)
+    assert "read_file" in selected_tool_names("lee el archivo README.md", is_admin=True)
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ _SERVICE_CONTROL_TOOLS: set[str] = {
 
 
 def _has_service_control_tools(message: str) -> bool:
-    return bool(selected_tool_names(message) & _SERVICE_CONTROL_TOOLS)
+    return bool(selected_tool_names(message, is_admin=True) & _SERVICE_CONTROL_TOOLS)
 
 
 # Should NOT activate ─────────────────────────────────────────────────────────
@@ -199,9 +200,9 @@ def test_bare_backend_does_not_activate_service_control_domain() -> None:
 
 
 def test_reinicia_activates_service_control_domain() -> None:
-    """'reinicia' must activate service_control domain."""
+    """'reinicia' must activate service_control domain for admin."""
     from app.chat.toolset_selector import select_toolset_with_metadata
-    sel = select_toolset_with_metadata("reinicia sity-backend")
+    sel = select_toolset_with_metadata("reinicia sity-backend", is_admin=True)
     assert "service_control" in sel.activated_domains
 
 
@@ -227,3 +228,89 @@ def test_google_tools_available_for_any_message() -> None:
     tool_names = {t["name"] for t in tools}
     assert "gmail_search" in tool_names
     assert "calendar_list_events" in tool_names
+
+
+# ── Admin-only toolset gating (SEC-11/12) ──────────────────────────────────────
+
+_GIT_TOOLS: set[str] = {"git_read_status", "git_read_log", "git_propose_action", "git_read_branches"}
+_FILE_TOOLS_SET: set[str] = {"read_file", "write_file", "list_directory", "apply_text_patch"}
+
+
+@pytest.mark.parametrize("message", [
+    "haz un git pull",
+    "commit con mensaje 'fix'",
+    "git status",
+    "muéstrame el diff",
+])
+def test_git_tools_blocked_for_non_admin(message: str) -> None:
+    """Non-admin sessions must never receive GIT_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _GIT_TOOLS
+    assert not found, f"Git tools {found} appeared for non-admin: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "haz un git pull",
+    "commit con mensaje 'fix'",
+    "git status",
+])
+def test_git_tools_available_for_admin(message: str) -> None:
+    """Admin sessions must receive GIT_TOOLSET tools for git messages."""
+    names = selected_tool_names(message, is_admin=True)
+    found = names & _GIT_TOOLS
+    assert found, f"No git tools for admin: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "lee el archivo backend/app/main.py",
+    "¿qué hay en config/?",
+    "usa la herramienta read_file",
+])
+def test_file_tools_blocked_for_non_admin(message: str) -> None:
+    """Non-admin sessions must never receive FILE_AGENT_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _FILE_TOOLS_SET
+    assert not found, f"File tools {found} appeared for non-admin: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "lee el archivo backend/app/main.py",
+    "¿qué hay en config/?",
+])
+def test_file_tools_available_for_admin(message: str) -> None:
+    """Admin sessions must receive FILE_AGENT_TOOLSET tools when file path detected."""
+    names = selected_tool_names(message, is_admin=True)
+    assert "read_file" in names, f"read_file not available for admin: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "reinicia sity-backend",
+    "para el servicio",
+    "arranca sity-frontend",
+])
+def test_service_control_tools_blocked_for_non_admin(message: str) -> None:
+    """Non-admin sessions must never receive SERVICE_CONTROL_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _SERVICE_CONTROL_TOOLS
+    assert not found, f"Service control tools {found} appeared for non-admin: {message!r}"
+
+
+def test_admin_only_domains_absent_for_non_admin() -> None:
+    """activated_domains must not include admin-only domains for non-admin sessions."""
+    from app.chat.toolset_selector import select_toolset_with_metadata
+    for message in ("git pull", "lee el archivo config/test.yaml", "reinicia sity-backend"):
+        sel = select_toolset_with_metadata(message, is_admin=False)
+        admin_found = sel.activated_domains & {"git", "file", "service_control"}
+        assert not admin_found, (
+            f"Admin-only domains {admin_found} in non-admin selection for {message!r}"
+        )
+
+
+def test_admin_only_domains_present_for_admin() -> None:
+    """activated_domains must include admin-only domains for admin sessions."""
+    from app.chat.toolset_selector import select_toolset_with_metadata
+    sel = select_toolset_with_metadata("haz un git pull", is_admin=True)
+    assert "git" in sel.activated_domains
+
+    sel2 = select_toolset_with_metadata("lee el archivo config/test.yaml", is_admin=True)
+    assert "file" in sel2.activated_domains

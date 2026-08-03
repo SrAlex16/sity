@@ -125,3 +125,39 @@ def test_normal_path_failed_clears_updated_params() -> None:
     assert step.updated_parameters == []
     assert step.artifacts == []
     assert "tool_use_id" in step.tool_result_for_claude
+
+
+# SEC-15: _redact_sensitive applied to raw_result before sending to Claude ------
+
+def test_raw_result_sensitive_keys_redacted_in_tool_result_for_claude() -> None:
+    """Sensitive keys in raw_result must be redacted before Claude sees them (SEC-15)."""
+    import json
+    executor = _make_executor(
+        {"output": "ok", "token": "super_secret_bearer_xyz", "nested": {"api_key": "do_not_send"}},
+        ok_flag=True,
+    )
+    step = run_tool_loop_step(
+        tool_call=_make_tool_call("read_file"),
+        executor=executor,
+        trace_id="trc_test",
+        client_turn_id=None,
+    )
+    assert step.early_kind is None
+    content = json.loads(step.tool_result_for_claude["content"])
+    assert content["token"] == "***", "token must be redacted"
+    assert content["nested"]["api_key"] == "***", "api_key must be redacted"
+    assert content["output"] == "ok", "non-sensitive key must be preserved"
+
+
+def test_raw_result_without_sensitive_keys_unchanged() -> None:
+    """Non-sensitive raw_result must pass through unmodified (SEC-15 no-regression)."""
+    import json
+    executor = _make_executor({"output": "hello", "status": "ok"}, ok_flag=True)
+    step = run_tool_loop_step(
+        tool_call=_make_tool_call("read_file"),
+        executor=executor,
+        trace_id="trc_test",
+        client_turn_id=None,
+    )
+    content = json.loads(step.tool_result_for_claude["content"])
+    assert content == {"output": "hello", "status": "ok"}

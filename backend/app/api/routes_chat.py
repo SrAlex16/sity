@@ -112,8 +112,9 @@ async def chat_message(
     register_operation(turn_id)
 
     session_id = current.session_id
+    is_admin = bool(current.user and current.user.role == "admin")
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_turn_in_background, request, turn_id, session_id)
+    loop.run_in_executor(None, _run_turn_in_background, request, turn_id, session_id, is_admin)
 
     # Return dict (not JSONResponse) so FastAPI merges dependency-set cookies
     # (e.g. sity_guest_session from get_current_user) into the actual 202 response.
@@ -152,7 +153,7 @@ def cancel_stream(turn_id: str):
     return {"ok": ok}
 
 
-def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID) -> None:
+def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID, is_admin: bool = False) -> None:
     """Worker that runs the full chat turn in a thread pool and publishes
     the result (or error) as SSE events before closing with 'done'."""
     from app.memory.db import engine
@@ -164,7 +165,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
 
     with Session(engine) as session:
         try:
-            result = _chat_message_inner(request=request, session=session, _session_id=session_id)
+            result = _chat_message_inner(request=request, session=session, _session_id=session_id, _is_admin=is_admin)
             if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
                 original_message = result.original_message
                 strong_model = result.strong_model
@@ -194,6 +195,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     _upgrade_context=_upgrade_ctx,
                     _session_id=session_id,
                     _forced_tools=forced_tools,
+                    _is_admin=is_admin,
                 )
             # Skip "response" event for cancelled turns — the frontend already
             # shows a cancelled bubble from the abort handler; emitting here
@@ -219,13 +221,14 @@ def _chat_message_inner(
     _upgrade_context: str | None = None,
     _session_id: str = DEFAULT_CHAT_SESSION_ID,
     _forced_tools: list[dict] | None = None,
+    _is_admin: bool = False,
 ):
     from app.chat.turn_context import build_turn_context
     from app.chat.pre_ai_flow import ChatPreAIFlow
     from app.chat.ai_turn_prep import build_ai_turn_prep
     from app.chat.ai_orchestrator import ChatAIOrchestrator
 
-    ctx = build_turn_context(session, request, _strong_model, session_id=_session_id)
+    ctx = build_turn_context(session, request, _strong_model, session_id=_session_id, is_admin=_is_admin)
 
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id)
     persona_prompt = persona_decision.system_prompt

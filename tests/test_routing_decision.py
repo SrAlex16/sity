@@ -234,7 +234,7 @@ def test_conversational_message_empty_reasons() -> None:
 
 
 def test_file_path_activates_file_domain() -> None:
-    sel = select_toolset_with_metadata("lee backend/app/main.py")
+    sel = select_toolset_with_metadata("lee backend/app/main.py", is_admin=True)
     assert "file" in sel.activated_domains
 
 
@@ -244,7 +244,7 @@ def test_file_path_reason_recorded() -> None:
 
 
 def test_git_keyword_activates_git_domain() -> None:
-    sel = select_toolset_with_metadata("muéstrame el git status")
+    sel = select_toolset_with_metadata("muéstrame el git status", is_admin=True)
     assert "git" in sel.activated_domains
 
 
@@ -254,7 +254,7 @@ def test_git_keyword_reason_recorded() -> None:
 
 
 def test_explicit_tool_name_read_file_activates_file_domain() -> None:
-    sel = select_toolset_with_metadata("usa read_file en config/")
+    sel = select_toolset_with_metadata("usa read_file en config/", is_admin=True)
     assert "file" in sel.activated_domains
 
 
@@ -305,7 +305,7 @@ def test_routing_cloud_chat_consistent_with_metadata_conversational() -> None:
 
 
 def test_routing_cloud_tools_consistent_with_metadata_file() -> None:
-    sel = select_toolset_with_metadata("lee backend/app/main.py")
+    sel = select_toolset_with_metadata("lee backend/app/main.py", is_admin=True)
     d = build_chat_routing_decision(
         message="lee backend/app/main.py", selection=sel, local_ai_enabled=False
     )

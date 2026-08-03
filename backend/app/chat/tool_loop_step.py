@@ -17,7 +17,7 @@ from typing import Any
 
 from app.api.schemas import ChatArtifact
 from app.chat.artifacts import capture_artifact_from_path
-from app.core.tool_executor import ToolExecutor
+from app.core.tool_executor import ToolExecutor, _redact_sensitive
 from app.cortex.schemas import AIToolCall
 
 
@@ -156,7 +156,7 @@ def run_tool_loop_step(
         tool_result_for_claude={
             "type": "tool_result",
             "tool_use_id": tool_call.id,
-            "content": json.dumps(raw, ensure_ascii=False),
+            "content": json.dumps(_redact_sensitive(raw), ensure_ascii=False),
         },
         updated_parameters=updated_parameters,
         artifacts=artifacts,

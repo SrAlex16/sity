@@ -179,7 +179,7 @@ def build_ai_turn_prep(
     )
 
     # Toolset selection and special tool injection.
-    toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode)
+    toolset_selection = select_toolset_with_metadata(request.message, input_mode=request.input_mode, is_admin=ctx.is_admin)
     if forced_tools is not None:
         # Model-upgrade re-run: merge Haiku's toolset with PERSONALITY_TOOLSET.
         # Keyword matching fails for vague follow-ups ("cambia otra cosa", "otra vez")

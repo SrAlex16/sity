@@ -24,7 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from helpers import chat_post_and_drain
+from helpers import chat_post_and_drain, make_admin_token
 
 # ---------------------------------------------------------------------------
 # Ollama response helpers
@@ -132,6 +132,7 @@ def test_local_ai_action_message_ollama_not_called(monkeypatch):
     """Action domain activated → cloud_tools → Ollama httpx.post is NOT called.
 
     'lee backend/app/main.py' has a file path → file domain activated → cloud_tools.
+    Requires admin session because FILE_AGENT_TOOLSET is admin-only (SEC-11/12).
     Cloud provider is mock (conftest default) — it handles the planner turn.
     Ollama is configured but must stay idle.
     """
@@ -146,7 +147,8 @@ def test_local_ai_action_message_ollama_not_called(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", _should_not_be_called)
 
-    with TestClient(app, raise_server_exceptions=True) as client:
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True, cookies={"sity_session": token}) as client:
         chat_post_and_drain(client, "lee backend/app/main.py")
 
     assert not ollama_called, (
@@ -159,6 +161,7 @@ def test_local_ai_action_message_no_tools_not_supported(monkeypatch):
 
     cloud_tools path uses mock provider (cloud), which supports tools.
     Ollama is never called, so tools_not_supported never fires.
+    Requires admin session because FILE_AGENT_TOOLSET is admin-only (SEC-11/12).
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
@@ -168,7 +171,8 @@ def test_local_ai_action_message_no_tools_not_supported(monkeypatch):
         lambda *a, **kw: _mock_ollama_response()  # guard — should not be reached
     )
 
-    with TestClient(app, raise_server_exceptions=True) as client:
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True, cookies={"sity_session": token}) as client:
         data = chat_post_and_drain(client, "lee backend/app/main.py")
 
     assert data.get("error_type") != "tools_not_supported", (
