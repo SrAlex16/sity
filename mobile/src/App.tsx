@@ -41,7 +41,12 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>('chat');
   const [authView, setAuthView] = useState<AuthView>('login');
   const auth = useAuth();
-  const chat = useChat();
+  const userKey = auth.currentUser == null
+    ? null
+    : auth.currentUser.role === 'guest'
+      ? 'guest'
+      : `user:${auth.currentUser.id}`;
+  const chat = useChat(userKey);
 
   // null = still resolving session from /auth/me — show nothing to avoid flash
   if (auth.currentUser === null) {

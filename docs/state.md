@@ -108,12 +108,34 @@ Ver .env.example para la lista completa.
   en el rol Admin ya existente.
 - **Auditoría de cobertura de tests y CI/CD** — barrido sistemático
   pendiente, nunca realizado.
+- **Proveedor SMTP real para recuperación de contraseña** — prerrequisito
+  para que el flujo de recuperación funcione en producción. Actualmente
+  el backend no envía email real: cuando `SITY_SMTP_HOST` no está
+  configurado, `email_stub.py` loguea el enlace de reset a nivel WARN
+  (ver logs con `journalctl -u sity-backend | grep password_reset_link_logged_only`).
+  El enlace funciona — solo falta configurar un relay SMTP (p. ej.
+  Postfix, SendGrid, Mailgun) y añadir `SITY_SMTP_HOST/PORT/USER/PASS`
+  al `.env`.
 
 ## Bugs conocidos activos
 
 Ninguno activo conocido.
 
 **Resueltos recientemente (2026-08-03):**
+
+- **Fuga de historial entre sesiones (Guest ↔ Admin)** (2026-08-03):
+  `useChat` cargaba el historial una sola vez al montar con `useEffect(fn, [])`.
+  Al cambiar de sesión (login/logout) sin recargar la página, los mensajes
+  de la sesión anterior seguían visibles hasta la siguiente respuesta. Fix:
+  `useChat` acepta ahora `userKey` derivado de `auth.currentUser` en App.tsx;
+  al cambiar `userKey` se limpia todo el estado de sesión (`messages`,
+  `status`, `backgroundJobsActive`, `backgroundJustFinished`, `canCancel`,
+  refs de AbortController y turn_id) antes de lanzar `loadHistory()`. El
+  SSE de background también se reconecta para que use la cookie de la nueva
+  sesión. Backend nunca estuvo comprometido: `GET /chat/current` siempre
+  filtró por `session_id` del JWT.
+
+**Resueltos recientemente (2026-08-03, seguridad):**
 
 - **Protección contra prompt injection y phishing en web_search** (2026-08-03):
   Tres capas de defensa sin filtrado de keywords:

@@ -83,7 +83,7 @@ interface ApiTranscribeResponse {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-export function useChat() {
+export function useChat(userKey: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<ChatStatus>('desconectado');
   const [canCancel, setCanCancel] = useState(false);
@@ -93,10 +93,25 @@ export function useChat() {
   const currentTurnIdRef = useRef<string | null>(null);
   const bgFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { void loadHistory(); }, []);
-
-  // Persistent session SSE — receives background job notifications
+  // On session change: clear all session-derived state before loading new history.
+  // userKey === null means auth is still resolving — skip until identity is known.
   useEffect(() => {
+    if (userKey === null) return;
+    setMessages([]);
+    setStatus('desconectado');
+    setBackgroundJobsActive(0);
+    setBackgroundJustFinished(false);
+    setCanCancel(false);
+    abortControllerRef.current = null;
+    currentTurnIdRef.current = null;
+    void loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userKey]);
+
+  // Persistent session SSE — receives background job notifications.
+  // Re-subscribe when user identity changes so the new session's cookie is used.
+  useEffect(() => {
+    if (userKey === null) return;
     const es = new EventSource(`/events/session/${SESSION_ID}`);
 
     es.onmessage = (e: MessageEvent) => {
@@ -130,7 +145,8 @@ export function useChat() {
       es.close();
       if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userKey]);
 
   async function loadHistory() {
     try {
