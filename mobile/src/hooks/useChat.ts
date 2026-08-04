@@ -92,11 +92,17 @@ export function useChat(userKey: string | null) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentTurnIdRef = useRef<string | null>(null);
   const bgFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Always reflects the latest userKey so _listenTurn can validate events mid-flight.
+  const userKeyRef = useRef<string | null>(userKey);
+  userKeyRef.current = userKey;
 
   // On session change: clear all session-derived state before loading new history.
   // userKey === null means auth is still resolving — skip until identity is known.
   useEffect(() => {
     if (userKey === null) return;
+    // Abort any in-flight turn from the previous session so its response events
+    // never reach the new session's message list.
+    abortControllerRef.current?.abort();
     setMessages([]);
     setStatus('desconectado');
     setBackgroundJobsActive(0);
@@ -218,7 +224,7 @@ export function useChat(userKey: string | null) {
       currentTurnIdRef.current = turn_id;
 
       // 2. Subscribe to SSE — Cloudflare sees heartbeats and keeps the connection alive
-      await _listenTurn(turn_id, controller.signal, setMessages, setStatus);
+      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setMessages((prev) => [...prev, cancelledMsg()]);
@@ -294,7 +300,7 @@ export function useChat(userKey: string | null) {
       const { turn_id } = await res.json() as ApiChatAccepted;
       currentTurnIdRef.current = turn_id;
 
-      await _listenTurn(turn_id, controller.signal, setMessages, setStatus);
+      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setMessages((prev) => [...prev, cancelledMsg()]);
@@ -340,6 +346,8 @@ export type UseChatResult = ReturnType<typeof useChat>;
 function _listenTurn(
   turn_id: string,
   signal: AbortSignal,
+  expectedUserKey: string | null,
+  currentUserKeyRef: React.MutableRefObject<string | null>,
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setStatus: React.Dispatch<React.SetStateAction<ChatStatus>>,
 ): Promise<void> {
@@ -356,6 +364,13 @@ function _listenTurn(
         return;
       }
       if (ev.type === 'response' && ev.data) {
+        // Guard: discard if the session changed while this turn was in flight.
+        // Covers the race where the response event was already queued before abort().
+        if (currentUserKeyRef.current !== expectedUserKey) {
+          es.close();
+          resolve();
+          return;
+        }
         responseSeen = true;
         setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
         if (ev.data.personality_updated) {
@@ -384,10 +399,9 @@ function _listenTurn(
 
     signal.addEventListener('abort', () => {
       es.close();
-      // The abort fires synchronously before any SSE events arrive, so show
-      // the cancelled bubble now. Guard with responseSeen to avoid duplicates
-      // in the (unlikely) race where a 'response' event arrived first.
-      if (!responseSeen) {
+      // Only show the cancelled bubble if the session hasn't changed — if it did,
+      // the userKey effect already cleared messages, so we must not append here.
+      if (!responseSeen && currentUserKeyRef.current === expectedUserKey) {
         setMessages((prev) => [...prev, cancelledMsg()]);
       }
       setStatus('conectado');
