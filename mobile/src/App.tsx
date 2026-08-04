@@ -41,6 +41,19 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>('chat');
   const [authView, setAuthView] = useState<AuthView>('login');
   const auth = useAuth();
+
+  // Detect /reset-password?token=XXX on first load. Clean the URL immediately so
+  // the token never lingers in the address bar, history, or clipboard.
+  const [initialResetToken, setInitialResetToken] = useState<string | null>(() => {
+    if (window.location.pathname === '/reset-password') {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (token) {
+        window.history.replaceState({}, '', '/');
+        return token;
+      }
+    }
+    return null;
+  });
   const userKey = auth.currentUser == null
     ? null
     : auth.currentUser.role === 'guest'
@@ -85,6 +98,8 @@ export default function App() {
               <LoginScreen
                 auth={auth}
                 onSwitchToRegister={() => setAuthView('register')}
+                initialResetToken={initialResetToken}
+                onResetTokenConsumed={() => setInitialResetToken(null)}
               />
             ) : (
               <RegisterScreen

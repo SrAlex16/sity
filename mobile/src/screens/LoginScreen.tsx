@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
 import { getRecaptchaToken } from '../utils/recaptcha';
@@ -7,9 +7,20 @@ import styles from './AuthForm.module.css';
 interface Props {
   auth: UseAuthResult;
   onSwitchToRegister: () => void;
+  initialResetToken?: string | null;
+  onResetTokenConsumed?: () => void;
 }
 
-export function LoginScreen({ auth, onSwitchToRegister }: Props) {
+// Mirror of backend _check_password_strength
+function checkPasswordStrength(password: string): string | null {
+  if (password.length < 8) return 'Mínimo 8 caracteres.';
+  if (!/[A-Z]/.test(password)) return 'Debe incluir al menos una mayúscula.';
+  if (!/[a-z]/.test(password)) return 'Debe incluir al menos una minúscula.';
+  if (!/\d/.test(password)) return 'Debe incluir al menos un número.';
+  return null;
+}
+
+export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onResetTokenConsumed }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,6 +29,25 @@ export function LoginScreen({ auth, onSwitchToRegister }: Props) {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStatus, setForgotStatus] = useState<'idle' | 'sent' | 'error'>('idle');
+
+  // Reset password modal
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Open reset modal automatically if a token was extracted from the URL in App.tsx
+  useEffect(() => {
+    if (initialResetToken) {
+      setResetToken(initialResetToken);
+      setResetOpen(true);
+      onResetTokenConsumed?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,6 +71,38 @@ export function LoginScreen({ auth, onSwitchToRegister }: Props) {
     const result = await auth.forgotPassword(forgotEmail);
     setForgotStatus(result.ok ? 'sent' : 'error');
   }
+
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault();
+    setResetError('');
+
+    const strengthError = checkPasswordStrength(newPassword);
+    if (strengthError) { setResetError(strengthError); return; }
+    if (newPassword !== confirmPassword) { setResetError('Las contraseñas no coinciden.'); return; }
+
+    setResetLoading(true);
+    const result = await auth.resetPassword(resetToken, newPassword);
+    setResetLoading(false);
+
+    if (result.ok) {
+      setResetSuccess(true);
+    } else {
+      setResetError(
+        'Este enlace ya no es válido. Pide uno nuevo desde "He olvidado mi contraseña".',
+      );
+    }
+  }
+
+  function closeReset() {
+    setResetOpen(false);
+    setResetSuccess(false);
+    setNewPassword('');
+    setConfirmPassword('');
+    setResetError('');
+  }
+
+  const newPwError = newPassword ? checkPasswordStrength(newPassword) : null;
+  const pwMismatch = confirmPassword && newPassword !== confirmPassword;
 
   return (
     <div className={styles.screen}>
@@ -146,6 +208,62 @@ export function LoginScreen({ auth, onSwitchToRegister }: Props) {
               </p>
             )}
             <button type="submit" className={styles.btnPrimary}>Enviar enlace</button>
+          </form>
+        )}
+      </HelpModal>
+
+      {/* Reset password modal — opens automatically when the app detects /reset-password?token= in the URL */}
+      <HelpModal
+        open={resetOpen}
+        onClose={closeReset}
+        title="Nueva contraseña"
+      >
+        {resetSuccess ? (
+          <>
+            <p className={styles.modalText}>
+              ¡Contraseña actualizada correctamente! Ya puedes iniciar sesión con tu nueva contraseña.
+            </p>
+            <button type="button" className={styles.btnPrimary} onClick={closeReset}>
+              Iniciar sesión
+            </button>
+          </>
+        ) : (
+          <form onSubmit={handleReset} style={{ display: 'contents' }}>
+            <p className={styles.modalText}>
+              Introduce tu nueva contraseña.
+            </p>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="reset-new-pw">Nueva contraseña</label>
+              <input
+                id="reset-new-pw"
+                className={styles.input}
+                type="password"
+                autoComplete="new-password"
+                placeholder="Mín. 8 car., mayús., minús. y número"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                disabled={resetLoading}
+              />
+              {newPwError && <span className={styles.fieldError}>{newPwError}</span>}
+            </div>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="reset-confirm-pw">Confirmar contraseña</label>
+              <input
+                id="reset-confirm-pw"
+                className={styles.input}
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repite la contraseña"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={resetLoading}
+              />
+              {pwMismatch && <span className={styles.fieldError}>Las contraseñas no coinciden.</span>}
+            </div>
+            {resetError && <div className={styles.errorBanner}>{resetError}</div>}
+            <button type="submit" className={styles.btnPrimary} disabled={resetLoading}>
+              {resetLoading ? 'Actualizando…' : 'Cambiar contraseña'}
+            </button>
           </form>
         )}
       </HelpModal>
