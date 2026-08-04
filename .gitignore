@@ -50,3 +50,8 @@ data/*
 
 # Home Assistant (configuración local, no del repo)
 /home/alex/homeassistant/
+
+# Binario de pytest
+*.coverage
+htmlcov/
+
