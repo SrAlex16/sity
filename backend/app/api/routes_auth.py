@@ -101,7 +101,13 @@ def _clear_cookie(response: Response) -> None:
 
 
 def _clear_guest_cookie(response: Response) -> None:
-    response.delete_cookie(key=_GUEST_COOKIE_NAME, path="/")
+    response.delete_cookie(
+        key=_GUEST_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+    )
 
 
 def _validate_email(email: str) -> bool:
