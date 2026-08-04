@@ -13,6 +13,7 @@ from app.api.routes_captures import router as captures_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_debug import router as debug_router
 from app.api.routes_events import router as events_router
+from app.api.routes_integrations import router as integrations_router
 from app.api.routes_settings import router as settings_router
 from app.core.cors_config import get_cors_origins
 from app.core.realtime_events import set_event_loop
@@ -77,6 +78,7 @@ def health():
 
 
 app.include_router(auth_router)
+app.include_router(integrations_router)
 app.include_router(settings_router)
 app.include_router(debug_router)
 app.include_router(chat_router)

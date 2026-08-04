@@ -24,6 +24,13 @@ os.environ.setdefault("RECAPTCHA_SECRET_KEY", "")
 os.environ.setdefault(
     "SITY_ENCRYPTION_KEY", "-fK4ciDHFFErONssGSvvwc-NHD7nGJ5D_l08eWusURU="
 )
+# Fake OAuth provider credentials for integration tests.
+# These are syntactically valid but never used against real APIs — all
+# network calls are mocked in tests/test_integrations.py.
+os.environ.setdefault("GOOGLE_CLIENT_ID", "fake-client-id.apps.googleusercontent.com")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "fake-google-secret")
+os.environ.setdefault("SPOTIFY_CLIENT_ID", "fake-spotify-client-id")
+os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "fake-spotify-secret")
 
 # Redirect the DB to a pytest-local file so tests NEVER write to data/app.db.
 # Must be set before app.memory.db is imported for the first time (module-level
