@@ -15,11 +15,12 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 
+from app.core.runtime_config import get_public_base_url
 from app.trace.logger import write_log
 
 
 def send_password_reset_email(to_email: str, token: str) -> None:
-    base_url = os.environ.get("SITY_BASE_URL", "http://localhost:5173")
+    base_url = get_public_base_url()
     reset_url = f"{base_url}/reset-password?token={token}"
 
     smtp_host = os.environ.get("SITY_SMTP_HOST", "")

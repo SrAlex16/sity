@@ -51,6 +51,15 @@ class RuntimeConfig:
         return self.project_root / "data"
 
 
+def get_public_base_url() -> str:
+    """Public base URL for outbound links (emails, OAuth redirects).
+
+    Single source of truth for SITY_BASE_URL so every module uses the same
+    default and a missing .env entry doesn't produce inconsistent behaviour.
+    """
+    return env_str("SITY_BASE_URL", "https://sity.aletm.com")
+
+
 def get_runtime_config() -> RuntimeConfig:
     project_root = Path(
         env_str("SITY_PROJECT_ROOT", str(_find_project_root()))

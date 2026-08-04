@@ -32,6 +32,7 @@ from sqlmodel import Session, select
 
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.auth.encryption import encrypt_str
+from app.core.runtime_config import get_public_base_url
 from app.memory.db import get_session
 from app.memory.models import UserIntegration
 from app.trace.logger import write_log
@@ -114,7 +115,7 @@ def _verify_state(state: str) -> tuple[int, str]:
 # ---------------------------------------------------------------------------
 
 def _redirect_uri(provider: str) -> str:
-    base = os.environ.get("SITY_BASE_URL", "https://sity.aletm.com")
+    base = get_public_base_url()
     return f"{base}/auth/integrations/{provider}/callback"
 
 
@@ -332,7 +333,7 @@ def callback(
     write_log(level="AUDIT", module="integrations", event="oauth_connected",
               payload={"user_id": user_id, "provider": provider}, audit=True)
 
-    base = os.environ.get("SITY_BASE_URL", "https://sity.aletm.com")
+    base = get_public_base_url()
     return RedirectResponse(url=f"{base}/settings/integrations?connected={provider}",
                             status_code=302)
 
