@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-03.
+Última actualización: 2026-08-04.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,11 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1170 tests en verde (pytest, excluyendo 28 pre-existentes de test_auth/test_session_isolation)
+- ~1400 tests en verde (pytest)
+- Cobertura global: 73% (medida con pytest-cov)
+- 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
+  toolset selector, routing decision, pending action runner, social memory, turn persistence
+- Checklist de seguridad: 18/18 ✅ (ejecutado manualmente por Alex, 2026-08-04)
 - mypy: 0 errores en backend/app/
 - CI: GitHub Actions en .github/workflows/
 - Node.js: 24 en CI
@@ -93,8 +97,6 @@ Ver .env.example para la lista completa.
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
   soportaría con la latencia necesaria.
-- **Protección contra phishing/enlaces maliciosos vía web_search** —
-  ✅ implementada (2026-08-03). Ver "Resueltos recientemente" abajo.
 - **Límites de uso por rol (mensajes/tokens diarios)** — decidido
   hace varias sesiones, nunca implementado. Riesgo real dado el
   registro libre y el repo público: un User o Guest sin límite puede
@@ -106,8 +108,6 @@ Ver .env.example para la lista completa.
 - **Modo "en desarrollo" / kill-switch de acceso público** — poder
   bloquear el acceso público cuando se esté desarrollando, apoyándose
   en el rol Admin ya existente.
-- **Auditoría de cobertura de tests y CI/CD** — barrido sistemático
-  pendiente, nunca realizado.
 - **Proveedor SMTP real para recuperación de contraseña** — prerrequisito
   para que el flujo de recuperación funcione en producción. Actualmente
   el backend no envía email real: cuando `SITY_SMTP_HOST` no está
@@ -123,17 +123,33 @@ Ninguno activo conocido.
 
 **Resueltos recientemente (2026-08-03):**
 
-- **Fuga de historial entre sesiones (Guest ↔ Admin)** (2026-08-03):
-  `useChat` cargaba el historial una sola vez al montar con `useEffect(fn, [])`.
-  Al cambiar de sesión (login/logout) sin recargar la página, los mensajes
-  de la sesión anterior seguían visibles hasta la siguiente respuesta. Fix:
-  `useChat` acepta ahora `userKey` derivado de `auth.currentUser` en App.tsx;
-  al cambiar `userKey` se limpia todo el estado de sesión (`messages`,
-  `status`, `backgroundJobsActive`, `backgroundJustFinished`, `canCancel`,
-  refs de AbortController y turn_id) antes de lanzar `loadHistory()`. El
-  SSE de background también se reconecta para que use la cookie de la nueva
-  sesión. Backend nunca estuvo comprometido: `GET /chat/current` siempre
-  filtró por `session_id` del JWT.
+- **Fuga de historial entre sesiones (Guest ↔ Admin)** (2026-08-04):
+  Encontrada durante la ejecución del checklist de seguridad. Cuatro causas
+  raíz independientes, todas corregidas:
+
+  1. **`useEffect(fn, [])` en `useChat`:** el historial se cargaba una sola vez
+     al montar; cambiar de sesión sin recargar la página dejaba los mensajes
+     anteriores visibles. Fix: `useChat(userKey)` limpia todo el estado de
+     sesión y relanza `loadHistory()` en cada cambio de `userKey`.
+
+  2. **`sity_chat_cleared` global en localStorage:** "borrar chat" escribía un
+     timestamp sin contexto de usuario; al volver como Admin, sus mensajes
+     anteriores quedaban ocultos por el timestamp del Guest. Fix: clave scoped
+     a `userKey` (`sity_chat_cleared_user:1`, `sity_chat_cleared_guest`).
+
+  3. **Cookie `sity_session` no se eliminaba en logout (Chrome 104+):**
+     `_clear_cookie()` usaba los defaults de Starlette (`secure=False,
+     httponly=False`), pero la cookie fue creada con `Secure; HttpOnly`.
+     Chrome requiere que la cabecera de borrado incluya `Secure` para eliminar
+     una cookie `Secure`. Fix: `_clear_cookie()` y `_clear_guest_cookie()`
+     pasan `httponly=True, secure=_cookie_secure(), samesite="lax"`.
+
+  4. **Condición de carrera: respuesta de turno llega a sesión nueva:**
+     si el usuario cerraba sesión con un turno en curso, `_listenTurn` seguía
+     vivo (el controlador nunca se abortaba) y inyectaba la respuesta en el
+     array de mensajes de la nueva sesión. Fix doble: `abort()` explícito en
+     el efecto de `userKey` + guard en `_listenTurn` que descarta eventos
+     `response` si `currentUserKeyRef.current !== expectedUserKey`.
 
 **Resueltos recientemente (2026-08-03, seguridad):**
 
