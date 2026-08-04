@@ -19,6 +19,11 @@ os.environ.setdefault("SITY_COOKIE_SECURE", "false")
 # causing auth endpoints to reject requests with real-key verification.
 # setdefault wins because load_dotenv() does not override existing env vars.
 os.environ.setdefault("RECAPTCHA_SECRET_KEY", "")
+# Stable test key for Fernet encryption (UserIntegration). Generated once and fixed
+# so the test DB (which persists across runs) can always decrypt its own rows.
+os.environ.setdefault(
+    "SITY_ENCRYPTION_KEY", "-fK4ciDHFFErONssGSvvwc-NHD7nGJ5D_l08eWusURU="
+)
 
 # Redirect the DB to a pytest-local file so tests NEVER write to data/app.db.
 # Must be set before app.memory.db is imported for the first time (module-level

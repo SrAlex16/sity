@@ -140,6 +140,25 @@ class PasswordResetToken(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class UserIntegration(SQLModel, table=True):
+    """Per-user OAuth credentials for third-party providers (Google, Spotify).
+
+    encrypted_credentials holds the provider token JSON encrypted with Fernet
+    (SITY_ENCRYPTION_KEY). is_active=False means disconnected but preserves the
+    audit row — distinct from hard-deletion used in DELETE /auth/me.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    provider: str                                    # "google" | "spotify"
+    encrypted_credentials: str                       # Fernet-encrypted JSON (app/auth/encryption.py)
+    scopes: str                                      # authorized scopes, stored for auditing
+    connected_at: datetime = Field(default_factory=utc_now)
+    last_refreshed_at: Optional[datetime] = Field(default=None)
+    is_active: bool = Field(default=True)
+
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_userintegration_user_provider"),)
+
+
 class PendingAction(SQLModel, table=True):
     id: str = Field(primary_key=True)
     action_type: str = Field(index=True)

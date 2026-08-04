@@ -123,6 +123,29 @@ def _migrate_setting() -> None:
                        "constraint_change": "key_unique → (key, session_id)_composite"})
 
 
+def _verify_encryption_key(session: Session) -> None:
+    """Fail fast at startup if SITY_ENCRYPTION_KEY cannot decrypt existing UserIntegration rows.
+
+    Catches key rotation or misconfiguration before any user request fails with a
+    cryptic error. Skips the check when the table is empty (first deploy, no rows yet).
+    """
+    from sqlmodel import select
+    from app.memory.models import UserIntegration
+    from app.auth.encryption import decrypt_str
+
+    row = session.exec(select(UserIntegration)).first()
+    if row is None:
+        return
+    try:
+        decrypt_str(row.encrypted_credentials)
+    except ValueError as exc:
+        raise RuntimeError(
+            "SITY_ENCRYPTION_KEY no coincide con los datos cifrados existentes en "
+            "UserIntegration — revisa el .env. El backend no puede arrancar con una "
+            "clave incorrecta o rotada."
+        ) from exc
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
@@ -134,6 +157,8 @@ def init_db() -> None:
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()
+        with Session(engine) as session:
+            _verify_encryption_key(session)
     except Exception as exc:
         write_log(level="WARN", module="memory", event="db_initialized",
                   payload={"ok": False, "reason": str(exc)[:200]})
