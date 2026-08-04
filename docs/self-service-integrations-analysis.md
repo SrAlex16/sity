@@ -1,6 +1,6 @@
 # Fase 6: Integraciones self-service por usuario — Diseño
 
-Fecha: 2026-08-04. Estado: **diseño pendiente de aprobación**, sin implementación.
+Fecha: 2026-08-04. Estado: **diseño aprobado**, implementación en curso.
 
 Referencia en docs/state.md → "Mejoras pendientes → Integraciones self-service por usuario".
 
@@ -77,7 +77,10 @@ Inicia el flujo. Requiere sesión de usuario (`get_current_user`, no guest).
 ### Endpoint callback: `GET /auth/integrations/{provider}/callback?code=...&state=...`
 
 1. Valida `state`: verifica HMAC, extrae `user_id`, comprueba que no ha expirado.
-   Si falla → 400 (sin detallar cuál verificación falló).
+   Si falla → respuesta HTML con mensaje claro y accionable:
+   `"El enlace de autorización caducó o no es válido. Vuelve a intentarlo desde Ajustes → Integraciones."`.
+   No un 400 genérico sin contexto — el usuario llega aquí desde el navegador, sin
+   capa de frontend que interprete el código de error.
 2. Intercambia `code` por tokens llamando a la API del proveedor.
 3. Cifra las credenciales con Fernet (§3).
 4. Upsert en `UserIntegration` (insert o update si ya existe fila para ese usuario+proveedor).
@@ -86,9 +89,21 @@ Inicia el flujo. Requiere sesión de usuario (`get_current_user`, no guest).
 
 ### Endpoint desconexión: `DELETE /auth/integrations/{provider}`
 
-Elimina la fila de `UserIntegration` del usuario activo (o pone `is_active=False` si
-se prefiere auditoría). El token no se revoca en el proveedor — la revocación es
-responsabilidad del usuario desde la cuenta del proveedor si lo necesita.
+Pone `is_active=False` en la fila de `UserIntegration` del usuario activo. No borra
+la fila — se conserva el historial de auditoría de qué integraciones ha tenido cada
+usuario (cuándo se conectó, cuándo se desconectó, cuándo se hizo el último refresh).
+
+El token no se revoca en el proveedor — la revocación es responsabilidad del usuario
+desde la cuenta del proveedor si lo necesita.
+
+**Por qué esto es distinto de `DELETE /auth/me`:** el borrado real de cuenta
+(`DELETE /auth/me`) elimina la fila `User` porque es el acto explícito e irreversible
+de abandonar el servicio, y la coherencia de los datos de ese usuario deja de importar.
+La desconexión de una integración, en cambio, es una operación reversible y recurrente
+— el usuario puede volver a conectar mañana. Usar `is_active=False` aquí no es
+inconsistencia respecto a `DELETE /auth/me`; son decisiones correctas en contextos
+distintos: borrado real cuando la entidad muere, soft-delete cuando la entidad vive
+pero una relación se desactiva temporalmente.
 
 ### Pantalla frontend "Integraciones" (concepto, sin implementación)
 
@@ -145,6 +160,34 @@ def decrypt_str(ciphertext: str) -> str:
 
 `SITY_ENCRYPTION_KEY` se genera una vez con `Fernet.generate_key().decode()` y se
 añade al `.env`. Es una clave base64url de 32 bytes. Añadir a `.env.example`.
+
+### Chequeo de arranque: protección contra clave incorrecta o rotada
+
+Al arrancar el backend (en el mismo punto donde ya se ejecutan otras comprobaciones
+de arranque, como la creación de tablas o el seeder de Admin), se añade una
+verificación fail-fast:
+
+```python
+def _verify_encryption_key(session: Session) -> None:
+    """Falla al arrancar si SITY_ENCRYPTION_KEY no descifra los datos existentes."""
+    row = session.exec(select(UserIntegration)).first()
+    if row is None:
+        return  # tabla vacía — primer despliegue, nada que verificar
+    try:
+        decrypt_str(row.encrypted_credentials)
+    except Exception:
+        raise RuntimeError(
+            "SITY_ENCRYPTION_KEY no coincide con los datos cifrados existentes en "
+            "UserIntegration — revisa el .env. El backend no puede arrancar con una "
+            "clave incorrecta o rotada."
+        )
+```
+
+**Por qué fail-fast en el arranque:** si la clave es incorrecta, los fallos llegarían
+dispersos y confusos más tarde, en producción, para usuarios reales. El arranque es
+el momento donde Alex está mirando activamente los logs — es el mejor punto para
+detectar el problema. Si la tabla está vacía (primer despliegue), el chequeo se salta
+sin más.
 
 ### Limitaciones conocidas en v1
 
@@ -294,13 +337,13 @@ con tokens completamente independientes. El refresh de uno no afecta al otro.
 
 ### Desconexión / revocación
 
-- `DELETE /auth/integrations/{provider}` elimina la fila de DB.
-- En la siguiente invocación de una herramienta del proveedor, `load_user_credentials()`
-  devuelve `None` → mensaje claro al usuario.
+- `DELETE /auth/integrations/{provider}` pone `is_active=False` en la fila de DB (no la borra).
+- `load_user_credentials()` filtra por `is_active == True` → devuelve `None` → mensaje claro al usuario.
 - El token permanece válido en el proveedor hasta que expire o el usuario lo revoque
   desde la consola del proveedor. Esto es aceptable en v1 — la mayoría de servicios
   expiran access tokens en < 1h.
-- Re-conectar crea una fila nueva vía el flujo OAuth normal.
+- Re-conectar actualiza la fila existente (upsert): `is_active=True`, credenciales nuevas,
+  `connected_at` actualizado.
 
 ### Refresh de token por usuario
 
