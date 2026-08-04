@@ -19,6 +19,8 @@ os.environ.setdefault("SITY_COOKIE_SECURE", "false")
 # causing auth endpoints to reject requests with real-key verification.
 # setdefault wins because load_dotenv() does not override existing env vars.
 os.environ.setdefault("RECAPTCHA_SECRET_KEY", "")
+# Disable real SMTP in tests — email_stub uses stub (log-only) path when host is empty.
+os.environ.setdefault("SITY_SMTP_HOST", "")
 # Stable test key for Fernet encryption (UserIntegration). Generated once and fixed
 # so the test DB (which persists across runs) can always decrypt its own rows.
 os.environ.setdefault(

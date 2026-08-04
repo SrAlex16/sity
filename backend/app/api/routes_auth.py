@@ -239,7 +239,10 @@ def forgot_password(
         )
         session.add(reset_token)
         session.commit()
-        send_password_reset_email(to_email=user.email, token=token_str)
+        try:
+            send_password_reset_email(to_email=user.email, token=token_str)
+        except Exception:
+            pass  # email_stub already logged the error; preserve anti-enumeration 200
         write_log(
             level="AUDIT", module="auth", event="password_reset_requested",
             trace_id=trace_id, payload={"user_id": user.id}, audit=True,

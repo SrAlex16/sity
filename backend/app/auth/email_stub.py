@@ -1,21 +1,19 @@
 """Password-reset email sender.
 
-Currently a stub: the reset link is logged at WARN level instead of
-being emailed. This makes the feature fully functional for development
-and allows Alex to share links manually.
-
-To activate real email sending, set these env vars and implement the
-SMTP block marked TODO below:
-  SITY_SMTP_HOST       — SMTP server hostname (e.g. smtp.gmail.com)
+Requires these env vars to send real email (e.g. via Resend SMTP):
+  SITY_SMTP_HOST       — SMTP server hostname  (e.g. smtp.resend.com)
   SITY_SMTP_PORT       — port, default 587 (STARTTLS)
-  SITY_SMTP_USER       — SMTP login username
-  SITY_SMTP_PASSWORD   — SMTP login password
-  SITY_SMTP_FROM_EMAIL — From address (e.g. no-reply@sity.aletm.com)
+  SITY_SMTP_USER       — SMTP login username   (Resend: literal "resend")
+  SITY_SMTP_PASSWORD   — SMTP login password / API key
+  SITY_SMTP_FROM_EMAIL — From address          (e.g. no-reply@sity.aletm.com)
   SITY_BASE_URL        — public base URL for the reset link
-                         (default: http://localhost:5173)
+
+If SITY_SMTP_HOST is not set, the link is logged at WARN level (dev/stub mode).
 """
 
 import os
+import smtplib
+from email.mime.text import MIMEText
 
 from app.trace.logger import write_log
 
@@ -24,7 +22,8 @@ def send_password_reset_email(to_email: str, token: str) -> None:
     base_url = os.environ.get("SITY_BASE_URL", "http://localhost:5173")
     reset_url = f"{base_url}/reset-password?token={token}"
 
-    if not os.environ.get("SITY_SMTP_HOST"):
+    smtp_host = os.environ.get("SITY_SMTP_HOST", "")
+    if not smtp_host:
         write_log(
             level="WARN",
             module="auth",
@@ -37,26 +36,59 @@ def send_password_reset_email(to_email: str, token: str) -> None:
         )
         return
 
-    # TODO: implement real SMTP sending once credentials are configured.
-    # Example skeleton:
-    #
-    # import smtplib
-    # from email.mime.text import MIMEText
-    #
-    # body = f"Restablece tu contraseña aquí:\n\n{reset_url}\n\nExpira en 1 hora."
-    # msg = MIMEText(body)
-    # msg["Subject"] = "Restablecer contraseña — Sity"
-    # msg["From"] = os.environ["SITY_SMTP_FROM_EMAIL"]
-    # msg["To"] = to_email
-    # with smtplib.SMTP(os.environ["SITY_SMTP_HOST"],
-    #                   int(os.environ.get("SITY_SMTP_PORT", 587))) as s:
-    #     s.starttls()
-    #     s.login(os.environ["SITY_SMTP_USER"], os.environ["SITY_SMTP_PASSWORD"])
-    #     s.send_message(msg)
+    smtp_port = int(os.environ.get("SITY_SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SITY_SMTP_USER", "")
+    smtp_password = os.environ.get("SITY_SMTP_PASSWORD", "")
+    from_email = os.environ.get("SITY_SMTP_FROM_EMAIL", smtp_user)
+
+    body = (
+        f"Hola,\n\n"
+        f"Restablece tu contraseña en Sity haciendo clic en el siguiente enlace:\n\n"
+        f"{reset_url}\n\n"
+        f"El enlace expira en 1 hora. Si no solicitaste este restablecimiento, "
+        f"ignora este mensaje.\n\n"
+        f"— Sity"
+    )
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = "Restablecer contraseña — Sity"
+    msg["From"] = from_email
+    msg["To"] = to_email
 
     write_log(
         level="INFO",
         module="auth",
-        event="password_reset_email_sent",
-        payload={"to": to_email},
+        event="smtp_send_attempt",
+        payload={"to": to_email, "host": smtp_host, "port": smtp_port},
     )
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as s:
+            s.starttls()
+            s.login(smtp_user, smtp_password)
+            s.send_message(msg)
+        write_log(
+            level="INFO",
+            module="auth",
+            event="smtp_send_success",
+            payload={"to": to_email},
+        )
+    except smtplib.SMTPAuthenticationError as exc:
+        write_log(
+            level="ERROR",
+            module="auth",
+            event="smtp_auth_failed",
+            payload={"host": smtp_host, "error": str(exc)[:300]},
+        )
+        raise
+    except Exception as exc:
+        write_log(
+            level="ERROR",
+            module="auth",
+            event="smtp_send_failed",
+            payload={
+                "to": to_email,
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:300],
+            },
+        )
+        raise
