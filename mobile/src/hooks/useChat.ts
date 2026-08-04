@@ -154,7 +154,7 @@ export function useChat(userKey: string | null) {
       if (!res.ok) throw new Error('network');
       const data = await res.json() as { messages: ApiHistoryMessage[] };
 
-      const clearedAt = localStorage.getItem('sity_chat_cleared');
+      const clearedAt = localStorage.getItem(`sity_chat_cleared_${userKey ?? 'unknown'}`);
 
       setMessages(
         data.messages
@@ -319,7 +319,9 @@ export function useChat(userKey: string | null) {
   }, []);
 
   function clearMessages() {
-    localStorage.setItem('sity_chat_cleared', new Date().toISOString());
+    // Key is scoped to userKey so that clearing as Guest never affects Admin's view.
+    const key = `sity_chat_cleared_${userKey ?? 'unknown'}`;
+    localStorage.setItem(key, new Date().toISOString());
     setMessages([]);
   }
 

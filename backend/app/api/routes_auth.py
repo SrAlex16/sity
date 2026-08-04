@@ -88,7 +88,16 @@ def _set_cookie(response: Response, token: str) -> None:
 
 
 def _clear_cookie(response: Response) -> None:
-    response.delete_cookie(key=_COOKIE_NAME, path="/")
+    # Must match the original cookie attributes (secure, httponly, samesite) so that
+    # browsers (Chrome 104+) actually delete the Secure cookie rather than ignoring
+    # a deletion header that lacks the Secure attribute.
+    response.delete_cookie(
+        key=_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+    )
 
 
 def _clear_guest_cookie(response: Response) -> None:
