@@ -105,17 +105,23 @@ def _strip_sensor_tools(tools: list[dict]) -> list[dict]:
 
 
 # ── Admin-only toolset gating ──────────────────────────────────────────────────
-# GIT_TOOLSET, FILE_AGENT_TOOLSET, SERVICE_CONTROL_TOOLSET require admin role.
+# GIT_TOOLSET, FILE_AGENT_TOOLSET, SERVICE_CONTROL_TOOLSET, SYSTEM_TOOLSET,
+# and DEBUG_TOOLSET require admin role.
 # Non-admin sessions (guest and regular user) never receive these tools.
+# SYSTEM_TOOLSET exposes CPU/RAM/disk/processes and service control commands.
+# DEBUG_TOOLSET exposes internal traces and debug events.
 _ADMIN_ONLY_TOOL_NAMES: frozenset[str] = (
     frozenset(
         str(t["name"])
-        for toolset in [GIT_TOOLSET, FILE_AGENT_TOOLSET, SERVICE_CONTROL_TOOLSET]
+        for toolset in [
+            GIT_TOOLSET, FILE_AGENT_TOOLSET, SERVICE_CONTROL_TOOLSET,
+            SYSTEM_TOOLSET, DEBUG_TOOLSET,
+        ]
         for t in toolset
     )
     - frozenset(str(t["name"]) for t in BASE_TOOLSET)
 )
-_ADMIN_ONLY_DOMAINS: frozenset[str] = frozenset({"git", "file", "service_control"})
+_ADMIN_ONLY_DOMAINS: frozenset[str] = frozenset({"git", "file", "service_control", "system", "debug"})
 
 
 def _strip_admin_only_tools(tools: list[dict]) -> list[dict]:

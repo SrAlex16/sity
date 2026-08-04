@@ -298,9 +298,19 @@ def test_service_control_tools_blocked_for_non_admin(message: str) -> None:
 def test_admin_only_domains_absent_for_non_admin() -> None:
     """activated_domains must not include admin-only domains for non-admin sessions."""
     from app.chat.toolset_selector import select_toolset_with_metadata
-    for message in ("git pull", "lee el archivo config/test.yaml", "reinicia sity-backend"):
+    cases = [
+        "git pull",
+        "lee el archivo config/test.yaml",
+        "reinicia sity-backend",
+        "cuánta ram tiene el sistema",
+        "dime el estado del sistema",
+        "muéstrame los logs del backend",
+        "dame los debug events",
+    ]
+    all_admin_domains = {"git", "file", "service_control", "system", "debug"}
+    for message in cases:
         sel = select_toolset_with_metadata(message, is_admin=False)
-        admin_found = sel.activated_domains & {"git", "file", "service_control"}
+        admin_found = sel.activated_domains & all_admin_domains
         assert not admin_found, (
             f"Admin-only domains {admin_found} in non-admin selection for {message!r}"
         )
@@ -314,3 +324,75 @@ def test_admin_only_domains_present_for_admin() -> None:
 
     sel2 = select_toolset_with_metadata("lee el archivo config/test.yaml", is_admin=True)
     assert "file" in sel2.activated_domains
+
+    sel3 = select_toolset_with_metadata("cuánta ram tiene el sistema", is_admin=True)
+    assert "system" in sel3.activated_domains
+
+    sel4 = select_toolset_with_metadata("muéstrame los logs del backend", is_admin=True)
+    assert "debug" in sel4.activated_domains
+
+
+# ---------------------------------------------------------------------------
+# SYSTEM_TOOLSET — admin-only (SEC bug fix 2026-08-04)
+# Exposes CPU/RAM/disk/processes and service control — must never reach Guest.
+# ---------------------------------------------------------------------------
+
+_SYSTEM_TOOLS: set[str] = {"read_system_status", "read_disk_usage", "read_processes"}
+
+
+@pytest.mark.parametrize("message", [
+    "cuánta ram tiene el sistema",
+    "dime el estado del sistema",
+    "cuánto disco queda",
+    "qué procesos están corriendo",
+    "muéstrame el estado de la raspberry",
+])
+def test_system_tools_blocked_for_non_admin(message: str) -> None:
+    """Non-admin sessions must never receive SYSTEM_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _SYSTEM_TOOLS
+    assert not found, f"System tools {found} appeared for non-admin: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "cuánta ram tiene el sistema",
+    "dime el estado del sistema",
+    "cuánto disco queda",
+])
+def test_system_tools_available_for_admin(message: str) -> None:
+    """Admin sessions must receive SYSTEM_TOOLSET tools for system queries."""
+    names = selected_tool_names(message, is_admin=True)
+    found = names & _SYSTEM_TOOLS
+    assert found, f"No system tools for admin: {message!r}"
+
+
+# ---------------------------------------------------------------------------
+# DEBUG_TOOLSET — admin-only (SEC bug fix 2026-08-04)
+# Exposes internal traces and debug events — must never reach Guest.
+# ---------------------------------------------------------------------------
+
+_DEBUG_TOOLS: set[str] = {"read_recent_debug_events", "read_trace_events"}
+
+
+@pytest.mark.parametrize("message", [
+    "muéstrame los logs del backend",
+    "dame los debug events",
+    "qué errores hay en los logs",
+    "muéstrame las trazas",
+])
+def test_debug_tools_blocked_for_non_admin(message: str) -> None:
+    """Non-admin sessions must never receive DEBUG_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _DEBUG_TOOLS
+    assert not found, f"Debug tools {found} appeared for non-admin: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "muéstrame los logs del backend",
+    "dame los debug events",
+])
+def test_debug_tools_available_for_admin(message: str) -> None:
+    """Admin sessions must receive DEBUG_TOOLSET tools for debug queries."""
+    names = selected_tool_names(message, is_admin=True)
+    found = names & _DEBUG_TOOLS
+    assert found, f"No debug tools for admin: {message!r}"
