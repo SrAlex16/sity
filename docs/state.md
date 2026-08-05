@@ -84,11 +84,14 @@ Ver .env.example para la lista completa.
 
 ## Mejoras pendientes
 
-- **Integraciones self-service por usuario** — permitir que cada
-  usuario (no solo Admin) conecte sus propias cuentas de Google
-  Drive/Gmail/Calendar, Spotify, Home Assistant, etc., configurando
-  él mismo los permisos, de forma lo más user-friendly posible. Ver
-  docs/auth-system.md, sección "Fases posteriores" (Fase 6).
+- **Integraciones self-service por usuario (parcialmente implementado)** —
+  Google/Spotify ya funciona: endpoints OAuth
+  (`/auth/integrations/{provider}/connect|callback|disconnect`), credenciales
+  por usuario cifradas en `UserIntegration`, handlers adaptados
+  (`_resolve_google_creds`, `_resolve_spotify_token`). Pendiente: Home
+  Assistant (sin OAuth estándar — requiere diseño propio) y la pantalla de
+  frontend "Ajustes → Integraciones" con botones Connect/Disconnect. Ver
+  `docs/auth-system.md` § Fase 6.
 - **Compartir conversaciones vía enlace** — botón para generar un
   enlace público/de solo lectura a una conversación (o fragmento) con
   Sity. Pendiente de diseñar: qué se comparte, si expira, y evitar
@@ -97,32 +100,30 @@ Ver .env.example para la lista completa.
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
   soportaría con la latencia necesaria.
-- ~~**Límites de uso por rol (mensajes/tokens diarios)**~~ —
-  **Implementado (Fase 6, 2026-08-05)**. `UserMessageGuard` en
-  `pre_ai_flow.py`, tabla `DailyMessageUsage`, reseteo automático
-  diario. Configurable en `auth.user_daily_message_limit` y
-  `auth.guest_daily_message_limit`.
-- ~~**Rate limiting de Guest por IP**~~ —
-  **Implementado (2026-08-05)**. `GuestIPRateLimiter` en
-  `auth/ip_rate_limiter.py`, aplicado en `POST /chat/message` solo para
-  Guests. IP extraída con prioridad CF-Connecting-IP → X-Forwarded-For →
-  client.host (no se necesita cambio en el Caddyfile). Configurable en
-  `auth.guest_ip_rate_limit_per_hour` (default 30/hora). In-memory,
-  ventana deslizante de 1 hora. 14 tests.
-- ~~**Modo "en desarrollo" / kill-switch de acceso público**~~ —
-  **Implementado (2026-08-05)**. `MaintenanceModeMiddleware` en
-  `auth/maintenance.py`, pure ASGI. `SITY_MAINTENANCE_MODE=true` en `.env`
-  + `./deploy.sh`. Admin siempre pasa; Guest/User reciben 503. Exentos:
-  `/health`, `/auth/login`, `/auth/logout`. Frontend muestra pantalla
-  de mantenimiento con botón para login de Admin. 16 tests.
-- **Proveedor SMTP real para recuperación de contraseña** — prerrequisito
-  para que el flujo de recuperación funcione en producción. Actualmente
-  el backend no envía email real: cuando `SITY_SMTP_HOST` no está
-  configurado, `email_stub.py` loguea el enlace de reset a nivel WARN
-  (ver logs con `journalctl -u sity-backend | grep password_reset_link_logged_only`).
-  El enlace funciona — solo falta configurar un relay SMTP (p. ej.
-  Postfix, SendGrid, Mailgun) y añadir `SITY_SMTP_HOST/PORT/USER/PASS`
-  al `.env`.
+- **Marca de agua reCAPTCHA** — el badge de reCAPTCHA v3 aparece
+  permanentemente en la esquina inferior derecha de la PWA. Ocultarlo
+  con CSS requiere incluir un aviso legal en la UI (según los ToS de
+  Google). Evaluar si ocultarlo y añadir el aviso, o dejarlo visible.
+- **Limpieza de código continua** — a medida que crece el proyecto
+  se acumulan TODOs, dead code y abstracciones a medias. Revisión
+  periódica: eliminar lo que no se usa, consolidar patrones duplicados,
+  asegurar que los tests cubren los módulos nuevos.
+- **Más acceso al sistema para Sity** — ampliar el toolset de
+  herramientas de sistema (procesos, archivos, red) más allá del
+  subconjunto actual seguro. *Advertencia: cada herramienta nueva
+  amplía la superficie de ataque si Sity es manipulada vía prompt
+  injection; evaluar caso por caso.*
+- **Temporizadores y alarmas** — tool para que Sity programe
+  recordatorios con hora específica o cuenta atrás, usando el sistema
+  de background tasks ya existente.
+- **DSPy / optimización automática de prompts** — explorar DSPy para
+  optimizar el prompt de sistema y los prompts de herramientas con
+  datos reales del dataset v1. Requiere el dataset de evaluación
+  terminado.
+- **Navegación web activa** — más allá de la búsqueda DuckDuckGo
+  actual: tool para que Sity siga enlaces y extraiga contenido de
+  páginas concretas (scraping controlado), útil para leer artículos o
+  documentación que el usuario comparte.
 
 ## Bugs conocidos activos
 
