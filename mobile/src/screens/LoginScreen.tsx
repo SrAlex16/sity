@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
-import { getRecaptchaToken } from '../utils/recaptcha';
+import { getRecaptchaToken, loadRecaptchaScript } from '../utils/recaptcha';
 import styles from './AuthForm.module.css';
 
 interface Props {
@@ -38,6 +38,10 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
   const [resetError, setResetError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Pre-load reCAPTCHA script while the user reads the form, so the first
+  // submit doesn't stall waiting for the script to load.
+  useEffect(() => { void loadRecaptchaScript(); }, []);
 
   // Open reset modal automatically if a token was extracted from the URL in App.tsx
   useEffect(() => {

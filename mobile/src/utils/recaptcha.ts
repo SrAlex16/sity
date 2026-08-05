@@ -25,8 +25,11 @@ function _loadScript(): Promise<void> {
   return _scriptPromise;
 }
 
-// Kick off script loading as soon as this module is imported.
-void _loadScript();
+// Do NOT call _loadScript() here — loading is deferred to when LoginScreen
+// or RegisterScreen mounts, so the reCAPTCHA badge never appears in the main app.
+export function loadRecaptchaScript(): Promise<void> {
+  return _loadScript();
+}
 
 export async function getRecaptchaToken(action: string): Promise<string> {
   if (!SITE_KEY) return '';

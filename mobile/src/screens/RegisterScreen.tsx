@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
-import { getRecaptchaToken } from '../utils/recaptcha';
+import { getRecaptchaToken, loadRecaptchaScript } from '../utils/recaptcha';
 import styles from './AuthForm.module.css';
 
 interface Props {
@@ -26,6 +26,8 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
   const [rgpdOpen, setRgpdOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => { void loadRecaptchaScript(); }, []);
 
   const pwError = password ? checkPasswordStrength(password) : null;
   const pwMismatch = confirmPassword && password !== confirmPassword;
