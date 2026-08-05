@@ -123,6 +123,19 @@ Ver .env.example para la lista completa.
   actual: tool para que Sity siga enlaces y extraiga contenido de
   páginas concretas (scraping controlado), útil para leer artículos o
   documentación que el usuario comparte.
+- **Web Push API — prerrequisito para alarmas reales** *(limitación de
+  diseño del sistema de timers/alarmas)* — el runner de timers ya existe
+  y dispara en la hora correcta, pero la notificación llega por SSE: solo
+  alcanza la pestaña si la PWA está abierta y conectada en ese momento
+  (misma garantía que los background tasks). Para que una alarma despierte
+  al usuario con la app cerrada hacen falta cuatro piezas: (1) un
+  **service worker** en la PWA que escuche el evento `push`; (2)
+  **registro de suscripción push** (objeto `PushSubscription`) por
+  dispositivo/sesión, almacenado en backend; (3) **claves VAPID** en el
+  backend para firmar las notificaciones; (4) un nuevo endpoint que, cuando
+  `fire_pending_once` dispara un timer, llame a la Web Push API del
+  servidor con el payload y la suscripción guardada. Sin esto, los timers
+  son "recordatorios dentro de la app", no alarmas de sistema.
 
 ## Bugs conocidos activos
 
