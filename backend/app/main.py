@@ -15,6 +15,7 @@ from app.api.routes_debug import router as debug_router
 from app.api.routes_events import router as events_router
 from app.api.routes_integrations import router as integrations_router
 from app.api.routes_settings import router as settings_router
+from app.auth.maintenance import MaintenanceModeMiddleware
 from app.core.cors_config import get_cors_origins
 from app.core.realtime_events import set_event_loop
 from app.memory.db import init_db
@@ -25,6 +26,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# CORSMiddleware added first → outermost → wraps all responses including maintenance 503s
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
@@ -32,6 +34,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# MaintenanceModeMiddleware added second → inner → runs after CORS on request path
+app.add_middleware(MaintenanceModeMiddleware)
 
 
 @app.on_event("startup")

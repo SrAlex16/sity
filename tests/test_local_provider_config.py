@@ -25,6 +25,7 @@ def _cfg(**kwargs) -> RuntimeConfig:
         local_only=False,
         local_ai_enabled=False,
         local_ai_provider="ollama",
+        maintenance_mode=False,
     )
     defaults.update(kwargs)
     return RuntimeConfig(**defaults)

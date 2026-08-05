@@ -41,6 +41,9 @@ class RuntimeConfig:
     # SITY_LOCAL_AI_PROVIDER selects which local backend to use (default: "ollama").
     local_ai_enabled: bool
     local_ai_provider: str
+    # Maintenance mode — blocks Guest/User with 503; Admin always passes through.
+    # Toggle without rebuild: set SITY_MAINTENANCE_MODE=true in .env, then ./deploy.sh
+    maintenance_mode: bool
 
     @property
     def config_dir(self) -> Path:
@@ -74,4 +77,5 @@ def get_runtime_config() -> RuntimeConfig:
         local_only=env_bool("SITY_LOCAL_ONLY", False),
         local_ai_enabled=env_bool("SITY_LOCAL_AI_ENABLED", False),
         local_ai_provider=env_str("SITY_LOCAL_AI_PROVIDER", "ollama"),
+        maintenance_mode=env_bool("SITY_MAINTENANCE_MODE", False),
     )

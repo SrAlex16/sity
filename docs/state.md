@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1490 tests en verde (pytest)
+- ~1504 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -109,9 +109,12 @@ Ver .env.example para la lista completa.
   client.host (no se necesita cambio en el Caddyfile). Configurable en
   `auth.guest_ip_rate_limit_per_hour` (default 30/hora). In-memory,
   ventana deslizante de 1 hora. 14 tests.
-- **Modo "en desarrollo" / kill-switch de acceso público** — poder
-  bloquear el acceso público cuando se esté desarrollando, apoyándose
-  en el rol Admin ya existente.
+- ~~**Modo "en desarrollo" / kill-switch de acceso público**~~ —
+  **Implementado (2026-08-05)**. `MaintenanceModeMiddleware` en
+  `auth/maintenance.py`, pure ASGI. `SITY_MAINTENANCE_MODE=true` en `.env`
+  + `./deploy.sh`. Admin siempre pasa; Guest/User reciben 503. Exentos:
+  `/health`, `/auth/login`, `/auth/logout`. Frontend muestra pantalla
+  de mantenimiento con botón para login de Admin. 16 tests.
 - **Proveedor SMTP real para recuperación de contraseña** — prerrequisito
   para que el flujo de recuperación funcione en producción. Actualmente
   el backend no envía email real: cuando `SITY_SMTP_HOST` no está

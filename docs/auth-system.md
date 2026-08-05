@@ -1,6 +1,6 @@
 # Sistema de autenticación y roles
 
-Última actualización: 2026-07-30.
+Última actualización: 2026-08-05.
 
 Implementación de las Fases 1 y 2 del sistema de usuarios de Sity:
 tabla `User`, hashing de contraseñas, sesiones JWT en cookie, siete
@@ -300,6 +300,12 @@ auth:
   registration_open: true
 ```
 
+Variables de entorno relacionadas con seguridad:
+
+```
+SITY_MAINTENANCE_MODE=true   # bloquea Guest/User con 503; Admin pasa siempre
+```
+
 Variables de entorno (van en `.env`):
 
 ```
@@ -320,11 +326,58 @@ backend/app/auth/
 ├── dependencies.py       # CurrentUser, get_current_user
 ├── email_stub.py         # send_password_reset_email (stub con TODO SMTP)
 ├── admin_seeder.py       # seed_admin() llamado en startup
-└── ip_rate_limiter.py    # GuestIPRateLimiter, get_real_client_ip; singleton por proceso
+├── ip_rate_limiter.py    # GuestIPRateLimiter, get_real_client_ip; singleton por proceso
+└── maintenance.py        # MaintenanceModeMiddleware (pure ASGI)
 backend/app/api/
 ├── routes_auth.py        # 7 endpoints /auth/*
 └── schemas_auth.py       # RegisterRequest, LoginRequest, MeResponse, ...
 ```
+
+## Modo mantenimiento / kill-switch de acceso público (Punto 10 — 2026-08-05)
+
+### Activar/desactivar
+
+```bash
+# Activar: añadir al .env
+SITY_MAINTENANCE_MODE=true
+
+# Aplicar sin rebuild (solo reiniciar backend):
+./deploy.sh
+
+# Desactivar: eliminar o comentar la línea en .env, luego ./deploy.sh
+```
+
+### Comportamiento
+
+| Rol | Acceso durante mantenimiento |
+|---|---|
+| Admin | Sin restricciones — todo pasa |
+| User | 503 en todos los endpoints salvo los exentos |
+| Guest | 503 en todos los endpoints salvo los exentos |
+
+**Endpoints siempre exentos:**
+- `GET /health` — checks de infraestructura
+- `POST /auth/login` — Admin puede autenticarse aunque no tenga sesión activa
+- `POST /auth/logout` — cierre de sesión graceful
+
+### Implementación
+
+- **`RuntimeConfig.maintenance_mode`** — leído de `SITY_MAINTENANCE_MODE` en `runtime_config.py`
+- **`MaintenanceModeMiddleware`** — middleware ASGI puro en `auth/maintenance.py`; registrado después de `CORSMiddleware` en `main.py` (inner, para que CORS añada cabeceras al 503)
+- Detección de Admin: lee cookie `sity_session` de los headers ASGI crudos, decodifica el JWT
+- Respuesta: `HTTP 503` + `{"detail": "Sity está en mantenimiento. Vuelve más tarde."}`
+
+### Frontend
+
+- `useAuth.ts` detecta 503 en `fetchMe()` → estado `maintenance: boolean`
+- `App.tsx` muestra `<MaintenanceScreen />` para Guest/User durante mantenimiento
+- El botón "acceder como administrador" en `<MaintenanceScreen />` abre `<LoginScreen />`; si se loguea como Admin, `fetchMe()` vuelve a funcionar (el middleware deja pasar `/auth/login`)
+
+### Tests
+
+`tests/test_maintenance_mode.py` — 16 tests:
+- Modo OFF → comportamiento normal para todos
+- Modo ON: Admin pasa (/auth/me, /health, /settings), Guest bloqueado (/auth/me, /chat/message, /settings), User bloqueado (/auth/me, /chat/message), cuerpo del 503 con campo `detail`, /health y /auth/login y /auth/logout siempre exentos
 
 ## Rate limiting de Guest por IP (Punto 7 — 2026-08-05)
 

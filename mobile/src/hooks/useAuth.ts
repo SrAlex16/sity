@@ -54,22 +54,36 @@ export function useAuth() {
   const [guestOptedIn, setGuestOptedIn] = useState(
     () => sessionStorage.getItem('sity_guest_opted_in') === 'true',
   );
+  const [maintenance, setMaintenance] = useState(false);
 
   useEffect(() => {
     void fetchMe();
   }, []);
 
   async function fetchMe() {
-    const { data } = await apiFetch<MeResponse>('/auth/me');
-    if (data) {
-      setCurrentUser({
-        role: data.role,
-        id: data.id,
-        email: data.email ?? undefined,
-        displayName: data.display_name ?? undefined,
+    try {
+      const res = await fetch('/auth/me', {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
       });
-    } else {
-      // Fallback: treat as guest if /auth/me is unreachable
+      if (res.ok) {
+        const data = (await res.json()) as MeResponse;
+        setMaintenance(false);
+        setCurrentUser({
+          role: data.role,
+          id: data.id,
+          email: data.email ?? undefined,
+          displayName: data.display_name ?? undefined,
+        });
+      } else if (res.status === 503) {
+        setMaintenance(true);
+        setCurrentUser({ role: 'guest' });
+      } else {
+        setMaintenance(false);
+        setCurrentUser({ role: 'guest' });
+      }
+    } catch {
+      setMaintenance(false);
       setCurrentUser({ role: 'guest' });
     }
   }
@@ -131,6 +145,7 @@ export function useAuth() {
   return {
     currentUser,
     guestOptedIn,
+    maintenance,
     login,
     register,
     logout,

@@ -11,6 +11,21 @@ import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
 import styles from './App.module.css';
 
+const _screenStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: '100%',
+  gap: '0.75rem',
+  fontFamily: 'var(--font-mono)',
+  color: 'var(--text-secondary)',
+  fontSize: '0.8rem',
+  letterSpacing: '0.05em',
+  textAlign: 'center',
+  padding: '2rem',
+};
+
 export type Screen = 'chat' | 'personality' | 'voice' | 'dataset';
 type AuthView = 'login' | 'register';
 
@@ -18,15 +33,37 @@ const _ADMIN_SCREENS = new Set<Screen>(['voice', 'dataset']);
 
 function AccessDenied() {
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', height: '100%', gap: '0.75rem',
-      fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)',
-      fontSize: '0.8rem', letterSpacing: '0.05em', textAlign: 'center',
-      padding: '2rem',
-    }}>
+    <div style={_screenStyle}>
       <span style={{ fontSize: '2rem', opacity: 0.3 }}>[ acceso denegado ]</span>
       <span>Esta sección requiere permisos de administrador.</span>
+    </div>
+  );
+}
+
+function MaintenanceScreen({ onLogin }: { onLogin: () => void }) {
+  return (
+    <div style={_screenStyle}>
+      <span style={{ fontSize: '2rem', opacity: 0.3 }}>[ mantenimiento ]</span>
+      <span>Sity está en mantenimiento.</span>
+      <span style={{ opacity: 0.6 }}>Vuelve más tarde.</span>
+      <button
+        onClick={onLogin}
+        style={{
+          marginTop: '1.5rem',
+          background: 'none',
+          border: '1px solid var(--text-secondary)',
+          borderRadius: '4px',
+          color: 'var(--text-secondary)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.75rem',
+          letterSpacing: '0.05em',
+          padding: '0.4rem 0.9rem',
+          cursor: 'pointer',
+          opacity: 0.6,
+        }}
+      >
+        acceder como administrador
+      </button>
     </div>
   );
 }
@@ -40,6 +77,7 @@ const screenVariants = {
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>('chat');
   const [authView, setAuthView] = useState<AuthView>('login');
+  const [maintenanceShowLogin, setMaintenanceShowLogin] = useState(false);
   const auth = useAuth();
 
   // Detect /reset-password?token=XXX on first load. Clean the URL immediately so
@@ -60,6 +98,28 @@ export default function App() {
       ? 'guest'
       : `user:${auth.currentUser.id}`;
   const chat = useChat(userKey);
+
+  // Maintenance mode: non-admin users get a clear message + admin login option.
+  // Admin is not affected — their /auth/me passes through the middleware.
+  if (auth.maintenance && auth.currentUser?.role !== 'admin') {
+    if (maintenanceShowLogin) {
+      return (
+        <div className={styles.app}>
+          <LoginScreen
+            auth={auth}
+            onSwitchToRegister={() => {}}
+            initialResetToken={null}
+            onResetTokenConsumed={() => {}}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className={styles.app}>
+        <MaintenanceScreen onLogin={() => setMaintenanceShowLogin(true)} />
+      </div>
+    );
+  }
 
   // null = still resolving session from /auth/me — show nothing to avoid flash
   if (auth.currentUser === null) {
