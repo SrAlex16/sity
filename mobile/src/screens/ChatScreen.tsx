@@ -35,6 +35,15 @@ function IconDots() {
   );
 }
 
+function IconShare() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+
 function IconClip() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
@@ -97,6 +106,10 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const [menuOpen, setMenuOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareData, setShareData] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [activeFont, setActiveFont] = useState<'orbitron' | 'sharetech' | 'rajdhani'>(
     () => (localStorage.getItem('sity_font') ?? 'orbitron') as 'orbitron' | 'sharetech' | 'rajdhani'
   );
@@ -238,6 +251,34 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     };
   }, [recording]);
 
+  // ── Share ──────────────────────────────────────────────────────────────────
+
+  const handleShare = async () => {
+    setMenuOpen(false);
+    setShareLoading(true);
+    setShareModalOpen(true);
+    setShareData(null);
+    setShareCopied(false);
+    try {
+      const resp = await fetch('/chat/share', { method: 'POST', credentials: 'include' });
+      if (!resp.ok) throw new Error('Error al compartir');
+      const body = await resp.json() as { share_id: string; url: string; expires_at: string };
+      setShareData({ url: body.url, expiresAt: body.expires_at });
+    } catch {
+      setShareModalOpen(false);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyShareLink = () => {
+    if (!shareData) return;
+    void navigator.clipboard.writeText(shareData.url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  };
+
   // ── Background ─────────────────────────────────────────────────────────────
 
   const handleBgSelect = (bg: string) => {
@@ -321,6 +362,11 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   transition={{ duration: 0.14 }}
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {currentUser && currentUser.role !== 'guest' && (
+                    <button className={styles.menuItem} onClick={() => void handleShare()}>
+                      <IconShare /> Compartir conversación
+                    </button>
+                  )}
                   <button className={styles.menuItem} onClick={() => { clearMessages(); setMenuOpen(false); }}>
                     Borrar chat
                   </button>
@@ -479,6 +525,104 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
         onClose={() => setFontPickerOpen(false)}
         onSelect={setActiveFont}
       />
+
+      {/* Share modal */}
+      <AnimatePresence>
+        {shareModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 200,
+              background: 'rgba(0,0,0,0.72)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '1.5rem',
+            }}
+            onClick={() => setShareModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.92, y: 12 }}
+              transition={{ duration: 0.18 }}
+              style={{
+                background: 'var(--color-surface, #0f1117)',
+                border: '1px solid var(--color-border, #1e2130)',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                width: '100%',
+                maxWidth: '420px',
+                fontFamily: 'var(--font-mono)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                Compartir conversación
+              </p>
+              {shareLoading && (
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Generando enlace…</p>
+              )}
+              {shareData && (
+                <>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid var(--color-border, #1e2130)',
+                    borderRadius: '6px',
+                    padding: '0.6rem 0.75rem',
+                    fontSize: '0.72rem',
+                    color: 'var(--neon-cyan, #00f5ff)',
+                    wordBreak: 'break-all',
+                    marginBottom: '0.75rem',
+                    userSelect: 'all',
+                  }}>
+                    {shareData.url}
+                  </div>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.6 }}>
+                    Caduca: {new Date(shareData.expiresAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                  <button
+                    onClick={handleCopyShareLink}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem',
+                      background: shareCopied ? 'rgba(0,245,255,0.12)' : 'rgba(0,245,255,0.07)',
+                      border: '1px solid var(--neon-cyan, #00f5ff)',
+                      borderRadius: '6px',
+                      color: 'var(--neon-cyan, #00f5ff)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
+                      letterSpacing: '0.05em',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    {shareCopied ? '¡Copiado!' : 'Copiar enlace'}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setShareModalOpen(false)}
+                style={{
+                  marginTop: '0.75rem',
+                  width: '100%',
+                  padding: '0.45rem',
+                  background: 'none',
+                  border: '1px solid var(--color-border, #1e2130)',
+                  borderRadius: '6px',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

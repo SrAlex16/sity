@@ -1,0 +1,105 @@
+.container {
+  min-height: 100vh;
+  background: #0a0a0f;
+  color: #e0e0e0;
+  font-family: var(--font-mono, 'Share Tech Mono', monospace);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #1e2130;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.brand {
+  font-size: 1rem;
+  color: #00f5ff;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+
+.badge {
+  font-size: 0.68rem;
+  color: #6b7280;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.content {
+  flex: 1;
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.meta {
+  font-size: 0.7rem;
+  color: #6b7280;
+  margin-bottom: 1.5rem;
+  letter-spacing: 0.04em;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bubble {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  max-width: 88%;
+  border: 1px solid #1e2130;
+}
+
+.bubbleUser {
+  align-self: flex-end;
+  background: rgba(0, 245, 255, 0.06);
+  border-color: rgba(0, 245, 255, 0.15);
+}
+
+.bubbleSity {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.roleLabel {
+  display: block;
+  font-size: 0.65rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.3rem;
+}
+
+.text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error {
+  padding: 1rem;
+  border: 1px solid #3a1a1a;
+  border-radius: 8px;
+  background: rgba(255, 77, 109, 0.06);
+  color: #ff4d6d;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.loading,
+.empty {
+  color: #6b7280;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 2rem 0;
+}

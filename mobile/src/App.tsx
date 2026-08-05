@@ -9,6 +9,7 @@ import { VoiceScreen } from './screens/VoiceScreen';
 import { DatasetScreen } from './screens/DatasetScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
+import { SharedConversationView } from './screens/SharedConversationView';
 import styles from './App.module.css';
 
 const _screenStyle: React.CSSProperties = {
@@ -74,7 +75,18 @@ const screenVariants = {
   exit: { opacity: 0, y: -16 },
 };
 
+// Detect /shared/{id} on first load — render read-only view, bypass auth entirely.
+const _sharedIdOnLoad = (() => {
+  const m = window.location.pathname.match(/^\/shared\/([a-f0-9]{32})$/);
+  return m ? m[1] : null;
+})();
+
 export default function App() {
+  // Shared conversation route — no auth, no shell, just read-only snapshot.
+  if (_sharedIdOnLoad) {
+    return <SharedConversationView shareId={_sharedIdOnLoad} />;
+  }
+
   const [activeScreen, setActiveScreen] = useState<Screen>('chat');
   const [authView, setAuthView] = useState<AuthView>('login');
   const [maintenanceShowLogin, setMaintenanceShowLogin] = useState(false);

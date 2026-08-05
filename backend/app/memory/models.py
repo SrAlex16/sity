@@ -204,6 +204,23 @@ class DailyMessageUsage(SQLModel, table=True):
     count_date: str  # "YYYY-MM-DD"
 
 
+class SharedConversation(SQLModel, table=True):
+    """Snapshot of a conversation shared via public link.
+
+    The snapshot is a fixed JSON copy taken at share time — new messages sent
+    after sharing never appear here. id is a random UUID (not sequential) so
+    the URL is not enumerable.
+    """
+    id: str = Field(primary_key=True)             # uuid4().hex — 32-char hex
+    session_id: str = Field(index=True)            # owning session (never exposed publicly)
+    snapshot_json: str                              # JSON [{role, text, created_at}]
+    created_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime
+    max_views: Optional[int] = Field(default=None)  # None = unlimited
+    view_count: int = Field(default=0)
+    revoked_at: Optional[datetime] = Field(default=None)
+
+
 class ScheduledTask(SQLModel, table=True):
     """Persistent timer/alarm row. Survives backend restarts.
 

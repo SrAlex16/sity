@@ -89,6 +89,9 @@ timers:
   max_duration_hours: 24        # reject timers firing more than this far in the future
   max_active_per_session: 5     # max pending timers per session at once
 
+sharing:
+  default_expiry_days: 7        # shared link lifetime
+
 debug:
   enabled: true
   log_level: INFO

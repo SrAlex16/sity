@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-05 (timers).
+Última actualización: 2026-08-05 (shared conversations).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1532 tests en verde (pytest)
+- ~1551 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -92,10 +92,10 @@ Ver .env.example para la lista completa.
   Assistant (sin OAuth estándar — requiere diseño propio) y la pantalla de
   frontend "Ajustes → Integraciones" con botones Connect/Disconnect. Ver
   `docs/auth-system.md` § Fase 6.
-- **Compartir conversaciones vía enlace** — botón para generar un
-  enlace público/de solo lectura a una conversación (o fragmento) con
-  Sity. Pendiente de diseñar: qué se comparte, si expira, y evitar
-  que sea una vía nueva de fuga de privacidad entre usuarios.
+- **Gestión de enlaces compartidos** — pantalla frontend para listar y
+  revocar todos los enlaces activos del usuario. El backend ya tiene
+  `DELETE /chat/share/{id}` pero no hay un listado de los propios enlaces
+  en la UI. `max_views` también podría configurarse desde `POST /chat/share`.
 - **Modo de voz en tiempo real (estilo "Live" de ChatGPT)** —
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
