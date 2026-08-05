@@ -97,10 +97,11 @@ Ver .env.example para la lista completa.
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
   soportaría con la latencia necesaria.
-- **Límites de uso por rol (mensajes/tokens diarios)** — decidido
-  hace varias sesiones, nunca implementado. Riesgo real dado el
-  registro libre y el repo público: un User o Guest sin límite puede
-  agotar el presupuesto diario de tokens de Admin.
+- ~~**Límites de uso por rol (mensajes/tokens diarios)**~~ —
+  **Implementado (Fase 6, 2026-08-05)**. `UserMessageGuard` en
+  `pre_ai_flow.py`, tabla `DailyMessageUsage`, reseteo automático
+  diario. Configurable en `auth.user_daily_message_limit` y
+  `auth.guest_daily_message_limit`.
 - **Rate limiting de Guest por IP** — complementario al punto
   anterior: sin esto, alguien puede generar sesiones de Guest nuevas
   indefinidamente (cada una con su propio contador) para saltarse

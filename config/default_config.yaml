@@ -75,8 +75,8 @@ task_context:
 
 auth:
   jwt_expiry_hours: 72                # cookie lifetime; set SITY_JWT_SECRET in .env
-  user_daily_message_limit: 100       # Fase 3: enforced when auth is wired to /chat
-  guest_daily_message_limit: 20       # Fase 3: enforced per-IP for unauthenticated requests
+  user_daily_message_limit: 100       # enforced by UserMessageGuard in pre_ai_flow (Fase 6)
+  guest_daily_message_limit: 20       # same guard; resets daily via count_date; 0 = disabled
   password_reset_expiry_minutes: 60   # PasswordResetToken TTL
   registration_open: true             # set false to disable new registrations
 

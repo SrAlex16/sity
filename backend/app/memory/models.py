@@ -189,3 +189,16 @@ class OpinionSnapshot(SQLModel, table=True):
     opinion_value: float
     trust_value: float
     computed_at: datetime = Field(default_factory=utc_now)
+
+
+class DailyMessageUsage(SQLModel, table=True):
+    """Per-session daily message counter for role-based limits (Fase 6).
+
+    Works for both authenticated users ("user:{id}") and guests ("guest:{uuid}").
+    count_date is an ISO date string ("YYYY-MM-DD"). When the guard sees a different
+    date, it resets count to 0 and updates count_date — no cron job needed.
+    Admin sessions (is_admin=True in TurnContext) always bypass this guard.
+    """
+    session_id: str = Field(primary_key=True)
+    count: int = Field(default=0)
+    count_date: str  # "YYYY-MM-DD"

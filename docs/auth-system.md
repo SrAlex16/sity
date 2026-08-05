@@ -80,9 +80,10 @@ Idempotente: seguro re-ejecutar si se interrumpe.
 **Por qué Guest no persiste nada:** la sesión de un Guest es
 completamente efímera — no hay `session_id` persistente, no hay
 historial entre visitas, y recargar la página equivale a empezar de
-cero. El conteo de mensajes para rate limiting (Fase 3) se hará por
-IP/fingerprint de sesión de pestaña, sin ningún registro permanente
-en DB. Esto mantiene el GDPR simple: nada que borrar.
+cero. El conteo de mensajes se hace por `session_id` de pestaña
+(cookie `sity_guest_session`) en la tabla `DailyMessageUsage` —
+se borra automáticamente al día siguiente (el guard resetea el
+contador cuando detecta un cambio de fecha). Nada que borrar en GDPR.
 
 **Por qué Admin es único y fijo:** Sity es un asistente personal de
 Alex, no una plataforma multi-tenant. Tener un Admin configurable o
@@ -292,8 +293,8 @@ Si el admin ya existe, el seeder no hace nada (idempotente).
 # config/default_config.yaml
 auth:
   jwt_expiry_hours: 72
-  user_daily_message_limit: 100      # Fase 3
-  guest_daily_message_limit: 20      # Fase 3
+  user_daily_message_limit: 100      # UserMessageGuard en pre_ai_flow; 0 = desactivado
+  guest_daily_message_limit: 20      # igual; reseteo automático al cambio de día
   password_reset_expiry_minutes: 60
   registration_open: true
 ```

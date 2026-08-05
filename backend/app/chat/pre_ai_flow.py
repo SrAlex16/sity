@@ -17,6 +17,7 @@ from app.chat.local_flow import ChatLocalFlow, LocalFlowContext
 from app.chat.model_router import LocalFlowSignal
 from app.chat.pending_action_runner import PendingActionRunner
 from app.chat.turn_context import TurnContext
+from app.chat.user_message_guard import UserMessageGuard, UserMessageGuardContext
 from app.core.runtime_config import RuntimeConfig, get_runtime_config
 
 
@@ -35,9 +36,10 @@ class ChatPreAIFlow:
         or None if the caller should proceed to the AI provider path.
 
         Order:
-        1. local_flow  — cancel, generic confirmations, model-router responses
+        1. local_flow     — cancel, generic confirmations, model-router responses
         2. pending_action — explicit confirmation of a queued action
-        3. budget_guard   — daily token budget exhausted
+        3. user_message_guard — per-session daily message-count limit (non-admin only)
+        4. budget_guard   — global daily token budget exhausted
         """
         _local_ctx = LocalFlowContext(
             session=self.session,
@@ -63,6 +65,22 @@ class ChatPreAIFlow:
         if pending_action:
             _par = PendingActionRunner(self.confirmation_manager)
             return _par.run(pending_action, _local_ctx)
+
+        auth_config = self.ctx.config.get("auth", {})
+        msg_guard_response = UserMessageGuard().try_handle(
+            UserMessageGuardContext(
+                session=self.session,
+                trace_id=self.ctx.trace_id,
+                session_id=self.ctx.session_id,
+                message=request.message,
+                is_admin=self.ctx.is_admin,
+                user_limit=int(auth_config.get("user_daily_message_limit", 100)),
+                guest_limit=int(auth_config.get("guest_daily_message_limit", 20)),
+                save_message=self.ctx.persistence.save,
+            )
+        )
+        if msg_guard_response:
+            return msg_guard_response
 
         budget_response = ChatBudgetGuard().try_handle(
             BudgetGuardContext(
