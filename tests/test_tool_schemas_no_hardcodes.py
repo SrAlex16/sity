@@ -1,7 +1,7 @@
-"""Verify that tool_schemas.py contains no hardcoded personal paths.
+"""Verify that the tool_schemas package contains no hardcoded personal paths.
 
 Two guarantees:
-1. The source file does not contain '/home/alex/projects/sity'.
+1. No source file in the package contains '/home/alex/projects/sity'.
 2. The rendered descriptions include the runtime project_root
    (confirming _PROJECT_ROOT is wired up, not an empty string).
 """
@@ -12,17 +12,22 @@ from pathlib import Path
 from app.core.runtime_config import get_runtime_config
 from app.cortex import tool_schemas
 
-_SOURCE = (
+_PACKAGE_DIR = (
     Path(__file__).resolve().parents[1]
-    / "backend" / "app" / "cortex" / "tool_schemas.py"
-).read_text(encoding="utf-8")
+    / "backend" / "app" / "cortex" / "tool_schemas"
+)
+
+_SOURCE = "\n".join(
+    p.read_text(encoding="utf-8")
+    for p in sorted(_PACKAGE_DIR.glob("*.py"))
+)
 
 _PROJECT_ROOT = str(get_runtime_config().project_root)
 
 
 def test_tool_schemas_source_has_no_hardcoded_path() -> None:
     assert "/home/alex/projects/sity" not in _SOURCE, (
-        "tool_schemas.py contains a hardcoded personal path — use _PROJECT_ROOT"
+        "tool_schemas package contains a hardcoded personal path — use _PROJECT_ROOT"
     )
 
 
