@@ -1,3 +1,7 @@
+# Nota: Caddy pasa todas las cabeceras entrantes al backend por defecto, incluyendo
+# CF-Connecting-IP (añadida por Cloudflare Tunnel con la IP real del visitante).
+# No es necesario ningún header_up explícito para que GuestIPRateLimiter funcione.
+
 {
     email tu_email@ejemplo.com
     acme_dns porkbun {

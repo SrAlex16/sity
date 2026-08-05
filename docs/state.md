@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-04.
+Última actualización: 2026-08-05.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1400 tests en verde (pytest)
+- ~1490 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -102,10 +102,13 @@ Ver .env.example para la lista completa.
   `pre_ai_flow.py`, tabla `DailyMessageUsage`, reseteo automático
   diario. Configurable en `auth.user_daily_message_limit` y
   `auth.guest_daily_message_limit`.
-- **Rate limiting de Guest por IP** — complementario al punto
-  anterior: sin esto, alguien puede generar sesiones de Guest nuevas
-  indefinidamente (cada una con su propio contador) para saltarse
-  cualquier límite por sesión.
+- ~~**Rate limiting de Guest por IP**~~ —
+  **Implementado (2026-08-05)**. `GuestIPRateLimiter` en
+  `auth/ip_rate_limiter.py`, aplicado en `POST /chat/message` solo para
+  Guests. IP extraída con prioridad CF-Connecting-IP → X-Forwarded-For →
+  client.host (no se necesita cambio en el Caddyfile). Configurable en
+  `auth.guest_ip_rate_limit_per_hour` (default 30/hora). In-memory,
+  ventana deslizante de 1 hora. 14 tests.
 - **Modo "en desarrollo" / kill-switch de acceso público** — poder
   bloquear el acceso público cuando se esté desarrollando, apoyándose
   en el rol Admin ya existente.

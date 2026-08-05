@@ -295,6 +295,7 @@ auth:
   jwt_expiry_hours: 72
   user_daily_message_limit: 100      # UserMessageGuard en pre_ai_flow; 0 = desactivado
   guest_daily_message_limit: 20      # igual; reseteo automático al cambio de día
+  guest_ip_rate_limit_per_hour: 30   # GuestIPRateLimiter en routes_chat; 0 = desactivado; in-memory
   password_reset_expiry_minutes: 60
   registration_open: true
 ```
@@ -314,15 +315,73 @@ SITY_BASE_URL=https://sity.aletm.com
 ```
 backend/app/auth/
 ├── __init__.py
-├── hashing.py          # hash_password, verify_password (bcrypt)
-├── jwt_utils.py        # create_token, decode_token (PyJWT HS256)
-├── dependencies.py     # CurrentUser, get_current_user
-├── email_stub.py       # send_password_reset_email (stub con TODO SMTP)
-└── admin_seeder.py     # seed_admin() llamado en startup
+├── hashing.py            # hash_password, verify_password (bcrypt)
+├── jwt_utils.py          # create_token, decode_token (PyJWT HS256)
+├── dependencies.py       # CurrentUser, get_current_user
+├── email_stub.py         # send_password_reset_email (stub con TODO SMTP)
+├── admin_seeder.py       # seed_admin() llamado en startup
+└── ip_rate_limiter.py    # GuestIPRateLimiter, get_real_client_ip; singleton por proceso
 backend/app/api/
-├── routes_auth.py      # 7 endpoints /auth/*
-└── schemas_auth.py     # RegisterRequest, LoginRequest, MeResponse, ...
+├── routes_auth.py        # 7 endpoints /auth/*
+└── schemas_auth.py       # RegisterRequest, LoginRequest, MeResponse, ...
 ```
+
+## Rate limiting de Guest por IP (Punto 7 — 2026-08-05)
+
+Complemento al límite diario por sesión (Punto 6): sin esto, un atacante
+puede generar sesiones Guest nuevas indefinidamente para saltarse el contador
+`DailyMessageUsage`.
+
+### Dónde aplica
+
+Solo en `POST /chat/message` para Guests (`current.is_guest`). Users y Admins
+autenticados nunca pasan por este check.
+
+### Extracción de IP
+
+```
+backend/app/auth/ip_rate_limiter.py → get_real_client_ip(request)
+```
+
+Prioridad (Cloudflare Tunnel + Caddy):
+
+1. `CF-Connecting-IP` — cabecera que Cloudflare añade con la IP real del visitante;
+   no necesita configuración adicional en Caddy porque Caddy pasa todas las cabeceras
+   entrantes al backend por defecto.
+2. `X-Forwarded-For` — primer valor (puede haber múltiples si hay proxies encadenados).
+3. `request.client.host` — host TCP interno de Caddy; solo como último recurso.
+
+> **Caddyfile:** no es necesario ningún cambio. Caddy reenvía todas las cabeceras
+> del cliente original al backend (`reverse_proxy` no filtra cabeceras entrantes).
+
+### Almacenamiento
+
+In-memory, por proceso: `dict[str, list[float]]` (IP → timestamps monotónicos).
+Se limpia de forma perezosa en cada llamada — no hay hilo de fondo ni cron.
+Se pierde al reiniciar el proceso (aceptable: los reinicios son poco frecuentes).
+
+### Configuración
+
+```yaml
+auth:
+  guest_ip_rate_limit_per_hour: 30   # 0 = desactivado
+```
+
+### Respuesta al exceder el límite
+
+```
+HTTP 429 Too Many Requests
+{"detail": "Demasiadas solicitudes. Inténtalo de nuevo más tarde."}
+```
+
+### Tests
+
+`tests/test_guest_ip_rate_limiter.py` — 14 tests:
+- IP extraction: CF-Connecting-IP gana, XFF gana sin CF, primer valor de XFF,
+  fallback a client.host, sin client → "unknown"
+- Limiter: dentro del límite, excede, IPs independientes, límite 0 nunca bloquea,
+  slot no consumido al ser bloqueado, timestamps antiguos expiran, propiedad `limit`
+- Singleton: lee límite del config, default 30 cuando falta la clave
 
 ## Tests (`tests/test_auth.py`)
 

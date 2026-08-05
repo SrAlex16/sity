@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, col, select
 
@@ -15,6 +15,7 @@ from app.api.schemas import (
     CurrentChatResponse,
 )
 from app.auth.dependencies import CurrentUser, get_current_user
+from app.auth.ip_rate_limiter import get_guest_ip_rate_limiter, get_real_client_ip
 from app.chat.chat_persistence import (
     DEFAULT_CHAT_SESSION_ID,
     get_or_create_chat_session,
@@ -101,11 +102,19 @@ def current_chat(
 @router.post("/message", status_code=202)
 async def chat_message(
     request: ChatMessageRequest,
+    http_request: Request,
     current: CurrentUser = Depends(get_current_user),
 ):
     if err := _validate_images(request.images):
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=err)
+
+    if current.is_guest:
+        ip = get_real_client_ip(http_request)
+        if not get_guest_ip_rate_limiter().is_allowed(ip):
+            raise HTTPException(
+                status_code=429,
+                detail="Demasiadas solicitudes. Inténtalo de nuevo más tarde.",
+            )
 
     turn_id = request.client_turn_id or new_client_turn_id()
     ensure_queue(turn_id)
