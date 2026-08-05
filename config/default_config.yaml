@@ -84,6 +84,11 @@ auth:
 social:
   update_threshold_turns: 10    # fire background update when pending_loads_json reaches this count
 
+timers:
+  poll_interval_seconds: 5      # ScheduledTaskRunner wake-up cadence
+  max_duration_hours: 24        # reject timers firing more than this far in the future
+  max_active_per_session: 5     # max pending timers per session at once
+
 debug:
   enabled: true
   log_level: INFO

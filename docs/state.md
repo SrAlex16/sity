@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-05.
+Última actualización: 2026-08-05 (timers).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1504 tests en verde (pytest)
+- ~1532 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -113,9 +113,8 @@ Ver .env.example para la lista completa.
   subconjunto actual seguro. *Advertencia: cada herramienta nueva
   amplía la superficie de ataque si Sity es manipulada vía prompt
   injection; evaluar caso por caso.*
-- **Temporizadores y alarmas** — tool para que Sity programe
-  recordatorios con hora específica o cuenta atrás, usando el sistema
-  de background tasks ya existente.
+- **Pantalla "Ajustes → Integraciones"** — frontend para conectar/desconectar
+  Google y Spotify por usuario (Fase 6 Paso 6). Backend ya listo.
 - **DSPy / optimización automática de prompts** — explorar DSPy para
   optimizar el prompt de sistema y los prompts de herramientas con
   datos reales del dataset v1. Requiere el dataset de evaluación

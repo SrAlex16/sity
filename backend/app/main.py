@@ -43,8 +43,11 @@ async def on_startup():
     import asyncio
     import subprocess
     from app.api.routes_audio import cleanup_stored_audio
-    set_event_loop(asyncio.get_running_loop())
+    from app.timers.runner import start_runner
+    loop = asyncio.get_running_loop()
+    set_event_loop(loop)
     init_db()
+    start_runner(loop)
     from app.auth.admin_seeder import seed_admin
     seed_admin()
     try:

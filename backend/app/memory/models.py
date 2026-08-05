@@ -202,3 +202,18 @@ class DailyMessageUsage(SQLModel, table=True):
     session_id: str = Field(primary_key=True)
     count: int = Field(default=0)
     count_date: str  # "YYYY-MM-DD"
+
+
+class ScheduledTask(SQLModel, table=True):
+    """Persistent timer/alarm row. Survives backend restarts.
+
+    fired_at=None and cancelled_at=None means the timer is still pending.
+    The ScheduledTaskRunner polls this table every N seconds and fires due rows.
+    """
+    id: str = Field(primary_key=True)          # "tmr_<hex8>"
+    session_id: str = Field(index=True)
+    fires_at: datetime                          # UTC target time
+    message: str                               # text Sity delivers when the timer fires
+    created_at: datetime = Field(default_factory=utc_now)
+    fired_at: Optional[datetime] = Field(default=None)
+    cancelled_at: Optional[datetime] = Field(default=None)

@@ -16,3 +16,4 @@ from app.tools.handlers import google_tools  # noqa: F401
 from app.tools.handlers import ha_tools  # noqa: F401
 from app.tools.handlers import spotify_tools  # noqa: F401
 from app.tools.handlers import social_tools  # noqa: F401
+from app.tools.handlers import timer_tools  # noqa: F401
