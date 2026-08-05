@@ -7,7 +7,7 @@ from typing import Any
 import requests
 from sqlmodel import Session, select
 
-from app.integrations.spotify_auth import is_spotify_connected, load_credentials
+from app.integrations.spotify_auth import load_credentials, load_user_credentials
 from app.memory.db import engine
 from app.memory.models import Setting, utc_now
 from app.tools.registry import ToolContext, tool_handler
@@ -17,10 +17,30 @@ from app.trace.logger import write_log
 _BASE = "https://api.spotify.com/v1"
 
 
+def _user_id_from_ctx(ctx: ToolContext) -> int | None:
+    try:
+        sid: str = ctx.executor.session_id
+        if sid.startswith("user:"):
+            return int(sid.split(":", 1)[1])
+    except (AttributeError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _resolve_spotify_token(ctx: ToolContext) -> dict | None:
+    """Return Spotify token for this request: user-specific first, then global fallback."""
+    user_id = _user_id_from_ctx(ctx)
+    if user_id is not None:
+        token = load_user_credentials(user_id, ctx.executor.session)
+        if token is not None:
+            return token
+    return load_credentials()
+
+
 def _not_connected(tool_name: str) -> ToolExecutionResult:
     msg = (
-        "Spotify no está conectado. Necesitas ejecutar "
-        "scripts/spotify_auth_setup.py una vez para autorizar el acceso."
+        "Spotify no está conectado. Conéctalo en Ajustes → Integraciones "
+        "o a través de /auth/integrations/spotify/connect."
     )
     return ToolExecutionResult(
         tool_name=tool_name, ok=False, message=msg,
@@ -31,23 +51,23 @@ def _not_connected(tool_name: str) -> ToolExecutionResult:
     )
 
 
-def _headers() -> dict[str, str]:
-    token = load_credentials()
-    if token is None:
-        raise RuntimeError("Spotify no está conectado. Ejecuta scripts/spotify_auth_setup.py")
-    return {"Authorization": f"Bearer {token['access_token']}"}
+def _headers(token: dict | None = None) -> dict[str, str]:
+    t = token if token is not None else load_credentials()
+    if t is None:
+        raise RuntimeError("Spotify no está conectado")
+    return {"Authorization": f"Bearer {t['access_token']}"}
 
 
-def _get(path: str, *, params: dict | None = None) -> requests.Response:
-    resp = requests.get(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+def _get(path: str, *, token: dict | None = None, params: dict | None = None) -> requests.Response:
+    resp = requests.get(f"{_BASE}{path}", headers=_headers(token), params=params, timeout=10)
     write_log(level="INFO" if resp.ok else "WARN", module="spotify", event="spotify_api_call",
               payload={"method": "GET", "path": path, "status_code": resp.status_code, "ok": resp.ok})
     return resp
 
 
-def _put(path: str, *, params: dict | None = None, body: dict | None = None) -> requests.Response:
+def _put(path: str, *, token: dict | None = None, params: dict | None = None, body: dict | None = None) -> requests.Response:
     resp = requests.put(
-        f"{_BASE}{path}", headers={**_headers(), "Content-Type": "application/json"},
+        f"{_BASE}{path}", headers={**_headers(token), "Content-Type": "application/json"},
         params=params, json=body or {}, timeout=10,
     )
     write_log(level="INFO" if resp.ok else "WARN", module="spotify", event="spotify_api_call",
@@ -55,8 +75,8 @@ def _put(path: str, *, params: dict | None = None, body: dict | None = None) -> 
     return resp
 
 
-def _post(path: str, *, params: dict | None = None) -> requests.Response:
-    resp = requests.post(f"{_BASE}{path}", headers=_headers(), params=params, timeout=10)
+def _post(path: str, *, token: dict | None = None, params: dict | None = None) -> requests.Response:
+    resp = requests.post(f"{_BASE}{path}", headers=_headers(token), params=params, timeout=10)
     write_log(level="INFO" if resp.ok else "WARN", module="spotify", event="spotify_api_call",
               payload={"method": "POST", "path": path, "status_code": resp.status_code, "ok": resp.ok})
     return resp
@@ -69,12 +89,12 @@ def _device_params(device_id: str | None) -> dict[str, Any]:
 _PREVIOUS_CONTEXT_KEY = "spotify:previous_context"
 
 
-def _capture_current_context() -> dict | None:
+def _capture_current_context(token: dict | None = None) -> dict | None:
     """Return a snapshot of what's currently playing, or None if nothing is.
 
     Tries to capture context_uri first (playlist/album), falls back to track uri.
     """
-    resp = _get("/me/player/currently-playing", params={"market": "ES"})
+    resp = _get("/me/player/currently-playing", token=token, params={"market": "ES"})
     if resp.status_code == 204 or not resp.content:
         return None
 
@@ -96,8 +116,8 @@ def _capture_current_context() -> dict | None:
     return {"uri": track_uri, "description": description, "saved_at": time.time()}
 
 
-def _save_previous_context() -> None:
-    snapshot = _capture_current_context()
+def _save_previous_context(token: dict | None = None) -> None:
+    snapshot = _capture_current_context(token=token)
     if snapshot is None:
         return
     with Session(engine) as db:
@@ -122,10 +142,11 @@ def _load_previous_context() -> dict | None:
 
 @tool_handler("spotify_now_playing")
 def handle_spotify_now_playing(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
-    resp = _get("/me/player/currently-playing", params={"market": "ES"})
+    resp = _get("/me/player/currently-playing", token=token, params={"market": "ES"})
 
     if resp.status_code == 204 or not resp.content:
         output = "En este momento no hay ninguna canción en reproducción."
@@ -168,11 +189,12 @@ def handle_spotify_now_playing(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_recently_played")
 def handle_spotify_recently_played(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     limit = min(int(ctx.tool_input.get("limit", 10)), 50)
-    resp = _get("/me/player/recently-played", params={"limit": limit})
+    resp = _get("/me/player/recently-played", token=token, params={"limit": limit})
 
     if not resp.ok:
         msg = f"Error al obtener el historial de Spotify ({resp.status_code})."
@@ -206,10 +228,11 @@ def handle_spotify_recently_played(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_list_devices")
 def handle_spotify_list_devices(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
-    resp = _get("/me/player/devices")
+    resp = _get("/me/player/devices", token=token)
 
     if not resp.ok:
         msg = f"Error al obtener dispositivos de Spotify ({resp.status_code})."
@@ -255,11 +278,12 @@ def handle_spotify_list_devices(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_list_playlists")
 def handle_spotify_list_playlists(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     limit = min(int(ctx.tool_input.get("limit", 50)), 50)
-    resp = _get("/me/playlists", params={"limit": limit})
+    resp = _get("/me/playlists", token=token, params={"limit": limit})
 
     if not resp.ok:
         msg = f"Error al obtener playlists de Spotify ({resp.status_code})."
@@ -297,7 +321,8 @@ def handle_spotify_list_playlists(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_playlist_tracks")
 def handle_spotify_playlist_tracks(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     playlist_id: str = str(ctx.tool_input.get("playlist_id", "")).strip()
@@ -309,7 +334,7 @@ def handle_spotify_playlist_tracks(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     limit = min(int(ctx.tool_input.get("limit", 25)), 50)
-    resp = _get(f"/playlists/{playlist_id}/tracks", params={"limit": limit, "fields": "items(track(name,artists,uri)),total", "market": "ES"})
+    resp = _get(f"/playlists/{playlist_id}/tracks", token=token, params={"limit": limit, "fields": "items(track(name,artists,uri)),total", "market": "ES"})
 
     if not resp.ok:
         msg = f"Error al obtener canciones de la playlist ({resp.status_code})."
@@ -345,13 +370,13 @@ def handle_spotify_playlist_tracks(ctx: ToolContext) -> ToolExecutionResult:
 
 # ── Control tools ─────────────────────────────────────────────────────────────
 
-def _search_uri(query: str) -> tuple[str, str] | None:
+def _search_uri(query: str, token: dict | None = None) -> tuple[str, str] | None:
     """Resolve a text query to (spotify_uri, description).
 
     Searches tracks first; falls back to albums if no track is found.
     Returns None if nothing is found.
     """
-    resp = _get("/search", params={"q": query, "type": "track,album", "limit": 1, "market": "ES"})
+    resp = _get("/search", token=token, params={"q": query, "type": "track,album", "limit": 1, "market": "ES"})
     if not resp.ok:
         return None
     data = resp.json()
@@ -375,7 +400,8 @@ def _search_uri(query: str) -> tuple[str, str] | None:
 
 @tool_handler("spotify_play")
 def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     query: str = str(ctx.tool_input.get("query", "")).strip()
@@ -389,7 +415,7 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
         if query.startswith("spotify:"):
             uri, desc = query, query
         else:
-            resolved = _search_uri(query)
+            resolved = _search_uri(query, token=token)
             if resolved is None:
                 msg = f"No encontré nada en Spotify para '{query}'."
                 return ToolExecutionResult(
@@ -398,16 +424,16 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
                 )
             uri, desc = resolved
         _play_uri = uri
-        _save_previous_context()
+        _save_previous_context(token=token)
         # Track URI → uris list; album/playlist URI → context_uri
         if ":track:" in uri:
             body: dict[str, Any] = {"uris": [uri]}
         else:
             body = {"context_uri": uri}
-        resp = _put("/me/player/play", params=params, body=body)
+        resp = _put("/me/player/play", token=token, params=params, body=body)
         output = f"Reproduciendo: {desc}."
     else:
-        resp = _put("/me/player/play", params=params)
+        resp = _put("/me/player/play", token=token, params=params)
         output = "Reproducción reanudada."
 
     if resp.status_code in (200, 204):
@@ -451,11 +477,12 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_pause")
 def handle_spotify_pause(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     device_id: str | None = ctx.tool_input.get("device_id") or None
-    resp = _put("/me/player/pause", params=_device_params(device_id))
+    resp = _put("/me/player/pause", token=token, params=_device_params(device_id))
 
     if resp.status_code in (200, 204):
         output = "Reproducción pausada."
@@ -478,7 +505,8 @@ def handle_spotify_pause(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_skip")
 def handle_spotify_skip(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     direction = str(ctx.tool_input.get("direction", "next")).lower()
@@ -488,8 +516,8 @@ def handle_spotify_skip(ctx: ToolContext) -> ToolExecutionResult:
     params = _device_params(device_id)
 
     path = "/me/player/next" if direction == "next" else "/me/player/previous"
-    _save_previous_context()
-    resp = _post(path, params=params)
+    _save_previous_context(token=token)
+    resp = _post(path, token=token, params=params)
 
     if resp.status_code in (200, 204):
         output = "Canción anterior." if direction == "previous" else "Canción siguiente."
@@ -512,7 +540,8 @@ def handle_spotify_skip(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_resume_previous")
 def handle_spotify_resume_previous(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     snapshot = _load_previous_context()
@@ -531,7 +560,7 @@ def handle_spotify_resume_previous(ctx: ToolContext) -> ToolExecutionResult:
     else:
         body = {"context_uri": uri}
 
-    resp = _put("/me/player/play", body=body)
+    resp = _put("/me/player/play", token=token, body=body)
 
     if resp.status_code in (200, 204):
         output = f"Reanudando: {desc}."
@@ -554,7 +583,8 @@ def handle_spotify_resume_previous(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("spotify_set_volume")
 def handle_spotify_set_volume(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_spotify_connected():
+    token = _resolve_spotify_token(ctx)
+    if token is None:
         return _not_connected(ctx.tool_name)
 
     volume = int(ctx.tool_input.get("volume_percent", 50))
@@ -562,7 +592,7 @@ def handle_spotify_set_volume(ctx: ToolContext) -> ToolExecutionResult:
     device_id: str | None = ctx.tool_input.get("device_id") or None
     params = {"volume_percent": volume, **_device_params(device_id)}
 
-    resp = _put("/me/player/volume", params=params)
+    resp = _put("/me/player/volume", token=token, params=params)
 
     if resp.status_code in (200, 204):
         output = f"Volumen ajustado a {volume}%."

@@ -8,17 +8,23 @@ el access_token automáticamente sin intervención del usuario.
 El token JSON guarda client_id y client_secret junto al token (igual que
 google_token.json), para que load_credentials() sea autocontenido — solo
 se leen de .env durante el setup inicial.
+
+load_user_credentials(user_id, session) carga credenciales per-usuario
+desde la tabla UserIntegration (Fase 6). load_credentials() (sin args)
+sigue siendo el fallback global para Admin con token en disco.
 """
 from __future__ import annotations
 
 import base64
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
+from sqlmodel import Session, select
 
 SCOPES = " ".join([
     "user-read-currently-playing",
@@ -98,6 +104,54 @@ def load_credentials() -> dict[str, Any] | None:
         if "refresh_token" in new:
             data["refresh_token"] = new["refresh_token"]
         _save_token_file(data)
+
+    return data
+
+
+def load_user_credentials(user_id: int, session: Session) -> dict[str, Any] | None:
+    """Load per-user Spotify credentials from UserIntegration, refreshing if expired.
+
+    Persists any refreshed token back to the DB row. Returns None if the user
+    has no active integration or the token cannot be refreshed.
+    """
+    from app.auth.encryption import decrypt_str, encrypt_str
+    from app.memory.models import UserIntegration
+
+    row = session.exec(
+        select(UserIntegration)
+        .where(UserIntegration.user_id == user_id)
+        .where(UserIntegration.provider == "spotify")
+        .where(UserIntegration.is_active == True)  # noqa: E712
+    ).first()
+    if row is None:
+        return None
+
+    try:
+        data: dict[str, Any] = json.loads(decrypt_str(row.encrypted_credentials))
+    except Exception:
+        return None
+
+    if not data.get("access_token"):
+        return None
+
+    expires_at = data.get("expires_at", 0)
+    if time.time() >= expires_at - 60:
+        new = _do_refresh(
+            data.get("client_id", ""),
+            data.get("client_secret", ""),
+            data.get("refresh_token", ""),
+        )
+        if not new:
+            return None
+        data["access_token"] = new["access_token"]
+        data["expires_at"] = time.time() + new.get("expires_in", 3600)
+        if "refresh_token" in new:
+            data["refresh_token"] = new["refresh_token"]
+        from app.auth.encryption import encrypt_str
+        row.encrypted_credentials = encrypt_str(json.dumps(data))
+        row.connected_at = datetime.now(timezone.utc)
+        session.add(row)
+        session.commit()
 
     return data
 

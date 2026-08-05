@@ -60,16 +60,17 @@ def _read_previous_context() -> dict | None:
 # Auth guard
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=False)
-def test_auth_guard_now_playing(mock_conn):
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value=None)
+def test_auth_guard_now_playing(mock_token):
     from app.tools.handlers.spotify_tools import handle_spotify_now_playing
     result = handle_spotify_now_playing(_make_ctx("spotify_now_playing"))
     assert result.ok is False
     assert "no está conectado" in result.message.lower()
+    assert "/auth/integrations/spotify/connect" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=False)
-def test_auth_guard_resume_previous(mock_conn):
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value=None)
+def test_auth_guard_resume_previous(mock_token):
     from app.tools.handlers.spotify_tools import handle_spotify_resume_previous
     result = handle_spotify_resume_previous(_make_ctx("spotify_resume_previous"))
     assert result.ok is False
@@ -79,7 +80,7 @@ def test_auth_guard_resume_previous(mock_conn):
 # spotify_now_playing
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_now_playing_nothing(mock_get, _):
     mock_get.return_value = _mock_response(204, content=b"")
@@ -89,7 +90,7 @@ def test_now_playing_nothing(mock_get, _):
     assert "no hay" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_now_playing_track(mock_get, _):
     mock_get.return_value = _mock_response(200, {
@@ -114,7 +115,7 @@ def test_now_playing_track(mock_get, _):
 # spotify_recently_played
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_recently_played_happy(mock_get, _):
     mock_get.return_value = _mock_response(200, {
@@ -131,7 +132,7 @@ def test_recently_played_happy(mock_get, _):
     assert "Drown" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_recently_played_error(mock_get, _):
     mock_get.return_value = _mock_response(500)
@@ -145,7 +146,7 @@ def test_recently_played_error(mock_get, _):
 # spotify_list_devices
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_devices_happy(mock_get, _):
     mock_get.return_value = _mock_response(200, {
@@ -160,7 +161,7 @@ def test_list_devices_happy(mock_get, _):
     assert "ACTIVO" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_devices_none(mock_get, _):
     mock_get.return_value = _mock_response(200, {"devices": []})
@@ -170,7 +171,7 @@ def test_list_devices_none(mock_get, _):
     assert "no hay" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_devices_single_sets_task_context(mock_get, _):
     """Single device → task_context contains its ID; model doesn't need to copy it from text."""
@@ -185,7 +186,7 @@ def test_list_devices_single_sets_task_context(mock_get, _):
     assert result.task_context == {"spotify_device_id": "f7957618abc"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_devices_multi_active_sets_task_context(mock_get, _):
     """Multiple devices but one active → task_context contains the active device's ID."""
@@ -201,7 +202,7 @@ def test_list_devices_multi_active_sets_task_context(mock_get, _):
     assert result.task_context == {"spotify_device_id": "dev_active"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_devices_multi_none_active_no_task_context(mock_get, _):
     """Multiple devices, none active → ambiguous which to use; task_context is None."""
@@ -260,7 +261,7 @@ def test_search_uri_nothing(mock_get):
 # spotify_play
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:track:t1", "Throne — BMTH"))
@@ -276,7 +277,7 @@ def test_play_with_query_track(mock_search, mock_save, mock_put, _):
     assert "uris" in call_kwargs.kwargs["body"]
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:album:a1", "álbum Spirit — BMTH"))
@@ -290,7 +291,7 @@ def test_play_with_query_album(mock_search, mock_save, mock_put, _):
     assert "context_uri" in call_kwargs.kwargs["body"]
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_play_resume_no_save(mock_save, mock_put, _):
@@ -302,7 +303,7 @@ def test_play_resume_no_save(mock_save, mock_put, _):
     mock_save.assert_not_called()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=None)
 def test_play_not_found(mock_search, _):
     from app.tools.handlers.spotify_tools import handle_spotify_play
@@ -311,7 +312,7 @@ def test_play_not_found(mock_search, _):
     assert "No encontré" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:track:t1", "Throne — BMTH"))
@@ -324,7 +325,7 @@ def test_play_device_id_optional(mock_search, mock_save, mock_put, _):
     assert call_kwargs.kwargs["params"] == {"device_id": "dev1"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:playlist:abc123", "Otako culiao"))
@@ -338,7 +339,7 @@ def test_play_404_includes_uri(mock_search, mock_save, mock_put, _):
     assert "dispositivo" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_play_404_resume_no_uri(mock_save, mock_put, _):
@@ -351,7 +352,7 @@ def test_play_404_resume_no_uri(mock_save, mock_put, _):
     assert "dispositivo" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_play_404_with_device_id_reports_invalid_device(mock_save, mock_put, _):
@@ -368,7 +369,7 @@ def test_play_404_with_device_id_reports_invalid_device(mock_save, mock_put, _):
 # task_context — Eje A integration
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:playlist:pl1", "Mi playlist"))
@@ -383,7 +384,7 @@ def test_play_task_context_uri_on_success(mock_search, mock_save, mock_put, _):
     assert "spotify_device_id" not in result.task_context
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:track:t1", "Canción X"))
@@ -396,7 +397,7 @@ def test_play_task_context_uri_and_device_on_success(mock_search, mock_save, moc
     assert result.task_context == {"spotify_uri": "spotify:track:t1", "spotify_device_id": "dev_abc"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri", return_value=("spotify:playlist:pl1", "Mi playlist"))
@@ -409,7 +410,7 @@ def test_play_task_context_uri_on_404(mock_search, mock_save, mock_put, _):
     assert result.task_context == {"spotify_uri": "spotify:playlist:pl1"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_play_resume_no_task_context(mock_save, mock_put, _):
@@ -425,7 +426,7 @@ def test_play_resume_no_task_context(mock_save, mock_put, _):
 # spotify_pause
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 def test_pause_happy(mock_put, _):
     mock_put.return_value = _mock_response(204)
@@ -435,7 +436,7 @@ def test_pause_happy(mock_put, _):
     assert "pausada" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 def test_pause_404(mock_put, _):
     mock_put.return_value = _mock_response(404)
@@ -449,7 +450,7 @@ def test_pause_404(mock_put, _):
 # spotify_skip
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._post")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_skip_next_saves_context(mock_save, mock_post, _):
@@ -461,7 +462,7 @@ def test_skip_next_saves_context(mock_save, mock_post, _):
     mock_save.assert_called_once()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._post")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_skip_previous_saves_context(mock_save, mock_post, _):
@@ -473,7 +474,7 @@ def test_skip_previous_saves_context(mock_save, mock_post, _):
     mock_save.assert_called_once()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._post")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 def test_skip_invalid_direction_defaults_next(mock_save, mock_post, _):
@@ -488,7 +489,7 @@ def test_skip_invalid_direction_defaults_next(mock_save, mock_post, _):
 # spotify_set_volume
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 def test_set_volume_happy(mock_put, _):
     mock_put.return_value = _mock_response(204)
@@ -498,7 +499,7 @@ def test_set_volume_happy(mock_put, _):
     assert "75" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 def test_set_volume_clamped(mock_put, _):
     mock_put.return_value = _mock_response(204)
@@ -512,7 +513,7 @@ def test_set_volume_clamped(mock_put, _):
 # spotify_resume_previous
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._load_previous_context",
        return_value={"uri": "spotify:playlist:p1", "description": "Deep Focus — Spotify", "saved_at": 0.0})
@@ -526,7 +527,7 @@ def test_resume_previous_playlist(mock_load, mock_put, _):
     assert call_kwargs.kwargs["body"] == {"context_uri": "spotify:playlist:p1"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._load_previous_context",
        return_value={"uri": "spotify:track:t1", "description": "Throne — BMTH", "saved_at": 0.0})
@@ -539,7 +540,7 @@ def test_resume_previous_track(mock_load, mock_put, _):
     assert call_kwargs.kwargs["body"] == {"uris": ["spotify:track:t1"]}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._load_previous_context", return_value=None)
 def test_resume_previous_no_context(mock_load, _):
     from app.tools.handlers.spotify_tools import handle_spotify_resume_previous
@@ -548,7 +549,7 @@ def test_resume_previous_no_context(mock_load, _):
     assert "no tengo registro" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._load_previous_context",
        return_value={"uri": "spotify:playlist:p1", "description": "Focus", "saved_at": 0.0})
@@ -642,7 +643,7 @@ def test_save_overwrites_existing(mock_get):
 # spotify_list_playlists
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_playlists_happy(mock_get, _):
     mock_get.return_value = _mock_response(200, {
@@ -663,7 +664,7 @@ def test_list_playlists_happy(mock_get, _):
     assert "Workout" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_playlists_no_bare_id(mock_get, _):
     """URI is present but bare 'ID: <id>' label is not — prevents model confusing id with URI."""
@@ -680,7 +681,7 @@ def test_list_playlists_no_bare_id(mock_get, _):
     assert "ID: 6Ge4eKOxcQ4pSvyuRkoqA6" not in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_playlists_empty(mock_get, _):
     mock_get.return_value = _mock_response(200, {"items": []})
@@ -690,7 +691,7 @@ def test_list_playlists_empty(mock_get, _):
     assert "no hay" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_list_playlists_error(mock_get, _):
     mock_get.return_value = _mock_response(401)
@@ -704,7 +705,7 @@ def test_list_playlists_error(mock_get, _):
 # spotify_playlist_tracks
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_playlist_tracks_happy(mock_get, _):
     mock_get.return_value = _mock_response(200, {
@@ -723,7 +724,7 @@ def test_playlist_tracks_happy(mock_get, _):
     assert "2 de 42" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_playlist_tracks_empty(mock_get, _):
     mock_get.return_value = _mock_response(200, {"total": 0, "items": []})
@@ -733,7 +734,7 @@ def test_playlist_tracks_empty(mock_get, _):
     assert "vacía" in result.message.lower()
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 def test_playlist_tracks_missing_id(_):
     from app.tools.handlers.spotify_tools import handle_spotify_playlist_tracks
     result = handle_spotify_playlist_tracks(_make_ctx("spotify_playlist_tracks", {}))
@@ -741,7 +742,7 @@ def test_playlist_tracks_missing_id(_):
     assert "playlist_id" in result.message
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._get")
 def test_playlist_tracks_error(mock_get, _):
     mock_get.return_value = _mock_response(404)
@@ -755,7 +756,7 @@ def test_playlist_tracks_error(mock_get, _):
 # spotify_play — URI short-circuit
 # ---------------------------------------------------------------------------
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri")
@@ -770,7 +771,7 @@ def test_play_with_spotify_uri_skips_search(mock_search, mock_save, mock_put, _)
     assert call_kwargs.kwargs["body"] == {"context_uri": "spotify:playlist:pl1"}
 
 
-@patch("app.tools.handlers.spotify_tools.is_spotify_connected", return_value=True)
+@patch("app.tools.handlers.spotify_tools._resolve_spotify_token", return_value={"access_token": "fake_token"})
 @patch("app.tools.handlers.spotify_tools._put")
 @patch("app.tools.handlers.spotify_tools._save_previous_context")
 @patch("app.tools.handlers.spotify_tools._search_uri")

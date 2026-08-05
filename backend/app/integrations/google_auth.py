@@ -4,14 +4,21 @@ El flujo de autorización inicial es manual y se ejecuta UNA SOLA VEZ
 con el script scripts/google_auth_setup.py. A partir de ahí, el
 refresh_token guardado en data/google_token.json permite renovar
 el access_token automáticamente sin intervención del usuario.
+
+load_user_credentials(user_id, session) carga credenciales per-usuario
+desde la tabla UserIntegration (Fase 6). load_credentials() (sin args)
+sigue siendo el fallback global para Admin con token en disco.
 """
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from sqlmodel import Session, select
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -93,6 +100,47 @@ def run_initial_auth_flow(client_id: str, client_secret: str) -> Credentials:
     creds = flow.credentials
     _save_credentials(creds)
     return creds
+
+
+def load_user_credentials(user_id: int, session: Session) -> Credentials | None:
+    """Load per-user Google credentials from UserIntegration, refreshing if expired.
+
+    Persists any refreshed token back to the DB row. Returns None if the user
+    has no active integration or the credentials cannot be refreshed.
+    """
+    from app.auth.encryption import decrypt_str, encrypt_str
+    from app.memory.models import UserIntegration
+
+    row = session.exec(
+        select(UserIntegration)
+        .where(UserIntegration.user_id == user_id)
+        .where(UserIntegration.provider == "google")
+        .where(UserIntegration.is_active == True)  # noqa: E712
+    ).first()
+    if row is None:
+        return None
+
+    try:
+        creds = Credentials.from_authorized_user_info(
+            json.loads(decrypt_str(row.encrypted_credentials)), SCOPES
+        )
+    except Exception:
+        return None
+
+    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            row.encrypted_credentials = encrypt_str(creds.to_json())
+            row.connected_at = datetime.now(timezone.utc)
+            session.add(row)
+            session.commit()
+        except Exception:
+            return None
+
+    if creds and creds.valid:
+        return creds
+
+    return None
 
 
 def is_google_connected() -> bool:

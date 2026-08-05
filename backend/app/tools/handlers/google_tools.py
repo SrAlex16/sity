@@ -7,12 +7,32 @@ import httplib2
 from googleapiclient.discovery import build
 
 from app.actions.confirmation_manager import ConfirmationManager
-from app.integrations.google_auth import is_google_connected, load_credentials
+from app.integrations.google_auth import load_credentials, load_user_credentials
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 from app.trace.logger import write_log
 
 _T = TypeVar("_T")
+
+
+def _user_id_from_ctx(ctx: ToolContext) -> int | None:
+    try:
+        sid: str = ctx.executor.session_id
+        if sid.startswith("user:"):
+            return int(sid.split(":", 1)[1])
+    except (AttributeError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _resolve_google_creds(ctx: ToolContext):
+    """Return Google Credentials for this request: user-specific first, then global fallback."""
+    user_id = _user_id_from_ctx(ctx)
+    if user_id is not None:
+        creds = load_user_credentials(user_id, ctx.executor.session)
+        if creds is not None:
+            return creds
+    return load_credentials()
 
 
 def _google_call(service: str, operation: str, fn: Callable[[], _T], *, trace_id: str | None = None) -> _T:
@@ -30,8 +50,8 @@ def _google_call(service: str, operation: str, fn: Callable[[], _T], *, trace_id
 
 def _not_connected(tool_name: str) -> ToolExecutionResult:
     msg = (
-        "Google no está conectado. El usuario necesita ejecutar "
-        "scripts/google_auth_setup.py una vez para autorizar el acceso."
+        "Google no está conectado. Conéctalo en Ajustes → Integraciones "
+        "o a través de /auth/integrations/google/connect."
     )
     return ToolExecutionResult(
         tool_name=tool_name, ok=False, message=msg,
@@ -44,7 +64,8 @@ def _not_connected(tool_name: str) -> ToolExecutionResult:
 
 @tool_handler("gmail_search")
 def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    creds = _resolve_google_creds(ctx)
+    if creds is None:
         return _not_connected(ctx.tool_name)
 
     query = str(ctx.tool_input.get("query", ""))
@@ -58,7 +79,6 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
         base = "category:primary"
         query = f"{base} {query}".strip() if query else base
 
-    creds = load_credentials()
     service = build("gmail", "v1", credentials=creds, http=httplib2.Http(timeout=30))
 
     results = _google_call("gmail", "messages.list",
@@ -99,14 +119,14 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_list_events")
 def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    creds = _resolve_google_creds(ctx)
+    if creds is None:
         return _not_connected(ctx.tool_name)
 
     days_ahead = int(ctx.tool_input.get("days_ahead", 7))
     now = datetime.datetime.utcnow().isoformat() + "Z"
     end = (datetime.datetime.utcnow() + datetime.timedelta(days=days_ahead)).isoformat() + "Z"
 
-    creds = load_credentials()
     service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
 
     events_result = _google_call("calendar", "events.list",
@@ -138,7 +158,7 @@ def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_create_event")
 def handle_calendar_create_event(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    if _resolve_google_creds(ctx) is None:
         return _not_connected(ctx.tool_name)
 
     title = str(ctx.tool_input.get("title", ""))
@@ -211,14 +231,14 @@ def handle_calendar_create_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("drive_search")
 def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    creds = _resolve_google_creds(ctx)
+    if creds is None:
         return _not_connected(ctx.tool_name)
 
     query = str(ctx.tool_input.get("query", "")).strip()
     max_results = min(int(ctx.tool_input.get("max_results", 5)), 10)
     include_shared = bool(ctx.tool_input.get("include_shared", False))
 
-    creds = load_credentials()
     service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30))
 
     if query:
@@ -291,7 +311,8 @@ def _resolve_event_id_by_title(
 
 @tool_handler("calendar_edit_event")
 def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    creds = _resolve_google_creds(ctx)
+    if creds is None:
         return _not_connected(ctx.tool_name)
 
     event_id    = str(ctx.tool_input.get("event_id", "")).strip()
@@ -313,7 +334,6 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
-        creds = load_credentials()
         service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
         event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         if err:
@@ -380,7 +400,8 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_delete_event")
 def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    creds = _resolve_google_creds(ctx)
+    if creds is None:
         return _not_connected(ctx.tool_name)
 
     event_id    = str(ctx.tool_input.get("event_id", "")).strip()
@@ -397,7 +418,6 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
-        creds = load_credentials()
         service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
         event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         if err:
@@ -459,14 +479,14 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("drive_list_folder")
 def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
-    if not is_google_connected():
+    creds = _resolve_google_creds(ctx)
+    if creds is None:
         return _not_connected(ctx.tool_name)
 
     folder_name = str(ctx.tool_input.get("folder_name", "")).strip()
     folder_id   = str(ctx.tool_input.get("folder_id", "")).strip()
     max_results = min(int(ctx.tool_input.get("max_results", 20)), 50)
 
-    creds = load_credentials()
     service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30))
 
     _ROOT_ALIASES = {"root", "raiz", "raíz", "inicio", "principal", "mi drive", ""}
