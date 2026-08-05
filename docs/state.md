@@ -110,9 +110,14 @@ Ver .env.example para la lista completa.
   asegurar que los tests cubren los módulos nuevos.
 - **Más acceso al sistema para Sity** — ampliar el toolset de
   herramientas de sistema (procesos, archivos, red) más allá del
-  subconjunto actual seguro. *Advertencia: cada herramienta nueva
-  amplía la superficie de ataque si Sity es manipulada vía prompt
-  injection; evaluar caso por caso.*
+  subconjunto actual seguro. Caso concreto discutido (2026-08-05):
+  **instalación de paquetes** — el patrón de allowlist actual (lista
+  explícita de comandos/servicios permitidos, sin ejecución arbitraria)
+  es el correcto y no se cambia; la decisión de qué alcance darle a la
+  herramienta de instalación (qué paquetes, con qué confirmaciones, si
+  solo `apt` o también `pip`) queda pospuesta a una sesión dedicada.
+  *Advertencia: cada herramienta nueva amplía la superficie de ataque si
+  Sity es manipulada vía prompt injection; evaluar caso por caso.*
 - **Pantalla "Ajustes → Integraciones"** — frontend para conectar/desconectar
   Google y Spotify por usuario (Fase 6 Paso 6). Backend ya listo.
 - **DSPy / optimización automática de prompts** — explorar DSPy para
