@@ -33,6 +33,17 @@ os.environ.setdefault("GOOGLE_CLIENT_ID", "fake-client-id.apps.googleusercontent
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "fake-google-secret")
 os.environ.setdefault("SPOTIFY_CLIENT_ID", "fake-spotify-client-id")
 os.environ.setdefault("SPOTIFY_CLIENT_SECRET", "fake-spotify-secret")
+# Fake VAPID keys for Web Push tests. These are syntactically valid EC P-256 keys
+# generated with py_vapid but never used to send real push notifications in tests.
+os.environ.setdefault(
+    "VAPID_PUBLIC_KEY",
+    "BEfh1hzE2jXvVWQcjfBZqtihkqNykFYaEVRkfb4wS84fIlmMC_nyWOqZ5wGa6VDIkhAjIP7tBYtYqw15MJOi8LA",
+)
+os.environ.setdefault(
+    "VAPID_PRIVATE_KEY",
+    "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIPQMQoq9uzAhnh7mRZhZKWcmrBs+m1T7IK5spDnFv72PoAoGCCqGSM49\nAwEHoUQDQgAER+HWHMTaNe9VZByN8Fmq2KGSo3KQVhoRVGR9vjBLzh8iWYwL+fJY\n6pnnAZrpUMiSECMg/u0Fi1irDXkwk6LwsA==\n-----END EC PRIVATE KEY-----",
+)
+os.environ.setdefault("VAPID_CONTACT", "mailto:test@sity-test.invalid")
 
 # Redirect the DB to a pytest-local file so tests NEVER write to data/app.db.
 # Must be set before app.memory.db is imported for the first time (module-level

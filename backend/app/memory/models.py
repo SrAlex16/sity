@@ -221,6 +221,26 @@ class SharedConversation(SQLModel, table=True):
     revoked_at: Optional[datetime] = Field(default=None)
 
 
+class PushSubscription(SQLModel, table=True):
+    """Web Push subscription per session+device.
+
+    Created by POST /notifications/subscribe after the browser calls
+    PushManager.subscribe(). One user can have multiple active subscriptions
+    (e.g. mobile + desktop). is_active=False means the subscription expired
+    (push service returned 410 Gone) or the user unsubscribed — never deleted
+    so the endpoint history is preserved for auditing.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    endpoint: str = Field(index=True)          # URL from the browser PushSubscription object
+    p256dh: str                                 # client public key (base64url)
+    auth: str                                   # client auth secret (base64url)
+    user_agent: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+    last_used_at: Optional[datetime] = Field(default=None)
+    is_active: bool = Field(default=True)       # False when push service returns 410 Gone
+
+
 class ScheduledTask(SQLModel, table=True):
     """Persistent timer/alarm row. Survives backend restarts.
 

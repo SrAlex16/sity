@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1574 tests en verde (pytest)
+- ~1584 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -108,16 +108,16 @@ Ver .env.example para la lista completa.
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
-  sobre integraciones ya existentes (ej. "avísame si llega un email de X",
-  monitorizando Gmail periódicamente) — usa la infraestructura OAuth ya
-  construida pero requiere polling controlado; (b) **tareas periódicas
-  recurrentes** (ej. "resúmeme Reddit cada mañana" o "dime el tiempo al
-  levantarme") — más próximo a un cron que a un vigía. Advertencia: no
-  hardcodear casos individuales (Gmail, Reddit…); diseñar un modelo de datos
-  genérico (`WatcherTask` con tipo, parámetros, condición de disparo). No
-  saltarse los límites de rate limiting ya construidos en los handlers de
-  Google — el polling tiene que respetar las mismas cuotas que el uso
-  interactivo.
+  sobre integraciones ya existentes (ej. "avísame si llega un email de X") —
+  **caso Gmail aparcado** (2026-08-06): investigar si FCM/Watch API ofrece push
+  real sin polling o si polling REST es la única vía viable para terceros, antes
+  de implementar `gmail_detector.py` (ver `docs/notifications-architecture.md`
+  §2.3); (b) **tareas periódicas recurrentes** (ej. "resúmeme Reddit cada
+  mañana" o "dime el tiempo al levantarme") — más próximo a un cron que a un
+  vigía. Advertencia: no hardcodear casos individuales; diseñar un modelo de
+  datos genérico (`NotificationRule` con tipo, parámetros, condición de
+  disparo). El sistema de Web Push que lo entregará sigue adelante
+  independientemente (ver entrada de Web Push API).
 - **Pantalla "Voz" → "Ajustes"** — la pantalla de Voz (`VoiceScreen.tsx`)
   actualmente mezcla configuración de usuario con opciones que deberían ser
   solo-Admin. Sub-funcionalidades pendientes de diseñar y separar por rol:
@@ -194,19 +194,15 @@ Ver .env.example para la lista completa.
   la navegación con interacción real (clics, formularios): requiere sandboxing
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
-- **Web Push API — prerrequisito para alarmas reales** *(limitación de
-  diseño del sistema de timers/alarmas)* — el runner de timers ya existe
-  y dispara en la hora correcta, pero la notificación llega por SSE: solo
-  alcanza la pestaña si la PWA está abierta y conectada en ese momento
-  (misma garantía que los background tasks). Para que una alarma despierte
-  al usuario con la app cerrada hacen falta cuatro piezas: (1) un
-  **service worker** en la PWA que escuche el evento `push`; (2)
-  **registro de suscripción push** (objeto `PushSubscription`) por
-  dispositivo/sesión, almacenado en backend; (3) **claves VAPID** en el
-  backend para firmar las notificaciones; (4) un nuevo endpoint que, cuando
-  `fire_pending_once` dispara un timer, llame a la Web Push API del
-  servidor con el payload y la suscripción guardada. Sin esto, los timers
-  son "recordatorios dentro de la app", no alarmas de sistema.
+- **Web Push API — infraestructura base completada (Paso 1)** — las
+  cuatro piezas de base están implementadas: (1) `sw.js` ya tiene
+  listener `push` + `notificationclick`; (2) tabla `PushSubscription`
+  en models.py; (3) claves VAPID en `.env` (`VAPID_PRIVATE_KEY`,
+  `VAPID_PUBLIC_KEY`, `VAPID_CONTACT`); (4) endpoints
+  `GET /notifications/vapid-public-key`, `POST /notifications/subscribe`,
+  `DELETE /notifications/subscribe`. 10 tests. **Pendiente:** Paso 2
+  (`NotificationLog` + `dispatcher.py`) y Paso 3 (timers → dispatcher
+  → push real). Ver `docs/notifications-architecture.md` §8.
 
 ## Bugs conocidos activos
 

@@ -61,6 +61,22 @@ infraestructura nueva pero tiene coste de cuota. Ver § 2.3.
 
 ## 1. Arquitectura de capas
 
+> **Web Push y Gmail son conceptualmente independientes.**
+> Web Push (§6) es el **canal genérico de entrega**: usa claves VAPID propias,
+> sin ninguna relación con Google. Entrega cualquier tipo de notificación —
+> timers, background tasks, tareas recurrentes, iniciativa propia, o eventos
+> externos — independientemente de si Gmail u otro vigía externo está
+> implementado. El detector de Gmail (§2.3) es **una fuente de eventos entre
+> varias**, no un requisito ni una dependencia de Web Push. Los pasos 1–4 del
+> orden de implementación (§8) se completan sin tocar Gmail ni ningún servicio
+> de Google. La confusión "hace falta la API de Google para mandar
+> notificaciones" es incorrecta: el navegador del usuario recibe las
+> notificaciones push directamente desde el backend de Sity (firmadas con VAPID),
+> pasando por el push service del propio navegador (Google FCM para Chrome,
+> Mozilla autopush para Firefox, Apple APNs para Safari), sin que el backend
+> tenga ninguna cuenta o credencial de esas plataformas más allá de las claves
+> VAPID.
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │  CAPA DE DETECCIÓN   — «algo ha ocurrido»           │
@@ -204,34 +220,50 @@ pasa el hecho al `dispatcher` que decide SSE vs. Web Push.
 Mismo cambio: reemplazar la llamada directa a `publish_session_event_sync`
 por `dispatcher.dispatch(fact)`. El dispatcher aplica el fallback a Web Push.
 
-### 2.3 Evento externo detectado — **nuevo, con decisión de implementación**
+### 2.3 Evento externo detectado — ⚠️ APARCADO (investigar FCM antes de implementar)
 
-**El caso de Gmail.** Gmail tiene Watch API (Pub/Sub de Google Cloud) que evita
-polling, pero requiere configurar un topic de Cloud Pub/Sub — infraestructura
-externa que el proyecto no tiene. **Decisión de diseño: usar polling REST
-controlado** en primera versión, con posibilidad de migrar a webhooks si la
-cuota de la API se vuelve un problema.
+**Estado:** el detector de Gmail descrito inicialmente queda **aparcado** en
+esta ronda. No se implementa. El resto del sistema de notificaciones (pasos
+1–4 de §8) no depende de él.
 
-Diseño del detector de Gmail:
-- `notifications/detectors/gmail_detector.py` se despierta cada N minutos
-  (configurable, ej. 5 min por defecto).
-- Para cada usuario con `UserIntegration(provider="google", is_active=True)`,
-  llama a `users.messages.list` con `q=is:unread after:<last_check_timestamp>`.
-- `last_check_timestamp` se persiste por usuario en una tabla nueva
-  `WatcherState` o como campo en `UserIntegration`.
-- Si hay mensajes nuevos que cumplen la condición que el usuario configuró
-  (ej. "de: jefe@empresa.com"), produce un `NotificationFact` y lo pasa al
-  dispatcher.
+**Razón:** Alex señala que la app oficial de Gmail en Android notifica correo
+nuevo sin coste aparente de cuota, probablemente usando Firebase Cloud
+Messaging (FCM) de Google internamente, no polling REST. Antes de comprometer
+código de polling, conviene investigar si hay un mecanismo de push real
+accesible para terceros.
 
-**Dónde vive la condición de filtro:** en un modelo nuevo `NotificationRule`
-(ej. `session_id`, `detector_type="gmail"`, `filter_json='{"from": "..."}'`,
-`is_active=True`). El usuario las crea mediante una tool o UI futura. Sin
-reglas activas, el detector no produce hechos para esa sesión — no hay polling
-innecesario.
+**Investigación pendiente — qué responder antes de implementar:**
 
-**Cuota de Gmail API:** con polling de 5 min para N usuarios, el coste es
-razonable (N × 288 llamadas/día). Añadir back-off exponencial si la API
-devuelve 429.
+1. **Gmail Watch API + Pub/Sub (ya documentada):** `users.watch` registra un
+   topic de Google Cloud Pub/Sub que recibe webhooks cuando llega correo.
+   Ventaja: no hay polling. Desventaja: requiere configurar Cloud Pub/Sub —
+   infraestructura que no existe en el proyecto.
+
+2. **FCM interno de Google:** la app nativa de Gmail usa FCM (Google's push
+   service) para notificaciones. Sin embargo, FCM en modo "data message" requiere
+   que el backend tenga un proyecto Firebase con la Server Key correspondiente —
+   es el mismo Pub/Sub disfrazado bajo Firebase Admin SDK. No es un acceso
+   especial privado de Google; es la vía pública Watch API + Pub/Sub, que Google
+   expone también a terceros.
+
+3. **Conclusión provisional:** la diferencia entre "lo que usa la app nativa" y
+   "lo que puede usar un tercero" probablemente sea ninguna para la entrega de
+   notificaciones de correo — ambas usan FCM/Pub/Sub. La app nativa tiene acceso
+   privilegiado a las cuentas del usuario en el dispositivo, pero el canal push
+   es el mismo. Confirmar leyendo la documentación actualizada de
+   [Gmail Push Notifications](https://developers.google.com/gmail/api/guides/push).
+
+4. **Alternativa mínima:** polling REST controlado con `users.messages.list` es
+   la única vía sin infraestructura nueva. Si la cuota (N × 288 llamadas/día
+   para polling cada 5 min) es aceptable, es la opción más simple. La Watch API
+   es más limpia pero requiere Cloud Pub/Sub.
+
+**Diseño provisional (NO implementar hasta resolver la investigación):**
+
+El diseño original sigue siendo válido estructuralmente si se decide usar
+polling: `gmail_detector.py` cada N min, `NotificationRule` para filtros por
+usuario, `WatcherState` para el último timestamp chequeado. Pero nada de esto
+se codifica hasta tener claro el mecanismo de push elegido.
 
 ### 2.4 Tarea periódica recurrente — **nuevo, extender ScheduledTask**
 
@@ -602,7 +634,7 @@ Ordenado de menor a mayor complejidad y con cada paso autónomamente útil:
 | **2** | Tabla `NotificationLog` + `notifications/dispatcher.py` (routing SSE/Push/pending) | Unifica todos los emisores existentes |
 | **3** | Pilotar con timers: `timers/runner.py` llama a `dispatcher.dispatch` en lugar de `publish_session_event_sync` directamente | Timer/alarma funciona aunque la PWA esté cerrada — el caso de uso más pedido |
 | **4** | Pilotar con background tasks: `job_manager.py` y `ai_orchestrator._on_done` pasan por dispatcher | Background tasks también funcionan con app cerrada |
-| **5** | `notifications/detectors/gmail_detector.py` + modelo `NotificationRule` | Vigías de Gmail |
+| ~~**5**~~ | ~~`notifications/detectors/gmail_detector.py` + modelo `NotificationRule`~~ | ⚠️ **APARCADO** — investigar FCM vs. polling antes de implementar (ver §2.3) |
 | **6** | Extender `ScheduledTask` con recurrencia + `recurrent_task_runner.py` | Tareas periódicas |
 | **7** | `notifications/detectors/initiative_runner.py` | Iniciativa propia — el más delicado, último |
 
