@@ -67,13 +67,13 @@ Ver docs/operations/development.md para el flujo completo.
 - task_context — memoria estructurada entre turnos para tareas multi-paso
 - Tareas largas en background — respuesta inmediata + notificación al terminar
 - Observabilidad Fase 1 — logging universal tools + APIs + retención 14 días
+- Refactorización persona_engine — completada 2026-06-29
 
 ### 📋 Pendiente
 
 - **Sistema de alertas del panel** — ampliar: disco >95%, RAM >90%,
   temperatura 70-80°C, zombies >5
   Sacar uso de recursos de la cuenta de Claude mediante la implementación de [https://github.com/phuryn/claude-usage.git] y API de anthropic (Claude permite sacar métricas del uso mediante la api).
-- **Refactorización persona_engine** — A4-A6, B5-B6 pendientes
 - **Análisis Docker completo** — qué más dockerizar y sandbox para
   ejecución de código generado por el modelo
 

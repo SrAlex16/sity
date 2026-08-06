@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-06 (read_webpage tool).
+Última actualización: 2026-08-06 (6 ideas nuevas documentadas).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -92,6 +92,70 @@ Ver .env.example para la lista completa.
   Assistant (sin OAuth estándar — requiere diseño propio) y la pantalla de
   frontend "Ajustes → Integraciones" con botones Connect/Disconnect. Ver
   `docs/auth-system.md` § Fase 6.
+- **Sistema de iniciativa propia de Sity** — capacidad de que Sity
+  inicie una conversación sin que el usuario escriba primero (ej. "acordé
+  en recordarte esto", "encontré algo que puede interesarte"). Cuatro
+  preguntas de diseño pendientes de responder antes de implementar:
+  (1) **mecanismo de disparo**: ¿un runner periódico similar al de timers,
+  o una cola de eventos ya pendientes en DB?; (2) **canal de entrega**:
+  depende de la Web Push API (ya anotada como prerrequisito de alarmas)
+  — sin push real el mensaje solo llega si la app está abierta;
+  (3) **aislamiento por rol**: Guest no debería recibir mensajes proactivos
+  no solicitados — requiere verificar sesión activa y rol antes de disparar;
+  (4) **relación con memoria social**: si la iniciativa se basa en opinión/
+  confianza del usuario, hay que respetar los invariantes ya establecidos
+  (opinion/trust solo escritos por background job, nunca por conversación).
+- **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
+  tareas en background activadas por condiciones externas, más allá de los
+  timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
+  sobre integraciones ya existentes (ej. "avísame si llega un email de X",
+  monitorizando Gmail periódicamente) — usa la infraestructura OAuth ya
+  construida pero requiere polling controlado; (b) **tareas periódicas
+  recurrentes** (ej. "resúmeme Reddit cada mañana" o "dime el tiempo al
+  levantarme") — más próximo a un cron que a un vigía. Advertencia: no
+  hardcodear casos individuales (Gmail, Reddit…); diseñar un modelo de datos
+  genérico (`WatcherTask` con tipo, parámetros, condición de disparo). No
+  saltarse los límites de rate limiting ya construidos en los handlers de
+  Google — el polling tiene que respetar las mismas cuotas que el uso
+  interactivo.
+- **Pantalla "Voz" → "Ajustes"** — la pantalla de Voz (`VoiceScreen.tsx`)
+  actualmente mezcla configuración de usuario con opciones que deberían ser
+  solo-Admin. Sub-funcionalidades pendientes de diseñar y separar por rol:
+  (1) **Periodicidad de borrado de audios** — ya existe la sección en
+  `VoiceScreen.tsx` pero debe ocultarse para usuarios no-Admin (solo el
+  admin debe poder cambiar la política de retención global de audios);
+  (2) **Idioma de la interfaz** — ver punto separado más abajo;
+  (3) **Gestión de archivos de audio**: lista de audios propios del usuario,
+  opción de eliminar individuales o todos, vista del espacio usado;
+  (4) **Exportar conversación** y borrado RGPD de todos los datos propios —
+  un usuario autenticado debería poder exportar su historial completo (JSON/
+  texto) y eliminar su cuenta con todos sus mensajes, sin depender del Admin.
+- **Sistema de cambio de idioma** — la interfaz es completamente en español
+  hoy. Dos niveles posibles: (a) **detección automática** del idioma del
+  navegador/sistema al cargar la app; (b) **selección manual** en Ajustes
+  (relacionado con el punto anterior de pantalla Voz → Ajustes). Decisión
+  pendiente: ¿solo cambiar la UI o también el idioma en que Sity responde?
+  Si es lo segundo, hay que coordinar con el prompt de sistema y la memoria
+  social (el modelo de opinión está entrenado con texto en español).
+- **Google Analytics / GTM** — integrar métricas de uso de la PWA (sesiones,
+  pantallas visitadas, acciones de voz, errores de red). Tensión no resuelta
+  con privacidad/RGPD: la PWA es un asistente personal con datos sensibles
+  (mensajes, historial, integraciones OAuth); insertar GA sin resolver primero
+  el aviso legal, el banner de cookies y el alcance de lo que se trackea sería
+  contrario al espíritu de privacidad del proyecto. Decisión explícita: no
+  insertar el snippet hasta responder qué se trackea, si se anonimiza, y si se
+  incluye el aviso RGPD correspondiente.
+- **Personalización estilo ChatGPT** — investigado 2026-08-06. Resumen del
+  sistema de ChatGPT: 3 capas (Nombre + ocupación como contexto; Personalizar
+  respuestas con campo libre sobre preferencias; Instrucciones del sistema con
+  texto libre para comportamiento global) — su problema conocido es que el
+  campo libre genera inconsistencias cuando el usuario escribe instrucciones
+  que se contradicen con el contexto, y OpenAI no tiene mecanismo de
+  resolución de conflictos. Sity ya lo resuelve mejor con sliders tipados
+  (personalidad cuantificada, sin ambigüedad semántica). Valorar complementar
+  con un **campo de texto libre de "contexto de usuario"** (nombre, ocupación,
+  preferencias estables) que se inyecte en el prompt de sistema junto a los
+  parámetros — sin sustituir los sliders, como capa adicional de personalización.
 - **Gestión de enlaces compartidos** — pantalla frontend para listar y
   revocar todos los enlaces activos del usuario. El backend ya tiene
   `DELETE /chat/share/{id}` pero no hay un listado de los propios enlaces
