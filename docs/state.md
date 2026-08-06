@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-05 (shared conversations).
+Última actualización: 2026-08-06 (read_webpage tool).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1551 tests en verde (pytest)
+- ~1574 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -124,10 +124,12 @@ Ver .env.example para la lista completa.
   optimizar el prompt de sistema y los prompts de herramientas con
   datos reales del dataset v1. Requiere el dataset de evaluación
   terminado.
-- **Navegación web activa** — más allá de la búsqueda DuckDuckGo
-  actual: tool para que Sity siga enlaces y extraiga contenido de
-  páginas concretas (scraping controlado), útil para leer artículos o
-  documentación que el usuario comparte.
+- **Navegación web activa (completa)** — `read_webpage(url)` de solo lectura
+  ya implementado (scraping sin JS, con SSRF guard, timeout 10s, truncado
+  a 5k chars, wrapper de contenido no confiable). Lo que queda pospuesto es
+  la navegación con interacción real (clics, formularios): requiere sandboxing
+  Docker aislado de la red interna de la Pi como prerrequisito no negociable.
+  Ver `docs/web-navigation-risk-analysis.md`.
 - **Web Push API — prerrequisito para alarmas reales** *(limitación de
   diseño del sistema de timers/alarmas)* — el runner de timers ya existe
   y dispara en la hora correcta, pero la notificación llega por SSE: solo

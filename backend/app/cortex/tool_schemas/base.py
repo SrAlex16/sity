@@ -82,7 +82,11 @@ from app.cortex.tool_schemas.timers import (
     SET_ALARM_TOOL,
     SET_TIMER_TOOL,
 )
-from app.cortex.tool_schemas.web import SEARCH_CONVERSATION_HISTORY_TOOL, WEB_SEARCH_TOOL
+from app.cortex.tool_schemas.web import (
+    READ_WEBPAGE_TOOL,
+    SEARCH_CONVERSATION_HISTORY_TOOL,
+    WEB_SEARCH_TOOL,
+)
 
 TOOL_BLOCKING_POLICIES: dict[str, str] = {
     # "immediate" — no tool execution; planner uses these to skip the tool loop
@@ -90,6 +94,7 @@ TOOL_BLOCKING_POLICIES: dict[str, str] = {
     "cancel_pending_action": "immediate",
     # "detachable" — can be moved to background if it exceeds the watchdog timeout
     "web_search": "detachable",
+    "read_webpage": "detachable",
     # Everything else defaults to "blocking" (must finish before the AI responds)
 }
 
@@ -99,6 +104,7 @@ BASE_TOOLSET: list[dict] = [
     #   - explicit tool name detected from schemas/registry
     #   - file path detected by message_mentions_file_path
     WEB_SEARCH_TOOL,
+    READ_WEBPAGE_TOOL,
     SEARCH_CONVERSATION_HISTORY_TOOL,
     NO_ACTION_REQUIRED_TOOL,
     # Google tools always available — keyword detection was too fragile.
@@ -136,6 +142,7 @@ BASE_TOOLSET: list[dict] = [
 
 ALL_TOOLS = [
     WEB_SEARCH_TOOL,
+    READ_WEBPAGE_TOOL,
     UPDATE_PERSONALITY_SETTINGS_TOOL,
     READ_OWN_TRACE_TOOL,
     READ_RECENT_DEBUG_EVENTS_TOOL,

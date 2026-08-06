@@ -337,3 +337,43 @@ completa. Es la implementación que tiene sentido si se quiere avanzar.
 **Navegación activa completa (clics, formularios): posponer indefinidamente
 hasta tener sandboxing real (contenedor Docker aislado de la red interna de
 la Pi) como prerrequisito no negociable.**
+
+---
+
+## Implementación real (2026-08-06)
+
+**`read_webpage(url)` implementado.** La variante de solo lectura del análisis
+anterior SÍ se implementó. Navegación activa completa sigue pospuesta.
+
+### Qué se implementó
+
+- **Handler:** `backend/app/tools/handlers/web_fetch_tools.py`
+- **Schema:** `backend/app/cortex/tool_schemas/web.py` → `READ_WEBPAGE_TOOL`
+- **Tool:** añadida a `BASE_TOOLSET` (disponible en todas las conversaciones)
+  y marcada como `"detachable"` en `TOOL_BLOCKING_POLICIES`.
+
+### Mitigaciones aplicadas (todas del análisis)
+
+| Mitigación | Decisión de implementación |
+|---|---|
+| Sin JS | `httpx` + stdlib `html.parser` — nunca un browser headless |
+| Timeout | 10 s (GET + HEAD combinados) |
+| Truncado | 5.000 chars; nota de truncado en el propio texto devuelto |
+| Bloqueo de descargas | HEAD previo + check de `Content-Type`; bloquea `application/octet-stream`, `application/pdf`, `application/zip`, `application/x-tar`, `application/x-gzip` antes de descargar el body |
+| Wrapper contenido no confiable | Mismo texto que `web_search` |
+| Logging | `event="read_webpage_domain"` con dominio y chars extraídos |
+| SSRF | Guard explícito: bloquea loopback, RFC1918, link-local (169.254/16), IPv6 ULA/link-local; resuelve el hostname a IP antes de conectar |
+
+### Qué NO tiene (y por qué no hace falta para solo lectura)
+
+- Sandboxing Docker — el riesgo principal de solo lectura es inyección de
+  prompts, no ejecución de código en la Pi; el wrapper de contenido de terceros
+  mitiga el riesgo residual.
+- Allowlist de dominios — destruiría la utilidad del caso de uso (leer URLs
+  arbitrarias que el usuario comparte).
+
+### Tests
+
+22 tests en `tests/test_read_webpage.py`: extracción de texto, stripping de
+`<script>`/`<style>`, truncado, wrapper, SSRF (6 IPs privadas + DNS rebinding),
+validación de URL, content-type guard (3 tipos binarios), timeout, logging.

@@ -41,6 +41,32 @@ WEB_SEARCH_TOOL = {
 }
 
 
+READ_WEBPAGE_TOOL = {
+    "name": "read_webpage",
+    "description": (
+        "Lee el contenido de texto de una URL específica que el usuario ha compartido "
+        "o que necesitas consultar directamente. Solo extrae texto — nunca ejecuta "
+        "JavaScript ni realiza acciones interactivas (clics, formularios). "
+        "Úsala cuando el usuario te pase un enlace concreto y quiera que lo leas, "
+        "o cuando necesites el contenido completo de una página específica que "
+        "web_search no devuelve en sus snippets. "
+        "NO la uses para navegar por internet de forma exploratoria — para eso usa web_search. "
+        "El contenido se trunca a 5000 caracteres si la página es más larga."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "La URL completa de la página a leer (debe empezar por http:// o https://)."
+            }
+        },
+        "required": ["url"]
+    }
+}
+
+
 SEARCH_CONVERSATION_HISTORY_TOOL = {
     "name": "search_conversation_history",
     "description": (

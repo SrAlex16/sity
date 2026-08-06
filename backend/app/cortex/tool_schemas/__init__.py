@@ -111,7 +111,11 @@ from app.cortex.tool_schemas.timers import (
     SET_TIMER_TOOL,
     TIMERS_TOOLSET,
 )
-from app.cortex.tool_schemas.web import SEARCH_CONVERSATION_HISTORY_TOOL, WEB_SEARCH_TOOL
+from app.cortex.tool_schemas.web import (
+    READ_WEBPAGE_TOOL,
+    SEARCH_CONVERSATION_HISTORY_TOOL,
+    WEB_SEARCH_TOOL,
+)
 
 __all__ = [
     # actions
@@ -217,6 +221,7 @@ __all__ = [
     "SET_TIMER_TOOL",
     "TIMERS_TOOLSET",
     # web
+    "READ_WEBPAGE_TOOL",
     "SEARCH_CONVERSATION_HISTORY_TOOL",
     "WEB_SEARCH_TOOL",
 ]
