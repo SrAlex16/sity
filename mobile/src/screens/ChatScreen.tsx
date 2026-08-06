@@ -114,6 +114,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const [shareData, setShareData] = useState<{ url: string; expiresAt: string } | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [activeFont, setActiveFont] = useState<'orbitron' | 'sharetech' | 'rajdhani'>(
     () => (localStorage.getItem('sity_font') ?? 'orbitron') as 'orbitron' | 'sharetech' | 'rajdhani'
   );
@@ -263,13 +264,22 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     setShareModalOpen(true);
     setShareData(null);
     setShareCopied(false);
+    setShareError(null);
     try {
       const resp = await fetch('/chat/share', { method: 'POST', credentials: 'include' });
-      if (!resp.ok) throw new Error('Error al compartir');
+      if (!resp.ok) {
+        let detail = `Error ${resp.status}`;
+        try {
+          const body = (await resp.json()) as { detail?: string };
+          if (body.detail) detail = body.detail;
+        } catch { /* ignore parse failure */ }
+        setShareError(detail);
+        return;
+      }
       const body = await resp.json() as { share_id: string; url: string; expires_at: string };
       setShareData({ url: body.url, expiresAt: body.expires_at });
-    } catch {
-      setShareModalOpen(false);
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : 'Sin conexión con el servidor');
     } finally {
       setShareLoading(false);
     }
@@ -594,6 +604,30 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
               </p>
               {shareLoading && (
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Generando enlace…</p>
+              )}
+              {shareError && (
+                <>
+                  <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--color-error, #ff4d6d)' }}>
+                    {shareError}
+                  </p>
+                  <button
+                    onClick={() => void handleShare()}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem',
+                      background: 'none',
+                      border: '1px solid var(--color-error, #ff4d6d)',
+                      borderRadius: '6px',
+                      color: 'var(--color-error, #ff4d6d)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    Reintentar
+                  </button>
+                </>
               )}
               {shareData && (
                 <>

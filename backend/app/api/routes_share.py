@@ -26,6 +26,7 @@ from app.core.runtime_config import get_public_base_url
 from app.memory.db import get_session
 from app.memory.models import ChatMessage, SharedConversation, utc_now
 from app.settings.config_loader import load_default_config
+from app.trace.logger import write_log
 
 router = APIRouter(tags=["share"])
 
@@ -122,6 +123,14 @@ def create_share(
 
     base_url = get_public_base_url().rstrip("/")
     url = f"{base_url}/shared/{share_id}"
+
+    write_log(
+        level="INFO",
+        module="share",
+        event="share_created",
+        session_id=current.session_id,
+        payload={"share_id": share_id, "message_count": len(snapshot), "expiry_days": expiry_days},
+    )
 
     return ShareCreateResponse(
         share_id=share_id,
