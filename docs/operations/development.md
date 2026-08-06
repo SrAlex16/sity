@@ -77,6 +77,50 @@ directamente de `mobile/dist/` desde disco. En cuanto el build actualiza los fic
 se sirven en la siguiente petición. Solo hace falta `sudo systemctl reload caddy` si
 cambia el propio `Caddyfile`.
 
+### ⚠️ Checklist obligatorio al añadir un router nuevo con prefix propio
+
+Este bug ha aparecido tres veces (auth, events, shared+notifications). La raíz: Caddy
+actúa como proxy selectivo — solo reenvía al backend los paths que tiene listados
+explícitamente. El `handle` final sirve siempre el `index.html` de la SPA, por lo que
+cualquier ruta no declarada en Caddy llega al frontend como 404 silencioso en vez de
+llegar al backend.
+
+**Regla:** si añades un router FastAPI cuyo prefix **no** está anidado bajo uno ya
+existente (ej. `/chat/*`, `/auth/*`), debes añadir su propia línea en el Caddyfile
+antes de hacer el deploy.
+
+```bash
+# 1. Editar el Caddyfile real en la Pi:
+sudo nano /etc/caddy/Caddyfile
+# Añadir, junto a las demás líneas handle:
+#   handle /mi-nuevo-prefix/* { reverse_proxy localhost:8000 }
+
+# 2. Actualizar el ejemplo en el repo (deploy/caddy/Caddyfile.example) — mismo cambio.
+
+# 3. Recargar Caddy sin downtime:
+sudo systemctl reload caddy
+
+# 4. Verificar que el path llega al backend y no a la SPA:
+curl -I https://sity.aletm.com/mi-nuevo-prefix/algo
+# → debe devolver un código real del backend (200, 404 FastAPI, 401…),
+#   NO el 200 del index.html con Content-Type: text/html
+```
+
+Prefixes actualmente declarados en el Caddyfile (actualizar esta lista con cada nuevo router):
+
+| Prefix | Router | Notas |
+|--------|--------|-------|
+| `/chat/stream/*` | `routes_chat.py` | SSE — flush_interval -1 |
+| `/events/*` | `realtime_events` | SSE — flush_interval -1 |
+| `/chat/*` | `routes_chat.py` | |
+| `/audio/*` | `routes_audio.py` | |
+| `/auth/*` | `routes_auth.py` + OAuth | Cubre también `/auth/integrations/*` |
+| `/settings/*` | `routes_settings.py` | |
+| `/debug/*` | `routes_debug.py` | |
+| `/notifications/*` | `routes_notifications.py` | Web Push (VAPID, subscribe) |
+| `/shared/*` | `routes_share.py` | Conversaciones compartidas públicas |
+| `/health` | `main.py` | |
+
 **El servicio `sity-frontend` no tiene relación con producción** — es un dev server
 de Vite en el puerto 5173. `sudo systemctl restart sity-frontend` no reconstruye ni
 redespliega nada.
