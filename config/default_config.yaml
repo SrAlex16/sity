@@ -92,6 +92,17 @@ timers:
 sharing:
   default_expiry_days: 7        # shared link lifetime
 
+notifications:
+  max_proactive_per_day_user: 1          # "proactive_initiative" per session per calendar day
+  max_external_events_per_day_user: 20   # "external_event" per session per calendar day
+  recurrent_task_cooldown_minutes: 60    # min gap between two recurrent_task of same session
+  initiative_cooldown_hours: 24          # min gap between two proactive_initiative
+  initiative_min_trust: 0.30             # SocialProfile.trust floor for initiative runner
+  initiative_silence_hours: 4            # don't initiate if user talked within this window
+  notification_log_ttl_days: 30          # NotificationLog row retention (GC)
+  dedup_window_hours: 24                 # window for fact_id deduplication
+  gc_interval_seconds: 600               # how often the GC purges old NotificationLog rows
+
 debug:
   enabled: true
   log_level: INFO

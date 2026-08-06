@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1584 tests en verde (pytest)
+- ~1607 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -194,15 +194,16 @@ Ver .env.example para la lista completa.
   la navegación con interacción real (clics, formularios): requiere sandboxing
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
-- **Web Push API — infraestructura base completada (Paso 1)** — las
-  cuatro piezas de base están implementadas: (1) `sw.js` ya tiene
-  listener `push` + `notificationclick`; (2) tabla `PushSubscription`
-  en models.py; (3) claves VAPID en `.env` (`VAPID_PRIVATE_KEY`,
-  `VAPID_PUBLIC_KEY`, `VAPID_CONTACT`); (4) endpoints
-  `GET /notifications/vapid-public-key`, `POST /notifications/subscribe`,
-  `DELETE /notifications/subscribe`. 10 tests. **Pendiente:** Paso 2
-  (`NotificationLog` + `dispatcher.py`) y Paso 3 (timers → dispatcher
-  → push real). Ver `docs/notifications-architecture.md` §8.
+- **Web Push API — Pasos 1 y 2 completados** — infraestructura base
+  lista: `sw.js` con listener `push`+`notificationclick`, tabla
+  `PushSubscription`, claves VAPID, endpoints subscribe/unsubscribe,
+  tabla `NotificationLog`, `notifications/dispatcher.py` con las 4
+  responsabilidades (dedup · rate limiting · routing SSE→Push→pending ·
+  persistencia), `notifications/push.py` (pywebpush wrapper), GC propio
+  (`notifications_gc_loop`). 33 tests (10 Paso 1 + 23 Paso 2). mypy
+  limpio. **Pendiente:** Paso 3 — conectar `timers/runner.py` al
+  dispatcher (timer fired → Web Push si app cerrada). Ver
+  `docs/notifications-architecture.md` §8.
 
 ## Bugs conocidos activos
 

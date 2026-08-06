@@ -119,6 +119,12 @@ async def subscribe_session(session_id: str):
                   payload={"session_id": session_id})
 
 
+def has_active_subscriber(session_id: str) -> bool:
+    """Return True if at least one SSE client is connected for this session."""
+    sq = _session_queues.get(session_id)
+    return sq is not None and sq.subscriber_count > 0
+
+
 def gc_once() -> list[str]:
     """Evict one round of dead session queues. Exposed for testing."""
     now = time.monotonic()

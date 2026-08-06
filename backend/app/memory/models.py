@@ -221,6 +221,27 @@ class SharedConversation(SQLModel, table=True):
     revoked_at: Optional[datetime] = Field(default=None)
 
 
+class NotificationLog(SQLModel, table=True):
+    """Persistent record of every dispatched notification.
+
+    Used for deduplication (same fact_id in dedup window → discard),
+    rate limiting (count by type per session per day), and the
+    GET /notifications/pending endpoint (delivery_status="pending" rows
+    delivered when the user reconnects via SSE).
+    Rows are purged by notifications_gc_loop() after notification_log_ttl_days.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    notification_type: str           # timer_fired | background_result | external_event | recurrent_task | proactive_initiative
+    fact_id: str = Field(index=True) # caller-supplied unique ID; used for deduplication
+    payload_json: str                # JSON of the notification payload shown to the user
+    created_at: datetime = Field(default_factory=utc_now)
+    delivery_channel: str            # sse | push | pending
+    delivery_status: str             # delivered | failed | pending
+    delivered_at: Optional[datetime] = Field(default=None)
+    push_error: Optional[str] = Field(default=None)  # failure reason when delivery_status="failed"
+
+
 class PushSubscription(SQLModel, table=True):
     """Web Push subscription per session+device.
 
