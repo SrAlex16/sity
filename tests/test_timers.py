@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 
 from app.memory.db import engine
 from app.memory.models import ChatMessage, ScheduledTask
+from app.notifications.fact import DispatchResult, NotificationFact
 from app.timers.runner import fire_pending_once
 from app.timers.service import (
     cancel_task,
@@ -66,26 +67,25 @@ class TestFirePendingOnce:
             timer_id = task.id
             session_id = task.session_id
 
-        published_events: list[tuple] = []
+        dispatched_facts: list[NotificationFact] = []
 
-        def capture(sid, event):
-            published_events.append((sid, event))
+        def capture_dispatch(fact: NotificationFact, db):
+            dispatched_facts.append(fact)
+            return DispatchResult(channel="sse", notification_id=1)
 
-        with patch("app.timers.runner.publish_session_event_sync", side_effect=capture):
+        with patch("app.timers.runner.dispatch", side_effect=capture_dispatch):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
         assert timer_id in fired
-        # Check that our specific timer's event was published (other timers may fire too)
-        our_events = [e for sid, e in published_events if e.get("timer_id") == timer_id]
-        assert len(our_events) == 1
-        assert published_events[0][0] == session_id or any(
-            sid == session_id and e.get("timer_id") == timer_id
-            for sid, e in published_events
-        )
-        evt = our_events[0]
-        assert evt["type"] == "proactive_message"
-        assert evt["subtype"] == "timer_fired"
+        our_facts = [f for f in dispatched_facts if f.fact_id == f"timer:{timer_id}"]
+        assert len(our_facts) == 1
+        fact = our_facts[0]
+        assert fact.session_id == session_id
+        assert fact.notification_type == "timer_fired"
+        assert fact.payload["timer_id"] == timer_id
+        assert fact.payload["body"] == "Test timer fired."
+        assert fact.urgency == "high"
 
         with Session(engine) as db:
             row = db.get(ScheduledTask, timer_id)
@@ -97,12 +97,17 @@ class TestFirePendingOnce:
             task = _make_task(db, delta=3600)  # 1 hour in the future
             timer_id = task.id
 
-        with patch("app.timers.runner.publish_session_event_sync") as mock_pub:
+        with patch("app.timers.runner.dispatch") as mock_dispatch:
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
         assert timer_id not in fired
-        mock_pub.assert_not_called()
+        # dispatch must not be called for this timer (other due timers may exist)
+        dispatched_ids = [
+            call.args[0].fact_id
+            for call in mock_dispatch.call_args_list
+        ]
+        assert f"timer:{timer_id}" not in dispatched_ids
 
     def test_does_not_fire_cancelled_timer(self) -> None:
         with Session(engine) as db:
@@ -112,12 +117,13 @@ class TestFirePendingOnce:
             db.commit()
             timer_id = task.id
 
-        with patch("app.timers.runner.publish_session_event_sync") as mock_pub:
+        with patch("app.timers.runner.dispatch") as mock_dispatch:
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
         assert timer_id not in fired
-        mock_pub.assert_not_called()
+        dispatched_ids = [call.args[0].fact_id for call in mock_dispatch.call_args_list]
+        assert f"timer:{timer_id}" not in dispatched_ids
 
     def test_does_not_fire_already_fired_timer(self) -> None:
         with Session(engine) as db:
@@ -127,19 +133,20 @@ class TestFirePendingOnce:
             db.commit()
             timer_id = task.id
 
-        with patch("app.timers.runner.publish_session_event_sync") as mock_pub:
+        with patch("app.timers.runner.dispatch") as mock_dispatch:
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
         assert timer_id not in fired
-        mock_pub.assert_not_called()
+        dispatched_ids = [call.args[0].fact_id for call in mock_dispatch.call_args_list]
+        assert f"timer:{timer_id}" not in dispatched_ids
 
     def test_persists_chat_message_on_fire(self) -> None:
         with Session(engine) as db:
             task = _make_task(db, delta=-1, session_id="user:77")
             timer_id = task.id
 
-        with patch("app.timers.runner.publish_session_event_sync"):
+        with patch("app.timers.runner.dispatch"):
             with Session(engine) as db:
                 fire_pending_once(db)
 
@@ -152,28 +159,32 @@ class TestFirePendingOnce:
         assert msgs[0].session_id == "user:77"
 
     def test_session_isolation_only_notifies_owning_session(self) -> None:
-        """SSE event must only go to the session that created the timer."""
+        """Each timer's NotificationFact must target only its owning session."""
         with Session(engine) as db:
             t1 = _make_task(db, session_id="user:100", delta=-1)
             t2 = _make_task(db, session_id="user:200", delta=-1)
-            t1_id, t2_id = t1.id, t2.id  # capture before session closes
+            t1_id, t2_id = t1.id, t2.id
 
-        notified_sessions = []
+        dispatched_facts: list[NotificationFact] = []
 
-        def capture_publish(session_id, event):
-            notified_sessions.append(session_id)
+        def capture_dispatch(fact: NotificationFact, db):
+            dispatched_facts.append(fact)
+            return DispatchResult(channel="sse", notification_id=1)
 
-        with patch("app.timers.runner.publish_session_event_sync", side_effect=capture_publish):
+        with patch("app.timers.runner.dispatch", side_effect=capture_dispatch):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
         assert t1_id in fired
         assert t2_id in fired
-        assert "user:100" in notified_sessions
-        assert "user:200" in notified_sessions
-        # Each session notified exactly once
-        assert notified_sessions.count("user:100") == 1
-        assert notified_sessions.count("user:200") == 1
+        dispatched_sessions = [f.session_id for f in dispatched_facts]
+        assert "user:100" in dispatched_sessions
+        assert "user:200" in dispatched_sessions
+        # Each session dispatched exactly once for its own timer
+        t1_facts = [f for f in dispatched_facts if f.fact_id == f"timer:{t1_id}"]
+        t2_facts = [f for f in dispatched_facts if f.fact_id == f"timer:{t2_id}"]
+        assert len(t1_facts) == 1 and t1_facts[0].session_id == "user:100"
+        assert len(t2_facts) == 1 and t2_facts[0].session_id == "user:200"
 
 
 # ---------------------------------------------------------------------------
@@ -201,12 +212,13 @@ class TestTimerPersistence:
             db.add(row)
             db.commit()
 
-        with patch("app.timers.runner.publish_session_event_sync") as mock_pub:
+        with patch("app.timers.runner.dispatch") as mock_dispatch:
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
         assert timer_id in fired
-        mock_pub.assert_called_once()
+        dispatched_ids = [call.args[0].fact_id for call in mock_dispatch.call_args_list]
+        assert f"timer:{timer_id}" in dispatched_ids
 
 
 # ---------------------------------------------------------------------------

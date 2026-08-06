@@ -15,9 +15,10 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session, select
 
-from app.core.realtime_events import publish_session_event_sync
 from app.memory.db import engine
 from app.memory.models import ChatMessage, ScheduledTask
+from app.notifications.dispatcher import dispatch
+from app.notifications.fact import NotificationFact
 from app.trace.logger import write_log
 
 
@@ -25,8 +26,8 @@ def fire_pending_once(db_session: Session) -> list[str]:
     """Query and fire all due timers. Returns list of fired timer IDs.
 
     Safe to call from any thread. The db_session must be an open Session.
-    After commit, publishes proactive_message SSE events via the global
-    publish_session_event_sync (thread-safe).
+    After marking timers fired, routes each via dispatcher (SSE if subscriber
+    active, Web Push if PushSubscription exists, pending otherwise).
     """
     now = datetime.now(timezone.utc)
 
@@ -64,12 +65,22 @@ def fire_pending_once(db_session: Session) -> list[str]:
 
     fired_ids = []
     for timer_id, session_id, message in to_notify:
-        publish_session_event_sync(session_id, {
-            "type": "proactive_message",
-            "text": message,
-            "subtype": "timer_fired",
-            "timer_id": timer_id,
-        })
+        fact = NotificationFact(
+            session_id=session_id,
+            notification_type="timer_fired",
+            # Deterministic fact_id: if the runner somehow sees the same timer twice,
+            # the dispatcher dedup catches it before a duplicate notification is sent.
+            fact_id=f"timer:{timer_id}",
+            payload={
+                "title": "⏰ Sity",
+                "body": message,
+                "url": "/",
+                "urgent": True,
+                "timer_id": timer_id,  # passed through to SSE consumer by dispatcher
+            },
+            urgency="high",
+        )
+        dispatch(fact, db_session)
         write_log(
             level="INFO",
             module="timers",

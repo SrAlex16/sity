@@ -302,10 +302,15 @@ def dispatch(fact: NotificationFact, db: Session) -> DispatchResult:
 
     # 4. Deliver + persist
     if channel == "sse":
+        # Standard keys are mapped to fixed SSE fields; extra keys (e.g. timer_id)
+        # are passed through so frontend consumers can use them without coupling
+        # the dispatcher to every possible producer's payload schema.
+        _STANDARD = frozenset({"title", "body", "url", "urgent"})
         sse_event: dict = {
             "type": "proactive_message",
             "text": fact.payload.get("body", ""),
             "subtype": fact.notification_type,
+            **{k: v for k, v in fact.payload.items() if k not in _STANDARD},
         }
         if fact.subtype:
             sse_event["source"] = fact.subtype
