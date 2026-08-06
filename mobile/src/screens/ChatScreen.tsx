@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { UseChatResult } from '../hooks/useChat';
 import type { CurrentUser } from '../hooks/useAuth';
 import { useVoice } from '../hooks/useVoice';
+import { useNotifications } from '../hooks/useNotifications';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { resizeImageToBase64, type ResizedImage } from '../utils/imageResize';
 import { StatusBadge } from '../components/StatusBadge';
@@ -100,6 +101,9 @@ interface ChatScreenProps extends UseChatResult {
 export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout, currentUser }: ChatScreenProps) {
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
+
+  const isGuest = !currentUser || currentUser.role === 'guest';
+  const notifications = useNotifications(isGuest);
 
   const [inputText, setInputText] = useState(() => localStorage.getItem('sity_draft_message') ?? '');
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
@@ -376,6 +380,33 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setFontPickerOpen(true); }}>
                     Cambiar fuente
                   </button>
+                  {!isGuest && notifications.isSupported && (
+                    <button
+                      className={styles.menuItem}
+                      disabled={notifications.isLoading || notifications.permission === 'denied'}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (notifications.isSubscribed) {
+                          void notifications.unsubscribe();
+                        } else {
+                          void notifications.subscribe();
+                        }
+                      }}
+                    >
+                      {notifications.isLoading
+                        ? 'Procesando…'
+                        : notifications.permission === 'denied'
+                          ? 'Notificaciones bloqueadas'
+                          : notifications.isSubscribed
+                            ? 'Desactivar notificaciones push'
+                            : 'Activar notificaciones push'}
+                    </button>
+                  )}
+                  {!isGuest && notifications.error && (
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-error, #ff4d6d)', padding: '0.25rem 0.75rem', display: 'block' }}>
+                      {notifications.error}
+                    </span>
+                  )}
                   {onLogout && (
                     <>
                       <div className={styles.menuDivider} />
