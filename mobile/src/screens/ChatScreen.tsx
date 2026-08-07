@@ -394,8 +394,8 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                     <button
                       className={styles.menuItem}
                       disabled={notifications.isLoading || notifications.permission === 'denied'}
-                      onClick={() => {
-                        setMenuOpen(false);
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (notifications.isSubscribed) {
                           void notifications.unsubscribe();
                         } else {
