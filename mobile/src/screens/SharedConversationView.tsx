@@ -30,13 +30,17 @@ export function SharedConversationView({ shareId }: Props) {
   useEffect(() => {
     fetch(`/chat/shared/${shareId}`)
       .then(async (res) => {
-        if (!res.ok) {
-          setError('Este enlace ha caducado o no existe.');
-          return;
+        if (res.status === 410) {
+          setError('Este enlace ha caducado o ya no existe.');
+        } else if (res.status === 404) {
+          setError('No se pudo cargar la conversación (error de conexión). Inténtalo de nuevo más tarde.');
+        } else if (!res.ok) {
+          setError(`No se pudo cargar la conversación (error ${res.status}). Inténtalo de nuevo más tarde.`);
+        } else {
+          setData(await res.json() as SharedData);
         }
-        setData(await res.json() as SharedData);
       })
-      .catch(() => setError('No se pudo cargar la conversación.'));
+      .catch(() => setError('No se pudo cargar la conversación. Comprueba tu conexión e inténtalo de nuevo.'));
   }, [shareId]);
 
   return (
