@@ -357,13 +357,14 @@ def dispatch(fact: NotificationFact, db: Session) -> DispatchResult:
 
     # 4. Deliver + persist
     if channel in ("sse", "sse+push"):
-        # Standard keys are mapped to fixed SSE fields; extra keys (e.g. timer_id)
-        # are passed through so frontend consumers can use them without coupling
-        # the dispatcher to every possible producer's payload schema.
-        _STANDARD = frozenset({"title", "body", "url", "urgent"})
+        # Standard keys are mapped to fixed SSE fields; extra keys (e.g. timer_id,
+        # tool_name, job_id) are passed through so frontend consumers can use them.
+        # full_text: when present, used as SSE text so the chat bubble shows the
+        # complete AI response; push still gets the shorter body snippet.
+        _STANDARD = frozenset({"title", "body", "url", "urgent", "full_text"})
         sse_event: dict = {
             "type": "proactive_message",
-            "text": fact.payload.get("body", ""),
+            "text": fact.payload.get("full_text") or fact.payload.get("body", ""),
             "subtype": fact.notification_type,
             **{k: v for k, v in fact.payload.items() if k not in _STANDARD},
         }

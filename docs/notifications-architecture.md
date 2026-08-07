@@ -657,6 +657,14 @@ El dispatcher original usaba `has_active_subscriber(session_id)` — un bool —
 - `_choose_channel()` usa `get_subscriber_state()` y devuelve `"sse" | "sse+push" | "push" | "pending" | "guest_drop"`.
 - Canal `"sse+push"`: SSE como canal primario + Web Push best-effort. Push falla en WARN, no revierte la entrega SSE.
 
+**Paso 4 — background_result:**
+- `_dispatch_background_task_result()` en `ai_orchestrator.py` reemplaza el `publish_session_event_sync` directo en `_on_done`.
+- `notification_type="background_result"`, `subtype=tool_name` (e.g. "web_search").
+- `fact_id=f"background_result:{bg_trace_id}"` — determinístico por traza del job.
+- Payload: `body` = snippet ≤80 chars (para push); `full_text` = texto completo (para SSE). El dispatcher usa `full_text` como `text` del evento SSE para que el chat bubble muestre la respuesta completa sin truncar.
+- `tool_name` y `job_id` pasan como keys extra al evento SSE (el frontend ya los usa para gestión de estado de jobs).
+- ChatMessage ya persistido antes de la llamada — dispatcher solo entrega.
+
 **Paso C — chat_response:**
 - Al completar un turno de chat (en `_run_turn_in_background`), si el estado no es `"visible"`, se construye un `NotificationFact` de tipo `"chat_response"` con snippet de 80 caracteres (corta en último espacio antes del límite).
 - El dispatcher aplica dedup por `fact_id = f"chat_response:{trace_id}"` y elige canal según estado.
@@ -673,6 +681,7 @@ El dispatcher original usaba `has_active_subscriber(session_id)` — un bool —
 | **3** | Pilotar con timers: `timers/runner.py` → `dispatcher.dispatch` | ✅ Completado |
 | **4** | Pilotar con background tasks: `ai_orchestrator._on_done` → dispatcher | ✅ Completado |
 | **A/B/C** | Mecanismo 3 estados (visibilidad + dispatcher + chat_response) | ✅ Completado 2026-08-07 |
+| **4** | Background tasks: `ai_orchestrator._on_done` → dispatcher (`background_result`) | ✅ Completado 2026-08-07 |
 | ~~**5**~~ | ~~Gmail detector~~ | ⚠️ APARCADO — investigar FCM (ver §2.3) |
 | **6** | Extender `ScheduledTask` con recurrencia + `recurrent_task_runner.py` | ⬜ Pendiente |
 | **7** | `initiative_runner.py` | ⬜ Pendiente |

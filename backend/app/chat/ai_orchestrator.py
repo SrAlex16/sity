@@ -142,13 +142,24 @@ def _detach_tool(
                       payload={"job_id": job.job_id, "tool_name": tool_name,
                                "error": str(_db_exc), "error_type": type(_db_exc).__name__})
 
-        publish_session_event_sync(ctx.session_id, {
-            "type": "proactive_message",
-            "text": final_text,
-            "subtype": "job_done",
-            "tool_name": tool_name,
-            "job_id": job.job_id,
-        })
+        # Route through dispatcher: SSE for connected subscribers + push when in background.
+        # ChatMessage already committed above — dispatcher handles delivery only.
+        try:
+            from app.memory.db import engine as _engine
+            from sqlmodel import Session as _DBSession2
+            with _DBSession2(_engine) as _db:
+                _dispatch_background_task_result(
+                    session_id=ctx.session_id,
+                    final_text=final_text,
+                    bg_trace_id=bg_trace_id,
+                    tool_name=tool_name,
+                    job_id=job.job_id,
+                    db=_db,
+                )
+        except Exception as _exc:
+            write_log(level="WARN", module="chat", event="bg_dispatch_failed",
+                      payload={"job_id": job.job_id, "tool_name": tool_name,
+                               "error": str(_exc), "error_type": type(_exc).__name__})
 
     job_id = get_job_manager().submit(
         tool_name=tool_name,
@@ -189,6 +200,46 @@ def _detach_tool(
         updated_parameters=[],
         artifacts=[],
     )
+
+
+def _dispatch_background_task_result(
+    session_id: str,
+    final_text: str,
+    bg_trace_id: str,
+    tool_name: str,
+    job_id: str,
+    db: "Session",
+) -> None:
+    """Route a completed background-tool result through the notification dispatcher.
+
+    Publishes a proactive_message SSE event (with full AI response text) to any
+    connected subscriber, and sends Web Push when the tab is in background or absent.
+    The ChatMessage was already persisted by the caller — dispatcher handles delivery only.
+    """
+    from app.notifications.dispatcher import dispatch
+    from app.notifications.fact import NotificationFact
+
+    body = (
+        final_text if len(final_text) <= 80
+        else (final_text[:80].rsplit(" ", 1)[0] or final_text[:80])
+    )
+    fact = NotificationFact(
+        session_id=session_id,
+        notification_type="background_result",
+        fact_id=f"background_result:{bg_trace_id}",
+        payload={
+            "title": "Sity",
+            "body": body,
+            "url": "/",
+            "urgent": False,
+            "full_text": final_text,
+            "tool_name": tool_name,
+            "job_id": job_id,
+        },
+        urgency="medium",
+        subtype=tool_name,
+    )
+    dispatch(fact, db)
 
 
 def _tool_use_blocks(response: "Any") -> "list[dict[str, Any]]":
