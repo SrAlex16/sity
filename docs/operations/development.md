@@ -118,8 +118,9 @@ Prefixes actualmente declarados en el Caddyfile (actualizar esta lista con cada 
 | `/settings/*` | `routes_settings.py` | |
 | `/debug/*` | `routes_debug.py` | |
 | `/notifications/*` | `routes_notifications.py` | Web Push (VAPID, subscribe) |
-| `/shared/*` | `routes_share.py` | Conversaciones compartidas públicas |
 | `/health` | `main.py` | |
+
+> **Nota sobre `/shared/*`:** el path de página `/shared/{id}` cae intencionalmente en el `handle` genérico de la SPA (`try_files → index.html`). React detecta la URL y renderiza `SharedConversationView`, que llama a la API bajo `/chat/shared/{id}` (cubierto por `/chat/*`). NO añadir `/shared/*` al reverse_proxy.
 
 **El servicio `sity-frontend` no tiene relación con producción** — es un dev server
 de Vite en el puerto 5173. `sudo systemctl restart sity-frontend` no reconstruye ni

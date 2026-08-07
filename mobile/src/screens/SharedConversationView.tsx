@@ -28,7 +28,7 @@ export function SharedConversationView({ shareId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/shared/${shareId}`)
+    fetch(`/chat/shared/${shareId}`)
       .then(async (res) => {
         if (!res.ok) {
           setError('Este enlace ha caducado o no existe.');

@@ -139,11 +139,7 @@ def create_share(
     )
 
 
-@router.get("/shared/{share_id}", response_model=SharedConversationResponse)
-def get_shared(
-    share_id: str,
-    db: Session = Depends(get_session),
-) -> SharedConversationResponse:
+def _fetch_shared(share_id: str, db: Session) -> SharedConversationResponse:
     sc = db.get(SharedConversation, share_id)
     if sc is None or not _is_valid(sc):
         raise HTTPException(status_code=410, detail="Este enlace ha caducado o no existe.")
@@ -161,6 +157,25 @@ def get_shared(
         expires_at=_ensure_utc(sc.expires_at).isoformat(),
         view_count=sc.view_count,
     )
+
+
+@router.get("/shared/{share_id}", response_model=SharedConversationResponse)
+def get_shared(
+    share_id: str,
+    db: Session = Depends(get_session),
+) -> SharedConversationResponse:
+    return _fetch_shared(share_id, db)
+
+
+# Alias under /chat/* so Caddy can proxy it without intercepting SPA navigation.
+# The page URL /shared/{id} falls through to try_files → index.html → React.
+# React's SharedConversationView then fetches data from this /chat/shared/{id} path.
+@router.get("/chat/shared/{share_id}", response_model=SharedConversationResponse)
+def get_shared_via_chat(
+    share_id: str,
+    db: Session = Depends(get_session),
+) -> SharedConversationResponse:
+    return _fetch_shared(share_id, db)
 
 
 @router.delete("/chat/share/{share_id}")
