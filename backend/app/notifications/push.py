@@ -11,9 +11,29 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from app.memory.models import PushSubscription
+
+# Path to project .env (3 parents: push.py → notifications → app → backend → project root)
+_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+
+@lru_cache(maxsize=1)
+def _vapid_config() -> tuple[str, str]:
+    """Return (pem, contact) read directly from the .env file.
+
+    systemd EnvironmentFile mangles \\n sequences in unquoted values (strips
+    the backslash), so os.environ is unreliable for multi-line PEM keys.
+    dotenv_values() reads the file directly and handles double-quoted \\n → newline.
+    """
+    from dotenv import dotenv_values
+    raw = dotenv_values(_ENV_FILE)
+    pem = (raw.get("VAPID_PRIVATE_KEY") or "").strip().replace("\\n", "\n")
+    contact = (raw.get("VAPID_CONTACT") or os.environ.get("VAPID_CONTACT", "")).strip()
+    return pem, contact
 
 
 @dataclass
@@ -32,11 +52,7 @@ def send_push(sub: PushSubscription, payload: dict) -> PushResult:
     from py_vapid import Vapid
     from pywebpush import WebPushException, webpush
 
-    # python-dotenv stores literal \n (two chars) for unquoted .env values.
-    # Vapid.from_pem() needs real newlines; from_string() would try to base64-decode
-    # the full PEM string including headers and fail with a 237-char invalid base64 error.
-    pem = os.environ.get("VAPID_PRIVATE_KEY", "").strip().replace("\\n", "\n")
-    contact = os.environ.get("VAPID_CONTACT", "").strip()
+    pem, contact = _vapid_config()
     if not pem:
         return PushResult(success=False, error="VAPID_PRIVATE_KEY not configured")
 
