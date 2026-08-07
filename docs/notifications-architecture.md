@@ -643,6 +643,17 @@ Los pasos 1–4 son la base que da valor real sin complejidad nueva. Los pasos
 
 ---
 
+## Limitaciones conocidas por navegador
+
+| Navegador | Comportamiento | Notas |
+|---|---|---|
+| Chrome | ✅ Funciona correctamente | Push entregado, notificación visible |
+| Firefox | No probado | Usa Mozilla autopush |
+| Safari | No probado | Requiere iOS 16.4+ / macOS Ventura+ |
+| Opera GX | ⚠️ Incompatible | El Service Worker se desregistra automáticamente justo después del registro (confirmado en `chrome://serviceworker-internals` — Registration ID cambia y queda marcado "(unregistered)"). Probablemente causado por funciones de privacidad/bloqueo agresivas propias del navegador. No es un bug del código de Sity. No investigar más. |
+
+---
+
 ## Relación con las entradas de `docs/state.md`
 
 | Entrada en state.md | Cubre este documento |
