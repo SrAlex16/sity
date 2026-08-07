@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from app.trace.logger import purge_old_logs, write_log
@@ -23,6 +23,10 @@ class _SessionQueue:
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     last_active: float = field(default_factory=time.monotonic)
     subscriber_count: int = 0
+    # True = tab in foreground. Default True so the dispatcher doesn't fire push
+    # notifications spuriously right after the SSE connects (before the frontend
+    # has had a chance to POST /events/visibility with the real state).
+    is_visible: bool = True
 
 
 _session_queues: dict[str, _SessionQueue] = {}
@@ -123,6 +127,30 @@ def has_active_subscriber(session_id: str) -> bool:
     """Return True if at least one SSE client is connected for this session."""
     sq = _session_queues.get(session_id)
     return sq is not None and sq.subscriber_count > 0
+
+
+def set_session_visibility(session_id: str, is_visible: bool) -> None:
+    """Record whether the tab holding the SSE connection is in the foreground.
+
+    Called from POST /events/visibility. No-op if no session queue exists yet
+    (e.g. POST arrives before the SSE connection is established).
+    """
+    sq = _session_queues.get(session_id)
+    if sq is not None:
+        sq.is_visible = is_visible
+
+
+def get_subscriber_state(session_id: str) -> Literal["visible", "background", "none"]:
+    """Return the visibility state of the SSE subscriber for this session.
+
+    "visible"    — tab connected and in foreground (deliver via SSE only)
+    "background" — tab connected but not visible (deliver via SSE + push)
+    "none"       — no SSE connection (deliver via push or pending)
+    """
+    sq = _session_queues.get(session_id)
+    if sq is None or sq.subscriber_count == 0:
+        return "none"
+    return "visible" if sq.is_visible else "background"
 
 
 def gc_once() -> list[str]:

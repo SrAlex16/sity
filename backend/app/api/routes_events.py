@@ -1,10 +1,17 @@
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
+from app.auth.dependencies import CurrentUser, get_current_user
 from app.core.cancellation import cancel_operation
-from app.core.realtime_events import subscribe, subscribe_session, publish_event_sync
+from app.core.realtime_events import (
+    publish_event_sync,
+    set_session_visibility,
+    subscribe,
+    subscribe_session,
+)
 
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -44,6 +51,25 @@ async def session_events(session_id: str):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class _VisibilityIn(BaseModel):
+    is_visible: bool
+
+
+@router.post("/visibility", status_code=204)
+def report_visibility(
+    body: _VisibilityIn,
+    current: CurrentUser = Depends(get_current_user),
+) -> None:
+    """Frontend calls this on visibilitychange and on initial SSE connect.
+
+    Stores the tab's foreground/background state in memory so the dispatcher
+    can route notifications to SSE-only (visible) or SSE+push (background).
+    Guests are accepted silently — they have no push subscriptions so the state
+    is irrelevant, but rejecting them would require the frontend to gate the call.
+    """
+    set_session_visibility(current.session_id, body.is_visible)
 
 
 @router.get("/session/{session_id}/jobs")

@@ -120,6 +120,18 @@ export function useChat(userKey: string | null) {
     if (userKey === null) return;
     const es = new EventSource(`/events/session/${SESSION_ID}`);
 
+    // Report tab visibility so the dispatcher can choose SSE-only vs SSE+push.
+    const reportVisibility = () => {
+      fetch('/events/visibility', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_visible: document.visibilityState === 'visible' }),
+      }).catch(() => undefined);
+    };
+    reportVisibility();
+    document.addEventListener('visibilitychange', reportVisibility);
+
     es.onmessage = (e: MessageEvent) => {
       let ev: { type: string; job_id?: string; tool_name?: string; error?: string; text?: string };
       try { ev = JSON.parse(e.data as string); } catch { return; }
@@ -149,6 +161,7 @@ export function useChat(userKey: string | null) {
 
     return () => {
       es.close();
+      document.removeEventListener('visibilitychange', reportVisibility);
       if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
