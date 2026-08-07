@@ -139,6 +139,29 @@ class TestSubscribe:
         resp = client.post("/notifications/subscribe", json=_sub_body())
         assert resp.status_code == 401
 
+    def test_flat_keys_payload_rejected_422(self) -> None:
+        """Regression: frontend must send {keys:{p256dh,auth}} not flat {p256dh,auth}.
+
+        This test encodes the contract so a future refactor of useNotifications.ts
+        that reverts to the flat shape is caught immediately.
+        """
+        client = _client()
+        cookie, _ = _register_and_login(client)
+        flat_payload = {
+            "endpoint": f"https://fcm.googleapis.com/fcm/send/flat-{_uid()}",
+            "p256dh": "BNbdab_test_p256dh_key_base64url==",
+            "auth": "test_auth_secret==",
+        }
+        resp = client.post(
+            "/notifications/subscribe",
+            json=flat_payload,
+            cookies={"sity_session": cookie},
+        )
+        assert resp.status_code == 422, (
+            "Backend must reject flat {p256dh, auth} payload — "
+            "frontend must send nested keys: {p256dh, auth}"
+        )
+
     def test_reactivates_previously_inactive_subscription(self) -> None:
         client = _client()
         cookie, user_id = _register_and_login(client)

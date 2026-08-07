@@ -106,14 +106,22 @@ export function useNotifications(isGuest: boolean): UseNotificationsResult {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           endpoint: subJson.endpoint,
-          p256dh: subJson.keys?.p256dh ?? '',
-          auth: subJson.keys?.auth ?? '',
+          keys: {
+            p256dh: subJson.keys?.p256dh ?? '',
+            auth: subJson.keys?.auth ?? '',
+          },
         }),
       });
 
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(body.detail ?? `Error del servidor (${res.status})`);
+        const errBody = (await res.json().catch(() => ({}))) as { detail?: unknown };
+        const detail = errBody.detail;
+        const message = typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+            ? (detail as Array<{ msg?: string }>).map((e) => e.msg ?? JSON.stringify(e)).join(', ')
+            : `Error del servidor (${res.status})`;
+        throw new Error(message);
       }
 
       localStorage.setItem(LS_KEY, 'true');
@@ -131,18 +139,26 @@ export function useNotifications(isGuest: boolean): UseNotificationsResult {
     setIsLoading(true);
     setError(null);
     try {
-      // Unsubscribe at browser level
+      // Read endpoint BEFORE unsubscribing (the object is invalidated after unsubscribe())
       const reg = await navigator.serviceWorker.getRegistration('/');
+      let endpoint: string | null = null;
       if (reg) {
         const sub = await reg.pushManager.getSubscription();
-        if (sub) await sub.unsubscribe();
+        if (sub) {
+          endpoint = sub.endpoint;
+          await sub.unsubscribe();
+        }
       }
 
-      // Inform backend (best-effort; ignore server errors)
-      await fetch('/notifications/subscribe', {
-        method: 'DELETE',
-        credentials: 'include',
-      }).catch(() => undefined);
+      // Inform backend — send endpoint so it can mark the right row inactive
+      if (endpoint) {
+        await fetch('/notifications/subscribe', {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint }),
+        }).catch(() => undefined);
+      }
 
       localStorage.removeItem(LS_KEY);
       setIsSubscribed(false);
