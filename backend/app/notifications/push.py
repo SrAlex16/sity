@@ -31,7 +31,9 @@ def send_push(sub: PushSubscription, payload: dict) -> PushResult:
     """
     from pywebpush import WebPushException, webpush
 
-    private_key = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+    # python-dotenv reads literal \n in unquoted .env values as two chars, not a newline.
+    # pywebpush/py_vapid needs real newlines to parse the PEM header correctly.
+    private_key = os.environ.get("VAPID_PRIVATE_KEY", "").strip().replace("\\n", "\n")
     contact = os.environ.get("VAPID_CONTACT", "").strip()
     if not private_key:
         return PushResult(success=False, error="VAPID_PRIVATE_KEY not configured")
