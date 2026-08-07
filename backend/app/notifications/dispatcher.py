@@ -135,7 +135,7 @@ def _rate_limit_reason(fact: NotificationFact, db: Session, cfg: dict) -> Option
         if last:
             return "recurrent_task_cooldown_active"
 
-    # timer_fired and background_result: no rate limit (user-requested)
+    # timer_fired, background_result, chat_response: no rate limit (user-triggered)
     return None
 
 

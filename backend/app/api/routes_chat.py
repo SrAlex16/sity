@@ -32,6 +32,7 @@ from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
 from app.core.realtime_events import (
     ensure_queue,
+    get_subscriber_state,
     new_client_turn_id,
     publish_event_sync,
     subscribe,
@@ -162,6 +163,57 @@ def cancel_stream(turn_id: str):
     return {"ok": ok}
 
 
+def _snippet(text: str, max_chars: int) -> str:
+    """Truncate text to max_chars, cutting at the last word boundary."""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars].rfind(" ")
+    return text[:cut] if cut > 0 else text[:max_chars]
+
+
+def _maybe_dispatch_chat_response(
+    result: "ChatMessageResponse",
+    session_id: str,
+    db: "Session",
+) -> None:
+    """Dispatch a chat_response notification when the tab is not in the foreground.
+
+    The ChatMessage was already persisted by build_final_ai_response — this only
+    handles delivery (session SSE queue + optional Web Push). Skipped when visible
+    because the user already sees the response live through the per-turn SSE stream.
+    chat_response has no dispatcher rate limit (user-triggered, same as timer_fired).
+    """
+    from app.notifications.dispatcher import dispatch
+    from app.notifications.fact import NotificationFact
+
+    state = get_subscriber_state(session_id)
+    if state == "visible":
+        return
+
+    text = result.text or ""
+    snippet = _snippet(text, 80)
+    trace_id = result.trace_id or ""
+
+    fact = NotificationFact(
+        session_id=session_id,
+        notification_type="chat_response",
+        fact_id=f"chat_response:{trace_id}",
+        payload={"title": "Sity", "body": snippet, "url": "/", "urgent": False},
+        urgency="medium",
+        subtype="chat_response",
+    )
+    try:
+        dispatch(fact, db)
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="chat",
+            event="chat_response_dispatch_failed",
+            trace_id=trace_id,
+            payload={"error": str(exc), "session_id": session_id},
+        )
+
+
 def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID, is_admin: bool = False) -> None:
     """Worker that runs the full chat turn in a thread pool and publishes
     the result (or error) as SSE events before closing with 'done'."""
@@ -214,6 +266,11 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     "type": "response",
                     "data": result.model_dump(mode="json"),
                 })
+                # Paso C: notify when tab is in background or absent.
+                # The ChatMessage is already in DB at this point (persisted by
+                # build_final_ai_response). Dispatcher handles channel selection.
+                if not getattr(result, "error_type", None) and getattr(result, "text", ""):
+                    _maybe_dispatch_chat_response(result, session_id, session)
         except Exception:
             publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
         finally:

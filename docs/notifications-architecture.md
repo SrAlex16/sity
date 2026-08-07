@@ -1,7 +1,8 @@
 # Arquitectura del sistema de notificaciones
 
-Última actualización: 2026-08-06.
-Estado: **documento de diseño — cero código implementado**.
+Última actualización: 2026-08-07.
+Estado: **sistema implementado**. Pasos 1–4 + mecanismo de visibilidad de 3 estados completados.
+Ver §8 para el estado detallado de cada paso.
 
 Este documento unifica tres ideas anotadas en `docs/state.md` que comparten
 la misma infraestructura de entrega: Web Push API (prerequisito de alarmas
@@ -154,11 +155,15 @@ Responsabilidades concretas:
    sesión en las últimas 24h. Si supera el límite configurable
    (`notifications.max_per_day_user` / `max_per_day_guest` en
    `default_config.yaml`), descarta o encola para el siguiente día.
-3. **Enrutamiento por canal**: consulta si la sesión tiene un suscriptor SSE
-   activo (`_session_queues[session_id].subscriber_count > 0`). Si sí → SSE.
-   Si no → Web Push (si tiene `PushSubscription` registrada). Si ninguno →
-   persiste en `NotificationLog` con `delivery_status="pending"` para
-   entregarlo por SSE cuando el usuario abra la app.
+3. **Enrutamiento por canal (3 estados)**: consulta `get_subscriber_state(session_id)`:
+   - `"visible"` — pestaña conectada y en primer plano → **solo SSE** (el usuario
+     ya ve la respuesta en tiempo real; no molestar con push).
+   - `"background"` — pestaña conectada pero no visible → **SSE + Web Push**
+     (best-effort: el push falla en silencio, la entrega SSE ya está garantizada).
+   - `"none"` — sin suscriptor SSE activo → **Web Push** si hay `PushSubscription`
+     registrada, si no → `delivery_status="pending"` para entrega en el próximo SSE.
+   Guests: en estado `"visible"` o `"background"` → solo SSE; en estado `"none"` →
+   `guest_drop` (no push, no pending).
 4. **Escribe en `NotificationLog`** tras cada intento de entrega.
 
 ### 1.3 Capa de Entrega
@@ -355,6 +360,7 @@ Campo `notification_type` en `NotificationLog` y en el payload SSE/Push:
 |---|---|---|---|
 | `timer_fired` | — | Alta | Alarma/timer del usuario ha vencido |
 | `background_result` | `web_search`, `read_webpage`, etc. | Media | Tarea detachable completada |
+| `chat_response` | `chat_response` | Media | Respuesta de chat completada con pestaña en background/cerrada |
 | `external_event` | `gmail_new_message`, `spotify_*` | Media-Alta | Vigía externo detectó condición |
 | `recurrent_task` | — | Baja-Media | Tarea periódica recurrente completada |
 | `proactive_initiative` | — | Baja | Sity inicia conversación por su cuenta |
@@ -365,8 +371,10 @@ Campo `notification_type` en `NotificationLog` y en el payload SSE/Push:
   suscriptor SSE activo. El payload incluye `vibrate: [200, 100, 200]` en
   la opción de la Notification Web API. No se aplica rate limiting entre
   notificaciones de tipo timer (el usuario las pidió explícitamente).
-- **Media** (`background_result`, `external_event`): Web Push si no hay SSE.
-  Sin vibración especial.
+- **Media** (`background_result`, `external_event`, `chat_response`): SSE + push
+  en background; solo push si no hay SSE; pending si no hay subscription.
+  Sin vibración especial. Sin rate limit para `chat_response` (acción directamente
+  causada por el usuario, igual que `timer_fired`).
 - **Baja** (`proactive_initiative`, `recurrent_task`): NO enviar Web Push
   si la app está cerrada — en cambio, marcar como `delivery_status="pending"`
   y entregar en el próximo SSE. La lógica es que Sity no debe despertar al
@@ -624,22 +632,50 @@ son la lista de contratos que los tests deberán verificar.
 
 ---
 
-## 8. Orden de implementación recomendado
+## 8. Mecanismo de visibilidad de 3 estados
 
-Ordenado de menor a mayor complejidad y con cada paso autónomamente útil:
+Implementado en **2026-08-07** como ajuste al dispatcher original (2 estados binarios SSE/no-SSE).
 
-| Paso | Qué implementar | Valor inmediato |
+### Problema que resolvía
+
+El dispatcher original usaba `has_active_subscriber(session_id)` — un bool — para decidir entre SSE y push. Esto tenía dos defectos:
+
+1. **Mismatch de clave de cola (bug crítico):** el frontend conectaba SSE a `/events/session/default`, creando la cola con clave `"default"`. El dispatcher buscaba `has_active_subscriber("user:1")` — siempre False. El canal SSE del dispatcher era código muerto en producción para usuarios autenticados.
+
+2. **Sin distinción foreground/background:** si la pestaña estaba abierta pero en background, el dispatcher elegía SSE (correcto para entrega) pero el usuario no veía el mensaje hasta volver a la pestaña — sin notificación visual.
+
+### Solución: 3 estados + fix de sesión
+
+**Paso A — mecanismo de visibilidad:**
+- `_SessionQueue.is_visible: bool = True` (campo en el dataclass).
+- `set_session_visibility(session_id, is_visible)` — llamado desde `POST /events/visibility`.
+- `get_subscriber_state(session_id) → "visible" | "background" | "none"`.
+- Frontend: reporta `document.visibilityState` al conectar SSE y en cada `visibilitychange`.
+
+**Paso B — fix de clave + dispatcher 3 estados:**
+- `session_events()` en `routes_events.py` autentica con `get_current_user` y usa `current.session_id` como clave de cola (ignorando el parámetro URL). Corrige el mismatch.
+- `_choose_channel()` usa `get_subscriber_state()` y devuelve `"sse" | "sse+push" | "push" | "pending" | "guest_drop"`.
+- Canal `"sse+push"`: SSE como canal primario + Web Push best-effort. Push falla en WARN, no revierte la entrega SSE.
+
+**Paso C — chat_response:**
+- Al completar un turno de chat (en `_run_turn_in_background`), si el estado no es `"visible"`, se construye un `NotificationFact` de tipo `"chat_response"` con snippet de 80 caracteres (corta en último espacio antes del límite).
+- El dispatcher aplica dedup por `fact_id = f"chat_response:{trace_id}"` y elige canal según estado.
+- Sin rate limit (usuario-causado, igual que `timer_fired`).
+
+---
+
+## 9. Orden de implementación — estado actual
+
+| Paso | Qué implementar | Estado |
 |---|---|---|
-| **1** | Claves VAPID + tabla `PushSubscription` + endpoint subscribe + listener `push` en SW | Infraestructura base de Web Push sin ningún disparador |
-| **2** | Tabla `NotificationLog` + `notifications/dispatcher.py` (routing SSE/Push/pending) | Unifica todos los emisores existentes |
-| **3** | Pilotar con timers: `timers/runner.py` llama a `dispatcher.dispatch` en lugar de `publish_session_event_sync` directamente | Timer/alarma funciona aunque la PWA esté cerrada — el caso de uso más pedido |
-| **4** | Pilotar con background tasks: `job_manager.py` y `ai_orchestrator._on_done` pasan por dispatcher | Background tasks también funcionan con app cerrada |
-| ~~**5**~~ | ~~`notifications/detectors/gmail_detector.py` + modelo `NotificationRule`~~ | ⚠️ **APARCADO** — investigar FCM vs. polling antes de implementar (ver §2.3) |
-| **6** | Extender `ScheduledTask` con recurrencia + `recurrent_task_runner.py` | Tareas periódicas |
-| **7** | `notifications/detectors/initiative_runner.py` | Iniciativa propia — el más delicado, último |
-
-Los pasos 1–4 son la base que da valor real sin complejidad nueva. Los pasos
-5–7 son los disparadores nuevos que dependen de esa base.
+| **1** | Claves VAPID + tabla `PushSubscription` + endpoint subscribe + listener `push` en SW | ✅ Completado (Paso 3 en commits) |
+| **2** | Tabla `NotificationLog` + `notifications/dispatcher.py` (routing SSE/Push/pending) | ✅ Completado |
+| **3** | Pilotar con timers: `timers/runner.py` → `dispatcher.dispatch` | ✅ Completado |
+| **4** | Pilotar con background tasks: `ai_orchestrator._on_done` → dispatcher | ✅ Completado |
+| **A/B/C** | Mecanismo 3 estados (visibilidad + dispatcher + chat_response) | ✅ Completado 2026-08-07 |
+| ~~**5**~~ | ~~Gmail detector~~ | ⚠️ APARCADO — investigar FCM (ver §2.3) |
+| **6** | Extender `ScheduledTask` con recurrencia + `recurrent_task_runner.py` | ⬜ Pendiente |
+| **7** | `initiative_runner.py` | ⬜ Pendiente |
 
 ---
 

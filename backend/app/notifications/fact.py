@@ -19,7 +19,7 @@ class NotificationFact:
     payload is what the user sees: {"title": ..., "body": ..., "url": ..., "urgent": bool}.
     """
     session_id: str
-    notification_type: str  # timer_fired | background_result | external_event | recurrent_task | proactive_initiative
+    notification_type: str  # timer_fired | background_result | external_event | recurrent_task | proactive_initiative | chat_response
     fact_id: str
     payload: dict = field(default_factory=dict)
     urgency: str = "medium"  # high | medium | low

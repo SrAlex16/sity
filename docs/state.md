@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-06 (6 ideas nuevas documentadas).
+Última actualización: 2026-08-07.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- ~1617 tests en verde (pytest)
+- 1653 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -194,19 +194,20 @@ Ver .env.example para la lista completa.
   la navegación con interacción real (clics, formularios): requiere sandboxing
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
-- **Web Push API — Pasos 1, 2 y 3 completados** — infraestructura
-  completa: `sw.js` con listener `push`+`notificationclick`, tabla
-  `PushSubscription`, claves VAPID, endpoints subscribe/unsubscribe,
-  tabla `NotificationLog`, `notifications/dispatcher.py` (4
-  responsabilidades: dedup · rate limiting · routing SSE→Push→pending ·
-  persistencia), `notifications/push.py` (pywebpush wrapper), GC
-  propio, `timers/runner.py` conectado al dispatcher (timer fired →
-  `NotificationFact` → SSE o Web Push o pending). Primera vez que el
-  proyecto entrega una notificación con la app cerrada. 51 tests
-  (10+23+18). mypy limpio. **Pendiente:** Paso 4 — conectar
-  `job_manager.py` + `ai_orchestrator._on_done` al dispatcher
-  (background tasks también sin app abierta). Ver
-  `docs/notifications-architecture.md` §8.
+- **Web Push API + mecanismo de 3 estados — COMPLETO (Pasos A/B/C incluidos)** —
+  infraestructura completa: `sw.js` con `push`+`notificationclick`, tabla
+  `PushSubscription`, claves VAPID, endpoints subscribe/unsubscribe, tabla
+  `NotificationLog`, `notifications/dispatcher.py` (dedup · rate limiting ·
+  routing 3 estados · persistencia), `notifications/push.py` (pywebpush),
+  `timers/runner.py` + `ai_orchestrator._on_done` conectados al dispatcher.
+  **Mecanismo de visibilidad de 3 estados** (2026-08-07): `_SessionQueue.is_visible`,
+  `get_subscriber_state() → "visible"|"background"|"none"`, `POST /events/visibility`,
+  `_choose_channel` devuelve `"sse"|"sse+push"|"push"|"pending"|"guest_drop"`.
+  **Fix crítico:** `session_events()` usa `current.session_id` (no el param URL),
+  eliminando el mismatch entre la clave SSE (`"default"`) y la del dispatcher (`"user:1"`).
+  **Paso C:** respuestas de chat normales notifican cuando la pestaña está en
+  background/cerrada — snippet de 80 chars en el payload. Sin rate limit (usuario-causado).
+  1653 tests en verde. Ver `docs/notifications-architecture.md` §8.
 
 ## Bugs conocidos activos
 
