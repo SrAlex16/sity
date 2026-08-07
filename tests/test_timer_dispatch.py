@@ -67,7 +67,7 @@ def _notification_logs(session_id: str) -> list[NotificationLog]:
         ).all())
 
 
-_PATCH_SSE = "app.notifications.dispatcher.has_active_subscriber"
+_PATCH_SSE = "app.notifications.dispatcher.get_subscriber_state"
 _PATCH_PUSH = "app.notifications.dispatcher.send_push"
 
 
@@ -140,7 +140,7 @@ class TestTimerSSEPath:
             task = _due_task(db, session_id=sid)
             timer_id = task.id
 
-        with patch(_PATCH_SSE, return_value=True):
+        with patch(_PATCH_SSE, return_value="visible"):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
@@ -163,7 +163,7 @@ class TestTimerSSEPath:
         def _capture_sse(session_id, event):
             sse_events.append((session_id, event))
 
-        with patch(_PATCH_SSE, return_value=True), \
+        with patch(_PATCH_SSE, return_value="visible"), \
              patch("app.notifications.dispatcher.publish_session_event_sync", side_effect=_capture_sse):
             with Session(engine) as db:
                 fire_pending_once(db)
@@ -189,7 +189,7 @@ class TestTimerWebPushPath:
             timer_id = task.id
             _add_push_sub(sid, db)
 
-        with patch(_PATCH_SSE, return_value=False), \
+        with patch(_PATCH_SSE, return_value="none"), \
              patch(_PATCH_PUSH, return_value=PushResult(success=True)):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
@@ -214,7 +214,7 @@ class TestTimerWebPushPath:
             push_calls.append(payload)
             return PushResult(success=True)
 
-        with patch(_PATCH_SSE, return_value=False), \
+        with patch(_PATCH_SSE, return_value="none"), \
              patch(_PATCH_PUSH, side_effect=_capture_push):
             with Session(engine) as db:
                 fire_pending_once(db)
@@ -232,7 +232,7 @@ class TestTimerWebPushPath:
             sub = _add_push_sub(sid, db)
 
         gone = PushResult(success=False, error="410 Gone", subscription_expired=True)
-        with patch(_PATCH_SSE, return_value=False), \
+        with patch(_PATCH_SSE, return_value="none"), \
              patch(_PATCH_PUSH, return_value=gone):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
@@ -262,7 +262,7 @@ class TestTimerPendingFallback:
             task = _due_task(db, session_id=sid)
             timer_id = task.id
 
-        with patch(_PATCH_SSE, return_value=False):
+        with patch(_PATCH_SSE, return_value="none"):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 
@@ -301,7 +301,7 @@ class TestTimerFactIdDedup:
             urgency="high",
         )
 
-        with patch(_PATCH_SSE, return_value=True):
+        with patch(_PATCH_SSE, return_value="visible"):
             with Session(engine) as db:
                 r1 = dispatch(fact, db)
                 r2 = dispatch(fact, db)
@@ -323,7 +323,7 @@ class TestTimerFactIdDedup:
             tasks = [_due_task(db, session_id=sid) for _ in range(5)]
             timer_ids = [t.id for t in tasks]
 
-        with patch(_PATCH_SSE, return_value=True):
+        with patch(_PATCH_SSE, return_value="visible"):
             with Session(engine) as db:
                 fired = fire_pending_once(db)
 

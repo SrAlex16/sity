@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 
 from sqlmodel import Session, col, select
 
-from app.core.realtime_events import has_active_subscriber, publish_session_event_sync
+from app.core.realtime_events import get_subscriber_state, publish_session_event_sync
 from app.memory.db import engine
 from app.memory.models import NotificationLog, PushSubscription, utc_now
 from app.notifications.fact import DispatchResult, NotificationFact
@@ -144,15 +144,19 @@ def _rate_limit_reason(fact: NotificationFact, db: Session, cfg: dict) -> Option
 # ---------------------------------------------------------------------------
 
 def _choose_channel(fact: NotificationFact, db: Session) -> str:
-    """Returns "sse" | "push" | "pending" | "guest_drop"."""
+    """Returns "sse" | "sse+push" | "push" | "pending" | "guest_drop"."""
+    state = get_subscriber_state(fact.session_id)
     is_guest = fact.session_id.startswith("guest:")
 
-    if has_active_subscriber(fact.session_id):
+    if state == "visible":
         return "sse"
 
+    if state == "background":
+        # Guests have no push subscriptions — SSE-only regardless of visibility.
+        return "sse" if is_guest else "sse+push"
+
+    # state == "none"
     if is_guest:
-        # Guests never get Web Push or stored-pending notifications.
-        # If no SSE subscriber is connected, the notification is dropped.
         return "guest_drop"
 
     sub = db.exec(
@@ -165,8 +169,59 @@ def _choose_channel(fact: NotificationFact, db: Session) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Push delivery with 410 handling
+# Push delivery helpers
 # ---------------------------------------------------------------------------
+
+def _deliver_push_best_effort(fact: NotificationFact, db: Session) -> None:
+    """Send push alongside SSE (background-tab mode). Failures are WARN-only."""
+    subs = list(db.exec(
+        select(PushSubscription).where(
+            PushSubscription.session_id == fact.session_id,
+            col(PushSubscription.is_active) == True,  # noqa: E712
+        )
+    ).all())
+
+    for sub in subs:
+        result = send_push(sub, fact.payload)
+        if result.success:
+            sub.last_used_at = utc_now()
+            db.add(sub)
+            write_log(
+                level="INFO",
+                module="notifications",
+                event="delivery_push_ok",
+                session_id=fact.session_id,
+                payload={
+                    "notification_type": fact.notification_type,
+                    "endpoint_domain": urlparse(sub.endpoint).netloc,
+                    "mode": "sse+push",
+                },
+            )
+        else:
+            if result.subscription_expired:
+                sub.is_active = False
+                db.add(sub)
+                write_log(
+                    level="WARN",
+                    module="notifications",
+                    event="push_subscription_expired",
+                    session_id=fact.session_id,
+                    payload={"endpoint_domain": urlparse(sub.endpoint).netloc},
+                )
+            write_log(
+                level="WARN",
+                module="notifications",
+                event="delivery_push_failed_best_effort",
+                session_id=fact.session_id,
+                payload={
+                    "notification_type": fact.notification_type,
+                    "error": result.error,
+                    "subscription_expired": result.subscription_expired,
+                },
+            )
+    if subs:
+        db.commit()
+
 
 def _deliver_push(fact: NotificationFact, db: Session) -> DispatchResult:
     subs = list(db.exec(
@@ -301,7 +356,7 @@ def dispatch(fact: NotificationFact, db: Session) -> DispatchResult:
     )
 
     # 4. Deliver + persist
-    if channel == "sse":
+    if channel in ("sse", "sse+push"):
         # Standard keys are mapped to fixed SSE fields; extra keys (e.g. timer_id)
         # are passed through so frontend consumers can use them without coupling
         # the dispatcher to every possible producer's payload schema.
@@ -315,15 +370,17 @@ def dispatch(fact: NotificationFact, db: Session) -> DispatchResult:
         if fact.subtype:
             sse_event["source"] = fact.subtype
         publish_session_event_sync(fact.session_id, sse_event)
-        entry = _persist(fact, "sse", "delivered", db, delivered_at=utc_now())
+        entry = _persist(fact, channel, "delivered", db, delivered_at=utc_now())
         write_log(
             level="INFO",
             module="notifications",
             event="delivery_sse_ok",
             session_id=fact.session_id,
-            payload={"notification_id": entry.id, "type": fact.notification_type},
+            payload={"notification_id": entry.id, "type": fact.notification_type, "channel": channel},
         )
-        return DispatchResult(channel="sse", notification_id=entry.id)
+        if channel == "sse+push":
+            _deliver_push_best_effort(fact, db)
+        return DispatchResult(channel=channel, notification_id=entry.id)
 
     if channel == "push":
         return _deliver_push(fact, db)

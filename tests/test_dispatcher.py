@@ -76,8 +76,8 @@ def _notification_logs(session_id: str) -> list[NotificationLog]:
         ).all())
 
 
-# Patch target for SSE subscriber check
-_PATCH_SSE = "app.notifications.dispatcher.has_active_subscriber"
+# Patch target for SSE subscriber state (returns "visible" | "background" | "none")
+_PATCH_SSE = "app.notifications.dispatcher.get_subscriber_state"
 # Patch at the dispatcher's local binding (from app.notifications.push import send_push)
 _PATCH_PUSH = "app.notifications.dispatcher.send_push"
 
@@ -93,7 +93,7 @@ class TestDeduplication:
         fact = _fact(sid, notification_type="timer_fired", fact_id=shared_fact_id)
 
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             r1 = dispatch(fact, db)
             r2 = dispatch(_fact(sid, notification_type="timer_fired", fact_id=shared_fact_id), db)
 
@@ -108,7 +108,7 @@ class TestDeduplication:
         f2 = _fact(sid, notification_type="background_result")
 
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             r1 = dispatch(f1, db)
             r2 = dispatch(f2, db)
 
@@ -122,7 +122,7 @@ class TestDeduplication:
         shared_fid = f"ext:{_uid()}"
 
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             ra = dispatch(_fact(sid_a, fact_id=shared_fid), db)
             rb = dispatch(_fact(sid_b, fact_id=shared_fid), db)
 
@@ -140,7 +140,7 @@ class TestRateLimiting:
         sid = _session_id()
 
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             r1 = dispatch(_fact(sid, notification_type="proactive_initiative"), db)
             r2 = dispatch(_fact(sid, notification_type="proactive_initiative"), db)
 
@@ -153,7 +153,7 @@ class TestRateLimiting:
         """timer_fired has no rate limit — multiple can be dispatched."""
         sid = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             results = [
                 dispatch(_fact(sid, notification_type="timer_fired"), db)
                 for _ in range(5)
@@ -164,7 +164,7 @@ class TestRateLimiting:
         """max_external_events_per_day_user=20 → 21st discarded."""
         sid = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             results = [
                 dispatch(_fact(sid, notification_type="external_event"), db)
                 for _ in range(21)
@@ -180,7 +180,7 @@ class TestRateLimiting:
         """Second recurrent_task within cooldown window is discarded."""
         sid = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             r1 = dispatch(_fact(sid, notification_type="recurrent_task"), db)
             r2 = dispatch(_fact(sid, notification_type="recurrent_task"), db)
 
@@ -194,7 +194,7 @@ class TestRateLimiting:
         sid_a = _session_id()
         sid_b = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             # Exhaust user:A's limit
             dispatch(_fact(sid_a, notification_type="proactive_initiative"), db)
             # user:B should still pass
@@ -211,7 +211,7 @@ class TestChannelFallback:
     def test_sse_when_subscriber_active(self) -> None:
         sid = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             result = dispatch(_fact(sid), db)
 
         assert result.channel == "sse"
@@ -224,7 +224,7 @@ class TestChannelFallback:
         sid = _session_id()
         with Session(engine) as db:
             _add_push_sub(sid, db)
-            with patch(_PATCH_SSE, return_value=False), \
+            with patch(_PATCH_SSE, return_value="none"), \
                  patch(_PATCH_PUSH, return_value=PushResult(success=True)):
                 result = dispatch(_fact(sid), db)
 
@@ -235,7 +235,7 @@ class TestChannelFallback:
     def test_pending_when_no_sse_no_subscription(self) -> None:
         sid = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=False):
+             patch(_PATCH_SSE, return_value="none"):
             result = dispatch(_fact(sid), db)
 
         assert result.channel == "pending"
@@ -249,7 +249,7 @@ class TestChannelFallback:
         sid = _session_id()
         with Session(engine) as db:
             _add_push_sub(sid, db)
-            with patch(_PATCH_SSE, return_value=True):
+            with patch(_PATCH_SSE, return_value="visible"):
                 result = dispatch(_fact(sid), db)
 
         assert result.channel == "sse"
@@ -267,7 +267,7 @@ class TestPush410Gone:
             sub_id = sub.id
 
             gone_result = PushResult(success=False, error="410 Gone", subscription_expired=True)
-            with patch(_PATCH_SSE, return_value=False), \
+            with patch(_PATCH_SSE, return_value="none"), \
                  patch(_PATCH_PUSH, return_value=gone_result):
                 result = dispatch(_fact(sid), db)
 
@@ -286,7 +286,7 @@ class TestPush410Gone:
             _add_push_sub(sid, db)
 
             gone_result = PushResult(success=False, error="410 Gone", subscription_expired=True)
-            with patch(_PATCH_SSE, return_value=False), \
+            with patch(_PATCH_SSE, return_value="none"), \
                  patch(_PATCH_PUSH, return_value=gone_result) as mock_send:
                 dispatch(_fact(sid), db)  # triggers 410
                 mock_send.reset_mock()
@@ -303,7 +303,7 @@ class TestPush410Gone:
             sub = _add_push_sub(sid, db)
 
             fail_result = PushResult(success=False, error="503 Service Unavailable", subscription_expired=False)
-            with patch(_PATCH_SSE, return_value=False), \
+            with patch(_PATCH_SSE, return_value="none"), \
                  patch(_PATCH_PUSH, return_value=fail_result):
                 result = dispatch(_fact(sid), db)
 
@@ -323,7 +323,7 @@ class TestIsolation:
         sid_a = _session_id()
         sid_b = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             dispatch(_fact(sid_a), db)
 
         logs_b = _notification_logs(sid_b)
@@ -332,7 +332,7 @@ class TestIsolation:
     def test_notification_for_user1_in_user1_log(self) -> None:
         sid_a = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             result = dispatch(_fact(sid_a), db)
 
         logs_a = _notification_logs(sid_a)
@@ -351,7 +351,7 @@ class TestIsolation:
             sub_b = _add_push_sub(sid_b, db, endpoint=endpoint + "_b")
 
             gone = PushResult(success=False, error="410", subscription_expired=True)
-            with patch(_PATCH_SSE, return_value=False), \
+            with patch(_PATCH_SSE, return_value="none"), \
                  patch(_PATCH_PUSH, return_value=gone):
                 dispatch(_fact(sid_a), db)
 
@@ -369,7 +369,7 @@ class TestGuestIsolation:
     def test_guest_with_sse_subscriber_gets_sse(self) -> None:
         sid = f"guest:{_uid()}"
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             result = dispatch(_fact(sid), db)
         assert result.channel == "sse"
         assert not result.discarded
@@ -377,7 +377,7 @@ class TestGuestIsolation:
     def test_guest_without_sse_is_dropped(self) -> None:
         sid = f"guest:{_uid()}"
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=False):
+             patch(_PATCH_SSE, return_value="none"):
             result = dispatch(_fact(sid), db)
         assert result.discarded
         assert result.reason == "guest_no_sse"
@@ -391,12 +391,76 @@ class TestGuestIsolation:
         with Session(engine) as db:
             # Manually insert a PushSubscription for a guest (shouldn't happen via API)
             _add_push_sub(sid, db)
-            with patch(_PATCH_SSE, return_value=False), \
+            with patch(_PATCH_SSE, return_value="none"), \
                  patch(_PATCH_PUSH) as mock_send:
                 result = dispatch(_fact(sid), db)
                 assert mock_send.call_count == 0
         assert result.discarded
         assert result.reason == "guest_no_sse"
+
+
+# ---------------------------------------------------------------------------
+# Background channel (sse+push)
+# ---------------------------------------------------------------------------
+
+class TestBackgroundChannel:
+    def test_sse_plus_push_when_background(self) -> None:
+        """Tab in background: deliver via SSE + best-effort push."""
+        sid = _session_id()
+        with Session(engine) as db:
+            _add_push_sub(sid, db)
+            with patch(_PATCH_SSE, return_value="background"), \
+                 patch(_PATCH_PUSH, return_value=PushResult(success=True)):
+                result = dispatch(_fact(sid), db)
+        assert result.channel == "sse+push"
+        assert not result.discarded
+        logs = _notification_logs(sid)
+        assert any(log.delivery_channel == "sse+push" and log.delivery_status == "delivered" for log in logs)
+
+    def test_background_push_failure_does_not_break_sse_delivery(self) -> None:
+        """Push failure in sse+push mode is best-effort — SSE still marked delivered."""
+        sid = _session_id()
+        with Session(engine) as db:
+            _add_push_sub(sid, db)
+            fail = PushResult(success=False, error="503", subscription_expired=False)
+            with patch(_PATCH_SSE, return_value="background"), \
+                 patch(_PATCH_PUSH, return_value=fail):
+                result = dispatch(_fact(sid), db)
+        assert result.channel == "sse+push"
+        assert not result.discarded
+        logs = _notification_logs(sid)
+        assert any(log.delivery_status == "delivered" for log in logs)
+
+    def test_background_no_push_sub_still_delivers_sse(self) -> None:
+        """Background state without a push subscription: SSE still delivered."""
+        sid = _session_id()
+        with Session(engine) as db, \
+             patch(_PATCH_SSE, return_value="background"):
+            result = dispatch(_fact(sid), db)
+        assert result.channel == "sse+push"
+        assert not result.discarded
+
+    def test_guest_background_gets_sse_only(self) -> None:
+        """Guests in background state get SSE-only — no push is attempted."""
+        sid = f"guest:{_uid()}"
+        with Session(engine) as db, \
+             patch(_PATCH_SSE, return_value="background"), \
+             patch(_PATCH_PUSH) as mock_send:
+            result = dispatch(_fact(sid), db)
+            assert mock_send.call_count == 0
+        assert result.channel == "sse"
+        assert not result.discarded
+
+    def test_visible_takes_sse_only_no_push(self) -> None:
+        """Tab visible: only SSE, push is never called even with an active subscription."""
+        sid = _session_id()
+        with Session(engine) as db:
+            _add_push_sub(sid, db)
+            with patch(_PATCH_SSE, return_value="visible"), \
+                 patch(_PATCH_PUSH) as mock_send:
+                result = dispatch(_fact(sid), db)
+                assert mock_send.call_count == 0
+        assert result.channel == "sse"
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +471,7 @@ class TestDispatchResult:
     def test_result_contains_notification_id_on_delivery(self) -> None:
         sid = _session_id()
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             result = dispatch(_fact(sid), db)
         assert result.notification_id is not None
         assert isinstance(result.notification_id, int)
@@ -416,7 +480,7 @@ class TestDispatchResult:
         sid = _session_id()
         shared_fid = f"dup:{_uid()}"
         with Session(engine) as db, \
-             patch(_PATCH_SSE, return_value=True):
+             patch(_PATCH_SSE, return_value="visible"):
             dispatch(_fact(sid, fact_id=shared_fid), db)
             result = dispatch(_fact(sid, fact_id=shared_fid), db)
         assert result.discarded

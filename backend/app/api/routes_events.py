@@ -41,10 +41,22 @@ def cancel_chat_operation(client_turn_id: str):
 
 
 @router.get("/session/{session_id}")
-async def session_events(session_id: str):
-    """Persistent SSE stream for a chat session — never closes, emits job_done/job_error events."""
+async def session_events(
+    session_id: str,
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Persistent SSE stream for a chat session.
+
+    The URL {session_id} parameter is kept for frontend backward-compat but is
+    IGNORED — the actual queue key is current.session_id derived from the auth
+    cookie. This ensures the dispatcher and the SSE subscriber share the same
+    key ("user:1"), fixing the mismatch where dispatcher always saw
+    has_active_subscriber("user:1") == False because the queue was keyed "default".
+    """
+    actual_sid = current.session_id
+
     async def event_stream():
-        async for event in subscribe_session(session_id):
+        async for event in subscribe_session(actual_sid):
             if event is None:
                 yield ": heartbeat\n\n"
             else:
