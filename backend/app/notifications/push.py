@@ -29,23 +29,26 @@ def send_push(sub: PushSubscription, payload: dict) -> PushResult:
     Returns PushResult. Never raises — all exceptions are caught and
     returned as PushResult(success=False, error=...).
     """
+    from py_vapid import Vapid
     from pywebpush import WebPushException, webpush
 
-    # python-dotenv reads literal \n in unquoted .env values as two chars, not a newline.
-    # pywebpush/py_vapid needs real newlines to parse the PEM header correctly.
-    private_key = os.environ.get("VAPID_PRIVATE_KEY", "").strip().replace("\\n", "\n")
+    # python-dotenv stores literal \n (two chars) for unquoted .env values.
+    # Vapid.from_pem() needs real newlines; from_string() would try to base64-decode
+    # the full PEM string including headers and fail with a 237-char invalid base64 error.
+    pem = os.environ.get("VAPID_PRIVATE_KEY", "").strip().replace("\\n", "\n")
     contact = os.environ.get("VAPID_CONTACT", "").strip()
-    if not private_key:
+    if not pem:
         return PushResult(success=False, error="VAPID_PRIVATE_KEY not configured")
 
     try:
+        vapid = Vapid.from_pem(pem.encode())
         webpush(
             subscription_info={
                 "endpoint": sub.endpoint,
                 "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
             },
             data=json.dumps(payload, ensure_ascii=False),
-            vapid_private_key=private_key,
+            vapid_private_key=vapid,
             vapid_claims={"sub": contact},
         )
         return PushResult(success=True)
