@@ -10,8 +10,8 @@ from uuid import uuid4
 from app.trace.logger import purge_old_logs, write_log
 
 _HEARTBEAT_INTERVAL = 15.0          # seconds between SSE comment heartbeats
-_SESSION_QUEUE_MAX_SIZE = 20        # oldest event dropped on overflow
-_SESSION_QUEUE_TTL_SECONDS = 3600   # idle queues evicted after 1 hour
+_SESSION_QUEUE_MAX_SIZE = 20        # oldest event dropped on overflow (per-subscriber queue)
+_SESSION_QUEUE_TTL_SECONDS = 3600   # idle session entries evicted after 1 hour
 _SESSION_QUEUE_GC_INTERVAL = 600    # GC runs every 10 minutes
 
 _queues: dict[str, asyncio.Queue[dict[str, Any]]] = defaultdict(asyncio.Queue)
@@ -20,13 +20,27 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 @dataclass
 class _SessionQueue:
-    queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    # Fan-out model: each call to subscribe_session() owns one asyncio.Queue.
+    # publish_session_event copies every event to ALL active queues, so every
+    # live subscriber receives every event regardless of how many other
+    # connections (live or zombie) exist on the same session.
+    #
+    # This eliminates the "zombie consumer" bug where the oldest stale connection
+    # would drain asyncio.Queue.get() waiters in FIFO order, consuming events
+    # before the live browser connection had a chance to receive them.
+    #
+    # Trade-off: events published when no subscriber is active are DROPPED (not
+    # buffered). Reconnecting subscribers call loadHistory() to catch up from DB.
+    queues: list[asyncio.Queue] = field(default_factory=list)
     last_active: float = field(default_factory=time.monotonic)
-    subscriber_count: int = 0
-    # True = tab in foreground. Default True so the dispatcher doesn't fire push
-    # notifications spuriously right after the SSE connects (before the frontend
-    # has had a chance to POST /events/visibility with the real state).
+    # True = tab in foreground. Default True so the dispatcher doesn't send push
+    # notifications spuriously right after SSE connects (before the frontend
+    # POSTs /events/visibility with the real state).
     is_visible: bool = True
+
+    @property
+    def subscriber_count(self) -> int:
+        return len(self.queues)
 
 
 _session_queues: dict[str, _SessionQueue] = {}
@@ -69,16 +83,25 @@ def _get_or_create_session_queue(session_id: str) -> _SessionQueue:
 
 
 async def publish_session_event(session_id: str, event: dict[str, Any]) -> None:
+    """Fan-out delivery: copy the event to every active subscriber's individual queue.
+
+    If no subscribers are active the event is dropped. Reconnecting clients call
+    loadHistory() to catch up from DB, so no in-memory buffering is needed.
+    """
     if not session_id:
         return
-    sq = _get_or_create_session_queue(session_id)
-    # Drop the oldest event when at capacity so a runaway job can't exhaust RAM.
-    if sq.queue.qsize() >= _SESSION_QUEUE_MAX_SIZE:
-        try:
-            sq.queue.get_nowait()
-        except asyncio.QueueEmpty:
-            pass
-    await sq.queue.put(event)
+    sq = _session_queues.get(session_id)
+    if sq is None or not sq.queues:
+        return
+    sq.last_active = time.monotonic()
+    # Snapshot the list so a concurrent subscribe/disconnect can't corrupt iteration.
+    for q in list(sq.queues):
+        if q.qsize() >= _SESSION_QUEUE_MAX_SIZE:
+            try:
+                q.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        q.put_nowait(event)
 
 
 def publish_session_event_sync(session_id: str | None, event: dict[str, Any]) -> None:
@@ -92,19 +115,22 @@ async def subscribe_session(session_id: str):
     Unlike subscribe(), the generator continues across job_done/job_error events;
     the client disconnecting is the only termination signal.
 
-    The underlying queue is kept alive after disconnect so events published while
-    no subscriber is connected are delivered when the subscriber reconnects.
-    Idle queues are evicted by _gc_loop() after _SESSION_QUEUE_TTL_SECONDS.
+    Each call owns a private asyncio.Queue added to the session's fan-out list.
+    The queue is removed when the generator's finally block runs (real disconnect
+    or generator cancellation). Zombie connections whose TCP sockets are half-open
+    accumulate events in their individual queues (capped at _SESSION_QUEUE_MAX_SIZE)
+    until the next heartbeat write fails and the generator terminates normally.
     """
     sq = _get_or_create_session_queue(session_id)
-    sq.subscriber_count += 1
+    my_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    sq.queues.append(my_queue)
     write_log(level="INFO", module="realtime_events", event="sse_subscriber_connected",
-              payload={"session_id": session_id, "qsize": sq.queue.qsize()})
+              payload={"session_id": session_id, "subscriber_count": len(sq.queues)})
     pending: asyncio.Task[dict[str, Any]] | None = None
     try:
         while True:
             if pending is None:
-                pending = asyncio.ensure_future(sq.queue.get())
+                pending = asyncio.ensure_future(my_queue.get())
             try:
                 event = await asyncio.wait_for(
                     asyncio.shield(pending), timeout=_HEARTBEAT_INTERVAL
@@ -117,7 +143,8 @@ async def subscribe_session(session_id: str):
     finally:
         if pending is not None and not pending.done():
             pending.cancel()
-        sq.subscriber_count -= 1
+        if my_queue in sq.queues:
+            sq.queues.remove(my_queue)
         sq.last_active = time.monotonic()
         write_log(level="INFO", module="realtime_events", event="sse_subscriber_disconnected",
                   payload={"session_id": session_id})
@@ -126,7 +153,7 @@ async def subscribe_session(session_id: str):
 def has_active_subscriber(session_id: str) -> bool:
     """Return True if at least one SSE client is connected for this session."""
     sq = _session_queues.get(session_id)
-    return sq is not None and sq.subscriber_count > 0
+    return sq is not None and bool(sq.queues)
 
 
 def set_session_visibility(session_id: str, is_visible: bool) -> None:
@@ -148,7 +175,7 @@ def get_subscriber_state(session_id: str) -> Literal["visible", "background", "n
     "none"       — no SSE connection (deliver via push or pending)
     """
     sq = _session_queues.get(session_id)
-    if sq is None or sq.subscriber_count == 0:
+    if sq is None or not sq.queues:
         return "none"
     return "visible" if sq.is_visible else "background"
 
@@ -158,7 +185,7 @@ def gc_once() -> list[str]:
     now = time.monotonic()
     dead = [
         sid for sid, sq in list(_session_queues.items())
-        if sq.subscriber_count == 0 and (now - sq.last_active) > _SESSION_QUEUE_TTL_SECONDS
+        if not sq.queues and (now - sq.last_active) > _SESSION_QUEUE_TTL_SECONDS
     ]
     for sid in dead:
         _session_queues.pop(sid, None)
