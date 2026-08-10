@@ -121,6 +121,9 @@ export function useChat(userKey: string | null) {
     const es = new EventSource(`/events/session/${SESSION_ID}`);
 
     // Report tab visibility so the dispatcher can choose SSE-only vs SSE+push.
+    // Called from es.onopen (not immediately) so the SSE queue exists on the
+    // backend before the POST arrives — avoids a race where the POST is a no-op
+    // because the queue hasn't been created yet and is_visible stays True.
     const reportVisibility = () => {
       fetch('/events/visibility', {
         method: 'POST',
@@ -129,7 +132,6 @@ export function useChat(userKey: string | null) {
         body: JSON.stringify({ is_visible: document.visibilityState === 'visible' }),
       }).catch(() => undefined);
     };
-    reportVisibility();
     document.addEventListener('visibilitychange', reportVisibility);
 
     es.onmessage = (e: MessageEvent) => {
@@ -151,11 +153,12 @@ export function useChat(userKey: string | null) {
       }
     };
 
-    // On reconnect after a drop, reload history so any background results
-    // saved to DB while disconnected appear without waiting for the next turn.
+    // On (re)connect: report visibility now that the SSE queue exists on the backend,
+    // and reload history after a drop so background results are visible immediately.
     let _reconnecting = false;
     es.onerror = () => { _reconnecting = true; };
     es.onopen = () => {
+      reportVisibility();
       if (_reconnecting) { _reconnecting = false; void loadHistory(); }
     };
 

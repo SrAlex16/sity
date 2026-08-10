@@ -12,6 +12,7 @@ from app.core.realtime_events import (
     subscribe,
     subscribe_session,
 )
+from app.trace.logger import write_log
 
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -82,6 +83,13 @@ def report_visibility(
     is irrelevant, but rejecting them would require the frontend to gate the call.
     """
     set_session_visibility(current.session_id, body.is_visible)
+    write_log(
+        level="INFO",
+        module="realtime_events",
+        event="visibility_reported",
+        session_id=current.session_id,
+        payload={"is_visible": body.is_visible},
+    )
 
 
 @router.get("/session/{session_id}/jobs")

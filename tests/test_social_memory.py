@@ -41,7 +41,7 @@ from sqlmodel import Session, select
 
 from app.chat.final_response_builder import (
     _append_pending_load,
-    _strip_turn_load_tag,
+    strip_turn_load_tag as _strip_turn_load_tag,
     build_final_ai_response,
 )
 from app.core.persona_engine import PersonaEngine

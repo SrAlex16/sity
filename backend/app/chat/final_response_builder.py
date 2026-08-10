@@ -38,7 +38,7 @@ from app.trace.logger import write_log
 _TURN_LOAD_RE = re.compile(r"<R:([+-]?\d+)>\s*\Z")
 
 
-def _strip_turn_load_tag(text: str) -> tuple[str, str | None]:
+def strip_turn_load_tag(text: str) -> tuple[str, str | None]:
     """Strip trailing <R:N> tag. Returns (cleaned_text, raw_N_or_None)."""
     m = _TURN_LOAD_RE.search(text)
     if m:
@@ -151,7 +151,7 @@ def build_final_ai_response(
     # 4.5. Strip <R:N> turn-load tag — must happen before save_message and before
     # the text reaches the user or TTS. The strip is unconditional when the tag is
     # present; storing the load value only happens for user: sessions with valid values.
-    response.text, _raw_load = _strip_turn_load_tag(response.text)
+    response.text, _raw_load = strip_turn_load_tag(response.text)
     if _raw_load is not None:
         try:
             _load_val = int(_raw_load)

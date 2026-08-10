@@ -26,7 +26,7 @@ from app.chat.ai_request_builder import (
 from app.chat.ai_turn_prep import AITurnPrep
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.chat_persistence import get_today_token_usage
-from app.chat.final_response_builder import build_final_ai_response
+from app.chat.final_response_builder import build_final_ai_response, strip_turn_load_tag
 from app.chat.model_router import ModelUpgradeProposal, set_proposal
 from app.chat.response_factory import local_tool_response, micro_reaction_response
 from app.chat.response_guard import has_narrated_search
@@ -117,7 +117,7 @@ def _detach_tool(
                     "content": raw_text,
                 }],
             )
-            final_text = after_resp.text or raw_text
+            final_text, _ = strip_turn_load_tag(after_resp.text or raw_text)
         except Exception as _bg_exc:
             write_log(level="ERROR", module="chat", event="bg_after_tools_failed",
                       payload={"job_id": job.job_id, "tool_name": tool_name,
