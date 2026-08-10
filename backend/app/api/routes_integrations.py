@@ -28,6 +28,7 @@ import requests as _http
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from google_auth_oauthlib.flow import Flow
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from app.auth.dependencies import CurrentUser, get_current_user
@@ -252,6 +253,13 @@ _EXPIRED_HTML = """\
 # Endpoints
 # ---------------------------------------------------------------------------
 
+class IntegrationStatus(BaseModel):
+    provider: str
+    connected: bool
+    scopes: str | None = None
+    connected_at: str | None = None
+
+
 def _check_provider(provider: str) -> None:
     if provider not in _PROVIDERS:
         raise HTTPException(status_code=404, detail=f"Proveedor desconocido: {provider!r}")
@@ -262,6 +270,43 @@ def _require_user(current: CurrentUser) -> int:
         raise HTTPException(status_code=401, detail="Autenticación requerida")
     assert current.user_id is not None
     return current.user_id
+
+
+@router.get("")
+def list_integrations(
+    current: CurrentUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[IntegrationStatus]:
+    """Return connection status for all supported providers for the current user.
+
+    Guests always receive an empty list (no persistent identity).
+    """
+    if current.is_guest:
+        return []
+
+    rows = session.exec(
+        select(UserIntegration)
+        .where(UserIntegration.user_id == current.user_id)
+        .where(UserIntegration.is_active == True)  # noqa: E712
+    ).all()
+    active = {row.provider: row for row in rows}
+
+    result = []
+    for provider in sorted(_PROVIDERS):
+        row = active.get(provider)
+        connected_at: str | None = None
+        if row and row.connected_at:
+            ts = row.connected_at
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            connected_at = ts.isoformat()
+        result.append(IntegrationStatus(
+            provider=provider,
+            connected=row is not None,
+            scopes=row.scopes if row else None,
+            connected_at=connected_at,
+        ))
+    return result
 
 
 @router.get("/{provider}/connect")

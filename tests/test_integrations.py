@@ -294,3 +294,86 @@ class TestDisconnect:
         with _client() as c:
             resp = c.delete("/auth/integrations/google")
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/integrations — list status
+# ---------------------------------------------------------------------------
+
+class TestListIntegrations:
+    def test_fresh_user_returns_all_providers_not_connected(self):
+        with _client() as c:
+            cookie, _ = _register_and_login(c)
+            resp = c.get("/auth/integrations", cookies={"sity_session": cookie})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        providers = {item["provider"] for item in data}
+        assert providers == {"google", "spotify"}
+        for item in data:
+            assert item["connected"] is False
+            assert item["scopes"] is None
+            assert item["connected_at"] is None
+
+    def test_guest_returns_empty_list(self):
+        with _client() as c:
+            resp = c.get("/auth/integrations")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_connected_provider_shows_true(self):
+        """After connecting Spotify, the list reflects it as connected."""
+        with _client() as c:
+            cookie, user_id = _register_and_login(c)
+
+            # Inject a fake active integration directly
+            with Session(engine) as session:
+                from app.auth.encryption import encrypt_str
+                session.add(UserIntegration(
+                    user_id=user_id,
+                    provider="spotify",
+                    encrypted_credentials=encrypt_str(_fake_spotify_creds()),
+                    scopes=_FAKE_SPOTIFY_SCOPES,
+                    is_active=True,
+                ))
+                session.commit()
+
+            resp = c.get("/auth/integrations", cookies={"sity_session": cookie})
+
+        assert resp.status_code == 200
+        data = {item["provider"]: item for item in resp.json()}
+        assert data["spotify"]["connected"] is True
+        assert data["spotify"]["scopes"] == _FAKE_SPOTIFY_SCOPES
+        assert data["spotify"]["connected_at"] is not None
+        assert data["google"]["connected"] is False
+
+    def test_disconnected_provider_not_shown(self):
+        """is_active=False rows are not included in the list."""
+        with _client() as c:
+            cookie, user_id = _register_and_login(c)
+
+            with Session(engine) as session:
+                from app.auth.encryption import encrypt_str
+                session.add(UserIntegration(
+                    user_id=user_id,
+                    provider="google",
+                    encrypted_credentials=encrypt_str(_FAKE_GOOGLE_CREDS),
+                    scopes=_FAKE_GOOGLE_SCOPES,
+                    is_active=False,
+                ))
+                session.commit()
+
+            resp = c.get("/auth/integrations", cookies={"sity_session": cookie})
+
+        data = {item["provider"]: item for item in resp.json()}
+        assert data["google"]["connected"] is False
+
+    def test_response_has_required_keys(self):
+        with _client() as c:
+            cookie, _ = _register_and_login(c)
+            resp = c.get("/auth/integrations", cookies={"sity_session": cookie})
+        for item in resp.json():
+            assert "provider" in item
+            assert "connected" in item
+            assert "scopes" in item
+            assert "connected_at" in item

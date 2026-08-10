@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useVoice, VOICE_DEFAULTS } from '../hooks/useVoice';
 import type { VoiceSettings } from '../hooks/useVoice';
+import { useIntegrations } from '../hooks/useIntegrations';
 import styles from './VoiceScreen.module.css';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -33,15 +34,22 @@ const LONG_LABELS: Record<VoiceSettings['voice_long_response_action'], string> =
 
 interface SettingsScreenProps {
   role: string;
+  oauthConnected?: string | null;
 }
 
-export function VoiceScreen({ role }: SettingsScreenProps) {
+export function VoiceScreen({ role, oauthConnected }: SettingsScreenProps) {
   const { settings, isLoading, error, save, reload } = useVoice();
+  const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Integrations state
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [disconnectConfirm, setDisconnectConfirm] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [justConnected, setJustConnected] = useState<string | null>(oauthConnected ?? null);
   const [bgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
 
   useEffect(() => {
@@ -82,6 +90,41 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
       URL.revokeObjectURL(url);
     } catch { /* silent */ } finally {
       setExporting(false);
+    }
+  };
+
+  // Clear the "just connected" flash after 5 s
+  useEffect(() => {
+    if (!justConnected) return;
+    const id = setTimeout(() => setJustConnected(null), 5000);
+    return () => clearTimeout(id);
+  }, [justConnected]);
+
+  const handleConnect = async (provider: string) => {
+    setConnecting(provider);
+    try {
+      const resp = await fetch(`/auth/integrations/${provider}/connect`, { credentials: 'include' });
+      if (!resp.ok) return;
+      const { auth_url } = await resp.json() as { auth_url: string };
+      window.location.href = auth_url;
+    } catch { /* silent */ } finally {
+      setConnecting(null);
+    }
+  };
+
+  const handleDisconnect = async (provider: string) => {
+    setDisconnecting(provider);
+    try {
+      const resp = await fetch(`/auth/integrations/${provider}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (resp.ok) {
+        setDisconnectConfirm(null);
+        await refreshIntegrations();
+      }
+    } catch { /* silent */ } finally {
+      setDisconnecting(null);
     }
   };
 
@@ -221,6 +264,78 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
             <option>Español</option>
           </select>
         </div>
+
+        {/* Integraciones */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionJp}>連携設定</p>
+            <p className={styles.sectionEs}>Integraciones</p>
+            {justConnected && (
+              <p className={styles.successMsg}>
+                {justConnected === 'google' ? 'Google' : 'Spotify'} conectado correctamente.
+              </p>
+            )}
+            {intLoading && <p className={styles.sectionHint}>Cargando…</p>}
+            {intError && <p className={styles.errorMsg}>{intError}</p>}
+            {!intLoading && !intError && (
+              <div className={styles.providerList}>
+                {(['google', 'spotify'] as const).map((provider) => {
+                  const info = integrations.find((i) => i.provider === provider);
+                  const isConnected = info?.connected ?? false;
+                  const isConfirming = disconnectConfirm === provider;
+                  const isDisconnecting = disconnecting === provider;
+                  return (
+                    <div key={provider} className={styles.providerRow}>
+                      <div>
+                        <p className={styles.providerName}>
+                          {provider === 'google' ? 'Google' : 'Spotify'}
+                        </p>
+                        <p className={isConnected ? styles.statusConnected : styles.sectionHint}>
+                          {isConnected ? 'Conectado' : 'No conectado'}
+                        </p>
+                      </div>
+                      <div>
+                        {!isConnected ? (
+                          <button
+                            className={`${styles.sectionBtn} ${styles.btnCyan}`}
+                            onClick={() => void handleConnect(provider)}
+                            disabled={connecting === provider}
+                          >
+                            {connecting === provider ? '…' : 'Conectar'}
+                          </button>
+                        ) : isConfirming ? (
+                          <div className={styles.confirmActions}>
+                            <button
+                              className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                              onClick={() => setDisconnectConfirm(null)}
+                              disabled={isDisconnecting}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                              onClick={() => void handleDisconnect(provider)}
+                              disabled={isDisconnecting}
+                            >
+                              {isDisconnecting ? '…' : 'Sí, desconectar'}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                            onClick={() => setDisconnectConfirm(provider)}
+                          >
+                            Desconectar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Exportar conversación */}
         {role !== 'guest' && (

@@ -81,13 +81,24 @@ const _sharedIdOnLoad = (() => {
   return m ? m[1] : null;
 })();
 
+// Detect OAuth callback redirect: /settings/integrations?connected={provider}
+// Clean the URL immediately so the query param doesn't persist in history.
+const _oauthConnected = (() => {
+  if (window.location.pathname === '/settings/integrations') {
+    const p = new URLSearchParams(window.location.search).get('connected');
+    window.history.replaceState({}, '', '/');
+    return p;
+  }
+  return null;
+})();
+
 export default function App() {
   // Shared conversation route — no auth, no shell, just read-only snapshot.
   if (_sharedIdOnLoad) {
     return <SharedConversationView shareId={_sharedIdOnLoad} />;
   }
 
-  const [activeScreen, setActiveScreen] = useState<Screen>('chat');
+  const [activeScreen, setActiveScreen] = useState<Screen>(_oauthConnected ? 'voice' : 'chat');
   const [authView, setAuthView] = useState<AuthView>('login');
   const [maintenanceShowLogin, setMaintenanceShowLogin] = useState(false);
   const auth = useAuth();
@@ -201,7 +212,7 @@ export default function App() {
     switch (screen) {
       case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} />;
       case 'personality': return <PersonalityScreen />;
-      case 'voice':       return <VoiceScreen role={role} />;
+      case 'voice':       return <VoiceScreen role={role} oauthConnected={_oauthConnected} />;
       case 'dataset':     return <DatasetScreen />;
     }
   }

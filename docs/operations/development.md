@@ -134,6 +134,24 @@ redespliega nada.
    una versión en "waiting to activate". Pulsar "skipWaiting" y recargar.
    (Ver docs/turn-cancellation.md §7a para el detalle completo.)
 
+**PWA instalada en Android (WebAPK) — contexto separado:**
+
+Cuando Sity está instalada como PWA (icono en el home screen), Android la ejecuta
+en un WebAPK — un contexto completamente separado del Chrome del navegador. Las
+APIs `clients.claim()` y `skipWaiting()` del Service Worker activan la nueva versión
+en el contexto donde el SW está registrado, pero el WebAPK tiene su propia instancia.
+Borrar "cookies y datos" en Chrome no afecta al WebAPK.
+
+Para resetear la PWA instalada en Android:
+> Ajustes del sistema → Aplicaciones → [nombre de la app Sity] → Almacenamiento
+> → **Borrar caché** + **Borrar datos**
+
+O desinstalar la PWA (mantener pulsado el icono → Desinstalar) y volver a añadirla.
+
+El síntoma de esta situación: DevTools del navegador muestra el bundle nuevo
+(`index-CmgWdExL.js`) y el bundle SÍ contiene los cambios, pero la pantalla
+(del WebAPK, no de la pestaña del navegador) sigue mostrando la versión antigua.
+
 ## Qué no subir a git
 
 ```
