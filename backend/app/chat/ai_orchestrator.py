@@ -129,10 +129,15 @@ def _detach_tool(
                     payload={
                         "job_id": job.job_id, "tool_name": tool_name,
                         "requested_tools": [tc.name for tc in after_resp.tool_calls],
+                        "after_resp_text": after_resp.text,
                     },
                 )
-                fallback = after_resp.text or raw_text or "No he encontrado el dato exacto en los resultados de la búsqueda."
-                final_text, _ = strip_turn_load_tag(fallback)
+                # after_resp.text is always a promise preamble when tool_calls is
+                # present ("Voy a leer la página directamente"). Never use it as the
+                # final message — it's the exact broken promise we want to avoid.
+                final_text, _ = strip_turn_load_tag(
+                    "No he encontrado el dato exacto en los resultados de la búsqueda."
+                )
             else:
                 final_text, _ = strip_turn_load_tag(after_resp.text or raw_text)
         except Exception as _bg_exc:
