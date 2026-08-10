@@ -15,3 +15,8 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
+
+/* reCAPTCHA v3 badge — hidden after auth flow completes; script remains loaded */
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
