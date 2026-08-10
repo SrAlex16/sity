@@ -11,6 +11,7 @@ Covers:
 """
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid as _uuid_mod
 from unittest.mock import patch
@@ -37,7 +38,8 @@ def _uid() -> str:
 
 def _inject(session_id: str, *, subscribers: int = 0, is_visible: bool = True) -> _SessionQueue:
     sq = _SessionQueue()
-    sq.subscriber_count = subscribers
+    for _ in range(subscribers):
+        sq.queues.append(asyncio.Queue())
     sq.is_visible = is_visible
     sq.last_active = time.monotonic()
     re_mod._session_queues[session_id] = sq
