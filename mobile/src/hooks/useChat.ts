@@ -132,7 +132,13 @@ export function useChat(userKey: string | null) {
         body: JSON.stringify({ is_visible: document.visibilityState === 'visible' }),
       }).catch(() => undefined);
     };
-    document.addEventListener('visibilitychange', reportVisibility);
+    const onVisibilityChange = () => {
+      reportVisibility();
+      // When returning from background, reload history from DB so any proactive
+      // messages delivered while the tab was frozen appear without a full F5.
+      if (document.visibilityState === 'visible') void loadHistory();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     es.onmessage = (e: MessageEvent) => {
       let ev: { type: string; job_id?: string; tool_name?: string; error?: string; text?: string };

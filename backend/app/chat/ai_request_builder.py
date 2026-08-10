@@ -161,6 +161,18 @@ _AFTER_TOOLS_PROMPT_SUFFIX = (
     f"\n\n{_MEMORY_RESULT_RESPONSE_RULES}"
 )
 
+_BACKGROUND_AFTER_TOOLS_SUFFIX = (
+    "\n\nLa herramienta ya se ha ejecutado y el resultado está en el historial. "
+    "LÍMITE ESTRICTO — respondes en modo background: esta es tu ÚNICA oportunidad de responder. "
+    "No existe ningún mecanismo para ejecutar herramientas adicionales tras este mensaje. "
+    "NO solicites read_webpage, web_search ni ninguna otra herramienta. "
+    "Si los resultados no contienen el dato exacto, di honestamente lo que encontraste "
+    "(ej: 'No encontré el número exacto en los resultados, pero...'). "
+    "Nunca prometas 'voy a ver la página' ni 'déjame buscarlo directamente': "
+    "esa acción nunca se ejecutará y el usuario quedará sin respuesta real."
+    f"\n\n{_MEMORY_RESULT_RESPONSE_RULES}"
+)
+
 
 # ---------------------------------------------------------------------------
 # Public builders
@@ -263,4 +275,35 @@ def build_after_tools_ai_request(
         prior_messages=prior_messages or [],
         images=images or [],
         client_turn_id=client_turn_id,
+    )
+
+
+def build_background_after_tools_ai_request(
+    *,
+    trace_id: str,
+    persona_prompt: str,
+    user_message: str,
+    max_tokens: int,
+    tools: list[dict[str, Any]] | None = None,
+    prior_messages: list[dict[str, Any]] | None = None,
+    images: list[dict[str, str]] | None = None,
+) -> AIRequest:
+    """Background-path follow-up after a detached tool completes.
+
+    Tool chaining is not available in this path — the model must respond
+    with what it has from the single tool result. The suffix makes this
+    explicit to prevent the model from promising actions it cannot take.
+    Tools are still passed so the API call is valid (tool_use blocks appear
+    in the conversation), but the instruction strongly discourages new calls.
+    """
+    return AIRequest(
+        trace_id=trace_id,
+        task_type="chat_message_tool_result",
+        system_prompt=persona_prompt + _BACKGROUND_AFTER_TOOLS_SUFFIX,
+        user_message=user_message,
+        max_tokens=max_tokens,
+        tools_enabled=True,
+        tools=tools,
+        prior_messages=prior_messages or [],
+        images=images or [],
     )

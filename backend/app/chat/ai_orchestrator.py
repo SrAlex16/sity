@@ -19,6 +19,7 @@ from sqlmodel import Session, select
 from app.api.schemas import ChatArtifact, ChatMessageRequest, ChatMessageResponse
 from app.chat.ai_request_builder import (
     build_after_tools_ai_request,
+    build_background_after_tools_ai_request,
     build_chat_ai_request,
     build_forced_search_request,
     build_planner_ai_request,
@@ -93,10 +94,12 @@ def _detach_tool(
 
         raw_text = job.result_text or ""
 
-        # Pass result through Claude so the user gets a natural-language response
+        # Pass result through Claude so the user gets a natural-language response.
+        # Uses the background-specific builder that explicitly forbids tool chaining:
+        # the model must respond with what it has from this single tool result.
         try:
             after_resp = runner.run_after_tools(
-                request=build_after_tools_ai_request(
+                request=build_background_after_tools_ai_request(
                     trace_id=bg_trace_id,
                     persona_prompt=persona_prompt,
                     user_message=user_message_with_history,
@@ -117,7 +120,21 @@ def _detach_tool(
                     "content": raw_text,
                 }],
             )
-            final_text, _ = strip_turn_load_tag(after_resp.text or raw_text)
+            if after_resp.tool_calls:
+                # Model ignored the "no chaining" instruction. Use any text it produced;
+                # if there is none, fall back to the raw tool result so the user gets
+                # something rather than the promise of an action that will never run.
+                write_log(
+                    level="WARN", module="chat", event="bg_unexpected_tool_call",
+                    payload={
+                        "job_id": job.job_id, "tool_name": tool_name,
+                        "requested_tools": [tc.name for tc in after_resp.tool_calls],
+                    },
+                )
+                fallback = after_resp.text or raw_text or "No he encontrado el dato exacto en los resultados de la búsqueda."
+                final_text, _ = strip_turn_load_tag(fallback)
+            else:
+                final_text, _ = strip_turn_load_tag(after_resp.text or raw_text)
         except Exception as _bg_exc:
             write_log(level="ERROR", module="chat", event="bg_after_tools_failed",
                       payload={"job_id": job.job_id, "tool_name": tool_name,
