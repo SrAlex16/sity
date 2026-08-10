@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1653 tests en verde (pytest)
+- 1668 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -81,6 +81,18 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente
+
+- **Web Push API + mecanismo de 3 estados (Pasos A/B/C/4, 2026-08-10)** — sistema
+  de notificaciones completo verificado en producción: `sw.js` push+notificationclick,
+  tabla `PushSubscription`, claves VAPID, `NotificationLog`, dispatcher 3 estados
+  (dedup · rate limiting · SSE/push/pending), `timers/runner.py` y
+  `ai_orchestrator._on_done` conectados. Fix crítico: clave de cola SSE usa
+  `current.session_id` (no el param URL). Fan-out per-subscriber en
+  `realtime_events.py` (ver bug resuelto más abajo). 1668 tests.
+  Ver `docs/notifications-architecture.md` para arquitectura completa y
+  el estado verificado en §"Estado real verificado (2026-08-10)".
 
 ## Mejoras pendientes
 
@@ -194,24 +206,39 @@ Ver .env.example para la lista completa.
   la navegación con interacción real (clics, formularios): requiere sandboxing
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
-- **Web Push API + mecanismo de 3 estados — COMPLETO (Pasos A/B/C incluidos)** —
-  infraestructura completa: `sw.js` con `push`+`notificationclick`, tabla
-  `PushSubscription`, claves VAPID, endpoints subscribe/unsubscribe, tabla
-  `NotificationLog`, `notifications/dispatcher.py` (dedup · rate limiting ·
-  routing 3 estados · persistencia), `notifications/push.py` (pywebpush),
-  `timers/runner.py` + `ai_orchestrator._on_done` conectados al dispatcher.
-  **Mecanismo de visibilidad de 3 estados** (2026-08-07): `_SessionQueue.is_visible`,
-  `get_subscriber_state() → "visible"|"background"|"none"`, `POST /events/visibility`,
-  `_choose_channel` devuelve `"sse"|"sse+push"|"push"|"pending"|"guest_drop"`.
-  **Fix crítico:** `session_events()` usa `current.session_id` (no el param URL),
-  eliminando el mismatch entre la clave SSE (`"default"`) y la del dispatcher (`"user:1"`).
-  **Paso C:** respuestas de chat normales notifican cuando la pestaña está en
-  background/cerrada — snippet de 80 chars en el payload. Sin rate limit (usuario-causado).
-  1653 tests en verde. Ver `docs/notifications-architecture.md` §8.
 
 ## Bugs conocidos activos
 
 Ninguno activo conocido.
+
+**Resueltos recientemente (2026-08-10):**
+
+- **Fan-out de colas SSE — zombie connections consumían eventos** (2026-08-10):
+  `_SessionQueue` usaba una sola `asyncio.Queue` compartida; `asyncio.Queue.get()`
+  asigna el evento al primer waiter en FIFO, que podía ser una conexión zombie
+  (socket TCP técnicamente abierto, ya no escuchado por el navegador). Los eventos
+  llegaban al zombie y se perdían. Evidencia: 4 `sse_subscriber_connected` vs.
+  1 `sse_subscriber_disconnected` en 29 minutos. Fix: fan-out model — cada
+  `subscribe_session()` crea su propia `asyncio.Queue`; `publish_session_event()`
+  copia el evento a todas las colas activas. Eventos sin suscriptores activos se
+  descartan; clientes que reconectan llaman `loadHistory()`. El bug era intermitente
+  (solo visible con zombies acumulados por reconexiones previas), lo que dificultó
+  el diagnóstico. Relevante si cualquier sistema futuro usa `_session_queues` y
+  presenta pérdidas intermitentes de eventos SSE — verificar el diferencial
+  connected/disconnected en logs. `core/realtime_events.py`, 13 tests nuevos.
+
+- **"Promesa sin cumplir" en background tasks** (2026-08-10): tras `web_search`
+  sin dato exacto en el snippet, el modelo pedía `read_webpage` como tool adicional;
+  `_on_done` ignoraba `tool_calls` y usaba `.text` (el preamble de la promesa)
+  como respuesta final. Fix doble: prompt con instrucción explícita de no encadenar
+  (`_BACKGROUND_AFTER_TOOLS_SUFFIX`) + guard `bg_unexpected_tool_call` que descarta
+  `after_resp.text` por completo cuando `tool_calls` es no-vacío (el texto siempre
+  es el preamble en ese caso). `chat/ai_orchestrator.py`, `chat/ai_request_builder.py`.
+
+- **Tag `<R:0>` visible en mensajes de background** (2026-08-10): `_on_done`
+  no pasaba el texto por `strip_turn_load_tag`, el marcador de social-memory
+  llegaba al usuario. Fix: función renombrada a pública y llamada en `_on_done`.
+  `chat/final_response_builder.py`, `chat/ai_orchestrator.py`.
 
 **Resueltos recientemente (2026-08-03):**
 

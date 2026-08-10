@@ -708,3 +708,121 @@ El dispatcher original usaba `has_active_subscriber(session_id)` — un bool —
 | Sistema de eventos/vigías genéricos | §2.3 (`external_event`) + §2.4 (recurrentes) + modelo `NotificationRule` |
 
 Las tres entradas se pueden cerrar cuando se implemente todo lo descrito aquí.
+
+---
+
+## Estado real verificado (2026-08-10)
+
+Pasos A/B/C/4 (§8) **completados y confirmados en producción** con pruebas
+reales repetidas. Esta sección documenta el estado final verificado y los bugs
+encontrados durante la implementación.
+
+### 1. Pasos A/B/C/4 — resultado en producción
+
+**Paso A** (`is_visible`, `set_session_visibility`, `get_subscriber_state`,
+`POST /events/visibility`, `reportVisibility` en frontend): operativo. El
+frontend reporta `document.visibilityState` en `es.onopen` (no al construir
+el `EventSource`) para garantizar que la cola SSE existe en el backend antes
+del POST.
+
+**Paso B** (dispatcher 3 estados, fix de clave de sesión): operativo. El fix
+crítico fue que `session_events()` usase `current.session_id` en lugar del
+parámetro URL `"default"` — eliminando el mismatch que hacía muerto el canal
+SSE del dispatcher para todos los usuarios autenticados desde el inicio del
+proyecto.
+
+**Paso C** (chat_response): operativo. Respuestas de chat ordinarias generan
+`NotificationFact` de tipo `"chat_response"` con snippet ≤80 chars cuando la
+pestaña está en background o cerrada. Sin rate limit (acción usuario-causada).
+
+**Paso 4** (background_result): operativo. `ai_orchestrator._on_done` conectado
+al dispatcher. `fact_id = f"background_result:{bg_trace_id}"` determinístico
+por traza. `full_text` para SSE, `body` truncado para push.
+
+### 2. Bug del fan-out de colas SSE
+
+**Síntoma:** mensajes de background task no llegaban al frontend en tiempo real,
+de forma intermitente. El usuario veía el mensaje solo tras F5, incluso con la
+app en primer plano.
+
+**Causa raíz:** `_SessionQueue` usaba una sola `asyncio.Queue` compartida para
+todos los suscriptores de una sesión. `asyncio.Queue.get()` asigna cada evento
+al primer "esperador" en la cola interna de waiters — en orden FIFO. Las
+reconexiones SSE sin desconexión limpia previa (socket TCP técnicamente abierto
+pero ya no escuchado por el navegador) acumulaban **conexiones zombie** en la
+lista de waiters. El evento llegaba al zombie más antiguo, que lo consumía y lo
+perdía. Evidencia en producción: 4 eventos `sse_subscriber_connected` en 29
+minutos con solo 1 `sse_subscriber_disconnected`.
+
+**Por qué costó aislar:** el bug es intermitente por naturaleza — se manifiesta
+solo cuando hay zombies activos, lo cual depende de cuántas reconexiones sin
+desconexión limpia previa tuvo la sesión. En sesiones frescas funcionaba
+correctamente. Solo en sesiones con reconexiones previas (recarga de página,
+cambio de red, suspensión del dispositivo) se acumulaban zombies suficientes
+para que el evento siempre llegase al zombie y nunca al navegador vivo.
+
+**Fix (fan-out model, `core/realtime_events.py`):**
+- `_SessionQueue.queues: list[asyncio.Queue]` en lugar de `queue: asyncio.Queue`.
+- `publish_session_event()` snapshots la lista y copia el evento a **todas**
+  las colas activas — cada suscriptor recibe su propia copia.
+- `subscribe_session()` crea su propia `asyncio.Queue`, la añade a `sq.queues`
+  al conectar y la elimina en el bloque `finally` al desconectar.
+- Eventos publicados sin suscriptores activos se descartan. Los clientes que
+  reconectan llaman `loadHistory()` (via `_reconnecting` flag en `useChat.ts`)
+  para ponerse al día desde DB.
+- GC sigue funcionando: evicta entradas donde `not sq.queues` y TTL superado.
+- 13 tests nuevos en `tests/test_realtime_events.py`, incluido el escenario
+  zombie de 4 conexiones.
+
+**Relevancia futura:** cualquier sistema que use `_session_queues` o
+`publish_session_event` hereda el fan-out automáticamente. Si se observan
+síntomas similares (eventos SSE que "desaparecen" intermitentemente), verificar
+el diferencial `sse_subscriber_connected` vs. `sse_subscriber_disconnected` en
+logs — un diferencial creciente indica zombies activos.
+
+### 3. Bug de "promesa sin cumplir" en tareas de background
+
+**Síntoma:** tras un `web_search` cuyo snippet no contenía el dato exacto, la
+respuesta final al usuario era "Voy a leer la página directamente" — una
+promesa que `_on_done` nunca puede cumplir porque el flujo background no
+encadena tools adicionales.
+
+**Causa raíz:** `_on_done` usaba `build_after_tools_ai_request` — el mismo
+builder del flujo principal, sin restricciones sobre uso de tools. El modelo,
+al ver herramientas disponibles y un snippet insuficiente, devolvía
+`tool_calls=[read_webpage]` junto con texto de preamble en `.text`. `_on_done`
+ignoraba `.tool_calls` y usaba `.text` como respuesta final — que era
+exactamente la promesa.
+
+**Fix en dos capas (`ai_request_builder.py` + `ai_orchestrator.py`):**
+
+1. **Capa prompt:** `build_background_after_tools_ai_request` con sufijo
+   `_BACKGROUND_AFTER_TOOLS_SUFFIX` instruye al modelo que "esta es su ÚNICA
+   oportunidad de responder — no solicites herramientas adicionales". Si el
+   resultado no contiene el dato exacto, debe decirlo honestamente.
+
+2. **Capa guard:** si `after_resp.tool_calls` sigue siendo no-vacío (modelo
+   ignoró la instrucción), se emite `bg_unexpected_tool_call` a nivel WARN y
+   se descarta `after_resp.text` por completo — porque cuando el modelo devuelve
+   `tool_calls`, su `.text` es siempre el preamble de la promesa. El mensaje
+   entregado al usuario es un fallback honesto fijo. `after_resp.text` se
+   incluye en el payload del WARN log para diagnóstico.
+
+**Bug residual descubierto en producción:** la primera versión del guard usaba
+`fallback = after_resp.text or raw_text or "No encontré..."`. `after_resp.text`
+no estaba vacío (era el preamble), así que se usaba — entregando al usuario
+exactamente la promesa que queríamos evitar. Confirmado por logs: el guard se
+disparó correctamente en dos turnos (10:39 UTC Berserk, 12:29 UTC Punpun) pero
+el texto entregado era el preamble. Fix final: descartar `after_resp.text`
+siempre que `tool_calls` sea no-vacío.
+
+### 4. Bug del tag `<R:0>` visible al usuario en mensajes de background
+
+**Causa raíz:** `_on_done` usaba `after_resp.text` crudo sin pasar por
+`final_response_builder.py`. El tag de social-memory `<R:N>` nunca se stripaba
+en el flujo background — llegaba visible al usuario.
+
+**Fix:** `strip_turn_load_tag` (antes `_strip_turn_load_tag`, renombrada a
+pública en `final_response_builder.py`) se llama en `_on_done` sobre
+`final_text` antes de persistir y dispatchar. Confirmado en DB: el tag ya no
+aparece en filas posteriores al fix.
