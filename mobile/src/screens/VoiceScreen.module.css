@@ -369,3 +369,55 @@
   border-color: var(--text-secondary);
   color: var(--text-primary);
 }
+
+/* ── Section-level buttons (auto width, within content sections) ──────────── */
+
+.sectionBtn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.2s, box-shadow 0.2s;
+  border: none;
+}
+
+.sectionBtn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Disabled select placeholder ─────────────────────────────────────────── */
+
+.selectDisabled {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Delete confirmation ─────────────────────────────────────────────────── */
+
+.confirmRow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.confirmWarning {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--neon-magenta);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 10px;
+}

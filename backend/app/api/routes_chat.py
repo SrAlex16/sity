@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, col, select
 
@@ -97,6 +99,43 @@ def current_chat(
         ok=True,
         session_id=session_id,
         messages=messages,
+    )
+
+
+@router.get("/export")
+def export_chat(
+    db: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    if current.is_guest:
+        raise HTTPException(status_code=401, detail="Autenticación requerida")
+
+    rows = db.exec(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == current.session_id)
+        .order_by(col(ChatMessage.id))
+    ).all()
+
+    export_data = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "session_id": current.session_id,
+        "messages": [
+            {
+                "role": row.role,
+                "text": row.text,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ],
+    }
+
+    json_bytes = json.dumps(export_data, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=json_bytes,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": 'attachment; filename="sity-conversacion.json"',
+        },
     )
 
 

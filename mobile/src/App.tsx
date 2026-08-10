@@ -30,7 +30,7 @@ const _screenStyle: React.CSSProperties = {
 export type Screen = 'chat' | 'personality' | 'voice' | 'dataset';
 type AuthView = 'login' | 'register';
 
-const _ADMIN_SCREENS = new Set<Screen>(['voice', 'dataset']);
+const _ADMIN_SCREENS = new Set<Screen>(['dataset']);
 
 function AccessDenied() {
   return (
@@ -201,7 +201,7 @@ export default function App() {
     switch (screen) {
       case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} />;
       case 'personality': return <PersonalityScreen />;
-      case 'voice':       return <VoiceScreen />;
+      case 'voice':       return <VoiceScreen role={role} />;
       case 'dataset':     return <DatasetScreen />;
     }
   }

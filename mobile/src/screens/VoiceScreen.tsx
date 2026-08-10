@@ -31,10 +31,17 @@ const LONG_LABELS: Record<VoiceSettings['voice_long_response_action'], string> =
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
-export function VoiceScreen() {
+interface SettingsScreenProps {
+  role: string;
+}
+
+export function VoiceScreen({ role }: SettingsScreenProps) {
   const { settings, isLoading, error, save, reload } = useVoice();
   const [form, setForm] = useState<VoiceSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [bgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
 
   useEffect(() => {
@@ -61,6 +68,36 @@ export function VoiceScreen() {
     try { await save(VOICE_DEFAULTS); } catch { /* error shown via hook */ } finally { setSaving(false); }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const resp = await fetch('/chat/export', { credentials: 'include' });
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sity-conversacion.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      const resp = await fetch('/auth/me', { method: 'DELETE', credentials: 'include' });
+      if (resp.ok) window.location.reload();
+      else setDeleteConfirm(false);
+    } catch {
+      setDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const patch = (delta: Partial<VoiceSettings>) =>
     setForm((prev) => prev ? { ...prev, ...delta } : prev);
 
@@ -72,8 +109,8 @@ export function VoiceScreen() {
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.headerText}>
-          <span className={styles.titleJp}>音声</span>
-          <span className={styles.titleEs}>Voz</span>
+          <span className={styles.titleJp}>設定</span>
+          <span className={styles.titleEs}>Ajustes</span>
         </div>
         <button className={styles.reloadBtn} onClick={() => void reload()} disabled={busy}>
           <IconReload />
@@ -150,28 +187,106 @@ export function VoiceScreen() {
               </div>
             </div>
 
-            {/* Periodicidad de borrado */}
-            <div className={styles.section}>
-              <p className={styles.sectionJp}>保存期間</p>
-              <p className={styles.sectionEs}>Periodicidad de borrado</p>
-              <p className={styles.sectionHint}>
-                Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.
-              </p>
-              <div className={styles.cleanupRow}>
-                <input
-                  type="number"
-                  className={styles.cleanupInput}
-                  min={0}
-                  max={365}
-                  value={form.audio_cleanup_days}
-                  onChange={(e) => patch({ audio_cleanup_days: Math.max(0, Math.min(365, Number(e.target.value))) })}
-                />
-                <span className={styles.cleanupUnit}>días</span>
-                <span className={styles.cleanupHint}>(0 = nunca borrar)</span>
+            {/* Periodicidad de borrado — admin only */}
+            {role === 'admin' && (
+              <div className={styles.section}>
+                <p className={styles.sectionJp}>保存期間</p>
+                <p className={styles.sectionEs}>Periodicidad de borrado</p>
+                <p className={styles.sectionHint}>
+                  Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.
+                </p>
+                <div className={styles.cleanupRow}>
+                  <input
+                    type="number"
+                    className={styles.cleanupInput}
+                    min={0}
+                    max={365}
+                    value={form.audio_cleanup_days}
+                    onChange={(e) => patch({ audio_cleanup_days: Math.max(0, Math.min(365, Number(e.target.value))) })}
+                  />
+                  <span className={styles.cleanupUnit}>días</span>
+                  <span className={styles.cleanupHint}>(0 = nunca borrar)</span>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
+
+        {/* Idioma — placeholder */}
+        <div className={styles.section}>
+          <p className={styles.sectionJp}>言語</p>
+          <p className={styles.sectionEs}>Idioma de la interfaz</p>
+          <p className={styles.sectionHint}>Próximamente. La selección de idioma no está disponible aún.</p>
+          <select className={styles.selectDisabled} disabled>
+            <option>Español</option>
+          </select>
+        </div>
+
+        {/* Exportar conversación */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionJp}>会話エクスポート</p>
+            <p className={styles.sectionEs}>Exportar conversación</p>
+            <p className={styles.sectionHint}>
+              Descarga todos los mensajes de tu conversación como archivo JSON.
+            </p>
+            <button
+              className={`${styles.sectionBtn} ${styles.btnCyan}`}
+              onClick={() => void handleExport()}
+              disabled={exporting}
+            >
+              {exporting ? '…' : 'Descargar'}
+            </button>
+          </div>
+        )}
+
+        {/* Borrar todos mis datos */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionJp}>データ削除</p>
+            <p className={styles.sectionEs}>Borrar todos mis datos</p>
+            <p className={styles.sectionHint}>
+              Elimina tu cuenta y todos los datos asociados. Esta acción es irreversible.
+            </p>
+            {!deleteConfirm ? (
+              <button
+                className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                onClick={() => setDeleteConfirm(true)}
+              >
+                Borrar cuenta
+              </button>
+            ) : (
+              <div className={styles.confirmRow}>
+                <p className={styles.confirmWarning}>¿Estás seguro? Esta acción no puede deshacerse.</p>
+                <div className={styles.confirmActions}>
+                  <button
+                    className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                    onClick={() => setDeleteConfirm(false)}
+                    disabled={deleting}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                    onClick={() => void handleDeleteAccount()}
+                    disabled={deleting}
+                  >
+                    {deleting ? '…' : 'Sí, borrar todo'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Gestión de archivos — placeholder */}
+        <div className={styles.section}>
+          <p className={styles.sectionJp}>ファイル管理</p>
+          <p className={styles.sectionEs}>Gestión de archivos</p>
+          <p className={styles.sectionHint}>
+            Próximamente. Aquí podrás ver y eliminar los archivos que hayas compartido con Sity.
+          </p>
+        </div>
       </div>
 
       {/* Footer actions */}
