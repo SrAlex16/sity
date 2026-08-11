@@ -844,7 +844,7 @@ class ChatAIOrchestrator:
 
         ctx.personality = ctx.settings_service.get_personality()
         updated_persona_decision = PersonaEngine().build_persona_prompt(
-            ctx.personality, request.message, session_id=ctx.session_id
+            ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override
         )
 
         return _ToolBranchOutcome(

@@ -45,3 +45,15 @@ class VoiceSettings(BaseModel):
     voice_include_text: bool = True
     voice_long_response_action: Literal["split", "text_only"] = "text_only"
     audio_cleanup_days: int = 7
+
+
+SUPPORTED_LANGUAGE_CODES = frozenset({
+    "auto",
+    "es-ES", "es-419",
+    "en-US", "en-GB",
+    "ja", "fr-FR", "de-DE", "pt-BR", "it-IT",
+})
+
+
+class LanguageSettings(BaseModel):
+    language_override: str = "auto"

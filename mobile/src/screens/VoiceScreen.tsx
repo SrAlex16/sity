@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useVoice, VOICE_DEFAULTS } from '../hooks/useVoice';
 import type { VoiceSettings } from '../hooks/useVoice';
+import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
+import type { LanguageCode } from '../hooks/useLanguage';
 import { useIntegrations } from '../hooks/useIntegrations';
 import styles from './VoiceScreen.module.css';
 
@@ -38,6 +40,7 @@ interface SettingsScreenProps {
 
 export function VoiceScreen({ role }: SettingsScreenProps) {
   const { settings, isLoading, error, save, reload } = useVoice();
+  const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -290,14 +293,34 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
           </>
         )}
 
-        {/* Idioma — placeholder */}
+        {/* Idioma de conversación de Sity — Sistema 2, funcional */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionJp}>会話言語</p>
+            <p className={styles.sectionEs}>Idioma de conversación de Sity</p>
+            <p className={styles.sectionHint}>En qué idioma responde Sity. «Auto» detecta el idioma de cada mensaje.</p>
+            {langLoading && !langSettings && <p className={styles.sectionHint}>Cargando…</p>}
+            {langError && <p className={styles.errorMsg}>{langError}</p>}
+            {langSettings && (
+              <select
+                className={styles.select}
+                value={langSettings.language_override}
+                onChange={(e) => void saveLang(e.target.value as LanguageCode)}
+                disabled={langLoading}
+              >
+                {SUPPORTED_LANGUAGES.map(({ code, label }) => (
+                  <option key={code} value={code}>{label}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* Idioma de interfaz — placeholder Sistema 1 */}
         <div className={styles.section}>
           <p className={styles.sectionJp}>言語</p>
           <p className={styles.sectionEs}>Idioma de la interfaz</p>
-          <p className={styles.sectionHint}>Próximamente. La selección de idioma no está disponible aún.</p>
-          <select className={styles.selectDisabled} disabled>
-            <option>Español</option>
-          </select>
+          <p className={styles.sectionHint}>Próximamente. La selección de idioma de la interfaz no está disponible aún.</p>
         </div>
 
         {/* Integraciones */}

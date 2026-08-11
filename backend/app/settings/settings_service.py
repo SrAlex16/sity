@@ -247,6 +247,36 @@ class SettingsService:
             self.set_setting("voice.audio_cleanup_days", settings.audio_cleanup_days, source=source, session_id=None)
         return self.get_voice_settings(session_id=session_id)
 
+    # ── Language override ──────────────────────────────────────────────────────
+    # Per-session: session row first, fall back to global, then default "auto".
+
+    def get_language_override(self, session_id: Optional[str] = None) -> str:
+        row = None
+        if session_id is not None:
+            row = self.session.exec(
+                select(Setting).where(
+                    Setting.key == "language.override",
+                    Setting.session_id == session_id,
+                )
+            ).first()
+        if row is None:
+            row = self.session.exec(
+                select(Setting).where(
+                    Setting.key == "language.override",
+                    col(Setting.session_id).is_(None),
+                )
+            ).first()
+        return str(json.loads(row.value_json)) if row is not None else "auto"
+
+    def set_language_override(
+        self,
+        value: str,
+        session_id: Optional[str] = None,
+        source: str = "ui",
+    ) -> str:
+        self.set_setting("language.override", value, source=source, session_id=session_id)
+        return self.get_language_override(session_id=session_id)
+
     @staticmethod
     def _set_nested(target: dict[str, Any], dotted_key: str, value: Any) -> None:
         parts = dotted_key.split(".")

@@ -53,12 +53,12 @@ def admin():
 # ---------------------------------------------------------------------------
 
 
-def test_get_voice_guest_403(guest: TestClient) -> None:
-    assert guest.get("/settings/voice").status_code == 403
+def test_get_voice_guest_401(guest: TestClient) -> None:
+    assert guest.get("/settings/voice").status_code == 401
 
 
-def test_get_voice_user_403(user: TestClient) -> None:
-    assert user.get("/settings/voice").status_code == 403
+def test_get_voice_user_ok(user: TestClient) -> None:
+    assert user.get("/settings/voice").status_code == 200
 
 
 def test_get_voice_admin_ok(admin: TestClient) -> None:
@@ -77,12 +77,12 @@ _VOICE_PAYLOAD = {
 }
 
 
-def test_put_voice_guest_403(guest: TestClient) -> None:
-    assert guest.put("/settings/voice", json=_VOICE_PAYLOAD).status_code == 403
+def test_put_voice_guest_401(guest: TestClient) -> None:
+    assert guest.put("/settings/voice", json=_VOICE_PAYLOAD).status_code == 401
 
 
-def test_put_voice_user_403(user: TestClient) -> None:
-    assert user.put("/settings/voice", json=_VOICE_PAYLOAD).status_code == 403
+def test_put_voice_user_ok(user: TestClient) -> None:
+    assert user.put("/settings/voice", json=_VOICE_PAYLOAD).status_code == 200
 
 
 def test_put_voice_admin_ok(admin: TestClient) -> None:

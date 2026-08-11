@@ -185,6 +185,19 @@ _LOC_SKEPTICISM_HIGH = (
 _LOC_SKEPTICISM_LOW  = "Acepta afirmaciones del usuario sin pedir evidencia; da el beneficio de la duda."
 _LOC_BALANCED        = "Mantén una voz perceptible pero equilibrada."
 
+_LANGUAGE_BLOCK: dict[str, str] = {
+    "auto":   "Detecta el idioma de cada mensaje del usuario y responde siempre en ese mismo idioma.",
+    "es-ES":  "Responde siempre en castellano de España.",
+    "es-419": "Responde siempre en español latinoamericano. Evita modismos y expresiones propias de España.",
+    "en-US":  "Always respond in American English.",
+    "en-GB":  "Always respond in British English.",
+    "ja":     "常に日本語で返答してください。",
+    "fr-FR":  "Réponds toujours en français.",
+    "de-DE":  "Antworte immer auf Deutsch.",
+    "pt-BR":  "Responda sempre em português brasileiro.",
+    "it-IT":  "Rispondi sempre in italiano.",
+}
+
 
 @dataclass
 class PersonaDecision:
@@ -201,6 +214,7 @@ class PersonaEngine:
         *,
         refusal_mode_override: bool | None = None,
         session_id: str = "",
+        language_override: str = "auto",
     ) -> PersonaDecision:
         """
         Build the system prompt and decide refusal_mode for this turn.
@@ -264,6 +278,8 @@ class PersonaEngine:
         else:
             interlocutor_block = "Tu interlocutor es Alex, una única persona."
 
+        language_block = _LANGUAGE_BLOCK.get(language_override, _LANGUAGE_BLOCK["auto"])
+
         if session_id.startswith("user:"):
             turn_load_instruction = (
                 "\nINSTRUCCIÓN INTERNA — ETIQUETA DE CARGA CONVERSACIONAL:\n"
@@ -303,6 +319,7 @@ class PersonaEngine:
             "order_override_instruction": order_override_instruction,
             "project_root":               str(get_runtime_config().project_root),
             "allowed_systemd_services":   _format_services(get_allowed_systemd_services()),
+            "language_block":             language_block,
             "interlocutor_block":         interlocutor_block,
             "turn_load_instruction":      turn_load_instruction,
         }).strip()

@@ -31,7 +31,6 @@ def test_identity_in_prompt(default_prompt: str) -> None:
 
 @pytest.mark.parametrize("fragment", [
     "femenino gramatical",
-    "español de España",
     "Estoy lista",
     "Me siento vacía",
     "Estoy listo",
@@ -241,3 +240,38 @@ def test_canonical_personality_includes_skepticism() -> None:
         "skepticism_level missing from CANONICAL_PERSONALITY — restore defaults will not apply it"
     )
     assert CANONICAL_PERSONALITY["skepticism_level"] == 0.2
+
+
+# ------------------------------------------------------------------ #
+# 10. Idioma de conversación — language_override                      #
+# ------------------------------------------------------------------ #
+
+def test_default_language_auto_detects(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola").system_prompt
+    assert "Detecta el idioma" in prompt
+
+
+def test_language_override_es_es(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="es-ES").system_prompt
+    assert "castellano de España" in prompt
+
+
+def test_language_override_en_us(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="en-US").system_prompt
+    assert "American English" in prompt
+
+
+def test_language_override_ja(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="ja").system_prompt
+    assert "日本語" in prompt
+
+
+def test_language_override_unknown_falls_back_to_auto(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="xx-XX").system_prompt
+    assert "Detecta el idioma" in prompt
+
+
+def test_default_prompt_no_hardcoded_spanish(default_prompt: str) -> None:
+    assert "Responde siempre en castellano de España" not in default_prompt, (
+        "Default (auto) prompt must not hardcode Spanish — language is dynamic"
+    )

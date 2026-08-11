@@ -8,7 +8,7 @@ def _require_non_guest(current: CurrentUser) -> CurrentUser:
         raise HTTPException(status_code=401, detail="Autenticación requerida")
     return current
 from app.memory.db import get_session
-from app.settings.schemas import PersonalityAdjustRequest, PersonalityAdjustResponse, PersonalitySettings, VoiceSettings
+from app.settings.schemas import LanguageSettings, PersonalityAdjustRequest, PersonalityAdjustResponse, PersonalitySettings, SUPPORTED_LANGUAGE_CODES, VoiceSettings
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
 
@@ -132,3 +132,31 @@ def update_voice_settings(
     return SettingsService(session).set_voice_settings(
         settings, session_id=current.session_id, is_admin=current.is_admin
     )
+
+
+@router.get("/language", response_model=LanguageSettings)
+def get_language_settings(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Per-session language override for Sity's conversation language."""
+    _require_non_guest(current)
+    override = SettingsService(session).get_language_override(session_id=current.session_id)
+    return LanguageSettings(language_override=override)
+
+
+@router.put("/language", response_model=LanguageSettings)
+def update_language_settings(
+    body: LanguageSettings,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Save per-session language override."""
+    _require_non_guest(current)
+    if body.language_override not in SUPPORTED_LANGUAGE_CODES:
+        raise HTTPException(status_code=422, detail=f"Código de idioma no soportado: {body.language_override!r}")
+    SettingsService(session).set_language_override(
+        value=body.language_override,
+        session_id=current.session_id,
+    )
+    return LanguageSettings(language_override=body.language_override)

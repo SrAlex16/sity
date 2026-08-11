@@ -38,6 +38,7 @@ class TurnContext:
     voice_settings: VoiceSettings
     session_id: str = "default"
     is_admin: bool = False
+    language_override: str = "auto"
 
 
 def build_turn_context(
@@ -51,7 +52,8 @@ def build_turn_context(
     config: dict[str, Any] = load_default_config()
     settings_service = SettingsService(session)
     personality: dict[str, Any] = settings_service.get_personality(session_id=session_id)
-    voice_settings = settings_service.get_voice_settings()
+    voice_settings = settings_service.get_voice_settings(session_id=session_id)
+    language_override = settings_service.get_language_override(session_id=session_id)
 
     _capture_svc = DatasetCaptureService(session)
     _capture_ctx = _capture_svc.get()
@@ -100,4 +102,5 @@ def build_turn_context(
         voice_settings=voice_settings,
         session_id=session_id,
         is_admin=is_admin,
+        language_override=language_override,
     )
