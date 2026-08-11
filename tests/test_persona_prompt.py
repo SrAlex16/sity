@@ -192,13 +192,13 @@ def test_no_vosotros_rule_present(default_prompt: str) -> None:
 # ------------------------------------------------------------------ #
 
 @pytest.mark.parametrize("verbosity,expected_fragment", [
-    (0.0,  "máximo 2 frases"),
-    (0.2,  "máximo 2 frases"),
-    (0.35, "longitud de la respuesta depende del contenido"),
-    (0.5,  "longitud de la respuesta depende del contenido"),
-    (0.79, "longitud de la respuesta depende del contenido"),
-    (0.8,  "Verbosidad alta"),
-    (1.0,  "Verbosidad alta"),
+    (0.0,  "máximo 2 frases"),        # very_low (≤0.20)
+    (0.2,  "máximo 2 frases"),        # very_low (≤0.20)
+    (0.35, "Verbosidad baja"),        # low (0.20<x≤0.40)
+    (0.5,  "longitud de la respuesta depende del contenido"),  # mid (0.40<x≤0.60)
+    (0.79, "Verbosidad alta"),        # high (0.60<x≤0.80)
+    (0.8,  "Verbosidad alta"),        # high (≤0.80)
+    (1.0,  "Verbosidad alta"),        # very_high — "Verbosidad muy alta" contains "Verbosidad alta"
 ])
 def test_verbosity_directive_ranges(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
     result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola")
@@ -213,10 +213,10 @@ def test_verbosity_directive_ranges(engine: PersonaEngine, verbosity: float, exp
 
 @pytest.mark.parametrize("skepticism,expected_fragment", [
     # Texts unique to the dynamic directive (not in the static template interpretation section)
-    (0.0,  "beneficio de la duda por defecto"),
-    (0.2,  "beneficio de la duda por defecto"),
-    (0.8,  "cuestiona activamente"),
-    (1.0,  "cuestiona activamente"),
+    (0.0,  "beneficio de la duda por defecto"),    # very_low
+    (0.2,  "beneficio de la duda por defecto"),    # very_low (≤0.20)
+    (0.8,  "cuestiona activamente"),               # high (≤0.80)
+    (1.0,  "cuestiona sistemáticamente"),          # very_high (>0.80)
 ])
 def test_skepticism_directive_ranges(engine: PersonaEngine, skepticism: float, expected_fragment: str) -> None:
     result = engine.build_persona_prompt({"skepticism_level": skepticism}, "hola")
@@ -225,14 +225,57 @@ def test_skepticism_directive_ranges(engine: PersonaEngine, skepticism: float, e
     )
 
 
-def test_skepticism_mid_range_no_directive(engine: PersonaEngine) -> None:
+def test_skepticism_mid_range_moderate_directive(engine: PersonaEngine) -> None:
     result = engine.build_persona_prompt({"skepticism_level": 0.5}, "hola")
     assert "cuestiona activamente" not in result.system_prompt
     assert "beneficio de la duda por defecto" not in result.system_prompt
+    assert "moderado" in result.system_prompt or "sentido común" in result.system_prompt
 
 
 # ------------------------------------------------------------------ #
-# 9. CANONICAL_PERSONALITY completeness                               #
+# 9. 5-level directive system — all params produce distinct content   #
+# ------------------------------------------------------------------ #
+
+@pytest.mark.parametrize("param,very_low_fragment,very_high_fragment", [
+    ("sarcasm_level",           "Sarcasmo muy bajo",          "Sarcasmo muy alto"),
+    ("rudeness_level",          "Mala leche muy baja",        "Mala leche muy alta"),
+    ("warmth_level",            "Calidez muy baja",           "Calidez muy alta"),
+    ("honesty_level",           "Honestidad muy baja",        "Honestidad muy alta"),
+    ("initiative_level",        "Iniciativa muy baja",        "Iniciativa muy alta"),
+    ("dry_humor_level",         "Humor seco muy bajo",        "Humor seco muy alto"),
+    ("frialdad_afectiva_level", "Frialdad afectiva muy baja", "Frialdad afectiva muy alta"),
+    ("contrarian_level",        "Contradicción muy baja",     "Contradicción muy alta"),
+    ("patience_level",          "Paciencia muy baja",         "Paciencia muy alta"),
+    ("helpfulness_level",       "Ayuda muy baja",             "Ayuda muy alta"),
+    ("verbosity_level",         "máximo 2 frases",            "Verbosidad muy alta"),
+    ("melancholy_level",        "Melancolía muy baja",        "Melancolía muy alta"),
+    ("skepticism_level",        "Escepticismo muy bajo",      "Escepticismo muy alto"),
+])
+def test_five_level_directive_extremes(
+    engine: PersonaEngine, param: str, very_low_fragment: str, very_high_fragment: str
+) -> None:
+    """Each parameter injects distinct directive text at very_low (0.0) and very_high (1.0)."""
+    low_result = engine.build_persona_prompt({param: 0.0}, "hola")
+    high_result = engine.build_persona_prompt({param: 1.0}, "hola")
+    assert very_low_fragment in low_result.system_prompt, (
+        f"Expected {very_low_fragment!r} for {param}=0.0"
+    )
+    assert very_high_fragment in high_result.system_prompt, (
+        f"Expected {very_high_fragment!r} for {param}=1.0"
+    )
+
+
+def test_refusal_high_directive_injected(engine: PersonaEngine) -> None:
+    """refusal_chance ≥ 0.80 injects a Negativa directive; low values do not."""
+    high = engine.build_persona_prompt({"refusal_chance": 1.0}, "hola")
+    assert "Negativa" in high.system_prompt
+    low = engine.build_persona_prompt({"refusal_chance": 0.0}, "hola")
+    assert "Negativa muy alta" not in low.system_prompt
+    assert "Negativa alta" not in low.system_prompt
+
+
+# ------------------------------------------------------------------ #
+# 10. CANONICAL_PERSONALITY completeness                              #
 # ------------------------------------------------------------------ #
 
 def test_canonical_personality_includes_skepticism() -> None:
@@ -243,7 +286,7 @@ def test_canonical_personality_includes_skepticism() -> None:
 
 
 # ------------------------------------------------------------------ #
-# 10. Idioma de conversación — language_override                      #
+# 11. Idioma de conversación — language_override                      #
 # ------------------------------------------------------------------ #
 
 def test_default_language_auto_detects(engine: PersonaEngine) -> None:

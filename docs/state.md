@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1709 tests en verde (pytest)
+- 1768 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -131,6 +131,30 @@ Ver .env.example para la lista completa.
   Sity) y Sistema 1 (idioma de UI via CF-IPCountry) confirmados en producción.
   1709 tests en verde.
 
+## Completado recientemente (2026-08-11, continuación)
+
+- **Alters de personalidad (Fase 1, 2026-08-11)** — tabla `PersonalityAlter`
+  (SQLModel, `(user_id, slot)` UniqueConstraint, 5 slots por usuario).
+  Endpoints CRUD: `GET /settings/alters`, `GET/PUT /settings/alters/{slot}`,
+  `DELETE /settings/alters/{slot}`. Selector de preset en frontend (VoiceScreen)
+  con carga/aplicación instantánea. Personalidad del alter se inyecta en el
+  prompt de sistema exactamente igual que la personalidad base. Ver
+  `docs/architecture.md` §Alters de personalidad.
+
+- **Sistema de texto bilingüe (UI, 2026-08-11)** — clases CSS `*Es`/`*Jp` en
+  `VoiceScreen`, `PersonalityScreen` y `PersonalitySliderItem`: orden Es-primero/
+  Jp-debajo, tamaño 12px (español) / 9px (japonés), colores intercambiados:
+  `*Es` → `var(--text-primary)` (fuerte), `*Jp` → `var(--text-secondary)` (apagado).
+
+- **Directivas de personalidad 5 niveles (2026-08-11)** — `persona_engine.py`
+  reemplaza el sistema binario HIGH/LOW (zona muerta 0.20–0.80) por 5 niveles:
+  `very_low` (≤0.20) / `low` (≤0.40) / `mid` (≤0.60) / `high` (≤0.80) /
+  `very_high` (>0.80). Los 14 parámetros reciben directiva de comportamiento
+  en CUALQUIER valor del slider; no más zona muerta. `_Levels` NamedTuple +
+  `_level_directive()` helper eliminan 13 bloques if/elif repetitivos.
+  `persona_system.md`: añadida línea de interpretación para `helpfulness`
+  (que faltaba). 14 nuevos tests de extremos en `test_persona_prompt.py`.
+
 ## Completado recientemente (2026-08-11)
 
 - **Pantalla Ajustes completa y verificada en real** — `VoiceScreen.tsx`
@@ -178,6 +202,16 @@ Ver .env.example para la lista completa.
   Documentado en `docs/auth-system.md`.
 
 ## Mejoras pendientes
+
+- **Diseño refusal_mode — Problema A (pendiente de decisión, 2026-08-11)** —
+  la directiva `_REFUSAL_ACTIVE` da al modelo DISCRECIÓN para decidir si aplica
+  o no la negativa, incluso con `refusal_chance=100%`. El texto actual lo
+  clasifica como "disponible, no obligatorio". Esto produce que el modelo a
+  menudo ignora el refusal_mode incluso cuando el slider está al máximo.
+  Alternativas a evaluar: (a) hacer la negativa obligatoria cuando el slider
+  supera un umbral (eliminar la discreción); (b) mantener la discreción pero
+  reducir el texto que la justifica; (c) diseñar una tercera instrucción para
+  niveles muy altos. NO tocar hasta que Alex decida el enfoque en sesión dedicada.
 
 - **Sistema de iniciativa propia de Sity** — capacidad de que Sity
   inicie una conversación sin que el usuario escriba primero (ej. "acordé

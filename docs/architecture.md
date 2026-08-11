@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-07-08.
+Última actualización: 2026-08-11.
 
 ## Resumen
 
@@ -1038,4 +1038,123 @@ Acciones irreversibles (`lock`, etc.) crean pending action con confirmación.
 3. HA lo descubre automáticamente.
 4. Actualizar el prompt del planner en `ai_request_builder.py` con el `entity_id`.
 5. Sity puede controlarlo inmediatamente — sin código nuevo.
+
+---
+
+## Sistema de autenticación y roles
+
+Tres roles: `guest` (cookie temporal, sin registro), `user` (cuenta registrada), `admin`
+(una sola cuenta por instancia). JWT en cookie HTTP-only (`sity_session`). Siete endpoints
+bajo `/auth/*`: registro, login, logout, me, reset-password, guest-session, delete-account.
+
+Módulos: `backend/app/auth/`. Modelo: `User` (id, email, hashed_password, role).
+`get_current_user` como dependencia FastAPI — todos los endpoints protegidos lo usan.
+Password reset via email con token de un solo uso (`PasswordResetToken`).
+
+Ver `docs/auth-system.md` para el detalle completo de fases, endpoints, tests y la lección
+aprendida sobre `session_id` en puntos de lectura per-sesión.
+
+---
+
+## Notificaciones Web Push
+
+Sistema de notificaciones push completado. Infraestructura: claves VAPID, tabla
+`PushSubscription`, `NotificationLog`, dispatcher de 3 estados (dedup · rate limiting ·
+SSE/push/pending). `sw.js` con handlers `push` y `notificationclick`.
+
+Fan-out model en `core/realtime_events.py`: cada `subscribe_session()` crea su propia
+`asyncio.Queue`; `publish_session_event()` copia el evento a todas las colas activas.
+Cuatro emisores convergen en `realtime_events.py`: job_manager, ai_orchestrator._on_done,
+timers/runner, e infraestructura SSE base.
+
+Ver `docs/notifications-architecture.md` para arquitectura completa, estado verificado y
+roadmap de vigías genéricos.
+
+---
+
+## Conversaciones compartidas
+
+`POST /chat/share` genera un enlace único (32 hex chars) con una foto fija (`snapshot_json`)
+de la conversación en ese momento. Caduca automáticamente (`expires_at`) y admite límite de
+visualizaciones (`max_views`). La ruta `/shared/{id}` renderiza una vista de solo lectura sin
+autenticación, sin exponer `session_id` ni metadatos de identidad del propietario.
+
+Modelo: `SharedConversation` en `backend/app/memory/models.py`.
+Vista frontend: `mobile/src/screens/SharedConversationView.tsx`.
+
+Ver `docs/shared-conversations.md`.
+
+---
+
+## Timers y alarmas
+
+`ScheduledTask` (tabla SQLite persistente, sobrevive reinicios): timers relativos
+(`set_timer`) y alarmas absolutas (`set_alarm`). Runner asíncrono (`timers/runner.py`)
+comprueba cada 10s y dispara `proactive_message` al canal SSE/push del propietario cuando
+`fires_at ≤ ahora`. Integrado con el mecanismo de 3 estados de notificaciones.
+
+Tools en `BASE_TOOLSET`: `set_timer`, `set_alarm`, `list_timers`, `cancel_timer`.
+
+Ver `docs/timers.md`.
+
+---
+
+## Sistema de idioma
+
+Dos sistemas independientes:
+
+**Sistema 2 — Idioma de conversación de Sity** (backend, per-sesión): `language.override`
+en tabla `Setting` (default `"auto"`). `persona_engine.py` inyecta `{language_block}` por
+turno según el valor. Mismos 10 códigos que el selector existente (auto / es-ES / es-419 /
+en-US / en-GB / ja / fr-FR / de-DE / pt-BR / it-IT). Endpoints: `GET/PUT /settings/language`.
+
+**Sistema 1 — Idioma de la interfaz PWA** (frontend, localStorage + geo):
+`GET /settings/ui-language-suggestion` lee `CF-IPCountry` de Cloudflare y mapea a `es`/`en`/`ja`.
+Preferencia manual en `localStorage['sity_ui_lang']` tiene prioridad sobre la geo-sugerencia.
+Hook `useUiLanguage` en `App.tsx`; traducciones tipadas en `mobile/src/i18n/translations.ts`.
+
+---
+
+## Integraciones self-service (Fase 6)
+
+Cada usuario puede conectar sus propias cuentas de Google (Gmail/Calendar/Drive) y Spotify
+desde la pantalla Ajustes. Modelo: `UserIntegration` (user_id, provider, access_token,
+refresh_token, expires_at). Los handlers de tools leen las credenciales del usuario activo
+en lugar del token global de Admin.
+
+Flujo OAuth: `POST /auth/integrations/{provider}/connect` → redirect → `/auth/integrations/
+{provider}/callback` → guarda en `UserIntegration`. Frontend: `BroadcastChannel('sity_oauth')`
+notifica a la pantalla Ajustes del resultado sin interrumpir la sesión principal.
+
+Ver `docs/self-service-integrations-analysis.md`.
+
+---
+
+## Alters de personalidad
+
+Presets completos de personalidad (5 slots por usuario). Cada alter almacena los 14 parámetros
+de personalidad como JSON blob. Operaciones: guardar estado actual, cargar (aplica los 14
+parámetros de golpe vía `set_all_personality()`), renombrar, borrar, copiar entre slots.
+
+Modelo: `PersonalityAlter` (user_id, slot 1-5, name, parameters_json). `AlterService` valida
+y ejecuta; todas las mutaciones se loguean con `module="alters"`. Aislamiento por usuario:
+Guest no tiene acceso; User y Admin solo ven sus propios slots.
+
+Frontend: pestaña "Alters" en PersonalityScreen (User/Admin únicamente). Confirmaciones inline
+sin modales. `handleAlterLoaded` limpia `liveOverride` y recarga los sliders tras una carga.
+
+Ver `docs/personality-alters.md`.
+
+---
+
+## Navegación web (read_webpage)
+
+`read_webpage(url)` — scraping HTML sin JS, SSRF guard (bloquea IPs privadas/loopback/link-local),
+timeout 10s, contenido truncado a 5k chars, resultado envuelto en header de "contenido no
+confiable" para el modelo. Disponible en `BASE_TOOLSET`.
+
+Navegación activa con interacción real (clics, formularios) está pospuesta: requiere sandboxing
+Docker aislado de la red interna como prerrequisito no negociable.
+
+Ver `docs/web-navigation-risk-analysis.md` para el análisis de riesgos completo.
 

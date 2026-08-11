@@ -21,6 +21,9 @@ refusal:
     - parametros
     - personalidad
 
+# style_thresholds superseded by the 5-level system in persona_engine.py.
+# Boundaries are now hardcoded design constants (_L1=0.20, _L2=0.40, _L3=0.60, _L4=0.80).
+# This section is kept for reference only and is no longer read at runtime.
 style_thresholds:
   high: 0.80
   low: 0.20
