@@ -396,3 +396,57 @@ def test_debug_tools_available_for_admin(message: str) -> None:
     names = selected_tool_names(message, is_admin=True)
     found = names & _DEBUG_TOOLS
     assert found, f"No debug tools for admin: {message!r}"
+
+
+# ---------------------------------------------------------------------------
+# TIMERS_TOOLSET — keyword-activated (structural fix 2026-08-12)
+# Moved from BASE_TOOLSET to TIMERS_TOOLSET: list_timers must NOT appear
+# for generic messages even when session history contains timer context.
+# ---------------------------------------------------------------------------
+
+_TIMER_TOOLS: set[str] = {"set_timer", "set_alarm", "list_timers", "cancel_timer"}
+
+
+def test_timer_tools_not_in_base_toolset() -> None:
+    """Timer tools must not be in BASE_TOOLSET — they are gated by keyword."""
+    base_names = {t["name"] for t in BASE_TOOLSET}
+    found = base_names & _TIMER_TOOLS
+    assert not found, f"Timer tools leaked into BASE_TOOLSET: {sorted(found)}"
+
+
+@pytest.mark.parametrize("message", [
+    "¿Cómo estamos ahora?",
+    "cuéntame algo",
+    "¿qué hay?",
+    "estás ahí?",
+    "¿cómo vas?",
+    "¿qué pasa?",
+])
+def test_generic_messages_do_not_activate_timer_tools(message: str) -> None:
+    """Regression: generic/ambiguous messages must never trigger list_timers.
+
+    This is the exact pattern that caused the bug (trc_33d668065f91 / trc_8c1f888e764f):
+    the model called list_timers for '¿Cómo estamos ahora?' because timer tools
+    were always available in BASE_TOOLSET and session history contained timer context.
+    """
+    names = selected_tool_names(message)
+    found = names & _TIMER_TOOLS
+    assert not found, f"Timer tools appeared for generic message {message!r}: {sorted(found)}"
+
+
+@pytest.mark.parametrize("message,expected_tool", [
+    ("ponme un temporizador de 10 minutos", "set_timer"),
+    ("avísame en 30 segundos", "set_timer"),
+    ("¿tengo temporizadores activos?", "list_timers"),
+    ("cancela el temporizador", "cancel_timer"),
+    ("ponme una alarma para mañana", "set_alarm"),
+    ("recuérdame mañana a las 9", "set_alarm"),
+    ("¿cuántas alarmas tengo?", "list_timers"),
+    ("cuenta atrás de 5 minutos", "set_timer"),
+])
+def test_timer_keywords_activate_timer_tools(message: str, expected_tool: str) -> None:
+    """Explicit timer/alarm mentions must activate TIMERS_TOOLSET."""
+    names = selected_tool_names(message)
+    assert expected_tool in names, (
+        f"Expected {expected_tool!r} for {message!r}, got: {sorted(names & _TIMER_TOOLS)}"
+    )

@@ -76,12 +76,7 @@ from app.cortex.tool_schemas.trace import (
     READ_RECENT_DEBUG_EVENTS_TOOL,
     READ_TRACE_EVENTS_TOOL,
 )
-from app.cortex.tool_schemas.timers import (
-    CANCEL_TIMER_TOOL,
-    LIST_TIMERS_TOOL,
-    SET_ALARM_TOOL,
-    SET_TIMER_TOOL,
-)
+from app.cortex.tool_schemas.timers import TIMERS_TOOLSET
 from app.cortex.tool_schemas.web import (
     READ_WEBPAGE_TOOL,
     SEARCH_CONVERSATION_HISTORY_TOOL,
@@ -133,11 +128,8 @@ BASE_TOOLSET: list[dict] = [
     SPOTIFY_PLAYLIST_TRACKS_TOOL,
     # Social memory — impression of third-party users (user: sessions only, checked in handler).
     SOCIAL_RECALL_IMPRESSION_TOOL,
-    # Timers and alarms — always available.
-    SET_TIMER_TOOL,
-    SET_ALARM_TOOL,
-    LIST_TIMERS_TOOL,
-    CANCEL_TIMER_TOOL,
+    # Timer tools NOT here — activated by TIMERS_TOOLSET in toolset_selector
+    # when the message mentions timers/alarms explicitly.
 ]
 
 ALL_TOOLS = [
@@ -182,10 +174,7 @@ ALL_TOOLS = [
     ROLLBACK_FILE_CHANGE_TOOL,
     CANCEL_PENDING_ACTION_TOOL,
     NO_ACTION_REQUIRED_TOOL,
-    SET_TIMER_TOOL,
-    SET_ALARM_TOOL,
-    LIST_TIMERS_TOOL,
-    CANCEL_TIMER_TOOL,
+    *TIMERS_TOOLSET,
 ]
 
 TOOLS = ALL_TOOLS
