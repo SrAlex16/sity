@@ -2,6 +2,21 @@ from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
 
+class AlterSlot(BaseModel):
+    slot: int
+    name: Optional[str] = None
+    parameters: Optional[dict[str, float]] = None
+    is_empty: bool
+
+
+class SaveAlterRequest(BaseModel):
+    name: str
+
+
+class RenameAlterRequest(BaseModel):
+    name: str
+
+
 class PersonalitySettings(BaseModel):
     sarcasm_level: float = Field(ge=0.0, le=1.0)
     rudeness_level: float = Field(ge=0.0, le=1.0)

@@ -214,16 +214,28 @@ en todo el proyecto (retención 14 días, rotación diaria).
 
 ---
 
-## Endpoints REST (Paso 2 — pendiente)
+## Endpoints REST (completado — Paso 2)
 
 | Método | Ruta | Rol | Descripción |
 |---|---|---|---|
-| GET | `/settings/alters` | User/Admin | Lista los 5 slots del usuario |
-| POST | `/settings/alters/{slot}/save` | User/Admin | Guarda la personalidad actual en el slot |
-| POST | `/settings/alters/{slot}/load` | User/Admin | Aplica el slot a la sesión actual |
-| PATCH | `/settings/alters/{slot}/rename` | User/Admin | Renombra el slot |
-| DELETE | `/settings/alters/{slot}` | User/Admin | Vacía el slot |
-| POST | `/settings/alters/{slot}/copy-to/{dest}` | User/Admin | Copia slot a otro slot |
+| GET | `/settings/alters` | User/Admin | Lista los 5 slots del usuario; siempre devuelve exactamente 5 entradas (is_empty=true para los vacíos) |
+| POST | `/settings/alters/{slot}/save` | User/Admin | Guarda la personalidad activa de la sesión en el slot. Body: `{"name": "..."}`. 422 si slot fuera de [1-5] |
+| POST | `/settings/alters/{slot}/load` | User/Admin | Aplica el slot a la sesión activa. 400 si el slot está vacío |
+| PATCH | `/settings/alters/{slot}/rename` | User/Admin | Renombra el slot. Body: `{"name": "..."}`. 400 si el slot está vacío |
+| DELETE | `/settings/alters/{slot}` | User/Admin | Vacía el slot (204, no-op si ya estaba vacío) |
+| POST | `/settings/alters/{from_slot}/copy/{to_slot}` | User/Admin | Copia nombre + parámetros de from_slot a to_slot. 400 si el origen está vacío |
+
+Todos devuelven 401 para Guest. La validación de rango (1-5) es enforced por FastAPI `Path(ge=1, le=5)` → 422 automático.
+
+`AlterSlot` response shape:
+```json
+{
+  "slot": 2,
+  "name": "Modo trabajo",
+  "parameters": {"sarcasm_level": 0.25, "warmth_level": 0.35, ...},
+  "is_empty": false
+}
+```
 
 ---
 

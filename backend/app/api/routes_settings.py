@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlmodel import Session
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
@@ -8,9 +8,22 @@ def _require_non_guest(current: CurrentUser) -> CurrentUser:
         raise HTTPException(status_code=401, detail="Autenticación requerida")
     return current
 from app.memory.db import get_session
-from app.settings.schemas import LanguageSettings, PersonalityAdjustRequest, PersonalityAdjustResponse, PersonalitySettings, SUPPORTED_LANGUAGE_CODES, VoiceSettings
+from app.settings.alter_service import AlterService
+from app.settings.schemas import (
+    AlterSlot,
+    LanguageSettings,
+    PersonalityAdjustRequest,
+    PersonalityAdjustResponse,
+    PersonalitySettings,
+    RenameAlterRequest,
+    SaveAlterRequest,
+    SUPPORTED_LANGUAGE_CODES,
+    VoiceSettings,
+)
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
+
+_SLOT = Path(ge=1, le=5, description="Slot number (1–5)")
 
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -160,6 +173,100 @@ def update_language_settings(
         session_id=current.session_id,
     )
     return LanguageSettings(language_override=body.language_override)
+
+
+# ---------------------------------------------------------------------------
+# Personality Alters — saved presets (5 slots per user)
+# ---------------------------------------------------------------------------
+
+@router.get("/alters", response_model=list[AlterSlot])
+def list_alters(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    _require_non_guest(current)
+    return AlterService(session).list_alters(user_id=current.user_id)
+
+
+@router.post("/alters/{slot}/save", response_model=AlterSlot)
+def save_alter(
+    body: SaveAlterRequest,
+    slot: int = _SLOT,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    _require_non_guest(current)
+    return AlterService(session).save_alter(
+        user_id=current.user_id,
+        slot=slot,
+        name=body.name,
+        current_session_id=current.session_id,
+    )
+
+
+@router.post("/alters/{slot}/load")
+def load_alter(
+    slot: int = _SLOT,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    _require_non_guest(current)
+    try:
+        personality = AlterService(session).load_alter(
+            user_id=current.user_id,
+            slot=slot,
+            session_id=current.session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"personality": personality}
+
+
+@router.patch("/alters/{slot}/rename")
+def rename_alter(
+    body: RenameAlterRequest,
+    slot: int = _SLOT,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    _require_non_guest(current)
+    try:
+        AlterService(session).rename_alter(
+            user_id=current.user_id,
+            slot=slot,
+            new_name=body.name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@router.delete("/alters/{slot}", status_code=204)
+def clear_alter(
+    slot: int = _SLOT,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    _require_non_guest(current)
+    AlterService(session).clear_alter(user_id=current.user_id, slot=slot)
+
+
+@router.post("/alters/{from_slot}/copy/{to_slot}", response_model=AlterSlot)
+def copy_alter(
+    from_slot: int = Path(ge=1, le=5, description="Source slot (1–5)"),
+    to_slot: int = Path(ge=1, le=5, description="Destination slot (1–5)"),
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    _require_non_guest(current)
+    try:
+        return AlterService(session).copy_alter(
+            user_id=current.user_id,
+            from_slot=from_slot,
+            to_slot=to_slot,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
