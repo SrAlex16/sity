@@ -46,14 +46,14 @@
 .titleJp {
   font-family: var(--font-japanese);
   font-size: 9px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   line-height: 1.2;
 }
 
 .titleEs {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -126,7 +126,7 @@
 .sectionEs {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   margin: 0 0 2px;
@@ -135,7 +135,7 @@
 .sectionJp {
   font-family: var(--font-japanese);
   font-size: 9px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   margin: 0 0 14px;
   line-height: 1.3;
 }
