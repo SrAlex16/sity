@@ -575,6 +575,7 @@ class ChatAIOrchestrator:
                 prior_messages=prep.prompt_context.prior_messages,
                 images=images,
                 client_turn_id=request.client_turn_id,
+                assistant_prefill="No." if persona_decision.refusal_mode else None,
             )
         )
 

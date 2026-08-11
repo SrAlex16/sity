@@ -187,6 +187,7 @@ def build_chat_ai_request(
     prior_messages: list[dict[str, Any]] | None = None,
     images: list[dict[str, str]] | None = None,
     client_turn_id: str | None = None,
+    assistant_prefill: str | None = None,
 ) -> AIRequest:
     """Plain conversational request — no tools, no tool choice."""
     return AIRequest(
@@ -199,6 +200,7 @@ def build_chat_ai_request(
         prior_messages=prior_messages or [],
         images=images or [],
         client_turn_id=client_turn_id,
+        assistant_prefill=assistant_prefill,
     )
 
 

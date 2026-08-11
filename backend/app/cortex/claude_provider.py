@@ -98,14 +98,18 @@ class ClaudeProvider:
     def generate(self, request: AIRequest) -> AIResponse:
         started = time.perf_counter()
 
+        _msgs: list[dict[str, Any]] = [
+            *_messages_with_history_cache(request.prior_messages, request.user_message),
+            {"role": "user", "content": _user_content_block(request)},
+        ]
+        if request.assistant_prefill:
+            _msgs.append({"role": "assistant", "content": request.assistant_prefill})
+
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": request.max_tokens,
             "system": _system_with_cache(request.system_prompt),
-            "messages": [
-                *_messages_with_history_cache(request.prior_messages, request.user_message),
-                {"role": "user", "content": _user_content_block(request)},
-            ],
+            "messages": _msgs,
         }
 
         effective_tools = request.tools if request.tools is not None else TOOLS
@@ -143,7 +147,10 @@ class ClaudeProvider:
             return _cancelled
 
         latency_ms = round((time.perf_counter() - started) * 1000)
-        return self._to_ai_response(message=message, latency_ms=latency_ms)
+        response = self._to_ai_response(message=message, latency_ms=latency_ms)
+        if request.assistant_prefill and response.ok:
+            response.text = (request.assistant_prefill + (response.text or "")).strip()
+        return response
 
     def generate_with_tool_results(
         self,
