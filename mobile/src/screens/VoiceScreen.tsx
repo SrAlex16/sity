@@ -196,10 +196,13 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
 
         {form && (
           <>
-            {/* Modo de respuesta */}
+            {/* Voz — modo de respuesta, transcripción, respuestas largas */}
             <div className={styles.section}>
-              <p className={styles.sectionJp}>レスポンスモード</p>
-              <p className={styles.sectionEs}>Modo de respuesta de voz</p>
+              <p className={styles.sectionJp}>ボイス</p>
+              <p className={styles.sectionEs}>Voz</p>
+
+              {/* Modo de respuesta */}
+              <p className={styles.sectionHint} style={{ marginBottom: 10 }}>Modo de respuesta</p>
               <div className={styles.radioGroup}>
                 {(['always', 'never', 'symmetric'] as const).map((mode) => (
                   <label key={mode} className={styles.radioRow}>
@@ -216,11 +219,9 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                   </label>
                 ))}
               </div>
-            </div>
 
-            {/* Transcripción junto al audio */}
-            <div className={styles.section}>
-              <label className={styles.checkboxRow}>
+              {/* Transcripción */}
+              <label className={styles.checkboxRow} style={{ marginTop: 18 }}>
                 <input
                   type="checkbox"
                   className={styles.hiddenInput}
@@ -233,12 +234,9 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                   <p className={styles.sectionEs}>Incluir transcripción de texto junto al audio</p>
                 </div>
               </label>
-            </div>
 
-            {/* Respuestas largas */}
-            <div className={styles.section}>
-              <p className={styles.sectionJp}>長いレスポンス</p>
-              <p className={styles.sectionEs}>Respuestas largas</p>
+              {/* Respuestas largas */}
+              <p className={styles.sectionHint} style={{ marginTop: 18, marginBottom: 10 }}>Respuestas largas</p>
               <div className={styles.radioGroup}>
                 {(['split', 'text_only'] as const).map((action) => (
                   <label key={action} className={styles.radioRow}>
@@ -255,9 +253,19 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                   </label>
                 ))}
               </div>
+
+              {/* Restaurar valores — dentro de la sección Voz */}
+              <button
+                className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                style={{ marginTop: 18 }}
+                onClick={handleRestore}
+                disabled={busy}
+              >
+                Restaurar valores de voz
+              </button>
             </div>
 
-            {/* Periodicidad de borrado — admin only */}
+            {/* Periodicidad de borrado — admin only, global */}
             {role === 'admin' && (
               <div className={styles.section}>
                 <p className={styles.sectionJp}>保存期間</p>
@@ -349,7 +357,7 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                           </div>
                         ) : (
                           <button
-                            className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                            className={`${styles.sectionBtn} ${styles.btnMagenta}`}
                             onClick={() => setDisconnectConfirm(provider)}
                           >
                             Desconectar
@@ -435,9 +443,6 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
       <div className={styles.footer}>
         <button className={`${styles.btn} ${styles.btnCyan}`} onClick={handleSave} disabled={busy || !form}>
           {saving ? '…' : 'Guardar'}
-        </button>
-        <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={handleRestore} disabled={busy}>
-          Restaurar valores de voz
         </button>
       </div>
     </div>

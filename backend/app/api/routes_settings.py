@@ -2,6 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
+
+def _require_non_guest(current: CurrentUser) -> CurrentUser:
+    if current.is_guest:
+        raise HTTPException(status_code=401, detail="Autenticación requerida")
+    return current
 from app.memory.db import get_session
 from app.settings.schemas import PersonalityAdjustRequest, PersonalityAdjustResponse, PersonalitySettings, VoiceSettings
 from app.settings.settings_service import SettingsService
@@ -108,15 +113,22 @@ def reset_personality(
 @router.get("/voice", response_model=VoiceSettings)
 def get_voice_settings(
     session: Session = Depends(get_session),
-    _: CurrentUser = Depends(require_admin),
+    current: CurrentUser = Depends(get_current_user),
 ):
-    return SettingsService(session).get_voice_settings()
+    """Per-session voice settings (mode/transcript/long_response) with global fallback.
+    audio_cleanup_days is always read from the global admin row."""
+    _require_non_guest(current)
+    return SettingsService(session).get_voice_settings(session_id=current.session_id)
 
 
 @router.put("/voice", response_model=VoiceSettings)
 def update_voice_settings(
     settings: VoiceSettings,
     session: Session = Depends(get_session),
-    _: CurrentUser = Depends(require_admin),
+    current: CurrentUser = Depends(get_current_user),
 ):
-    return SettingsService(session).set_voice_settings(settings)
+    """Save per-session voice settings. audio_cleanup_days is only persisted by admin."""
+    _require_non_guest(current)
+    return SettingsService(session).set_voice_settings(
+        settings, session_id=current.session_id, is_admin=current.is_admin
+    )

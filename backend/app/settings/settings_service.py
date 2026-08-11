@@ -192,13 +192,37 @@ class SettingsService:
 
         self.session.commit()
 
-    # ── Voice settings — global only (admin-only endpoints) ───────────────────
+    # ── Voice settings ─────────────────────────────────────────────────────────
+    # Per-session keys: read from session row first, fall back to global default.
+    # Admin-only key: audio_cleanup_days — always global (session_id=NULL).
 
-    def get_voice_settings(self) -> VoiceSettings:
+    _VOICE_PER_SESSION = ("voice_response_mode", "voice_include_text", "voice_long_response_action")
+    _VOICE_ADMIN_GLOBAL = ("audio_cleanup_days",)
+
+    def get_voice_settings(self, session_id: Optional[str] = None) -> VoiceSettings:
         defaults = VoiceSettings()
-        keys = ("voice_response_mode", "voice_include_text", "voice_long_response_action", "audio_cleanup_days")
         data: dict[str, Any] = {}
-        for key in keys:
+
+        for key in self._VOICE_PER_SESSION:
+            row = None
+            if session_id is not None:
+                row = self.session.exec(
+                    select(Setting).where(
+                        Setting.key == f"voice.{key}",
+                        Setting.session_id == session_id,
+                    )
+                ).first()
+            if row is None:
+                row = self.session.exec(
+                    select(Setting).where(
+                        Setting.key == f"voice.{key}",
+                        col(Setting.session_id).is_(None),
+                    )
+                ).first()
+            if row is not None:
+                data[key] = json.loads(row.value_json)
+
+        for key in self._VOICE_ADMIN_GLOBAL:
             row = self.session.exec(
                 select(Setting).where(
                     Setting.key == f"voice.{key}",
@@ -207,12 +231,21 @@ class SettingsService:
             ).first()
             if row is not None:
                 data[key] = json.loads(row.value_json)
+
         return VoiceSettings(**{**defaults.model_dump(), **data})
 
-    def set_voice_settings(self, settings: VoiceSettings, source: str = "ui") -> VoiceSettings:
-        for key, value in settings.model_dump().items():
-            self.set_setting(f"voice.{key}", value, source=source, session_id=None)
-        return settings
+    def set_voice_settings(
+        self,
+        settings: VoiceSettings,
+        session_id: Optional[str] = None,
+        is_admin: bool = False,
+        source: str = "ui",
+    ) -> VoiceSettings:
+        for key in self._VOICE_PER_SESSION:
+            self.set_setting(f"voice.{key}", getattr(settings, key), source=source, session_id=session_id)
+        if is_admin:
+            self.set_setting("voice.audio_cleanup_days", settings.audio_cleanup_days, source=source, session_id=None)
+        return self.get_voice_settings(session_id=session_id)
 
     @staticmethod
     def _set_nested(target: dict[str, Any], dotted_key: str, value: Any) -> None:
