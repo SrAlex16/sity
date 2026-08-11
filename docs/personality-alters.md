@@ -281,8 +281,53 @@ Todos devuelven 401 para Guest. La validación de rango (1-5) es enforced por Fa
 
 ---
 
+## Frontend (completado — Paso 3)
+
+### Ubicación
+
+Sub-pestaña "Alters" dentro de `PersonalityScreen` (pantalla de Rasgos/Parámetros).
+Un tab bar con dos pestañas — **Rasgos** (sliders existentes) y **Alters** (presets) — se muestra solo para User/Admin. Los Guests ven solo la vista de Rasgos sin acceso a Alters.
+
+### Componentes
+
+**`mobile/src/hooks/useAlters.ts`** — hook de datos:
+- `useAlters()` hace `GET /settings/alters` al montar y expone `slots`, `busy` (slot en vuelo), y las funciones `save`, `load`, `rename`, `clear`, `copy`.
+- Las operaciones actualizan el estado local optimistamente donde es posible (rename, clear) o con la respuesta del servidor (save, copy).
+- `busy: number | null` — el slot actualmente en vuelo; cada slot lo usa para deshabilitar sus botones mientras hay una petición en curso.
+
+**`mobile/src/components/AltersPanel.tsx`** — UI principal:
+- Renderiza los 5 slots en cards estilo cyberpunk.
+- Cada slot muestra: número (indicador cuadrado), nombre (o "Vacío" en cursiva para slots vacíos).
+- **Slot vacío:** botón "Guardar aquí" → despliega inline un input de nombre + botón Guardar + cancelar.
+- **Slot con contenido:** botones Cargar / Renombrar / Copiar / Vaciar.
+  - **Cargar** → confirmación inline ("Sobrescribirá la personalidad activa") + Confirmar / Cancelar.
+  - **Renombrar** → input con nombre actual + guardar + cancelar.
+  - **Copiar** → selector de slot destino (excluye el origen) + Copiar + cancelar.
+  - **Vaciar** → confirmación inline ("Se eliminará este preset") + Confirmar / Cancelar.
+- Solo un slot puede tener acción activa a la vez (cancel limpia el estado global).
+- `onLoaded` callback: tras cargar un Alter, AltersPanel llama a `onLoaded` → `PersonalityScreen` limpia `liveOverride` y llama a `reload()` → los sliders reflejan los valores del Alter inmediatamente sin recargar la página.
+
+**`mobile/src/screens/PersonalityScreen.tsx`** — modificaciones:
+- Acepta `role: string` como prop (pasado desde `App.tsx`).
+- `const isGuest = role === 'guest'` — el tab bar Alters solo se muestra si `!isGuest`.
+- `handleAlterLoaded`: `setLiveOverride({})` + `await reload()` — wired a `AltersPanel.onLoaded`.
+- `view: 'params' | 'alters'` — estado local que controla qué vista se muestra bajo el tab bar.
+
+**`mobile/src/App.tsx`** — `<PersonalityScreen role={role} />` (antes sin props).
+
+### Interacción con el estado de sliders
+
+Cuando se carga un Alter:
+1. `AlterService.load_alter()` escribe los 14 parámetros en la DB vía `set_all_personality`.
+2. El endpoint `/settings/alters/{slot}/load` retorna 200.
+3. `handleAlterLoaded` en `PersonalityScreen` llama a `reload()` de `usePersonality`.
+4. `usePersonality.load()` re-fetcha `/settings/personality` y actualiza `settings`.
+5. `liveOverride` se limpia → `displayed` refleja los valores del Alter cargado.
+6. Los sliders se actualizan visualmente con animación normal de Framer Motion.
+
+No hay necesidad de un segundo canal de eventos (`sity:personality-updated`) — el callback directo `onLoaded` es suficiente y más explícito.
+
 ## Pendiente
 
-- **Paso 2** — Endpoints REST (ver tabla §Endpoints)
-- **Paso 3** — UI en la pantalla de Ajustes (5 slots con nombre, botones guardar/cargar/renombrar/borrar/copiar)
-- **Logging de `alter_loaded` en aiOrchestrator** — si en algún momento queremos incluir el nombre del Alter activo en los logs de turno (para saber "este turno se respondió con el Alter X activo"), habrá que pasar el nombre del Alter cargado hasta `TurnContext`; pendiente de decidir si aporta suficiente valor diagnóstico.
+- **Logging de `alter_loaded` en TurnContext** — si se quiere saber qué Alter estaba activo durante un turno, habrá que pasar el nombre del Alter cargado hasta `TurnContext`; pendiente de decidir si aporta suficiente valor diagnóstico.
+- **i18n** — PersonalityScreen y AltersPanel están en español hardcoded, consistente con el resto de PersonalityScreen. Se actualizará junto con el namespace `chat` cuando se extienda i18n a ChatScreen.

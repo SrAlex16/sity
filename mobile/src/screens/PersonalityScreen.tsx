@@ -5,6 +5,7 @@ import type { PersonalitySettings } from '../hooks/usePersonality';
 import { MoodFace } from '../components/MoodFace';
 import { PersonalitySliderItem, PARAM_META } from '../components/PersonalitySliderItem';
 import { HelpModal } from '../components/HelpModal';
+import { AltersPanel } from '../components/AltersPanel';
 import styles from './PersonalityScreen.module.css';
 
 function computeMoodLevel(s: PersonalitySettings): number {
@@ -33,11 +34,17 @@ function moodColor(pct: number): string {
 
 const PARAM_ORDER = Object.keys(PARAM_META) as (keyof PersonalitySettings)[];
 
-export function PersonalityScreen() {
+interface PersonalityScreenProps {
+  role: string;
+}
+
+export function PersonalityScreen({ role }: PersonalityScreenProps) {
+  const isGuest = role === 'guest';
   const { settings, isLoading, adjust, reset, reload } = usePersonality();
   const [liveOverride, setLiveOverride] = useState<Partial<PersonalitySettings>>({});
   const [helpOpen, setHelpOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [view, setView] = useState<'params' | 'alters'>('params');
 
   const displayed = settings ? { ...settings, ...liveOverride } : null;
   const moodPct = displayed ? computeMoodLevel(displayed) : 0;
@@ -66,6 +73,11 @@ export function PersonalityScreen() {
     }
   };
 
+  const handleAlterLoaded = useCallback(async () => {
+    setLiveOverride({});
+    await reload();
+  }, [reload]);
+
   return (
     <div className={styles.screen}>
       {/* Header */}
@@ -77,63 +89,93 @@ export function PersonalityScreen() {
         <button className={styles.helpBtn} onClick={() => setHelpOpen(true)}>?</button>
       </div>
 
-      {/* Mood card */}
-      {displayed ? (
-        <div className={styles.moodCard}>
-          <MoodFace moodLevel={moodPct} size={72} />
-          <div className={styles.moodInfo}>
-            <motion.span
-              className={styles.moodPct}
-              style={{ color, textShadow: `0 0 8px ${color}` }}
-              animate={{ color, textShadow: `0 0 8px ${color}` }}
-              transition={{ duration: 0.35 }}
-            >
-              {moodPct}%
-            </motion.span>
-            <motion.span
-              className={styles.moodLabel}
-              style={{ color }}
-              animate={{ color }}
-              transition={{ duration: 0.35 }}
-            >
-              {moodLabel(moodPct)}
-            </motion.span>
-          </div>
-          <div className={styles.actions}>
-            <button
-              className={styles.actionBtn}
-              onClick={handleReset}
-              disabled={resetting || isLoading}
-            >
-              {resetting ? '…' : 'Restaurar'}
-            </button>
-            <button
-              className={styles.actionBtn}
-              onClick={() => void reload()}
-              disabled={isLoading}
-            >
-              {isLoading ? '…' : 'Recargar'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className={styles.loadingCard}>
-          {isLoading ? 'Cargando…' : 'Sin datos'}
+      {/* View tabs — User/Admin only */}
+      {!isGuest && (
+        <div className={styles.viewTabs}>
+          <button
+            className={`${styles.viewTab} ${view === 'params' ? styles.viewTabActive : ''}`}
+            onClick={() => setView('params')}
+          >
+            Rasgos
+          </button>
+          <button
+            className={`${styles.viewTab} ${view === 'alters' ? styles.viewTabActive : ''}`}
+            onClick={() => setView('alters')}
+          >
+            Alters
+          </button>
         </div>
       )}
 
-      {/* Slider list */}
-      <div className={styles.sliderList}>
-        {displayed && PARAM_ORDER.map((key) => (
-          <PersonalitySliderItem
-            key={key}
-            paramKey={key}
-            value={displayed[key]}
-            onDrag={(v) => handleDrag(key, v)}
-            onCommit={(v) => handleCommit(key, v)}
-          />
-        ))}
-      </div>
+      {/* Params view */}
+      {view === 'params' && (
+        <>
+          {/* Mood card */}
+          {displayed ? (
+            <div className={styles.moodCard}>
+              <MoodFace moodLevel={moodPct} size={72} />
+              <div className={styles.moodInfo}>
+                <motion.span
+                  className={styles.moodPct}
+                  style={{ color, textShadow: `0 0 8px ${color}` }}
+                  animate={{ color, textShadow: `0 0 8px ${color}` }}
+                  transition={{ duration: 0.35 }}
+                >
+                  {moodPct}%
+                </motion.span>
+                <motion.span
+                  className={styles.moodLabel}
+                  style={{ color }}
+                  animate={{ color }}
+                  transition={{ duration: 0.35 }}
+                >
+                  {moodLabel(moodPct)}
+                </motion.span>
+              </div>
+              <div className={styles.actions}>
+                <button
+                  className={styles.actionBtn}
+                  onClick={handleReset}
+                  disabled={resetting || isLoading}
+                >
+                  {resetting ? '…' : 'Restaurar'}
+                </button>
+                <button
+                  className={styles.actionBtn}
+                  onClick={() => void reload()}
+                  disabled={isLoading}
+                >
+                  {isLoading ? '…' : 'Recargar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className={styles.loadingCard}>
+              {isLoading ? 'Cargando…' : 'Sin datos'}
+            </div>
+          )}
+
+          {/* Slider list */}
+          <div className={styles.sliderList}>
+            {displayed && PARAM_ORDER.map((key) => (
+              <PersonalitySliderItem
+                key={key}
+                paramKey={key}
+                value={displayed[key]}
+                onDrag={(v) => handleDrag(key, v)}
+                onCommit={(v) => handleCommit(key, v)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Alters view — User/Admin only */}
+      {view === 'alters' && !isGuest && (
+        <div className={styles.altersView}>
+          <AltersPanel onLoaded={handleAlterLoaded} />
+        </div>
+      )}
 
       {/* Help modal */}
       <HelpModal
@@ -145,6 +187,7 @@ export function PersonalityScreen() {
         <p>Los cambios se aplican inmediatamente y persisten entre sesiones.</p>
         <p>La cara refleja el nivel de <em>encabronamiento</em> calculado a partir de rudeza, sarcasmo, contrariedad y humor seco.</p>
         <p><strong>Restaurar</strong> vuelve a los valores predeterminados del perfil activo.</p>
+        <p><strong>Alters</strong> (pestaña) permite guardar y cargar presets completos de personalidad.</p>
       </HelpModal>
     </div>
   );

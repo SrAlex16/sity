@@ -131,6 +131,48 @@
   cursor: default;
 }
 
+/* ── View tabs ── */
+.viewTabs {
+  flex-shrink: 0;
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.viewTab {
+  flex: 1;
+  padding: 9px 8px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s;
+}
+
+.viewTab:hover {
+  color: var(--text-primary);
+}
+
+.viewTabActive {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+}
+
+/* ── Alters view container ── */
+.altersView {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.altersView::-webkit-scrollbar { width: 3px; }
+.altersView::-webkit-scrollbar-track { background: transparent; }
+.altersView::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
 /* ── Slider list ── */
 .sliderList {
   flex: 1;

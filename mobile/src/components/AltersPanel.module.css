@@ -1,0 +1,167 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0;
+}
+
+/* ── Slot card ── */
+
+.slot {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slotHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slotNum {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  letter-spacing: 0;
+}
+
+.slotName {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emptyName {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* ── Actions row ── */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Buttons ── */
+
+.btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btnPrimary {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: rgba(0, 245, 255, 0.08);
+}
+
+.btnDanger {
+  border-color: rgba(255, 70, 70, 0.5);
+  color: #ff7070;
+}
+
+.btnDanger:hover:not(:disabled) {
+  border-color: #ff4646;
+  color: #ff4646;
+}
+
+/* ── Inline input row ── */
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nameInput {
+  flex: 1;
+  min-width: 120px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 5px 10px;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.nameInput:focus {
+  border-color: rgba(0, 245, 255, 0.4);
+}
+
+.copySelect {
+  flex: 1;
+  min-width: 140px;
+  background: #0a0a0f;
+  color-scheme: dark;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 5px 8px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ── Inline confirm row ── */
+
+.confirmRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.confirmMsg {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.confirmBtns {
+  display: flex;
+  gap: 6px;
+}

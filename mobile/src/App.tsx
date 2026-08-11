@@ -208,7 +208,7 @@ export default function App() {
     if (_ADMIN_SCREENS.has(screen) && !isAdmin) return <AccessDenied tl={tl} />;
     switch (screen) {
       case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} />;
-      case 'personality': return <PersonalityScreen />;
+      case 'personality': return <PersonalityScreen role={role} />;
       case 'voice':       return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
       case 'dataset':     return <DatasetScreen />;
     }
