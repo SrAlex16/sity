@@ -45,7 +45,7 @@
 
 .titleJp {
   font-family: var(--font-japanese);
-  font-size: 1.1rem;
+  font-size: 0.6rem;
   color: var(--text-primary);
   line-height: 1.2;
 }
@@ -125,7 +125,7 @@
 
 .sectionJp {
   font-family: var(--font-japanese);
-  font-size: 0.88rem;
+  font-size: 0.6rem;
   color: var(--text-primary);
   margin: 0 0 2px;
   line-height: 1.3;

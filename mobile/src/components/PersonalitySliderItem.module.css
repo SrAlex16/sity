@@ -30,7 +30,7 @@
 
 .nameJp {
   font-family: var(--font-japanese);
-  font-size: 0.9rem;
+  font-size: 0.6rem;
   color: var(--text-primary);
   line-height: 1.2;
 }
