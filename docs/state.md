@@ -212,6 +212,27 @@ Ver .env.example para la lista completa.
   supera un umbral (eliminar la discreción); (b) mantener la discreción pero
   reducir el texto que la justifica; (c) diseñar una tercera instrucción para
   niveles muy altos. NO tocar hasta que Alex decida el enfoque en sesión dedicada.
+  **Patrón compartido con "Problema B — inferencia de herramientas" (ver abajo):**
+  ambos son casos del mismo fondo — el modelo con demasiada latitud de decisión
+  sin barreras estructurales. Si se aborda el Problema A con una solución más
+  estructural (reducir discreción), revisar si aplica también al problema de
+  inferencia de herramientas.
+
+- **Inferencia de herramientas por contexto ambiental — Problema B
+  (mitigado con parche, 2026-08-12)** — el modelo llamó a `list_timers` al
+  recibir "¿Cómo estamos ahora?" en una sesión con historial previo de timers,
+  sin que el mensaje lo mencionara. Diagnóstico (trace `trc_33d668065f91`):
+  `list_timers` está en BASE_TOOLSET ("always available"), el toolset_selector
+  no activó ningún dominio especial, pero el modelo infirió el tema desde el
+  contexto ambiental del historial y llamó a la tool.
+  Mitigación aplicada (2026-08-12, parche B+C): (B) descriptions de las 4 tools
+  de timers reforzadas con "SOLO úsala cuando el usuario lo pide explícitamente";
+  (C) guardarraíl genérico añadido en `persona_system.md` §REGLA DE USO DE
+  HERRAMIENTAS, cubriendo cualquier tool de consulta de estado presente o futura.
+  Opción A (mover timers fuera de BASE_TOOLSET) descartada por ahora — mismo
+  criterio de no añadir complejidad estructural hasta tener evidencia de que el
+  parche de prompt es insuficiente. **Si el patrón reaparece con otras tools
+  de estado, escalar a Opción A.**
 
 - **Sistema de iniciativa propia de Sity** — capacidad de que Sity
   inicie una conversación sin que el usuario escriba primero (ej. "acordé
