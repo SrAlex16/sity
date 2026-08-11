@@ -277,6 +277,30 @@ class SettingsService:
         self.set_setting("language.override", value, source=source, session_id=session_id)
         return self.get_language_override(session_id=session_id)
 
+    # ── Bulk personality write — used by AlterService.load_alter ──────────────
+
+    def set_all_personality(self, session_id: str, values: dict[str, float]) -> dict[str, float]:
+        """Overwrite all 14 personality parameters for a session at once.
+
+        Validates every key, clamps to [0, 1], and commits via set_setting so the
+        session-isolation chain (session row → global fallback) is respected.
+        Does NOT modify any other session or global rows.
+        """
+        unknown = set(values.keys()) - PERSONALITY_KEYS
+        if unknown:
+            raise ValueError(f"Unknown personality parameters: {unknown}")
+        missing = PERSONALITY_KEYS - set(values.keys())
+        if missing:
+            raise ValueError(f"Missing personality parameters: {missing}")
+        for key, value in values.items():
+            self.set_setting(
+                f"personality.{key}",
+                clamp_01(round(float(value), 4)),
+                source="alter",
+                session_id=session_id,
+            )
+        return self.get_personality(session_id=session_id)
+
     @staticmethod
     def _set_nested(target: dict[str, Any], dotted_key: str, value: Any) -> None:
         parts = dotted_key.split(".")

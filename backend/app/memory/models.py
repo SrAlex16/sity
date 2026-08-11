@@ -262,6 +262,23 @@ class PushSubscription(SQLModel, table=True):
     is_active: bool = Field(default=True)       # False when push service returns 410 Gone
 
 
+class PersonalityAlter(SQLModel, table=True):
+    """Saved personality preset (Alter) per user slot.
+
+    Stores a complete snapshot of all 14 personality parameters.
+    name=None and parameters_json=None means the slot is empty (never saved).
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    slot: int                                    # 1-5
+    name: Optional[str] = Field(default=None)   # None = empty slot
+    parameters_json: Optional[str] = Field(default=None)  # JSON dict[str, float]
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    __table_args__ = (UniqueConstraint("user_id", "slot", name="uq_personalityalter_user_slot"),)
+
+
 class ScheduledTask(SQLModel, table=True):
     """Persistent timer/alarm row. Survives backend restarts.
 
