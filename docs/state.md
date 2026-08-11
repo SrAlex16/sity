@@ -224,20 +224,18 @@ Ver .env.example para la lista completa.
 
 ## Mejoras pendientes
 
-- **Diseño refusal_mode — Problema A (pendiente de decisión, 2026-08-11)** —
-  la directiva `_REFUSAL_ACTIVE` da al modelo DISCRECIÓN para decidir si aplica
-  o no la negativa, incluso con `refusal_chance=100%`. El texto actual lo
-  clasifica como "disponible, no obligatorio". Esto produce que el modelo a
-  menudo ignora el refusal_mode incluso cuando el slider está al máximo.
-  Alternativas a evaluar: (a) hacer la negativa obligatoria cuando el slider
-  supera un umbral (eliminar la discreción); (b) mantener la discreción pero
-  reducir el texto que la justifica; (c) diseñar una tercera instrucción para
-  niveles muy altos. NO tocar hasta que Alex decida el enfoque en sesión dedicada.
-  **Patrón compartido con "Problema B — inferencia de herramientas" (ver abajo):**
-  ambos son casos del mismo fondo — el modelo con demasiada latitud de decisión
-  sin barreras estructurales. Si se aborda el Problema A con una solución más
-  estructural (reducir discreción), revisar si aplica también al problema de
-  inferencia de herramientas.
+- **Diseño refusal_mode — Problema A (RESUELTO, 2026-08-12)** —
+  La directiva `_REFUSAL_ACTIVE` daba al modelo DISCRECIÓN ("disponible, no
+  obligatorio", "evalúa el mensaje", "Esta decisión es tuya") — el modelo podía
+  ignorar el refusal_mode incluso con `refusal_chance=100%` (caso real documentado).
+  Fix: `_REFUSAL_ACTIVE` reescrito como AFIRMACIÓN DE HECHO: "Para esta respuesta,
+  refusal_mode está ACTIVADO. No evalúes si aplicarlo — el backend ya lo decidió."
+  Toda la lógica de probabilidad (`_should_refuse()`, `random.random() <
+  refusal_chance`) ya existía y era correcta; solo el texto que recibía el modelo
+  le daba margen de anulación. El nuevo texto elimina ese margen.
+  4 tests nuevos: `refusal_chance=1.0` siempre activa (20 tiradas), `=0.0` nunca,
+  `=0.5` estadístico ±10% sobre 1000 tiradas, texto sin "evalúa"/"no obligatorio"/
+  "Esta decisión es tuya". 107 tests en `test_persona_prompt.py`.
 
 - **Inferencia de herramientas por contexto ambiental — Problema B
   (mitigado con parche, 2026-08-12)** — el modelo llamó a `list_timers` al

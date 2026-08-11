@@ -110,7 +110,11 @@ def test_refusal_chance_one_always_refuses(engine: PersonaEngine) -> None:
 def test_refusal_override_true(engine: PersonaEngine) -> None:
     result = engine.build_persona_prompt({}, "hola", refusal_mode_override=True)
     assert result.refusal_mode is True
-    assert "refusal_mode está\ndisponible" in result.system_prompt
+    assert "refusal_mode está ACTIVADO" in result.system_prompt
+    # Must NOT contain any language giving the model discretion to override.
+    assert "disponible" not in result.system_prompt.split("refusal_mode")[1][:50]
+    assert "evalúa" not in result.system_prompt
+    assert "Esta decisión es tuya" not in result.system_prompt
 
 
 def test_refusal_override_false_suppresses_refusal(engine: PersonaEngine) -> None:
@@ -118,7 +122,7 @@ def test_refusal_override_false_suppresses_refusal(engine: PersonaEngine) -> Non
         {"refusal_chance": 1.0}, "hola trivial", refusal_mode_override=False
     )
     assert result.refusal_mode is False
-    assert "refusal_mode=false" in result.system_prompt
+    assert "refusal_mode está DESACTIVADO" in result.system_prompt
 
 
 def test_refusal_override_none_delegates_to_should_refuse_true(engine: PersonaEngine) -> None:
@@ -129,6 +133,41 @@ def test_refusal_override_none_delegates_to_should_refuse_true(engine: PersonaEn
 def test_refusal_override_none_delegates_to_should_refuse_false(engine: PersonaEngine) -> None:
     result = engine.build_persona_prompt({"refusal_chance": 0.0}, "hola")
     assert result.refusal_mode is False
+
+
+def test_refusal_chance_one_always_activates(engine: PersonaEngine) -> None:
+    """refusal_chance=1.0 must always produce refusal_mode=True — deterministic."""
+    for _ in range(20):
+        result = engine.build_persona_prompt({"refusal_chance": 1.0}, "dime algo trivial")
+        assert result.refusal_mode is True
+
+
+def test_refusal_chance_zero_never_activates(engine: PersonaEngine) -> None:
+    """refusal_chance=0.0 must always produce refusal_mode=False — deterministic."""
+    for _ in range(20):
+        result = engine.build_persona_prompt({"refusal_chance": 0.0}, "hola")
+        assert result.refusal_mode is False
+
+
+def test_refusal_chance_half_is_probabilistic(engine: PersonaEngine) -> None:
+    """refusal_chance=0.5 should produce ~50% True over many trials."""
+    results = [
+        engine.build_persona_prompt({"refusal_chance": 0.5}, "dime algo").refusal_mode
+        for _ in range(1000)
+    ]
+    ratio = sum(results) / len(results)
+    assert 0.40 <= ratio <= 0.60, f"Expected ~0.5 ratio, got {ratio:.3f}"
+
+
+def test_refusal_active_prompt_is_unconditional(engine: PersonaEngine) -> None:
+    """When refusal_mode=True, the prompt must not give the model discretion."""
+    result = engine.build_persona_prompt({}, "hola", refusal_mode_override=True)
+    prompt = result.system_prompt
+    assert "ACTIVADO" in prompt
+    assert "evalúa" not in prompt
+    assert "Esta decisión es tuya" not in prompt
+    assert "no obligatorio" not in prompt
+    assert "disponible" not in prompt.split("ACTIVADO")[0].split("refusal")[-1]
 
 
 # ------------------------------------------------------------------ #
