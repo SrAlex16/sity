@@ -477,6 +477,42 @@ Migración `_migrate_setting()` en `db.py` reconstruye la tabla sin pérdida de 
 
 **Tests:** 8 nuevos tests en `tests/test_personality_isolation.py`.
 
+## Lección aprendida — session_id en todos los puntos de lectura
+
+Durante la implementación del sistema de idioma (2026-08-11) se detectó un bug
+silencioso en `turn_context.py`: `settings_service.get_voice_settings()` se llamaba
+sin `session_id`. Los ajustes de voz per-sesión se guardaban bien en DB a través de
+los endpoints, pero en los turnos reales siempre se leía el valor global (NULL), no
+el de la sesión. No había error visible — el comportamiento era incorrecto en
+silencio.
+
+**Patrón incorrecto:**
+
+```python
+voice_settings = settings_service.get_voice_settings()  # lee global, ignora sesión
+```
+
+**Patrón correcto:**
+
+```python
+voice_settings = settings_service.get_voice_settings(session_id=session_id)
+```
+
+**Regla:** cualquier setting con semántica per-sesión debe recibir `session_id` en
+**todos** sus puntos de lectura — no solo en los endpoints públicos (GET/PUT), sino
+también en cada punto de consumo interno (turn_context, orchestrator, builders, etc.).
+
+**Checklist para añadir un nuevo setting per-sesión:**
+
+1. `settings_service.get_X(session_id=...)` en el endpoint GET
+2. `settings_service.set_X(value, session_id=...)` en el endpoint PUT
+3. `settings_service.get_X(session_id=session_id)` en `build_turn_context()` (o donde se consuma al procesar el turno)
+4. Campo en `TurnContext` poblado con ese valor
+5. Pasado explícitamente a cualquier función posterior que lo necesite (persona_engine, orchestrator, etc.)
+
+Omitir el paso 3 es el error más frecuente porque los tests de endpoint cubren los
+pasos 1-2 pero no ejercitan el flujo completo de un turno real con sesión concreta.
+
 ## Fases posteriores
 
 - ✅ **Fase 2:** `session_id` real por usuario en todo el sistema,

@@ -119,6 +119,18 @@ Ver .env.example para la lista completa.
   CU/BO/DO/HN/PY/SV/NI/CR/PA/UY/GQ/PR → es; US/GB/AU/CA/NZ/IE/ZA/SG/PH/IN/NG/GH/
   KE → en; JP → ja. 13 tests en `test_ui_language_suggestion.py`.
 
+  **Bug encontrado y corregido (turn_context.py):** `build_turn_context()` llamaba
+  a `settings_service.get_voice_settings()` sin `session_id` → los ajustes de voz
+  per-sesión se almacenaban correctamente en DB pero no se aplicaban durante los
+  turnos reales. Corregido al mismo tiempo que la implementación del idioma. Lección:
+  cualquier lectura de un setting per-sesión debe pasar `session_id` en todos los
+  puntos de consumo, no solo en los endpoints. Ver `docs/auth-system.md`
+  § "Lección aprendida — session_id en todos los puntos de lectura".
+
+  Verificado en real por Alex (2026-08-11): Sistema 2 (idioma de conversación de
+  Sity) y Sistema 1 (idioma de UI via CF-IPCountry) confirmados en producción.
+  1709 tests en verde.
+
 ## Completado recientemente (2026-08-11)
 
 - **Pantalla Ajustes completa y verificada en real** — `VoiceScreen.tsx`
