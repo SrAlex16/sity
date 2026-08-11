@@ -20,13 +20,14 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import requests as _http
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from google_auth_oauthlib.flow import Flow
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -75,32 +76,38 @@ def _hmac_key() -> bytes:
     return key.encode()
 
 
-def _make_state(user_id: int, provider: str) -> str:
+def _make_state(user_id: int, provider: str, code_verifier: str = "") -> str:
+    """Encode (user_id, provider, ts, code_verifier) signed with HMAC-SHA256.
+
+    code_verifier is empty for providers that don't use PKCE (Spotify).
+    """
     ts = int(time.time())
-    payload = f"{user_id}:{provider}:{ts}"
+    payload = f"{user_id}:{provider}:{ts}:{code_verifier}"
     sig = hmac.new(_hmac_key(), payload.encode(), hashlib.sha256).hexdigest()
     return base64.urlsafe_b64encode(f"{payload}:{sig}".encode()).decode()
 
 
-def _verify_state(state: str) -> tuple[int, str]:
+def _verify_state(state: str) -> tuple[int, str, str]:
     """Parse and validate a state token.
 
-    Returns (user_id, provider) on success.
-    Raises _StateExpired if the token is valid but older than _STATE_MAX_AGE_SECS.
+    Returns (user_id, provider, code_verifier) on success.
+    code_verifier is an empty string for non-PKCE providers.
+    Raises _StateExpired if valid but older than _STATE_MAX_AGE_SECS.
     Raises ValueError for any structural or signature problem.
     """
     try:
         raw = base64.urlsafe_b64decode(state.encode()).decode()
-        parts = raw.split(":")
-        if len(parts) != 4:
+        # maxsplit=4 → [user_id, provider, ts, code_verifier, sig]
+        parts = raw.split(":", 4)
+        if len(parts) != 5:
             raise ValueError
-        user_id_str, provider, ts_str, sig = parts
+        user_id_str, provider, ts_str, code_verifier, sig = parts
         user_id = int(user_id_str)
         ts = int(ts_str)
     except (ValueError, Exception):
         raise ValueError("state inválido")
 
-    payload = f"{user_id_str}:{provider}:{ts_str}"
+    payload = f"{user_id_str}:{provider}:{ts_str}:{code_verifier}"
     expected_sig = hmac.new(_hmac_key(), payload.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected_sig):
         raise ValueError("firma inválida")
@@ -108,7 +115,19 @@ def _verify_state(state: str) -> tuple[int, str]:
     if time.time() - ts > _STATE_MAX_AGE_SECS:
         raise _StateExpired()
 
-    return user_id, provider
+    return user_id, provider, code_verifier
+
+
+# ---------------------------------------------------------------------------
+# PKCE helpers (required by Google since 2024)
+# ---------------------------------------------------------------------------
+
+def _generate_pkce_pair() -> tuple[str, str]:
+    """Return (code_verifier, code_challenge) for PKCE S256."""
+    code_verifier = secrets.token_urlsafe(64)  # 86 URL-safe chars
+    digest = hashlib.sha256(code_verifier.encode()).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return code_verifier, code_challenge
 
 
 # ---------------------------------------------------------------------------
@@ -136,20 +155,23 @@ def _google_client_config() -> dict:
     }
 
 
-def _google_auth_url(redirect_uri: str, state: str) -> str:
+def _google_auth_url(redirect_uri: str, state: str, code_challenge: str) -> str:
     flow = Flow.from_client_config(
         _google_client_config(), GOOGLE_SCOPES, redirect_uri=redirect_uri
     )
-    url, _ = flow.authorization_url(prompt="consent", state=state, access_type="offline")
+    url, _ = flow.authorization_url(
+        prompt="consent", state=state, access_type="offline",
+        code_challenge=code_challenge, code_challenge_method="S256",
+    )
     return url
 
 
-def _google_exchange_code(code: str, redirect_uri: str) -> tuple[str, str]:
+def _google_exchange_code(code: str, redirect_uri: str, code_verifier: str = "") -> tuple[str, str]:
     """Returns (credentials_json, scopes_str). Makes network call to Google."""
     flow = Flow.from_client_config(
         _google_client_config(), GOOGLE_SCOPES, redirect_uri=redirect_uri
     )
-    flow.fetch_token(code=code)
+    flow.fetch_token(code=code, code_verifier=code_verifier or None)
     creds = flow.credentials
     scopes_str = " ".join(sorted(creds.scopes or GOOGLE_SCOPES))
     return creds.to_json(), scopes_str
@@ -232,19 +254,36 @@ def _upsert_integration(
 
 
 # ---------------------------------------------------------------------------
-# HTML template for expired-state error — shown directly in browser
+# HTML templates — shown directly in the OAuth popup tab
 # ---------------------------------------------------------------------------
 
 _EXPIRED_HTML = """\
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Enlace caducado — Sity</title>
-<style>body{font-family:sans-serif;max-width:480px;margin:4rem auto;line-height:1.5}</style>
+<style>body{font-family:sans-serif;background:#0a0a0f;color:#e8e8f0;max-width:480px;margin:4rem auto;line-height:1.5;text-align:center;padding:1rem}</style>
 </head>
 <body>
-<h2>El enlace de autorización caducó</h2>
-<p>Vuelve a intentarlo desde <strong>Ajustes &rarr; Integraciones</strong>.</p>
+<p style="color:#ff7070;font-size:1.1rem">El enlace de autorización caducó</p>
+<p style="color:#9090a8">Vuelve a intentarlo desde <strong>Ajustes &rarr; Integraciones</strong>.</p>
+</body>
+</html>"""
+
+_SUCCESS_HTML = """\
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conexión completada — Sity</title>
+<style>body{font-family:sans-serif;background:#0a0a0f;color:#e8e8f0;max-width:480px;margin:4rem auto;line-height:1.5;text-align:center;padding:1rem}</style>
+</head>
+<body>
+<p style="color:#00f5ff;font-size:1.4rem">&#10003; Conexión completada</p>
+<p style="color:#9090a8">Ya puedes cerrar esta pestaña y volver a Sity.</p>
+<script>
+try{var ch=new BroadcastChannel('sity_oauth');ch.postMessage({type:'oauth_connected',provider:'__PROVIDER__'});ch.close();}catch(e){}
+setTimeout(function(){try{window.close();}catch(e){}},1500);
+</script>
 </body>
 </html>"""
 
@@ -314,13 +353,18 @@ def connect(
     provider: str,
     current: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    """Start OAuth flow. Returns {auth_url} for the frontend to open."""
+    """Start OAuth flow. Returns {auth_url} for the frontend to open in a new tab."""
     _check_provider(provider)
     user_id = _require_user(current)
 
-    state = _make_state(user_id, provider)
     redir = _redirect_uri(provider)
-    url = _google_auth_url(redir, state) if provider == "google" else _spotify_auth_url(redir, state)
+    if provider == "google":
+        code_verifier, code_challenge = _generate_pkce_pair()
+        state = _make_state(user_id, provider, code_verifier)
+        url = _google_auth_url(redir, state, code_challenge)
+    else:
+        state = _make_state(user_id, provider)
+        url = _spotify_auth_url(redir, state)
 
     write_log(level="INFO", module="integrations", event="oauth_connect_initiated",
               payload={"user_id": user_id, "provider": provider})
@@ -349,7 +393,7 @@ def callback(
         raise HTTPException(status_code=400, detail="Falta el parámetro state")
 
     try:
-        state_user_id, state_provider = _verify_state(state)
+        state_user_id, state_provider, code_verifier = _verify_state(state)
     except _StateExpired:
         return HTMLResponse(content=_EXPIRED_HTML, status_code=400)
     except ValueError:
@@ -369,7 +413,7 @@ def callback(
 
     redir = _redirect_uri(provider)
     if provider == "google":
-        creds_json, scopes = _google_exchange_code(code, redir)
+        creds_json, scopes = _google_exchange_code(code, redir, code_verifier)
     else:
         creds_json, scopes = _spotify_exchange_code(code, redir)
 
@@ -378,9 +422,7 @@ def callback(
     write_log(level="AUDIT", module="integrations", event="oauth_connected",
               payload={"user_id": user_id, "provider": provider}, audit=True)
 
-    base = get_public_base_url()
-    return RedirectResponse(url=f"{base}/settings/integrations?connected={provider}",
-                            status_code=302)
+    return HTMLResponse(content=_SUCCESS_HTML.replace("__PROVIDER__", provider))
 
 
 @router.delete("/{provider}")

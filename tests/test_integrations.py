@@ -130,8 +130,9 @@ class TestConnect:
 # ---------------------------------------------------------------------------
 
 class TestCallback:
-    def test_valid_state_upserts_credentials_and_redirects(self):
-        """Happy path: valid state triggers upsert of encrypted credentials in DB."""
+    def test_valid_state_upserts_credentials_and_shows_success_html(self):
+        """Happy path: valid state triggers upsert of encrypted credentials in DB.
+        Callback returns HTML success page (opened in popup tab via window.open)."""
         with _client() as c:
             cookie, user_id = _register_and_login(c)
             state = _make_state(user_id, "google")
@@ -144,11 +145,12 @@ class TestCallback:
                     "/auth/integrations/google/callback",
                     params={"code": "auth_code_fake", "state": state},
                     cookies={"sity_session": cookie},
-                    follow_redirects=False,
                 )
 
-        assert resp.status_code == 302
-        assert "connected=google" in resp.headers["location"]
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "completada" in resp.text
+        assert "cerrar" in resp.text
 
         with Session(engine) as session:
             row = session.exec(
@@ -253,9 +255,8 @@ class TestDisconnect:
                 "/auth/integrations/spotify/callback",
                 params={"code": "auth_code_fake", "state": state},
                 cookies={"sity_session": cookie},
-                follow_redirects=False,
             )
-        assert resp.status_code == 302
+        assert resp.status_code == 200
 
     def test_sets_is_active_false_preserves_row(self):
         """Soft-disconnect flips is_active=False but the DB row is not deleted."""

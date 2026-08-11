@@ -1,6 +1,6 @@
 # Sistema de autenticación y roles
 
-Última actualización: 2026-08-05.
+Última actualización: 2026-08-11.
 
 Implementación de las Fases 1 y 2 del sistema de usuarios de Sity:
 tabla `User`, hashing de contraseñas, sesiones JWT en cookie, siete
@@ -487,6 +487,26 @@ Migración `_migrate_setting()` en `db.py` reconstruye la tabla sin pérdida de 
   registro, invitado, logout, adaptación por rol, reCAPTCHA v3
   activo.
 - ✅ **Fase 2b:** aislamiento de personalidad por sesión.
-- **Fase 6 (futuro):** sistema de integraciones self-service — cada
-  usuario conecta sus propias cuentas de Google/Spotify/Home
-  Assistant con permisos que él mismo configure.
+- ✅ **Fase 6:** sistema de integraciones self-service — cada usuario
+  conecta sus propias cuentas de Google/Spotify con OAuth 2.0 + PKCE.
+
+## Nota operativa — Google OAuth en modo "Testing"
+
+Mientras la aplicación esté en modo **Testing** en Google Cloud Console
+(OAuth consent screen no verificada/publicada), Google muestra a los
+usuarios la pantalla de advertencia "esta app está en desarrollo, solo
+acepta si conoces al desarrollador".
+
+**Esto es comportamiento estándar de Google, no un bug de código.**
+
+Para que un usuario pueda autenticarse con Google sin ver esa advertencia:
+
+1. Ve a [Google Cloud Console](https://console.cloud.google.com/) →
+   APIs & Services → OAuth consent screen → **Test users**.
+2. Añade el email del usuario de prueba con el botón **+ Add Users**.
+3. El usuario ya puede completar el flujo sin ver la advertencia de app
+   no verificada.
+
+Si en algún momento se abre el acceso a usuarios externos reales, habrá
+que pasar por el proceso de verificación de Google (requiere datos de
+privacidad, revisión manual, etc.).

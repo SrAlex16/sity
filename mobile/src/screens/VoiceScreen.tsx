@@ -34,10 +34,9 @@ const LONG_LABELS: Record<VoiceSettings['voice_long_response_action'], string> =
 
 interface SettingsScreenProps {
   role: string;
-  oauthConnected?: string | null;
 }
 
-export function VoiceScreen({ role, oauthConnected }: SettingsScreenProps) {
+export function VoiceScreen({ role }: SettingsScreenProps) {
   const { settings, isLoading, error, save, reload } = useVoice();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
@@ -49,7 +48,7 @@ export function VoiceScreen({ role, oauthConnected }: SettingsScreenProps) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnectConfirm, setDisconnectConfirm] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
-  const [justConnected, setJustConnected] = useState<string | null>(oauthConnected ?? null);
+  const [justConnected, setJustConnected] = useState<string | null>(null);
   const [bgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
 
   useEffect(() => {
@@ -100,13 +99,41 @@ export function VoiceScreen({ role, oauthConnected }: SettingsScreenProps) {
     return () => clearTimeout(id);
   }, [justConnected]);
 
+  // Receive OAuth result from the popup tab via BroadcastChannel.
+  // Fallback: refresh integrations whenever this tab regains visibility
+  // (covers the case where VoiceScreen was not mounted when the popup closed).
+  useEffect(() => {
+    if (role === 'guest') return;
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('sity_oauth');
+      bc.onmessage = (ev: MessageEvent) => {
+        if (ev.data?.type === 'oauth_connected') {
+          void refreshIntegrations();
+          setJustConnected((ev.data.provider as string) ?? null);
+        }
+      };
+    } catch { /* BroadcastChannel not available */ }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshIntegrations();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      bc?.close();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [role, refreshIntegrations]);
+
   const handleConnect = async (provider: string) => {
     setConnecting(provider);
     try {
       const resp = await fetch(`/auth/integrations/${provider}/connect`, { credentials: 'include' });
       if (!resp.ok) return;
       const { auth_url } = await resp.json() as { auth_url: string };
-      window.location.href = auth_url;
+      window.open(auth_url, '_blank');
     } catch { /* silent */ } finally {
       setConnecting(null);
     }
