@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { motion, useAnimation } from 'framer-motion';
-import type { Screen } from '../App';
+import type { Screen, UiLang } from '../App';
+import { TRANSLATIONS } from '../i18n/translations';
 import styles from './BottomNav.module.css';
 
 interface NavTabProps {
@@ -76,23 +77,24 @@ function IconDataset() {
   );
 }
 
-const TABS: Omit<NavTabProps, 'isActive' | 'onNavigate'>[] = [
-  { id: 'chat', label: 'Chat', icon: IconChat },
-  { id: 'personality', label: 'Rasgos', icon: IconPersonality },
-  { id: 'voice', label: 'Ajustes', icon: IconSettings },
-  { id: 'dataset', label: 'Datos', icon: IconDataset },
-];
-
 const ADMIN_ONLY_TABS = new Set<Screen>(['dataset']);
 
 interface BottomNavProps {
   active: Screen;
   onNavigate: (screen: Screen) => void;
   role: string;
+  uiLang: UiLang;
 }
 
-export function BottomNav({ active, onNavigate, role }: BottomNavProps) {
-  const visibleTabs = TABS.filter(
+export function BottomNav({ active, onNavigate, role, uiLang }: BottomNavProps) {
+  const tl = TRANSLATIONS[uiLang].nav;
+  const tabs = [
+    { id: 'chat' as Screen,        label: tl.chat,        icon: IconChat },
+    { id: 'personality' as Screen, label: tl.personality, icon: IconPersonality },
+    { id: 'voice' as Screen,       label: tl.settings,    icon: IconSettings },
+    { id: 'dataset' as Screen,     label: tl.dataset,     icon: IconDataset },
+  ];
+  const visibleTabs = tabs.filter(
     (tab) => !ADMIN_ONLY_TABS.has(tab.id) || role === 'admin',
   );
   return (

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
@@ -160,3 +160,52 @@ def update_language_settings(
         session_id=current.session_id,
     )
     return LanguageSettings(language_override=body.language_override)
+
+
+# ---------------------------------------------------------------------------
+# UI language suggestion — Sistema 1
+# ---------------------------------------------------------------------------
+
+# Spanish-speaking countries (Spain + all LatAm)
+_COUNTRY_TO_UI_LANG: dict[str, str] = {
+    "ES": "es",
+    "MX": "es", "CO": "es", "AR": "es", "PE": "es", "VE": "es",
+    "CL": "es", "EC": "es", "GT": "es", "CU": "es", "BO": "es",
+    "DO": "es", "HN": "es", "PY": "es", "SV": "es", "NI": "es",
+    "CR": "es", "PA": "es", "UY": "es", "GQ": "es", "PR": "es",
+    # English
+    "US": "en", "GB": "en", "AU": "en", "CA": "en", "NZ": "en",
+    "IE": "en", "ZA": "en", "SG": "en", "PH": "en", "IN": "en",
+    "NG": "en", "GH": "en", "KE": "en",
+    # Japanese
+    "JP": "ja",
+    # Future expansions — mapped but not yet in UI_LANG_SUPPORTED; fall back to "en"
+    "FR": "fr", "BE": "fr", "CH": "fr",
+    "DE": "de", "AT": "de",
+    "BR": "pt", "PT": "pt",
+    "IT": "it",
+}
+
+# Only these have translations in the frontend; others fall back to "en"
+_UI_LANG_SUPPORTED = frozenset({"es", "en", "ja"})
+_UI_LANG_DEFAULT = "en"
+
+
+@router.get("/ui-language-suggestion")
+def get_ui_language_suggestion(request: Request) -> dict:
+    """Return a UI language suggestion based on Cloudflare CF-IPCountry header.
+
+    No auth required — called by the frontend before any login, also for guests.
+    Logs the raw CF-IPCountry value so it can be verified in journalctl/app logs.
+    """
+    country = request.headers.get("cf-ipcountry", "").strip().upper()
+    mapped = _COUNTRY_TO_UI_LANG.get(country, _UI_LANG_DEFAULT)
+    lang = mapped if mapped in _UI_LANG_SUPPORTED else _UI_LANG_DEFAULT
+
+    write_log(
+        level="INFO",
+        module="settings",
+        event="ui_language_suggestion",
+        payload={"cf_ipcountry": country or None, "mapped_lang": mapped, "suggested_lang": lang},
+    )
+    return {"lang": lang, "country": country or None}

@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-11.
+Última actualización: 2026-08-11 (Sistema de idioma completo).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1668 tests en verde (pytest)
+- 1709 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -93,6 +93,31 @@ Ver .env.example para la lista completa.
   `realtime_events.py` (ver bug resuelto más abajo). 1668 tests.
   Ver `docs/notifications-architecture.md` para arquitectura completa y
   el estado verificado en §"Estado real verificado (2026-08-10)".
+
+- **Sistema de idioma completo (Sistema 1 + Sistema 2, 2026-08-11)** —
+
+  **Sistema 2 — Idioma de conversación de Sity** (per-sesión, backend):
+  `language.override` en DB (clave `Setting`), default `"auto"`. Mismos 10 códigos
+  que el selector de idioma de Sity ya existente (auto / es-ES / es-419 / en-US /
+  en-GB / ja / fr-FR / de-DE / pt-BR / it-IT). `persona_engine.py` inyecta
+  `{language_block}` per-turno según el valor. `persona_system.md` desacopla REGLA
+  GRAMATICAL (siempre femenino) de REGLA DE IDIOMA (dinámica). `GET/PUT
+  /settings/language`. Selectores en Ajustes con notas claras que distinguen los dos
+  sistemas.
+
+  **Sistema 1 — Idioma de la interfaz** (localStorage + geo, frontend):
+  `GET /settings/ui-language-suggestion` lee `CF-IPCountry` de Cloudflare (misma
+  técnica que CF-Connecting-IP para rate limiting de Guest). Mapeo: España/LatAm →
+  `es`, US/GB/AU/… → `en`, JP → `ja`. Idiomas con traducciones aún no disponibles
+  (FR, DE, PT, IT) caen a `en`. Preferencia manual en `localStorage['sity_ui_lang']`
+  tiene prioridad sobre la geo-sugerencia. Hook `useUiLanguage` en `App.tsx`;
+  traducciones tipadas en `mobile/src/i18n/translations.ts`; aplicadas en BottomNav
+  y VoiceScreen completo (es/en/ja). Texto japonés decorativo (`.sectionJp`) NO
+  forma parte del sistema i18n — es estético y no varía.
+
+  Código país → idioma mapeado (`_COUNTRY_TO_UI_LANG`): ES/MX/CO/AR/PE/VE/CL/EC/GT/
+  CU/BO/DO/HN/PY/SV/NI/CR/PA/UY/GQ/PR → es; US/GB/AU/CA/NZ/IE/ZA/SG/PH/IN/NG/GH/
+  KE → en; JP → ja. 13 tests en `test_ui_language_suggestion.py`.
 
 ## Completado recientemente (2026-08-11)
 
@@ -168,13 +193,11 @@ Ver .env.example para la lista completa.
   datos genérico (`NotificationRule` con tipo, parámetros, condición de
   disparo). El sistema de Web Push que lo entregará sigue adelante
   independientemente (ver entrada de Web Push API).
-- **Sistema de cambio de idioma** — la interfaz es completamente en español
-  hoy. Dos niveles posibles: (a) **detección automática** del idioma del
-  navegador/sistema al cargar la app; (b) **selección manual** en Ajustes
-  (relacionado con el punto anterior de pantalla Voz → Ajustes). Decisión
-  pendiente: ¿solo cambiar la UI o también el idioma en que Sity responde?
-  Si es lo segundo, hay que coordinar con el prompt de sistema y la memoria
-  social (el modelo de opinión está entrenado con texto en español).
+- **Ampliar i18n a ChatScreen** — ChatScreen aún tiene todos sus textos hardcodeados
+  en español (botones, labels, mensajes de error). La capa de traducciones
+  (`mobile/src/i18n/translations.ts`) ya existe; solo falta añadir el namespace
+  `chat` y aplicarlo. Menor urgencia porque ChatScreen es mayoritariamente
+  contenido del usuario, no UI funcional.
 - **Google Analytics / GTM** — integrar métricas de uso de la PWA (sesiones,
   pantallas visitadas, acciones de voz, errores de red). Tensión no resuelta
   con privacidad/RGPD: la PWA es un asistente personal con datos sensibles

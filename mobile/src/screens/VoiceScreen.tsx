@@ -4,6 +4,8 @@ import type { VoiceSettings } from '../hooks/useVoice';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import type { LanguageCode } from '../hooks/useLanguage';
 import { useIntegrations } from '../hooks/useIntegrations';
+import { TRANSLATIONS, UI_LANGUAGES } from '../i18n/translations';
+import type { UiLang } from '../i18n/translations';
 import styles from './VoiceScreen.module.css';
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -19,26 +21,16 @@ function IconReload() {
   );
 }
 
-// ── Labels ───────────────────────────────────────────────────────────────────
-
-const MODE_LABELS: Record<VoiceSettings['voice_response_mode'], string> = {
-  always: 'Siempre',
-  never: 'Nunca',
-  symmetric: 'Simétrico (solo si el mensaje fue de voz)',
-};
-
-const LONG_LABELS: Record<VoiceSettings['voice_long_response_action'], string> = {
-  split: 'Dividir en notas de voz',
-  text_only: 'Solo texto (sin audio)',
-};
-
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 interface SettingsScreenProps {
   role: string;
+  uiLang: UiLang;
+  onUiLangChange: (lang: UiLang) => void;
 }
 
-export function VoiceScreen({ role }: SettingsScreenProps) {
+export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProps) {
+  const tl = TRANSLATIONS[uiLang].settings;
   const { settings, isLoading, error, save, reload } = useVoice();
   const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
@@ -183,11 +175,11 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
       <header className={styles.header}>
         <div className={styles.headerText}>
           <span className={styles.titleJp}>設定</span>
-          <span className={styles.titleEs}>Ajustes</span>
+          <span className={styles.titleEs}>{tl.title}</span>
         </div>
         <button className={styles.reloadBtn} onClick={() => void reload()} disabled={busy}>
           <IconReload />
-          <span>Recargar</span>
+          <span>{tl.reload}</span>
         </button>
       </header>
 
@@ -195,17 +187,17 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
       <div className={styles.content}>
         {error && <p className={styles.errorMsg}>{error}</p>}
 
-        {!form && isLoading && <p className={styles.loading}>Cargando…</p>}
+        {!form && isLoading && <p className={styles.loading}>{tl.loading}</p>}
 
         {form && (
           <>
             {/* Voz — modo de respuesta, transcripción, respuestas largas */}
             <div className={styles.section}>
               <p className={styles.sectionJp}>ボイス</p>
-              <p className={styles.sectionEs}>Voz</p>
+              <p className={styles.sectionEs}>{tl.voice}</p>
 
               {/* Modo de respuesta */}
-              <p className={styles.sectionHint} style={{ marginBottom: 10 }}>Modo de respuesta</p>
+              <p className={styles.sectionHint} style={{ marginBottom: 10 }}>{tl.responseMode}</p>
               <div className={styles.radioGroup}>
                 {(['always', 'never', 'symmetric'] as const).map((mode) => (
                   <label key={mode} className={styles.radioRow}>
@@ -218,7 +210,11 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                       onChange={() => patch({ voice_response_mode: mode })}
                     />
                     <span className={styles.radioIndicator} />
-                    <span className={styles.optionText}>{MODE_LABELS[mode]}</span>
+                    <span className={styles.optionText}>{
+                      mode === 'always' ? tl.modeAlways :
+                      mode === 'never'  ? tl.modeNever  :
+                                          tl.modeSymmetric
+                    }</span>
                   </label>
                 ))}
               </div>
@@ -234,12 +230,12 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                 <span className={styles.checkboxIndicator} />
                 <div>
                   <p className={styles.sectionJp}>テキスト起こしも含む</p>
-                  <p className={styles.sectionEs}>Incluir transcripción de texto junto al audio</p>
+                  <p className={styles.sectionEs}>{tl.includeTranscript}</p>
                 </div>
               </label>
 
               {/* Respuestas largas */}
-              <p className={styles.sectionHint} style={{ marginTop: 18, marginBottom: 10 }}>Respuestas largas</p>
+              <p className={styles.sectionHint} style={{ marginTop: 18, marginBottom: 10 }}>{tl.longResponses}</p>
               <div className={styles.radioGroup}>
                 {(['split', 'text_only'] as const).map((action) => (
                   <label key={action} className={styles.radioRow}>
@@ -252,7 +248,7 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                       onChange={() => patch({ voice_long_response_action: action })}
                     />
                     <span className={styles.radioIndicator} />
-                    <span className={styles.optionText}>{LONG_LABELS[action]}</span>
+                    <span className={styles.optionText}>{action === 'split' ? tl.longSplit : tl.longTextOnly}</span>
                   </label>
                 ))}
               </div>
@@ -264,7 +260,7 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                 onClick={handleRestore}
                 disabled={busy}
               >
-                Restaurar valores de voz
+                {tl.restoreVoice}
               </button>
             </div>
 
@@ -272,10 +268,8 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
             {role === 'admin' && (
               <div className={styles.section}>
                 <p className={styles.sectionJp}>保存期間</p>
-                <p className={styles.sectionEs}>Periodicidad de borrado</p>
-                <p className={styles.sectionHint}>
-                  Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.
-                </p>
+                <p className={styles.sectionEs}>{tl.cleanupSection}</p>
+                <p className={styles.sectionHint}>{tl.cleanupHint}</p>
                 <div className={styles.cleanupRow}>
                   <input
                     type="number"
@@ -285,21 +279,43 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                     value={form.audio_cleanup_days}
                     onChange={(e) => patch({ audio_cleanup_days: Math.max(0, Math.min(365, Number(e.target.value))) })}
                   />
-                  <span className={styles.cleanupUnit}>días</span>
-                  <span className={styles.cleanupHint}>(0 = nunca borrar)</span>
+                  <span className={styles.cleanupUnit}>{tl.cleanupUnit}</span>
+                  <span className={styles.cleanupHint}>{tl.cleanupNever}</span>
                 </div>
               </div>
             )}
           </>
         )}
 
+        {/* Idioma de la app — Sistema 1, funcional */}
+        <div className={styles.section}>
+          <p className={styles.sectionJp}>言語</p>
+          <p className={styles.sectionEs}>{tl.uiLanguageSection}</p>
+          <p className={styles.sectionHint}>{tl.uiLanguageHint}</p>
+          <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
+            ⓘ {tl.uiLanguageNote}
+          </p>
+          <select
+            className={styles.select}
+            value={uiLang}
+            onChange={(e) => onUiLangChange(e.target.value as UiLang)}
+          >
+            {UI_LANGUAGES.map(({ code, label }) => (
+              <option key={code} value={code}>{label}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Idioma de conversación de Sity — Sistema 2, funcional */}
         {role !== 'guest' && (
           <div className={styles.section}>
             <p className={styles.sectionJp}>会話言語</p>
-            <p className={styles.sectionEs}>Idioma de conversación de Sity</p>
-            <p className={styles.sectionHint}>En qué idioma responde Sity. «Auto» detecta el idioma de cada mensaje.</p>
-            {langLoading && !langSettings && <p className={styles.sectionHint}>Cargando…</p>}
+            <p className={styles.sectionEs}>{tl.sityLanguageSection}</p>
+            <p className={styles.sectionHint}>{tl.sityLanguageHint}</p>
+            <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
+              ⓘ {tl.sityLanguageNote}
+            </p>
+            {langLoading && !langSettings && <p className={styles.sectionHint}>{tl.loading}</p>}
             {langError && <p className={styles.errorMsg}>{langError}</p>}
             {langSettings && (
               <select
@@ -316,24 +332,17 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
           </div>
         )}
 
-        {/* Idioma de interfaz — placeholder Sistema 1 */}
-        <div className={styles.section}>
-          <p className={styles.sectionJp}>言語</p>
-          <p className={styles.sectionEs}>Idioma de la interfaz</p>
-          <p className={styles.sectionHint}>Próximamente. La selección de idioma de la interfaz no está disponible aún.</p>
-        </div>
-
         {/* Integraciones */}
         {role !== 'guest' && (
           <div className={styles.section}>
             <p className={styles.sectionJp}>連携設定</p>
-            <p className={styles.sectionEs}>Integraciones</p>
+            <p className={styles.sectionEs}>{tl.integrationsSection}</p>
             {justConnected && (
               <p className={styles.successMsg}>
-                {justConnected === 'google' ? 'Google' : 'Spotify'} conectado correctamente.
+                {tl.justConnected(justConnected === 'google' ? 'Google' : 'Spotify')}
               </p>
             )}
-            {intLoading && <p className={styles.sectionHint}>Cargando…</p>}
+            {intLoading && <p className={styles.sectionHint}>{tl.loading}</p>}
             {intError && <p className={styles.errorMsg}>{intError}</p>}
             {!intLoading && !intError && (
               <div className={styles.providerList}>
@@ -349,7 +358,7 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                           {provider === 'google' ? 'Google' : 'Spotify'}
                         </p>
                         <p className={isConnected ? styles.statusConnected : styles.sectionHint}>
-                          {isConnected ? 'Conectado' : 'No conectado'}
+                          {isConnected ? tl.connected : tl.notConnected}
                         </p>
                       </div>
                       <div>
@@ -359,7 +368,7 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                             onClick={() => void handleConnect(provider)}
                             disabled={connecting === provider}
                           >
-                            {connecting === provider ? '…' : 'Conectar'}
+                            {connecting === provider ? '…' : tl.connect}
                           </button>
                         ) : isConfirming ? (
                           <div className={styles.confirmActions}>
@@ -368,14 +377,14 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                               onClick={() => setDisconnectConfirm(null)}
                               disabled={isDisconnecting}
                             >
-                              Cancelar
+                              {tl.cancel}
                             </button>
                             <button
                               className={`${styles.sectionBtn} ${styles.btnMagenta}`}
                               onClick={() => void handleDisconnect(provider)}
                               disabled={isDisconnecting}
                             >
-                              {isDisconnecting ? '…' : 'Sí, desconectar'}
+                              {isDisconnecting ? '…' : tl.confirmDisconnect}
                             </button>
                           </div>
                         ) : (
@@ -383,7 +392,7 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
                             className={`${styles.sectionBtn} ${styles.btnMagenta}`}
                             onClick={() => setDisconnectConfirm(provider)}
                           >
-                            Desconectar
+                            {tl.disconnect}
                           </button>
                         )}
                       </div>
@@ -399,16 +408,14 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
         {role !== 'guest' && (
           <div className={styles.section}>
             <p className={styles.sectionJp}>会話エクスポート</p>
-            <p className={styles.sectionEs}>Exportar conversación</p>
-            <p className={styles.sectionHint}>
-              Descarga todos los mensajes de tu conversación como archivo JSON.
-            </p>
+            <p className={styles.sectionEs}>{tl.exportSection}</p>
+            <p className={styles.sectionHint}>{tl.exportHint}</p>
             <button
               className={`${styles.sectionBtn} ${styles.btnCyan}`}
               onClick={() => void handleExport()}
               disabled={exporting}
             >
-              {exporting ? '…' : 'Descargar'}
+              {exporting ? '…' : tl.download}
             </button>
           </div>
         )}
@@ -417,34 +424,32 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
         {role !== 'guest' && (
           <div className={styles.section}>
             <p className={styles.sectionJp}>データ削除</p>
-            <p className={styles.sectionEs}>Borrar todos mis datos</p>
-            <p className={styles.sectionHint}>
-              Elimina tu cuenta y todos los datos asociados. Esta acción es irreversible.
-            </p>
+            <p className={styles.sectionEs}>{tl.deleteSection}</p>
+            <p className={styles.sectionHint}>{tl.deleteHint}</p>
             {!deleteConfirm ? (
               <button
                 className={`${styles.sectionBtn} ${styles.btnMagenta}`}
                 onClick={() => setDeleteConfirm(true)}
               >
-                Borrar cuenta
+                {tl.deleteAccount}
               </button>
             ) : (
               <div className={styles.confirmRow}>
-                <p className={styles.confirmWarning}>¿Estás seguro? Esta acción no puede deshacerse.</p>
+                <p className={styles.confirmWarning}>{tl.deleteConfirmWarning}</p>
                 <div className={styles.confirmActions}>
                   <button
                     className={`${styles.sectionBtn} ${styles.btnSecondary}`}
                     onClick={() => setDeleteConfirm(false)}
                     disabled={deleting}
                   >
-                    Cancelar
+                    {tl.cancel}
                   </button>
                   <button
                     className={`${styles.sectionBtn} ${styles.btnMagenta}`}
                     onClick={() => void handleDeleteAccount()}
                     disabled={deleting}
                   >
-                    {deleting ? '…' : 'Sí, borrar todo'}
+                    {deleting ? '…' : tl.confirmDeleteAll}
                   </button>
                 </div>
               </div>
@@ -455,17 +460,15 @@ export function VoiceScreen({ role }: SettingsScreenProps) {
         {/* Gestión de archivos — placeholder */}
         <div className={styles.section}>
           <p className={styles.sectionJp}>ファイル管理</p>
-          <p className={styles.sectionEs}>Gestión de archivos</p>
-          <p className={styles.sectionHint}>
-            Próximamente. Aquí podrás ver y eliminar los archivos que hayas compartido con Sity.
-          </p>
+          <p className={styles.sectionEs}>{tl.filesSection}</p>
+          <p className={styles.sectionHint}>{tl.filesHint}</p>
         </div>
       </div>
 
       {/* Footer actions */}
       <div className={styles.footer}>
         <button className={`${styles.btn} ${styles.btnCyan}`} onClick={handleSave} disabled={busy || !form}>
-          {saving ? '…' : 'Guardar'}
+          {saving ? '…' : tl.save}
         </button>
       </div>
     </div>

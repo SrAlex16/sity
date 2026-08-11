@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
+import { useUiLanguage } from './hooks/useUiLanguage';
+import { TRANSLATIONS } from './i18n/translations';
+import type { UiLang } from './i18n/translations';
 import { BottomNav } from './components/BottomNav';
 import { ChatScreen } from './screens/ChatScreen';
 import { PersonalityScreen } from './screens/PersonalityScreen';
@@ -11,6 +14,9 @@ import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
 import { SharedConversationView } from './screens/SharedConversationView';
 import styles from './App.module.css';
+
+// Re-export for components that only need the type
+export type { UiLang };
 
 const _screenStyle: React.CSSProperties = {
   display: 'flex',
@@ -32,21 +38,21 @@ type AuthView = 'login' | 'register';
 
 const _ADMIN_SCREENS = new Set<Screen>(['dataset']);
 
-function AccessDenied() {
+function AccessDenied({ tl }: { tl: typeof TRANSLATIONS['es'] }) {
   return (
     <div style={_screenStyle}>
-      <span style={{ fontSize: '2rem', opacity: 0.3 }}>[ acceso denegado ]</span>
-      <span>Esta sección requiere permisos de administrador.</span>
+      <span style={{ fontSize: '2rem', opacity: 0.3 }}>{tl.app.accessDenied}</span>
+      <span>{tl.app.accessDeniedDesc}</span>
     </div>
   );
 }
 
-function MaintenanceScreen({ onLogin }: { onLogin: () => void }) {
+function MaintenanceScreen({ onLogin, tl }: { onLogin: () => void; tl: typeof TRANSLATIONS['es'] }) {
   return (
     <div style={_screenStyle}>
-      <span style={{ fontSize: '2rem', opacity: 0.3 }}>[ mantenimiento ]</span>
-      <span>Sity está en mantenimiento.</span>
-      <span style={{ opacity: 0.6 }}>Vuelve más tarde.</span>
+      <span style={{ fontSize: '2rem', opacity: 0.3 }}>{tl.app.maintenance}</span>
+      <span>{tl.app.maintenanceDesc}</span>
+      <span style={{ opacity: 0.6 }}>{tl.app.maintenanceSub}</span>
       <button
         onClick={onLogin}
         style={{
@@ -63,7 +69,7 @@ function MaintenanceScreen({ onLogin }: { onLogin: () => void }) {
           opacity: 0.6,
         }}
       >
-        acceder como administrador
+        {tl.app.adminLogin}
       </button>
     </div>
   );
@@ -90,6 +96,8 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>('chat');
   const [authView, setAuthView] = useState<AuthView>('login');
   const [maintenanceShowLogin, setMaintenanceShowLogin] = useState(false);
+  const { uiLang, setUiLang } = useUiLanguage();
+  const tl = TRANSLATIONS[uiLang];
   const auth = useAuth();
 
   // Detect /reset-password?token=XXX on first load. Clean the URL immediately so
@@ -128,7 +136,7 @@ export default function App() {
     }
     return (
       <div className={styles.app}>
-        <MaintenanceScreen onLogin={() => setMaintenanceShowLogin(true)} />
+        <MaintenanceScreen onLogin={() => setMaintenanceShowLogin(true)} tl={tl} />
       </div>
     );
   }
@@ -143,7 +151,7 @@ export default function App() {
           color: 'var(--text-secondary)',
           letterSpacing: '0.1em',
         }}>
-          Inicializando…
+          {tl.app.initializing}
         </span>
       </div>
     );
@@ -197,11 +205,11 @@ export default function App() {
   function renderScreen(screen: Screen) {
     // Defense-in-depth: even if a restricted tab is somehow reachable,
     // never render its content for non-admin callers.
-    if (_ADMIN_SCREENS.has(screen) && !isAdmin) return <AccessDenied />;
+    if (_ADMIN_SCREENS.has(screen) && !isAdmin) return <AccessDenied tl={tl} />;
     switch (screen) {
       case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} />;
       case 'personality': return <PersonalityScreen />;
-      case 'voice':       return <VoiceScreen role={role} />;
+      case 'voice':       return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
       case 'dataset':     return <DatasetScreen />;
     }
   }
@@ -223,7 +231,7 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
-      <BottomNav active={effectiveScreen} onNavigate={setActiveScreen} role={role} />
+      <BottomNav active={effectiveScreen} onNavigate={setActiveScreen} role={role} uiLang={uiLang} />
     </div>
   );
 }
