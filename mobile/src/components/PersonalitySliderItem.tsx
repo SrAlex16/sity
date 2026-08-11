@@ -65,8 +65,8 @@ export const PersonalitySliderItem = memo(function PersonalitySliderItem({
       <span className={styles.icon}><Icon /></span>
 
       <div className={styles.names}>
-        <span className={styles.nameJp}>{jp}</span>
         <span className={styles.nameEs}>{es}</span>
+        <span className={styles.nameJp}>{jp}</span>
       </div>
 
       <div className={styles.sliderWrap}>

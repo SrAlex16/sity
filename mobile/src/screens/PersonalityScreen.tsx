@@ -83,8 +83,8 @@ export function PersonalityScreen({ role }: PersonalityScreenProps) {
       {/* Header */}
       <div className={styles.header}>
         <div className={styles.headerText}>
-          <span className={styles.titleJp}>パラメータ</span>
           <span className={styles.titleEs}>Personalidad</span>
+          <span className={styles.titleJp}>パラメータ</span>
         </div>
         <button className={styles.helpBtn} onClick={() => setHelpOpen(true)}>?</button>
       </div>

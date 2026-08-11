@@ -174,8 +174,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.headerText}>
-          <span className={styles.titleJp}>設定</span>
           <span className={styles.titleEs}>{tl.title}</span>
+          <span className={styles.titleJp}>設定</span>
         </div>
         <button className={styles.reloadBtn} onClick={() => void reload()} disabled={busy}>
           <IconReload />
@@ -193,8 +193,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           <>
             {/* Voz — modo de respuesta, transcripción, respuestas largas */}
             <div className={styles.section}>
-              <p className={styles.sectionJp}>ボイス</p>
               <p className={styles.sectionEs}>{tl.voice}</p>
+              <p className={styles.sectionJp}>ボイス</p>
 
               {/* Modo de respuesta */}
               <p className={styles.sectionHint} style={{ marginBottom: 10 }}>{tl.responseMode}</p>
@@ -229,8 +229,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                 />
                 <span className={styles.checkboxIndicator} />
                 <div>
-                  <p className={styles.sectionJp}>テキスト起こしも含む</p>
                   <p className={styles.sectionEs}>{tl.includeTranscript}</p>
+                  <p className={styles.sectionJp}>テキスト起こしも含む</p>
                 </div>
               </label>
 
@@ -267,8 +267,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
             {/* Periodicidad de borrado — admin only, global */}
             {role === 'admin' && (
               <div className={styles.section}>
-                <p className={styles.sectionJp}>保存期間</p>
                 <p className={styles.sectionEs}>{tl.cleanupSection}</p>
+                <p className={styles.sectionJp}>保存期間</p>
                 <p className={styles.sectionHint}>{tl.cleanupHint}</p>
                 <div className={styles.cleanupRow}>
                   <input
@@ -289,8 +289,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
 
         {/* Idioma de la app — Sistema 1, funcional */}
         <div className={styles.section}>
-          <p className={styles.sectionJp}>言語</p>
           <p className={styles.sectionEs}>{tl.uiLanguageSection}</p>
+          <p className={styles.sectionJp}>言語</p>
           <p className={styles.sectionHint}>{tl.uiLanguageHint}</p>
           <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
             ⓘ {tl.uiLanguageNote}
@@ -309,8 +309,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         {/* Idioma de conversación de Sity — Sistema 2, funcional */}
         {role !== 'guest' && (
           <div className={styles.section}>
-            <p className={styles.sectionJp}>会話言語</p>
             <p className={styles.sectionEs}>{tl.sityLanguageSection}</p>
+            <p className={styles.sectionJp}>会話言語</p>
             <p className={styles.sectionHint}>{tl.sityLanguageHint}</p>
             <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
               ⓘ {tl.sityLanguageNote}
@@ -335,8 +335,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         {/* Integraciones */}
         {role !== 'guest' && (
           <div className={styles.section}>
-            <p className={styles.sectionJp}>連携設定</p>
             <p className={styles.sectionEs}>{tl.integrationsSection}</p>
+            <p className={styles.sectionJp}>連携設定</p>
             {justConnected && (
               <p className={styles.successMsg}>
                 {tl.justConnected(justConnected === 'google' ? 'Google' : 'Spotify')}
@@ -407,8 +407,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         {/* Exportar conversación */}
         {role !== 'guest' && (
           <div className={styles.section}>
-            <p className={styles.sectionJp}>会話エクスポート</p>
             <p className={styles.sectionEs}>{tl.exportSection}</p>
+            <p className={styles.sectionJp}>会話エクスポート</p>
             <p className={styles.sectionHint}>{tl.exportHint}</p>
             <button
               className={`${styles.sectionBtn} ${styles.btnCyan}`}
@@ -423,8 +423,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         {/* Borrar todos mis datos */}
         {role !== 'guest' && (
           <div className={styles.section}>
-            <p className={styles.sectionJp}>データ削除</p>
             <p className={styles.sectionEs}>{tl.deleteSection}</p>
+            <p className={styles.sectionJp}>データ削除</p>
             <p className={styles.sectionHint}>{tl.deleteHint}</p>
             {!deleteConfirm ? (
               <button
@@ -459,8 +459,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
 
         {/* Gestión de archivos — placeholder */}
         <div className={styles.section}>
-          <p className={styles.sectionJp}>ファイル管理</p>
           <p className={styles.sectionEs}>{tl.filesSection}</p>
+          <p className={styles.sectionJp}>ファイル管理</p>
           <p className={styles.sectionHint}>{tl.filesHint}</p>
         </div>
       </div>
