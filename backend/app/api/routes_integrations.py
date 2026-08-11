@@ -367,7 +367,7 @@ def connect(
         url = _spotify_auth_url(redir, state)
 
     write_log(level="INFO", module="integrations", event="oauth_connect_initiated",
-              payload={"user_id": user_id, "provider": provider})
+              payload={"user_id": user_id, "provider": provider, "redirect_uri": redir})
     return {"auth_url": url}
 
 
