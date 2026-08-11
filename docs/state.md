@@ -131,6 +131,27 @@ Ver .env.example para la lista completa.
   Sity) y Sistema 1 (idioma de UI via CF-IPCountry) confirmados en producción.
   1709 tests en verde.
 
+## Completado recientemente (2026-08-12)
+
+- **Regla de opacidad de arquitectura interna (2026-08-12)** — el modelo
+  narró su mecanismo interno ("la búsqueda recupera un historial largo",
+  "mirando el contexto visible (últimos 4 mensajes)") al interpretar el
+  mensaje "¿Cómo estamos ahora?" como consulta de memoria y usar
+  `search_conversation_history`. Diagnóstico: la regla previa (líneas 74-82
+  de `persona_system.md`) solo prohibía narrar el ACTO de buscar, no el
+  estado o resultado del contexto en términos de mecanismo. Fix: regla
+  ampliada como principio general — Sity nunca describe su arquitectura de
+  memoria/contexto/búsqueda como sistema técnico, ni el acto de buscar ni el
+  resultado. Si no tiene información suficiente, pide aclaración como una
+  persona real. Ejemplos ilustrativos incluidos, con nota explícita de que
+  no son lista exhaustiva.
+
+- **Latencia 19 min (2026-08-12, descartada como bug de backend)** — trace
+  `trc_3de1a136c203`: mensaje enviado ~22:12 UTC, `ai_call_started` 22:31:39
+  UTC, procesamiento de AI 6 segundos. Los 19 minutos transcurrieron antes de
+  que el backend iniciara la llamada — el mensaje estaba retenido en la
+  conexión SSE o tab suspendido por el SO. No es bug reproducible del backend.
+
 ## Completado recientemente (2026-08-11, continuación)
 
 - **Alters de personalidad (Fase 1, 2026-08-11)** — tabla `PersonalityAlter`
@@ -225,14 +246,17 @@ Ver .env.example para la lista completa.
   `list_timers` está en BASE_TOOLSET ("always available"), el toolset_selector
   no activó ningún dominio especial, pero el modelo infirió el tema desde el
   contexto ambiental del historial y llamó a la tool.
-  Mitigación aplicada (2026-08-12, parche B+C): (B) descriptions de las 4 tools
-  de timers reforzadas con "SOLO úsala cuando el usuario lo pide explícitamente";
-  (C) guardarraíl genérico añadido en `persona_system.md` §REGLA DE USO DE
-  HERRAMIENTAS, cubriendo cualquier tool de consulta de estado presente o futura.
-  Opción A (mover timers fuera de BASE_TOOLSET) descartada por ahora — mismo
-  criterio de no añadir complejidad estructural hasta tener evidencia de que el
-  parche de prompt es insuficiente. **Si el patrón reaparece con otras tools
-  de estado, escalar a Opción A.**
+  Mitigación aplicada en dos fases:
+  — Fase 1 (2026-08-12, parche B+C, insuficiente): descriptions de las 4 tools
+    de timers reforzadas; guardarraíl genérico en `persona_system.md`
+    §REGLA DE USO DE HERRAMIENTAS. El modelo ignoró el guardarraíl en el segundo
+    intento (confirmado por logs del trace `trc_8c1f888e764f` — backend con el
+    nuevo código, mismo comportamiento).
+  — Fase 2 (2026-08-12, fix estructural — Opción A): timers movidos fuera de
+    BASE_TOOLSET a TIMERS_TOOLSET, activado únicamente por `_TIMER_RE` regex en
+    `toolset_selector.py`. Timer tools ahora literalmente ausentes del toolset
+    para mensajes genéricos sin keywords de timers. 8 tests nuevos en
+    `test_toolset_selector.py`. 1783 tests. Push + deploy confirmados.
 
 - **Sistema de iniciativa propia de Sity** — capacidad de que Sity
   inicie una conversación sin que el usuario escriba primero (ej. "acordé
