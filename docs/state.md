@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-10.
+Última actualización: 2026-08-11.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -94,16 +94,54 @@ Ver .env.example para la lista completa.
   Ver `docs/notifications-architecture.md` para arquitectura completa y
   el estado verificado en §"Estado real verificado (2026-08-10)".
 
+## Completado recientemente (2026-08-11)
+
+- **Pantalla Ajustes completa y verificada en real** — `VoiceScreen.tsx`
+  renombrada a "Ajustes" (pestaña gear), sección "Voz" unificada (modo de
+  respuesta + transcripción + respuestas largas + botón Restaurar en un solo
+  bloque), exportar conversación como JSON, borrar cuenta con confirmación
+  inline, placeholder gestión de archivos. Badge reCAPTCHA oculto fuera de
+  login con `visibility: hidden`.
+
+- **Integraciones self-service frontend completo (Fase 6, verificado en
+  real)** — sección "Integraciones" en Ajustes: botones Conectar/Desconectar
+  para Google y Spotify con estado live de `GET /auth/integrations`.
+  `window.open(_blank)` en vez de navegación de la pestaña principal;
+  callback OAuth devuelve HTML "Conexión completada, puedes cerrar esta
+  pestaña" que dispara `BroadcastChannel('sity_oauth')` para refresco
+  automático en VoiceScreen. Fallback `visibilitychange` cuando la pantalla
+  no estaba montada. Botón Desconectar en rojo; confirmación inline antes
+  de desconectar.
+
+- **Bug aislamiento ajustes de voz por sesión** — `settings_service.py`
+  tenía `session_id=None` hardcodeado para todos los campos de voz (mismo
+  patrón que el bug de personalidad pre-Fase 2b). Corregido:
+  `voice_response_mode`, `voice_include_text`, `voice_long_response_action`
+  ahora per-sesión con fallback a global; `audio_cleanup_days` sigue global
+  y solo-admin. `GET/PUT /settings/voice` ya no requieren admin, solo
+  non-guest.
+
+- **Bug PKCE en callback de Google OAuth** — el backend creaba dos objetos
+  `Flow` separados (uno en `/connect`, otro en `/callback`) sin compartir el
+  `code_verifier`. Google rechazaba el intercambio con
+  `(invalid_grant) Missing code verifier`. Fix: par PKCE generado en
+  `/connect`, verifier embebido en el state token (firmado con HMAC-SHA256),
+  extraído y pasado a `flow.fetch_token(code_verifier=...)` en `/callback`.
+
+- **Nota operativa Google OAuth Testing** — el aviso "app en desarrollo"
+  es comportamiento estándar de Google mientras la app no está verificada.
+  Se resuelve añadiendo usuarios de prueba en Google Cloud Console → OAuth
+  consent screen → Test users. Documentado en `docs/auth-system.md`.
+
+- **Nota operativa Spotify Redirect URIs** — bug real: la URI se pegó en
+  formato Markdown `[texto](url)` en vez de texto plano, y no se pulsó
+  "Save" explícitamente tras añadir la URI (Spotify no autoguarda). URL
+  exacta que construye el backend:
+  `https://sity.aletm.com/auth/integrations/spotify/callback`.
+  Documentado en `docs/auth-system.md`.
+
 ## Mejoras pendientes
 
-- **Integraciones self-service por usuario (parcialmente implementado)** —
-  Google/Spotify ya funciona: endpoints OAuth
-  (`/auth/integrations/{provider}/connect|callback|disconnect`), credenciales
-  por usuario cifradas en `UserIntegration`, handlers adaptados
-  (`_resolve_google_creds`, `_resolve_spotify_token`). Pendiente: Home
-  Assistant (sin OAuth estándar — requiere diseño propio) y la pantalla de
-  frontend "Ajustes → Integraciones" con botones Connect/Disconnect. Ver
-  `docs/auth-system.md` § Fase 6.
 - **Sistema de iniciativa propia de Sity** — capacidad de que Sity
   inicie una conversación sin que el usuario escriba primero (ej. "acordé
   en recordarte esto", "encontré algo que puede interesarte"). Cuatro
@@ -130,18 +168,6 @@ Ver .env.example para la lista completa.
   datos genérico (`NotificationRule` con tipo, parámetros, condición de
   disparo). El sistema de Web Push que lo entregará sigue adelante
   independientemente (ver entrada de Web Push API).
-- **Pantalla "Voz" → "Ajustes"** — la pantalla de Voz (`VoiceScreen.tsx`)
-  actualmente mezcla configuración de usuario con opciones que deberían ser
-  solo-Admin. Sub-funcionalidades pendientes de diseñar y separar por rol:
-  (1) **Periodicidad de borrado de audios** — ya existe la sección en
-  `VoiceScreen.tsx` pero debe ocultarse para usuarios no-Admin (solo el
-  admin debe poder cambiar la política de retención global de audios);
-  (2) **Idioma de la interfaz** — ver punto separado más abajo;
-  (3) **Gestión de archivos de audio**: lista de audios propios del usuario,
-  opción de eliminar individuales o todos, vista del espacio usado;
-  (4) **Exportar conversación** y borrado RGPD de todos los datos propios —
-  un usuario autenticado debería poder exportar su historial completo (JSON/
-  texto) y eliminar su cuenta con todos sus mensajes, sin depender del Admin.
 - **Sistema de cambio de idioma** — la interfaz es completamente en español
   hoy. Dos niveles posibles: (a) **detección automática** del idioma del
   navegador/sistema al cargar la app; (b) **selección manual** en Ajustes
@@ -194,8 +220,6 @@ Ver .env.example para la lista completa.
   solo `apt` o también `pip`) queda pospuesta a una sesión dedicada.
   *Advertencia: cada herramienta nueva amplía la superficie de ataque si
   Sity es manipulada vía prompt injection; evaluar caso por caso.*
-- **Pantalla "Ajustes → Integraciones"** — frontend para conectar/desconectar
-  Google y Spotify por usuario (Fase 6 Paso 6). Backend ya listo.
 - **DSPy / optimización automática de prompts** — explorar DSPy para
   optimizar el prompt de sistema y los prompts de herramientas con
   datos reales del dataset v1. Requiere el dataset de evaluación

@@ -510,3 +510,26 @@ Para que un usuario pueda autenticarse con Google sin ver esa advertencia:
 Si en algún momento se abre el acceso a usuarios externos reales, habrá
 que pasar por el proceso de verificación de Google (requiere datos de
 privacidad, revisión manual, etc.).
+
+## Nota operativa — Spotify Redirect URIs
+
+Al registrar o actualizar una Redirect URI en el
+[Spotify Developer Dashboard](https://developer.spotify.com/dashboard):
+
+1. **Texto plano, no Markdown.** El campo acepta solo la URL literal.
+   Pegar `[texto](https://…)` en vez de `https://…` provoca el error
+   `redirect_uri: Not matching configuration` de forma poco obvia —
+   Spotify almacena el string completo con los corchetes.
+2. **Pulsar "Save"** en la parte inferior del modal. Spotify no guarda
+   automáticamente al añadir la URI a la lista; sin este paso el cambio
+   se pierde al cerrar el diálogo.
+3. **El cambio es instantáneo** (a diferencia de Google, que puede tardar
+   hasta unos minutos). Si el error persiste tras guardar correctamente,
+   verificar que el `SPOTIFY_CLIENT_ID` en `.env` corresponde a la app
+   que se editó (puede haber varias apps en el dashboard).
+
+La URL que construye el backend en producción es:
+```
+https://sity.aletm.com/auth/integrations/spotify/callback
+```
+(sin barra final, https, sin puerto).
