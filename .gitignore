@@ -55,3 +55,7 @@ data/*
 *.coverage
 htmlcov/
 
+# Archivos de SQLite
+tests/.pytest_test.db-shm
+tests/.pytest_test.db-wal
+
