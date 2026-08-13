@@ -39,7 +39,7 @@ from app.core.realtime_events import (
     publish_event_sync,
     subscribe,
 )
-from app.core.refusal_tracker import get_last_refusal, set_last_refusal
+from app.core.refusal_tracker import clear_last_refusal, get_last_refusal, set_last_refusal
 
 from app.memory.db import get_session
 from app.memory.models import ChatMessage
@@ -343,7 +343,7 @@ def _chat_message_inner(
     _classification = None
     if persona_decision.refusal_mode:
         from app.core.message_classifier import classify_message
-        _last_refusal_data = get_last_refusal()
+        _last_refusal_data = get_last_refusal(ctx.session_id)
         _classification = classify_message(
             request.message,
             trace_id=ctx.trace_id,
@@ -370,7 +370,7 @@ def _chat_message_inner(
     # Extract override flag once — used both for prompt injection and refusal gate.
     _has_override = has_direct_order_override(request.message)
     if _has_override:
-        last = get_last_refusal()
+        last = get_last_refusal(ctx.session_id)
         if last:
             persona_prompt += (
                 "\n\nCONTEXTO DE OVERRIDE: El usuario está ordenando ejecutar esta petición "
@@ -416,6 +416,7 @@ def _chat_message_inner(
             source_channel=request.source_channel,
         )
         set_last_refusal(
+            session_id=ctx.session_id,
             user_message=request.message,
             assistant_message=refusal_text,
             trace_id=ctx.trace_id,
@@ -433,6 +434,10 @@ def _chat_message_inner(
             daily_used=get_today_token_usage(session),
             daily_budget=ctx.daily_budget,
         )
+
+    # Non-refusal turn: clear the per-session refusal state so the next turn
+    # does not receive stale "last was refusal" context.
+    clear_last_refusal(ctx.session_id)
 
     prep = build_ai_turn_prep(
         session=session,

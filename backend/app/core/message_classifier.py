@@ -41,9 +41,15 @@ _CLASSIFY_SYSTEM = (
     "Reply with exactly one word: trivial, config_query, or real"
 )
 
-# Short insistence messages (≤15 chars) after a refusal are almost always a
-# continuation of the refused request, not a new greeting.
-_INSISTENCE_MAX_CHARS = 15
+_CLASSIFY_SYSTEM_REFUSAL_CONTEXT = (
+    "\n\nCONTEXT: The immediately previous turn was a refusal — the assistant declined "
+    "the user's request. Use this to distinguish:\n"
+    "- If the current message continues or insists on the SAME refused request "
+    "('dímelo', 'venga', 'porfa', 'por favor acepta lo que pedí') → 'real'.\n"
+    "- If it is a genuinely new or different question, even if prompted by the refusal "
+    "('dime qué puedes hacer entonces', 'qué sí puedes hacer?', 'ok, dime otra cosa') "
+    "→ classify by content, not by position after a refusal."
+)
 
 _REFUSAL_GENERATOR_SYSTEM = (
     "Generate a single short refusal to the user's request. "
@@ -85,12 +91,14 @@ def classify_message(
     """Classify a user message as trivial, config_query, or real.
 
     Uses Haiku (cheap, fast, single purpose). Falls back to "real" on any error.
+    Haiku is always called — no length-based shortcuts.
 
-    last_was_refusal: if True and message is very short, skips Haiku and returns
-    "real" directly — short insistence messages after a refusal are not greetings.
+    last_was_refusal: if True, appends context to the Haiku prompt so it can
+    distinguish between insistence on the same request vs. a new question.
     """
-    if last_was_refusal and len(user_message.strip()) <= _INSISTENCE_MAX_CHARS:
-        return MessageClassification(kind="real")
+    system = _CLASSIFY_SYSTEM
+    if last_was_refusal:
+        system = _CLASSIFY_SYSTEM + _CLASSIFY_SYSTEM_REFUSAL_CONTEXT
 
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     try:
@@ -99,7 +107,7 @@ def classify_message(
         request = AIRequest(
             trace_id=trace_id,
             task_type="classification",
-            system_prompt=_CLASSIFY_SYSTEM,
+            system_prompt=system,
             user_message=user_message,
             max_tokens=10,
             tools_enabled=False,

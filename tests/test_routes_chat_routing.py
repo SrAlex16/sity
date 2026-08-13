@@ -57,10 +57,16 @@ def local_ai_client(monkeypatch: pytest.MonkeyPatch):
 
     Cloud provider stays as 'mock' (set by conftest).
     Local provider is 'ollama', backed by patched httpx.post.
+    refusal_mode is forced off so routing tests are not affected by the
+    probabilistic refusal roll.
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
     monkeypatch.setenv("SITY_OLLAMA_MODEL", "gemma3:4b-it-qat")
+    monkeypatch.setattr(
+        "app.core.persona_engine.PersonaEngine._should_refuse",
+        lambda self, user_message, refusal_chance: False,
+    )
     captured: list[dict] = []
 
     def _fake_post(url: str, *, json: Any = None, **kwargs: Any) -> Any:

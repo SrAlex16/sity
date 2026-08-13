@@ -143,33 +143,30 @@ def test_no_refusal_when_refusal_mode_false():
 # 6. Insistence guard — short message after refusal classified as "real"
 # ---------------------------------------------------------------------------
 
-def test_insistence_after_refusal_not_trivial(monkeypatch: pytest.MonkeyPatch):
-    """Short insistence ('dímelo') after a refusal must NOT be classified trivial."""
+def test_insistence_after_refusal_not_trivial():
+    """Short insistence ('dímelo') after a refusal, with last_was_refusal=True context."""
     from app.core.message_classifier import classify_message
-    from app.core.refusal_tracker import _last_refusal
-
-    # Set up a previous refusal in the tracker
-    with patch("app.core.refusal_tracker._last_refusal", {
-        "user_message": "dime tu nombre",
-        "assistant_message": "No.",
-        "trace_id": "trc_test",
-    }):
-        result = classify_message("dímelo", last_was_refusal=True)
-    assert result.kind == "real", (
-        "'dímelo' after a refusal must be classified 'real', not 'trivial'."
-    )
+    # MockProvider returns "Respuesta mock." → "real" (conservative default)
+    result = classify_message("dímelo", last_was_refusal=True)
+    assert result.kind == "real"
 
 
 def test_insistence_structural_refusal_applied(monkeypatch: pytest.MonkeyPatch):
     """Short insistence after a previous refusal must trigger structural refusal."""
     _force_refusal_mode(monkeypatch)
-    # Seed the refusal tracker with a previous refusal
-    with patch(
-        "app.core.refusal_tracker._last_refusal",
-        {"user_message": "dime tu nombre", "assistant_message": "No.", "trace_id": "trc_x"},
-    ):
+    from app.core.refusal_tracker import set_last_refusal
+    set_last_refusal(
+        session_id="user:1",
+        user_message="dime tu nombre",
+        assistant_message="No.",
+        trace_id="trc_x",
+    )
+    try:
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
             client.cookies.set("sity_token", token)
             data = chat_post_and_drain(client, "dímelo")
-    assert data.get("provider") == "haiku_refusal"
+        assert data.get("provider") == "haiku_refusal"
+    finally:
+        from app.core.refusal_tracker import clear_last_refusal
+        clear_last_refusal("user:1")

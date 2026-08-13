@@ -55,6 +55,15 @@ os.environ.setdefault("SITY_DB_URL", f"sqlite:///{_TEST_DB_PATH}")
 import pytest  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def clear_refusal_tracker_state() -> None:
+    """Reset per-session refusal tracker state between tests to prevent pollution."""
+    import app.core.refusal_tracker as _tracker
+    _tracker._last_refusal_by_session.clear()
+    yield
+    _tracker._last_refusal_by_session.clear()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_database() -> None:
     """Initialize the test SQLite DB once per session (idempotent).

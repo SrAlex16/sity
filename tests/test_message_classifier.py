@@ -6,7 +6,6 @@ import pytest
 
 from app.core.message_classifier import (
     MessageClassification,
-    _INSISTENCE_MAX_CHARS,
     _PERSONALITY_LABELS,
     _REFUSAL_FALLBACKS,
     build_verified_config_block,
@@ -219,38 +218,61 @@ def test_config_block_current_state_label() -> None:
 
 
 # ------------------------------------------------------------------ #
-# 6. classify_message — last_was_refusal structural guard             #
+# 6. classify_message — last_was_refusal passes context to Haiku     #
 # ------------------------------------------------------------------ #
 
-def test_insistence_short_message_after_refusal_returns_real() -> None:
-    # Short message (≤ _INSISTENCE_MAX_CHARS) after a refusal → "real" without Haiku call.
+def test_classify_with_last_was_refusal_true_returns_classification() -> None:
+    # Haiku is always called — result depends on MockProvider ("Respuesta mock." → "real").
     result = classify_message("dímelo", last_was_refusal=True)
-    assert result.kind == "real"
+    assert isinstance(result, MessageClassification)
+    assert result.kind == "real"  # MockProvider → conservative default
 
 
-def test_insistence_venga_after_refusal_returns_real() -> None:
-    result = classify_message("venga", last_was_refusal=True)
-    assert result.kind == "real"
-
-
-def test_insistence_porfa_after_refusal_returns_real() -> None:
-    result = classify_message("porfa", last_was_refusal=True)
-    assert result.kind == "real"
-
-
-def test_insistence_guard_not_triggered_when_no_refusal() -> None:
-    # Without last_was_refusal, short message goes through Haiku (MockProvider).
-    # MockProvider returns "Respuesta mock." → not trivial/config → "real" anyway.
+def test_classify_with_last_was_refusal_false_returns_classification() -> None:
     result = classify_message("dímelo", last_was_refusal=False)
-    assert result.kind == "real"
+    assert isinstance(result, MessageClassification)
 
 
-def test_insistence_guard_not_triggered_for_long_message() -> None:
-    long_msg = "d" * (_INSISTENCE_MAX_CHARS + 1)
-    # Even with last_was_refusal, long messages go through Haiku.
-    # MockProvider → "real" (conservative default).
-    result = classify_message(long_msg, last_was_refusal=True)
-    assert result.kind == "real"
+def test_haiku_always_called_for_short_message_with_refusal_context() -> None:
+    # No length bypass: even a 1-char message goes through Haiku.
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("trivial")) as mock_gen:
+        result = classify_message("a", last_was_refusal=True)
+    mock_gen.assert_called_once()
+    assert result.kind == "trivial"
+
+
+def test_haiku_always_called_for_short_message_without_refusal_context() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("trivial")) as mock_gen:
+        result = classify_message("a", last_was_refusal=False)
+    mock_gen.assert_called_once()
+    assert result.kind == "trivial"
+
+
+def test_last_was_refusal_context_appended_to_system_prompt() -> None:
+    # When last_was_refusal=True, Haiku receives an extended system prompt.
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("real")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        classify_message("dímelo", last_was_refusal=True)
+    assert captured
+    assert "CONTEXT" in captured[0].system_prompt
+
+
+def test_no_refusal_context_in_system_prompt_when_false() -> None:
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("real")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        classify_message("dímelo", last_was_refusal=False)
+    assert captured
+    assert "CONTEXT" not in captured[0].system_prompt
 
 
 # ------------------------------------------------------------------ #
