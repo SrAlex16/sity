@@ -349,3 +349,92 @@ def test_orchestrator_model_upgrade_proposed_saves_proposal() -> None:
     assert call_arg.reason == "tarea compleja"
     assert isinstance(result, ChatMessageResponse)
     assert result.ok is True
+
+
+# ---------------------------------------------------------------------------
+# Test 7: after-tools uses self.persona_prompt, not persona_decision.system_prompt
+# ---------------------------------------------------------------------------
+
+def test_after_tools_uses_self_persona_prompt_not_decision_prompt() -> None:
+    """_run_after_tools_loop must use self.persona_prompt (which carries the verified
+    config block appended by routes_chat.py), NOT persona_decision.system_prompt
+    (the bare prompt without the block).
+
+    Regression test for the bug where search_conversation_history returned 80
+    historical fragments with stale config values, and the model used those
+    instead of the current verified values — because the config block was only
+    in self.persona_prompt but the after-tools path used persona_decision.system_prompt.
+    """
+    from app.chat.tool_loop_runner import ToolLoopRunOutcome
+
+    persona_prompt_with_block = "sys\n\nCONFIGURACIÓN ACTUAL — VALORES VERIFICADOS:\n- Probabilidad de negación: 100%"
+
+    tool_call = AIToolCall(id="tc_search", name="search_conversation_history", input={"query": "probabilidad"})
+    planner_resp = _ai_response(tool_calls=[tool_call])
+    after_resp = _ai_response(text="La probabilidad de negación es 100%")
+    runner = _make_runner(planner_response=planner_resp, after_tools_response=after_resp)
+
+    orc = ChatAIOrchestrator(
+        session=MagicMock(),
+        ctx=_make_ctx(),
+        prep=_make_prep(runner=runner, provider_mode=ProviderMode.cloud_tools),
+        request=_make_request("me dices el valor de la probabilidad de negación?"),
+        persona_prompt=persona_prompt_with_block,
+        persona_decision=_persona_decision(),
+    )
+
+    fake_loop = ToolLoopRunOutcome(
+        early_kind=None,
+        early_tool_name="",
+        local_text="",
+        local_model="",
+        sensor_event_type="",
+        sensor_description="",
+        sensor_artifacts=[],
+        tool_results_for_claude=[{"type": "tool_result", "tool_use_id": "tc_search", "content": "...refusal_chance=0.5..."}],
+        updated_parameters=[],
+        artifacts=[],
+    )
+
+    final_response = MagicMock(spec=ChatMessageResponse)
+    final_response.ok = True
+    final_response.text = "La probabilidad de negación es 100%"
+
+    with patch(f"{_MODULE}.run_tool_loop", return_value=fake_loop), \
+         patch(f"{_MODULE}.build_final_ai_response", return_value=final_response), \
+         patch(f"{_MODULE}.get_today_token_usage", return_value=0), \
+         patch(f"{_MODULE}.PersonaEngine") as mock_pe:
+        mock_pe.return_value.build_persona_prompt.return_value = _persona_decision()
+        orc.run()
+
+    runner.run_after_tools.assert_called_once()
+    call_kwargs = runner.run_after_tools.call_args
+    after_tools_request = call_kwargs.kwargs.get("request") or call_kwargs.args[0]
+    assert "CONFIGURACIÓN ACTUAL" in after_tools_request.system_prompt, (
+        "run_after_tools must receive self.persona_prompt (with verified config block), "
+        "not persona_decision.system_prompt (without it)"
+    )
+    assert "100%" in after_tools_request.system_prompt
+
+
+def test_after_tools_config_block_takes_priority_over_historical_data() -> None:
+    """The verified config block must contain explicit instructions that its values
+    take priority over any historical data found in search results.
+
+    Regression for the '50%' hallucination: model found 80 historical fragments
+    with stale refusal_chance=0.5 and trusted those over the current config.
+    """
+    from app.core.message_classifier import build_verified_config_block
+
+    block = build_verified_config_block({"refusal_chance": 1.0})
+    full_prompt = "sys\n" + block
+
+    assert "historial" in full_prompt or "histórico" in full_prompt, (
+        "Config block must warn the model not to trust historical data over current values"
+    )
+    assert "prioridad" in full_prompt, (
+        "Config block must state this block takes priority"
+    )
+    assert "100%" in full_prompt, (
+        "Config block must contain the actual current value"
+    )

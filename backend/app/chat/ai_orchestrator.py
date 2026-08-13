@@ -726,7 +726,7 @@ class ChatAIOrchestrator:
                 executor=executor,
                 trace_id=ctx.trace_id,
                 runner=prep.runner,
-                persona_prompt=persona_decision.system_prompt,
+                persona_prompt=self.persona_prompt,
                 user_message_with_history=prep.prompt_context.user_message_with_history,
                 prior_messages=prep.prompt_context.prior_messages,
                 selected_tools=prep.selected_tools,
@@ -890,7 +890,7 @@ class ChatAIOrchestrator:
             response_after_tools = prep.runner.run_after_tools(
                 request=build_after_tools_ai_request(
                     trace_id=ctx.trace_id,
-                    persona_prompt=persona_decision.system_prompt,
+                    persona_prompt=self.persona_prompt,
                     user_message=prep.prompt_context.user_message_with_history,
                     max_tokens=max(ctx.max_tokens, ctx.ai_config.get("after_tools_min_tokens", 700)),
                     tools=prep.selected_tools,
@@ -936,7 +936,7 @@ class ChatAIOrchestrator:
                     executor=executor,
                     trace_id=ctx.trace_id,
                     runner=prep.runner,
-                    persona_prompt=persona_decision.system_prompt,
+                    persona_prompt=self.persona_prompt,
                     user_message_with_history=prep.prompt_context.user_message_with_history,
                     prior_messages=prep.prompt_context.prior_messages,
                     selected_tools=prep.selected_tools,

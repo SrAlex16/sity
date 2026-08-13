@@ -104,9 +104,13 @@ def build_verified_config_block(personality: dict) -> str:
     """
     lines = [
         "",
-        "CONFIGURACIÓN ACTUAL — VALORES VERIFICADOS:",
-        "Usa estos números exactos si el usuario pregunta por un parámetro.",
-        "No uses otros valores ni los inferidos del texto anterior.",
+        "CONFIGURACIÓN ACTUAL — VALORES VERIFICADOS (estado real en este turno):",
+        "Usa ÚNICAMENTE estos números si el usuario pregunta por un parámetro.",
+        "El backend verificó estos valores ahora mismo — son el estado ACTUAL del sistema.",
+        "Si en el historial de conversación o en resultados de búsqueda aparecen valores",
+        "distintos para estos mismos parámetros, esos datos son de otro momento en el tiempo;",
+        "la configuración pudo cambiar desde entonces. Los valores de ESTE bloque siempre",
+        "tienen prioridad sobre cualquier dato histórico o resultado de búsqueda.",
     ]
     for key, label in _PERSONALITY_LABELS.items():
         val = personality.get(key)

@@ -149,7 +149,7 @@ def test_classify_falls_back_to_real_on_import_error() -> None:
 
 def test_config_block_header_present() -> None:
     block = build_verified_config_block({})
-    assert "CONFIGURACIÓN ACTUAL — VALORES VERIFICADOS:" in block
+    assert "CONFIGURACIÓN ACTUAL — VALORES VERIFICADOS" in block
 
 
 def test_config_block_refusal_chance_full() -> None:
@@ -198,9 +198,21 @@ def test_config_block_all_labels_covered() -> None:
         assert label in block, f"Label {label!r} missing from config block"
 
 
-def test_config_block_no_use_other_values_instruction() -> None:
+def test_config_block_backend_verified_instruction() -> None:
     block = build_verified_config_block({"sarcasm_level": 0.8})
-    assert "No uses otros valores" in block
+    assert "backend verificó" in block
+
+
+def test_config_block_historical_priority_instruction() -> None:
+    # Must explicitly state that this block takes priority over history search results.
+    block = build_verified_config_block({"refusal_chance": 1.0})
+    assert "historial" in block or "histórico" in block
+    assert "prioridad" in block
+
+
+def test_config_block_current_state_label() -> None:
+    block = build_verified_config_block({})
+    assert "estado real en este turno" in block
 
 
 # ------------------------------------------------------------------ #
