@@ -3,7 +3,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AudioChatMessage } from '../hooks/useChat';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang } from '../i18n/translations';
 import styles from './AudioMessageBubble.module.css';
+
+const DATE_LOCALE: Record<UiLang, string> = { es: 'es-ES', en: 'en-US', ja: 'ja-JP' };
 
 function formatDur(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -11,14 +15,14 @@ function formatDur(secs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function formatTimestamp(date: Date): string {
+function formatTimestamp(date: Date, locale: string, yesterdayLabel: string): string {
   const now = new Date();
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  const time = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   if (date.toDateString() === now.toDateString()) return time;
-  if (date.toDateString() === yesterday.toDateString()) return `Ayer ${time}`;
-  const day = date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }).replace('.', '');
+  if (date.toDateString() === yesterday.toDateString()) return `${yesterdayLabel} ${time}`;
+  const day = date.toLocaleDateString(locale, { day: '2-digit', month: 'short' }).replace('.', '');
   return `${day} ${time}`;
 }
 
@@ -159,6 +163,7 @@ interface AudioMessageBubbleProps {
   onEnded?: (id: string) => void;
   /** id of the next audio message with the same trace_id, if any */
   nextAudioId?: string;
+  uiLang?: UiLang;
 }
 
 export function AudioMessageBubble({
@@ -168,7 +173,10 @@ export function AudioMessageBubble({
   onPlay,
   onEnded,
   nextAudioId,
+  uiLang = 'es',
 }: AudioMessageBubbleProps) {
+  const tl = TRANSLATIONS[uiLang].chat;
+  const locale = DATE_LOCALE[uiLang];
   const isUser = message.role === 'user';
   const [showTranscript, setShowTranscript] = useState(false);
   const src = message.audioBlobUrl ?? message.audioUrl ?? '';
@@ -218,7 +226,7 @@ export function AudioMessageBubble({
               className={styles.transcriptToggle}
               onClick={() => setShowTranscript((v) => !v)}
             >
-              {showTranscript ? 'Ocultar transcripción' : 'Ver transcripción'}
+              {showTranscript ? tl.hideTranscript : tl.showTranscript}
             </button>
 
             <AnimatePresence>
@@ -241,7 +249,7 @@ export function AudioMessageBubble({
         )}
       </div>
 
-      <span className={styles.timestamp}>{formatTimestamp(message.timestamp)}</span>
+      <span className={styles.timestamp}>{formatTimestamp(message.timestamp, locale, tl.yesterday)}</span>
     </motion.div>
   );
 }

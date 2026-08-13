@@ -3,6 +3,7 @@ import { memo } from 'react';
 import type { ChatMessage } from '../hooks/useChat';
 import { MessageBubble } from './MessageBubble';
 import { AudioMessageBubble } from './AudioMessageBubble';
+import type { UiLang } from '../i18n/translations';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -10,6 +11,7 @@ interface MessageListProps {
   onAudioPlay: (id: string) => void;
   onAudioEnded: (id: string) => void;
   voiceIncludeText: boolean;
+  uiLang?: UiLang;
 }
 
 function MessageListComponent({
@@ -18,6 +20,7 @@ function MessageListComponent({
   onAudioPlay,
   onAudioEnded,
   voiceIncludeText,
+  uiLang = 'es',
 }: MessageListProps) {
   return (
     <AnimatePresence initial={false}>
@@ -38,6 +41,7 @@ function MessageListComponent({
               onPlay={onAudioPlay}
               onEnded={onAudioEnded}
               nextAudioId={nextAudioId}
+              uiLang={uiLang}
             />
           );
         }

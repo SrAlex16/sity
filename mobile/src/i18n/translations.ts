@@ -86,6 +86,19 @@ export interface T {
     copyLink: string;
     close: string;
     expiresLabel: string;
+    // StatusBadge
+    statusOnline: string;
+    statusProcessing: string;
+    statusDisconnected: string;
+    // AudioMessageBubble
+    showTranscript: string;
+    hideTranscript: string;
+    yesterday: string;
+    // FontPicker
+    fontFuturistic: string;
+    fontTerminal: string;
+    fontElegant: string;
+    fontCancel: string;
   };
   personality: {
     moodTranquil: string;
@@ -256,6 +269,16 @@ const es: T = {
     copyLink: 'Copiar enlace',
     close: 'Cerrar',
     expiresLabel: 'Caduca',
+    statusOnline: 'EN LÍNEA',
+    statusProcessing: 'PROCESANDO...',
+    statusDisconnected: 'DESCONECTADO',
+    showTranscript: 'Ver transcripción',
+    hideTranscript: 'Ocultar transcripción',
+    yesterday: 'Ayer',
+    fontFuturistic: 'Futurista',
+    fontTerminal: 'Terminal',
+    fontElegant: 'Elegante',
+    fontCancel: 'Cancelar',
   },
   personality: {
     moodTranquil: 'Tranquila',
@@ -426,6 +449,16 @@ const en: T = {
     copyLink: 'Copy link',
     close: 'Close',
     expiresLabel: 'Expires',
+    statusOnline: 'ONLINE',
+    statusProcessing: 'PROCESSING...',
+    statusDisconnected: 'DISCONNECTED',
+    showTranscript: 'Show transcript',
+    hideTranscript: 'Hide transcript',
+    yesterday: 'Yesterday',
+    fontFuturistic: 'Futuristic',
+    fontTerminal: 'Terminal',
+    fontElegant: 'Elegant',
+    fontCancel: 'Cancel',
   },
   personality: {
     moodTranquil: 'Calm',
@@ -596,6 +629,16 @@ const ja: T = {
     copyLink: 'リンクをコピー',
     close: '閉じる',
     expiresLabel: '有効期限',
+    statusOnline: 'オンライン',
+    statusProcessing: '処理中...',
+    statusDisconnected: '切断',
+    showTranscript: '文字起こしを表示',
+    hideTranscript: '文字起こしを非表示',
+    yesterday: '昨日',
+    fontFuturistic: 'フューチャー',
+    fontTerminal: 'ターミナル',
+    fontElegant: 'エレガント',
+    fontCancel: 'キャンセル',
   },
   personality: {
     moodTranquil: '穏やか',

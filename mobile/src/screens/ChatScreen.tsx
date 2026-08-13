@@ -351,7 +351,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
           <div className={styles.headerInfo}>
             <span className={styles.headerName}>Sity</span>
             <div className={styles.headerStatusRow}>
-              <StatusBadge status={status} />
+              <StatusBadge status={status} uiLang={uiLang} />
               <BgJobIndicator active={backgroundJobsActive > 0} justFinished={backgroundJustFinished} />
             </div>
             {currentUser && (
@@ -448,6 +448,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
             onAudioPlay={handleAudioPlay}
             onAudioEnded={handleAudioEnded}
             voiceIncludeText={voiceIncludeText}
+            uiLang={uiLang}
           />
           {status === 'procesando' && <TypingIndicator />}
           <div ref={messagesEndRef} />
@@ -571,6 +572,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
         activeFont={activeFont}
         onClose={() => setFontPickerOpen(false)}
         onSelect={setActiveFont}
+        uiLang={uiLang}
       />
 
       {/* Share modal */}

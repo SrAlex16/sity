@@ -1,12 +1,14 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang } from '../i18n/translations';
 import styles from './FontPicker.module.css';
 
 type FontKey = 'orbitron' | 'sharetech' | 'rajdhani';
 
-const FONTS: Array<{ key: FontKey; name: string; label: string; family: string }> = [
-  { key: 'orbitron',   name: 'Orbitron',        label: 'Futurista', family: "'Orbitron', sans-serif" },
-  { key: 'sharetech',  name: 'Share Tech Mono',  label: 'Terminal',  family: "'Share Tech Mono', monospace" },
-  { key: 'rajdhani',   name: 'Rajdhani',         label: 'Elegante',  family: "'Rajdhani', sans-serif" },
+const FONTS: Array<{ key: FontKey; name: string; family: string; labelKey: 'fontFuturistic' | 'fontTerminal' | 'fontElegant' }> = [
+  { key: 'orbitron',   name: 'Orbitron',       family: "'Orbitron', sans-serif",         labelKey: 'fontFuturistic' },
+  { key: 'sharetech',  name: 'Share Tech Mono', family: "'Share Tech Mono', monospace",  labelKey: 'fontTerminal'   },
+  { key: 'rajdhani',   name: 'Rajdhani',        family: "'Rajdhani', sans-serif",         labelKey: 'fontElegant'   },
 ];
 
 interface FontPickerProps {
@@ -14,9 +16,12 @@ interface FontPickerProps {
   activeFont: FontKey;
   onClose: () => void;
   onSelect: (key: FontKey) => void;
+  uiLang?: UiLang;
 }
 
-export function FontPicker({ open, activeFont, onClose, onSelect }: FontPickerProps) {
+export function FontPicker({ open, activeFont, onClose, onSelect, uiLang = 'es' }: FontPickerProps) {
+  const tl = TRANSLATIONS[uiLang].chat;
+
   const handleSelect = (key: FontKey) => {
     document.documentElement.setAttribute('data-font', key);
     localStorage.setItem('sity_font', key);
@@ -43,22 +48,22 @@ export function FontPicker({ open, activeFont, onClose, onSelect }: FontPickerPr
             onClick={(e) => e.stopPropagation()}
           >
             <div className={styles.handle} />
-            <h3 className={styles.title}>Cambiar fuente</h3>
+            <h3 className={styles.title}>{tl.changeFont}</h3>
 
             <div className={styles.optionList}>
-              {FONTS.map(({ key, name, label, family }) => (
+              {FONTS.map(({ key, name, family, labelKey }) => (
                 <button
                   key={key}
                   className={`${styles.option} ${activeFont === key ? styles.optionActive : ''}`}
                   onClick={() => handleSelect(key)}
                 >
                   <span className={styles.fontName} style={{ fontFamily: family }}>{name}</span>
-                  <span className={styles.fontLabel}>{label}</span>
+                  <span className={styles.fontLabel}>{tl[labelKey]}</span>
                 </button>
               ))}
             </div>
 
-            <button className={styles.cancelBtn} onClick={onClose}>Cancelar</button>
+            <button className={styles.cancelBtn} onClick={onClose}>{tl.fontCancel}</button>
           </motion.div>
         </motion.div>
       )}
