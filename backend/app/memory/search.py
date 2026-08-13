@@ -148,6 +148,7 @@ def _search_fts(conn, query: str, limit: int, session_id: str) -> list:
             "JOIN chatmessage c ON c.id = fts.rowid "
             "WHERE chatmessage_fts MATCH :q "
             "AND c.session_id = :sid "
+            "AND c.dataset_eligible = 1 "
             "ORDER BY rank "
             "LIMIT :n"
         ),
@@ -169,7 +170,7 @@ def _search_like_tokens(conn, query: str, limit: int, session_id: str) -> list:
         for row in conn.execute(
             sa_text(
                 "SELECT id, role, text, created_at FROM chatmessage "
-                "WHERE text LIKE :q AND session_id = :sid ORDER BY id DESC LIMIT :n"
+                "WHERE text LIKE :q AND session_id = :sid AND dataset_eligible = 1 ORDER BY id DESC LIMIT :n"
             ),
             {"q": f"%{token}%", "n": limit, "sid": session_id},
         ).fetchall():

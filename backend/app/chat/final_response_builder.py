@@ -40,9 +40,12 @@ _TURN_LOAD_RE = re.compile(r"<R:([+-]?\d+)>\s*\Z")
 
 def strip_turn_load_tag(text: str) -> tuple[str, str | None]:
     """Strip trailing <R:N> tag. Returns (cleaned_text, raw_N_or_None)."""
-    m = _TURN_LOAD_RE.search(text)
+    # Normalize Unicode MINUS SIGN U+2212 → ASCII hyphen-minus U+002D
+    # Claude occasionally outputs U+2212 in negative turn-load tags.
+    normalized = text.replace("−", "-")
+    m = _TURN_LOAD_RE.search(normalized)
     if m:
-        return _TURN_LOAD_RE.sub("", text).rstrip(), m.group(1)
+        return _TURN_LOAD_RE.sub("", normalized).rstrip(), m.group(1)
     return text, None
 
 

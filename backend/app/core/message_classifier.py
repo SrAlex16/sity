@@ -20,6 +20,10 @@ _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 _CLASSIFY_SYSTEM = (
     "Classify the user's message into exactly one of three categories. "
     "Reply with only the category name — no explanation, no punctuation.\n\n"
+    "KEY PRINCIPLE: A message is trivial ONLY if it contains NO actual request "
+    "for information or action. If the message asks for ANY specific piece of "
+    "information — no matter how short or casually phrased — it is 'real' or "
+    "'config_query', never 'trivial'. Length alone does not make a message trivial.\n\n"
     "Categories:\n"
     "- trivial: a greeting, confirmation, acknowledgement, farewell, or any "
     "message with no actual request ('Hola', 'Ok', 'Gracias', 'Muy buenas', "
@@ -30,7 +34,9 @@ _CLASSIFY_SYSTEM = (
     "'qué nivel tienes de Y', 'cuánto está el X').\n"
     "- real: any other message — asks for information, help, or an action "
     "('dime la capital de X', 'ayúdame con Y', 'cómo te llamas', 'me dices la hora', "
-    "'explícame Z', 'qué es X').\n\n"
+    "'explícame Z', 'qué es X', 'cómo te llamas?', 'me dices tu nombre?').\n"
+    "  Note: questions about the assistant's identity, name, or nature are always "
+    "'real' even if very short.\n\n"
     "Reply with exactly one word: trivial, config_query, or real"
 )
 
