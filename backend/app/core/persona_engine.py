@@ -1,5 +1,7 @@
 import functools
 import random
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -43,6 +45,20 @@ _persona_cfg = load_default_config()
 _refusal_bypass_keywords: frozenset[str] = frozenset(
     _persona_cfg.get("refusal", {}).get("bypass_keywords", [])
 )
+_trivial_messages: frozenset[str] = frozenset(
+    str(m) for m in _persona_cfg.get("refusal", {}).get("trivial_messages", [])
+)
+
+_RE_STRIP_PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
+
+
+def _normalize_message(text: str) -> str:
+    """Lowercase, remove accents and punctuation, collapse spaces."""
+    text = text.lower()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = _RE_STRIP_PUNCT.sub(" ", text)
+    return " ".join(text.split())
 
 # A4 — order override instruction
 _ORDER_OVERRIDE = (
@@ -648,6 +664,9 @@ class PersonaEngine:
         normalized = user_message.lower()
 
         if any(keyword in normalized for keyword in _refusal_bypass_keywords):
+            return False
+
+        if _normalize_message(user_message) in _trivial_messages:
             return False
 
         if refusal_chance <= 0:

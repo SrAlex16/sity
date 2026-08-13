@@ -103,6 +103,42 @@ def test_refusal_chance_one_always_refuses(engine: PersonaEngine) -> None:
     assert engine._should_refuse("cuéntame algo trivial", 1.0)
 
 
+@pytest.mark.parametrize("msg", [
+    "Hola",
+    "hola",
+    "¡Hola!",
+    "Hey",
+    "Ok",
+    "ok",
+    "Ok.",
+    "Vale",
+    "vale!",
+    "Gracias",
+    "gracias!",
+    "Buenas",
+    "Buenas noches",
+    "Sí",
+    "No",
+    "Bien",
+    "Perfecto",
+    "Genial",
+    "Entendido",
+    "Claro",
+    "De acuerdo",
+    "Venga",
+    "Ya",
+])
+def test_trivial_messages_block_refusal(engine: PersonaEngine, msg: str) -> None:
+    assert not engine._should_refuse(msg, 1.0), (
+        f"Trivial message {msg!r} must never trigger refusal_mode"
+    )
+
+
+def test_real_request_can_trigger_refusal(engine: PersonaEngine) -> None:
+    assert engine._should_refuse("cuéntame algo interesante", 1.0)
+    assert engine._should_refuse("dime la capital de Francia", 1.0)
+
+
 # ------------------------------------------------------------------ #
 # 4. build_persona_prompt — refusal_mode_override                     #
 # ------------------------------------------------------------------ #

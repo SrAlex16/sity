@@ -20,6 +20,50 @@ refusal:
     - parámetros
     - parametros
     - personalidad
+  # Mensajes triviales: refusal_mode NUNCA aplica si el mensaje entero (sin puntuación)
+  # coincide exactamente con uno de estos. Son saludos, confirmaciones y frases de relleno.
+  trivial_messages:
+    - hola
+    - hey
+    - ey
+    - buenas
+    - buenos dias
+    - buenas tardes
+    - buenas noches
+    - que tal
+    - como estas
+    - ok
+    - vale
+    - "si"
+    - "no"
+    - bien
+    - muy bien
+    - claro
+    - entendido
+    - perfecto
+    - genial
+    - guay
+    - de acuerdo
+    - gracias
+    - de nada
+    - por favor
+    - venga
+    - adelante
+    - continua
+    - sigue
+    - exacto
+    - correcto
+    - aja
+    - mhm
+    - mm
+    - mmm
+    - claro que si
+    - ya
+    - ya se
+    - ah
+    - ah ok
+    - ah vale
+    - ok vale
 
 # style_thresholds superseded by the 5-level system in persona_engine.py.
 # Boundaries are now hardcoded design constants (_L1=0.20, _L2=0.40, _L3=0.60, _L4=0.80).
