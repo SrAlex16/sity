@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVoice, VOICE_DEFAULTS } from '../hooks/useVoice';
 import type { VoiceSettings } from '../hooks/useVoice';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
@@ -35,7 +35,10 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -56,18 +59,37 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
       : { background: bgValue }
     : {};
 
-  const busy = saving || isLoading;
+  const busy = isLoading;
 
-  const handleSave = async () => {
-    if (!form) return;
-    setSaving(true);
-    try { await save(form); } catch { /* error shown via hook */ } finally { setSaving(false); }
-  };
+  // Clean up pending timers on unmount
+  useEffect(() => () => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  const autoSave = useCallback(async (next: VoiceSettings) => {
+    setForm(next);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setAutoSaveStatus('idle');
+    try {
+      await save(next);
+      setAutoSaveStatus('saved');
+      setAutoSaveError(null);
+      flashTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 1800);
+    } catch (e) {
+      setAutoSaveStatus('error');
+      setAutoSaveError(e instanceof Error ? e.message : 'Error al guardar');
+    }
+  }, [save]);
+
+  const autoSaveDebounced = useCallback((next: VoiceSettings) => {
+    setForm(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => void autoSave(next), 600);
+  }, [autoSave]);
 
   const handleRestore = async () => {
-    setForm(VOICE_DEFAULTS);
-    setSaving(true);
-    try { await save(VOICE_DEFAULTS); } catch { /* error shown via hook */ } finally { setSaving(false); }
+    await autoSave(VOICE_DEFAULTS);
   };
 
   const handleExport = async () => {
@@ -163,9 +185,6 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
     }
   };
 
-  const patch = (delta: Partial<VoiceSettings>) =>
-    setForm((prev) => prev ? { ...prev, ...delta } : prev);
-
   return (
     <div className={styles.screen}>
       {bgValue && <div className={styles.background} style={backgroundStyle} />}
@@ -186,6 +205,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
       {/* Content */}
       <div className={styles.content}>
         {error && <p className={styles.errorMsg}>{error}</p>}
+        {autoSaveStatus === 'saved' && <p className={styles.successMsg}>✓ {tl.saved}</p>}
+        {autoSaveStatus === 'error' && <p className={styles.errorMsg}>{autoSaveError}</p>}
 
         {!form && isLoading && <p className={styles.loading}>{tl.loading}</p>}
 
@@ -207,7 +228,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                       name="voice_response_mode"
                       value={mode}
                       checked={form.voice_response_mode === mode}
-                      onChange={() => patch({ voice_response_mode: mode })}
+                      onChange={() => void autoSave({ ...form!, voice_response_mode: mode })}
                     />
                     <span className={styles.radioIndicator} />
                     <span className={styles.optionText}>{
@@ -225,7 +246,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                   type="checkbox"
                   className={styles.hiddenInput}
                   checked={form.voice_include_text}
-                  onChange={(e) => patch({ voice_include_text: e.target.checked })}
+                  onChange={(e) => void autoSave({ ...form!, voice_include_text: e.target.checked })}
                 />
                 <span className={styles.checkboxIndicator} />
                 <div>
@@ -245,7 +266,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                       name="voice_long_response_action"
                       value={action}
                       checked={form.voice_long_response_action === action}
-                      onChange={() => patch({ voice_long_response_action: action })}
+                      onChange={() => void autoSave({ ...form!, voice_long_response_action: action })}
                     />
                     <span className={styles.radioIndicator} />
                     <span className={styles.optionText}>{action === 'split' ? tl.longSplit : tl.longTextOnly}</span>
@@ -277,7 +298,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                     min={0}
                     max={365}
                     value={form.audio_cleanup_days}
-                    onChange={(e) => patch({ audio_cleanup_days: Math.max(0, Math.min(365, Number(e.target.value))) })}
+                    onChange={(e) => autoSaveDebounced({ ...form!, audio_cleanup_days: Math.max(0, Math.min(365, Number(e.target.value))) })}
                   />
                   <span className={styles.cleanupUnit}>{tl.cleanupUnit}</span>
                   <span className={styles.cleanupHint}>{tl.cleanupNever}</span>
@@ -465,12 +486,6 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         </div>
       </div>
 
-      {/* Footer actions */}
-      <div className={styles.footer}>
-        <button className={`${styles.btn} ${styles.btnCyan}`} onClick={handleSave} disabled={busy || !form}>
-          {saving ? '…' : tl.save}
-        </button>
-      </div>
     </div>
   );
 }

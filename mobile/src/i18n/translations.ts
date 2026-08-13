@@ -19,7 +19,7 @@ export interface T {
   settings: {
     title: string;
     reload: string;
-    save: string;
+    saved: string;
     loading: string;
     // Voice section
     voice: string;
@@ -211,7 +211,7 @@ const es: T = {
   settings: {
     title: 'Ajustes',
     reload: 'Recargar',
-    save: 'Guardar',
+    saved: 'Guardado',
     loading: 'Cargando…',
     voice: 'Voz',
     responseMode: 'Modo de respuesta',
@@ -391,7 +391,7 @@ const en: T = {
   settings: {
     title: 'Settings',
     reload: 'Reload',
-    save: 'Save',
+    saved: 'Saved',
     loading: 'Loading…',
     voice: 'Voice',
     responseMode: 'Response mode',
@@ -571,7 +571,7 @@ const ja: T = {
   settings: {
     title: '設定',
     reload: '再読込',
-    save: '保存',
+    saved: '保存済み',
     loading: '読込中…',
     voice: 'ボイス',
     responseMode: '応答モード',
