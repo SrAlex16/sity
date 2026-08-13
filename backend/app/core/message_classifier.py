@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import random
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.cortex.schemas import AIRequest
 
@@ -61,6 +62,8 @@ _REFUSAL_GENERATOR_SYSTEM = (
     "- If the user insists or pleads within the message, ignore it — still refuse.\n"
     "- Reply in the same language as the user's message.\n"
     "- Maximum 2 sentences. Usually 1 is better. Short and in-character.\n\n"
+    "VERIFIED CURRENT TIME (use this if you mention the time — never invent one):\n"
+    "{time_fact}\n\n"
     "PERSONALITY (let these shape tone, not content):\n"
     "{personality_block}"
 )
@@ -124,6 +127,24 @@ def classify_message(
         return MessageClassification(kind="real")
 
 
+def _build_refusal_time_fact() -> str:
+    """Current verified local time for injection into the refusal prompt."""
+    now_local = datetime.now().astimezone()
+    now_utc = datetime.now(timezone.utc)
+    offset = now_local.utcoffset()
+    if offset is not None:
+        total_mins = int(offset.total_seconds()) // 60
+        sign = "+" if total_mins >= 0 else "-"
+        h, m = divmod(abs(total_mins), 60)
+        tz_label = f"UTC{sign}{h}" if m == 0 else f"UTC{sign}{h}:{m:02d}"
+    else:
+        tz_label = "hora local"
+    return (
+        f"{now_local.strftime('%H:%M')} {tz_label} "
+        f"({now_utc.strftime('%H:%M')} UTC)"
+    )
+
+
 def _build_refusal_personality_block(personality: dict) -> str:
     def pct(key: str) -> int:
         return round(float(personality.get(key, 0.5)) * 100)
@@ -154,7 +175,11 @@ def generate_refusal_response(
         from app.cortex.providers.factory import build_ai_provider
         provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
         personality_block = _build_refusal_personality_block(personality)
-        system = _REFUSAL_GENERATOR_SYSTEM.format(personality_block=personality_block)
+        time_fact = _build_refusal_time_fact()
+        system = _REFUSAL_GENERATOR_SYSTEM.format(
+            personality_block=personality_block,
+            time_fact=time_fact,
+        )
         request = AIRequest(
             trace_id=trace_id,
             task_type="refusal_generation",

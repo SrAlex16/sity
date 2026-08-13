@@ -307,6 +307,49 @@ def test_generate_refusal_falls_back_on_bad_response() -> None:
     assert result in _REFUSAL_FALLBACKS
 
 
+def test_generate_refusal_prompt_contains_verified_time() -> None:
+    """The refusal generation prompt must include the verified current time."""
+    from datetime import datetime
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "ayúdame con algo")
+
+    assert captured, "Provider must be called"
+    system = captured[0].system_prompt
+    assert "VERIFIED CURRENT TIME" in system, (
+        "Refusal prompt must contain the verified time fact — Haiku must not invent a time."
+    )
+    # The time block must contain a colon (HH:MM format) — confirms it's a real time, not empty.
+    assert ":" in system
+
+
+def test_generate_refusal_prompt_time_matches_real_clock() -> None:
+    """The hour in the refusal prompt must match the actual current hour."""
+    from datetime import datetime
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        before = datetime.now().astimezone()
+        generate_refusal_response({}, "dime algo")
+        after = datetime.now().astimezone()
+
+    system = captured[0].system_prompt
+    # The hour from before or after (could cross a minute boundary) must be in the prompt.
+    expected_hours = {before.strftime("%H:%M"), after.strftime("%H:%M")}
+    assert any(h in system for h in expected_hours), (
+        f"Prompt time must match current clock. Expected one of {expected_hours} in prompt."
+    )
+
+
 def test_generate_refusal_with_personality_returns_string() -> None:
     personality = {
         "sarcasm_level": 1.0, "rudeness_level": 1.0, "warmth_level": 0.0,
