@@ -197,9 +197,23 @@ def test_returns_non_empty_string(default_local_prompt: str) -> None:
     (0.90, "extenderte"),
 ])
 def test_verbosity_rule_mapping(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
-    prompt = engine.build_local_persona_prompt({"verbosity_level": verbosity}, "hola")
+    """Admin path — full verbosity range, no cap."""
+    prompt = engine.build_local_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=True)
     assert expected_fragment in prompt, (
         f"Expected {expected_fragment!r} in local prompt for verbosity={verbosity}"
+    )
+
+
+@pytest.mark.parametrize("verbosity,expected_fragment", [
+    (0.10, "2 frases"),   # below cap — same
+    (0.35, "2 frases"),   # above cap → clamped to 0.15
+    (1.00, "2 frases"),   # slider max → clamped
+])
+def test_verbosity_rule_mapping_non_admin(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
+    """Non-admin sessions cap verbosity at 0.15 → always lowest rule."""
+    prompt = engine.build_local_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=False)
+    assert expected_fragment in prompt, (
+        f"Expected {expected_fragment!r} in local prompt for verbosity={verbosity} (non-admin)"
     )
 
 
