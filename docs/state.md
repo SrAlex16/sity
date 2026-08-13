@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-11 (Sistema de idioma completo).
+Última actualización: 2026-08-13 (Refusal_mode arquitectura estructural + Alters completo).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1768 tests en verde (pytest)
+- 1842 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -130,6 +130,73 @@ Ver .env.example para la lista completa.
   Verificado en real por Alex (2026-08-11): Sistema 2 (idioma de conversación de
   Sity) y Sistema 1 (idioma de UI via CF-IPCountry) confirmados en producción.
   1709 tests en verde.
+
+## Completado recientemente (2026-08-13)
+
+- **Refusal_mode — arquitectura estructural completa (2026-08-13)** —
+  sistema de negativas rediseñado de raíz tras varios intentos fallidos
+  de control por instrucciones en el prompt. El principio rector: cualquier
+  decisión que deba cumplirse de forma fiable debe tomarse en el backend,
+  no delegarse al criterio del modelo dentro del mismo turno.
+
+  **Estado final (flujo completo):**
+
+  1. `PersonaEngine._should_refuse()` tira un dado (`random.random() < refusal_chance`)
+     y devuelve `refusal_mode=True/False` — decisión determinista del backend,
+     el modelo no interviene.
+  2. Si `refusal_mode=True`: Haiku clasifica SIEMPRE el mensaje (sin bypass de
+     longitud) como `trivial`, `config_query` o `real`. Cuando el último turno
+     fue una negativa, el prompt de clasificación incluye contexto explícito de
+     `last_was_refusal` para distinguir insistencia vs. pregunta nueva.
+  3. **Ramas del árbol de decisión:**
+     - `trivial` → bypass total; el modelo principal responde con normalidad.
+     - `config_query` → el modelo principal responde, pero con un bloque de
+       valores de configuración verificados inyectado (`build_verified_config_block`),
+       para que no pueda inventar porcentajes del historial.
+     - `real` + override explícito (`"es una orden"`) → el modelo responde con normalidad.
+     - `real` sin override → **Haiku genera la negativa directamente** con la
+       personalidad activa y la hora real verificada (`_build_refusal_time_fact`).
+       El modelo principal NUNCA ve este turno. Respuesta guardada con
+       `provider="haiku_refusal"`.
+  4. `last_was_refusal` se almacena por sesión (dict `_last_refusal_by_session`
+     en `refusal_tracker.py`) y se limpia en cada turno no-negativa. No hay
+     estado global compartido entre sesiones.
+
+  **Bugs encontrados y resueltos en el camino:**
+  - Unicode U+2212 (MINUS SIGN) en tags `<R:−1>` → el regex de strip no hacía match;
+    fix: normalización antes de la regex.
+  - `get_last_refusal()` era una variable global de módulo, nunca se reseteaba entre
+    turnos ni entre sesiones; tras la primera negativa, `last_was_refusal=True` para
+    siempre en todas las sesiones del proceso. Fix: dict per-sesión + clear explícito.
+  - Bypass de longitud (`_INSISTENCE_MAX_CHARS=15`) causaba falsos positivos en mensajes
+    cortos tras cualquier negativa. Eliminado; el contexto se pasa como información al
+    clasificador, no como atajo estructural.
+  - Haiku inventaba horas ("3 de la mañana" cuando eran las 18:24) porque el prompt
+    de generación de negativa no incluía datos de tiempo. Fix: `_build_refusal_time_fact()`
+    inyecta hora local + UTC real en `_REFUSAL_GENERATOR_SYSTEM`.
+
+  **Lección de diseño documentada:** cada vez que se dejó una decisión de "cumplir
+  una regla firme" al criterio del modelo (via prompt), el modelo eventualmente cedió
+  — con matices distintos cada vez (pre-fill contaminando la respuesta, guardarraíl
+  ignorado, bypass calibrado incorrectamente, estado global sin aislamiento). La
+  arquitectura estructural — backend decide, Haiku ejecuta, Sonnet no ve el turno —
+  es la única forma de garantía real.
+
+  Ver `docs/refusal-mode-architecture.md` para el diseño completo con historia de
+  intentos fallidos y decisiones. Commits: `a525cfc`, `510a261`, `115ed3f`, `1da0d38`.
+  1842 tests en verde.
+
+- **Alters de personalidad — completo y verificado en real (2026-08-13)** —
+  sistema de presets de personalidad guardados, completo en las 3 capas
+  (modelo + servicio, endpoints REST, frontend con selector visual). Verificado
+  en producción. 5 slots por usuario con nombre elegido; cargar un Alter aplica
+  los 14 parámetros a la sesión activa y actualiza los sliders inmediatamente.
+  Ver `docs/personality-alters.md` para diseño completo.
+
+- **Ajustes de texto bilingüe — verificado en real (2026-08-13)** — tres
+  iteraciones de ajuste visual en VoiceScreen, PersonalityScreen y PersonalitySliderItem:
+  texto español primero / japonés debajo, 12px (Es) / 9px (Jp), colores intercambiados
+  (`*Es` → `var(--text-primary)`, `*Jp` → `var(--text-secondary)`). Verificado en real.
 
 ## Completado recientemente (2026-08-12)
 
@@ -223,19 +290,6 @@ Ver .env.example para la lista completa.
   Documentado en `docs/auth-system.md`.
 
 ## Mejoras pendientes
-
-- **Diseño refusal_mode — Problema A (RESUELTO, 2026-08-12)** —
-  La directiva `_REFUSAL_ACTIVE` daba al modelo DISCRECIÓN ("disponible, no
-  obligatorio", "evalúa el mensaje", "Esta decisión es tuya") — el modelo podía
-  ignorar el refusal_mode incluso con `refusal_chance=100%` (caso real documentado).
-  Fix: `_REFUSAL_ACTIVE` reescrito como AFIRMACIÓN DE HECHO: "Para esta respuesta,
-  refusal_mode está ACTIVADO. No evalúes si aplicarlo — el backend ya lo decidió."
-  Toda la lógica de probabilidad (`_should_refuse()`, `random.random() <
-  refusal_chance`) ya existía y era correcta; solo el texto que recibía el modelo
-  le daba margen de anulación. El nuevo texto elimina ese margen.
-  4 tests nuevos: `refusal_chance=1.0` siempre activa (20 tiradas), `=0.0` nunca,
-  `=0.5` estadístico ±10% sobre 1000 tiradas, texto sin "evalúa"/"no obligatorio"/
-  "Esta decisión es tuya". 107 tests en `test_persona_prompt.py`.
 
 - **Inferencia de herramientas por contexto ambiental — Problema B
   (mitigado con parche, 2026-08-12)** — el modelo llamó a `list_timers` al
@@ -477,3 +531,22 @@ descartó, el resto no se ha vuelto a observar. Ver docs/decisions.md
 - No subir data/, datasets/, work/ a git
 - No tocar /etc/asound.conf ni el pipeline HDMI (ver raspberry-setup repo)
 - No modificar data/app.db en producción
+
+## Verificación correcta de deploy
+
+"push hecho" ≠ "desplegado". Dos pasos, ambos obligatorios:
+
+1. **Confirmar que el commit llegó al remoto:**
+   `git fetch origin && git log origin/main -1`
+   Verifica el hash. Si no coincide con el commit local, el push falló.
+
+2. **Confirmar que el proceso lo cargó:**
+   Buscar el evento `backend_started` en `data/logs/app-YYYY-MM-DD.jsonl`
+   y verificar que `payload.git_commit` coincide con el hash esperado.
+   El proceso puede estar corriendo con una versión anterior si el reinicio
+   falló o si se reinició antes del push.
+
+Omitir el paso 2 causó rondas de diagnóstico circular en 2026-08-13:
+el código local estaba bien, los tests pasaban, pero el proceso en
+producción seguía con la versión anterior — y los síntomas eran idénticos
+al bug que se acababa de corregir.
