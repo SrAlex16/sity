@@ -48,13 +48,28 @@ _HA_DEVICES_CONTEXT = _build_ha_devices_context()
 # Token helpers
 # ---------------------------------------------------------------------------
 
-def max_tokens_for_verbosity(verbosity_level: float, configured_max_tokens: int) -> int:
-    """Map a verbosity slider (0.0–1.0) to a capped max_tokens value."""
-    if verbosity_level <= 0.20:
+# User/Guest sessions are capped at this verbosity value — keeps them in the lowest
+# verbosity band (≤ 0.20 → 250 tokens, "Máximo 2 frases"). Admin sessions are unaffected.
+_USER_VERBOSITY_CAP = 0.15
+
+
+def max_tokens_for_verbosity(
+    verbosity_level: float,
+    configured_max_tokens: int,
+    *,
+    is_admin: bool = False,
+) -> int:
+    """Map a verbosity slider (0.0–1.0) to a capped max_tokens value.
+
+    For non-admin sessions the effective verbosity is capped at _USER_VERBOSITY_CAP
+    so User/Guest cannot trigger higher token budgets regardless of slider position.
+    """
+    effective = verbosity_level if is_admin else min(verbosity_level, _USER_VERBOSITY_CAP)
+    if effective <= 0.20:
         return min(configured_max_tokens, 250)
-    if verbosity_level <= 0.50:
+    if effective <= 0.50:
         return min(configured_max_tokens, 450)
-    if verbosity_level <= 0.80:
+    if effective <= 0.80:
         return min(configured_max_tokens, 750)
     return min(configured_max_tokens, 1200)
 

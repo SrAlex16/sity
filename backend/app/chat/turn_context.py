@@ -82,6 +82,7 @@ def build_turn_context(
     max_tokens = max_tokens_for_verbosity(
         verbosity_level=verbosity_level,
         configured_max_tokens=configured_max_tokens,
+        is_admin=is_admin,
     )
     daily_budget = int(usage_config.get("daily_token_budget", 1000000))
     warning_threshold = float(usage_config.get("warning_threshold", 0.80))

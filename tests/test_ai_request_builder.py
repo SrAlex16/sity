@@ -27,7 +27,29 @@ from app.chat.ai_request_builder import (
     (0.10, 100,  100),   # configured_max_tokens cap below verbosity minimum
 ])
 def test_max_tokens_for_verbosity(verbosity: float, max_cfg: int, expected: int) -> None:
-    assert max_tokens_for_verbosity(verbosity, max_cfg) == expected
+    """Admin path — full verbosity range, no cap."""
+    assert max_tokens_for_verbosity(verbosity, max_cfg, is_admin=True) == expected
+
+
+@pytest.mark.parametrize("verbosity,max_cfg,expected", [
+    (0.10, 2000, 250),   # below cap — same as admin
+    (0.15, 2000, 250),   # at cap — still lowest band
+    (0.50, 2000, 250),   # above cap — clamped to 0.15 → lowest band
+    (1.00, 2000, 250),   # slider max → still 250 for user/guest
+])
+def test_max_tokens_for_verbosity_user_cap(verbosity: float, max_cfg: int, expected: int) -> None:
+    """Non-admin sessions cap effective verbosity at 0.15 → always lowest band."""
+    assert max_tokens_for_verbosity(verbosity, max_cfg, is_admin=False) == expected
+
+
+@pytest.mark.parametrize("verbosity,max_cfg,expected", [
+    (0.81, 2000, 1200),  # admin not capped
+    (1.00, 2000, 1200),  # admin full range intact
+    (0.51, 2000, 750),
+])
+def test_max_tokens_for_verbosity_admin_unaffected(verbosity: float, max_cfg: int, expected: int) -> None:
+    """Admin sessions use full verbosity range without any cap."""
+    assert max_tokens_for_verbosity(verbosity, max_cfg, is_admin=True) == expected
 
 
 # ---------------------------------------------------------------------------

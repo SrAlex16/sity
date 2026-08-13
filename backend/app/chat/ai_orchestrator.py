@@ -482,7 +482,7 @@ class ChatAIOrchestrator:
         ctx = self.ctx
         request = self.request
         local_persona_prompt = PersonaEngine().build_local_persona_prompt(
-            ctx.personality, request.message
+            ctx.personality, request.message, is_admin=ctx.is_admin
         )
         return self.prep.runner.run_local_chat(
             build_chat_ai_request(
@@ -845,7 +845,7 @@ class ChatAIOrchestrator:
 
         ctx.personality = ctx.settings_service.get_personality()
         updated_persona_decision = PersonaEngine().build_persona_prompt(
-            ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override
+            ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin
         )
 
         return _ToolBranchOutcome(

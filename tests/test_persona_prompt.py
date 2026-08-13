@@ -248,10 +248,25 @@ def test_no_vosotros_rule_present(default_prompt: str) -> None:
     (0.8,  "Verbosidad alta"),        # high (≤0.80)
     (1.0,  "Verbosidad alta"),        # very_high — "Verbosidad muy alta" contains "Verbosidad alta"
 ])
-def test_verbosity_directive_ranges(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
-    result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola")
+def test_verbosity_directive_ranges_admin(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
+    """Admin sessions use full verbosity range — no cap applied."""
+    result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=True)
     assert expected_fragment in result.system_prompt, (
-        f"Expected {expected_fragment!r} in prompt for verbosity={verbosity}"
+        f"Expected {expected_fragment!r} in prompt for verbosity={verbosity} (admin)"
+    )
+
+
+@pytest.mark.parametrize("verbosity,expected_fragment", [
+    (0.0,  "máximo 2 frases"),    # below cap
+    (0.15, "máximo 2 frases"),    # at cap
+    (0.35, "máximo 2 frases"),    # above cap — clamped to 0.15
+    (1.0,  "máximo 2 frases"),    # slider max — still clamped
+])
+def test_verbosity_directive_ranges_non_admin(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
+    """Non-admin sessions cap effective verbosity at 0.15 → always band 1."""
+    result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=False)
+    assert expected_fragment in result.system_prompt, (
+        f"Expected {expected_fragment!r} in prompt for verbosity={verbosity} (non-admin)"
     )
 
 
@@ -302,9 +317,10 @@ def test_skepticism_mid_range_moderate_directive(engine: PersonaEngine) -> None:
 def test_five_level_directive_extremes(
     engine: PersonaEngine, param: str, very_low_fragment: str, very_high_fragment: str
 ) -> None:
-    """Each parameter injects distinct directive text at very_low (0.0) and very_high (1.0)."""
-    low_result = engine.build_persona_prompt({param: 0.0}, "hola")
-    high_result = engine.build_persona_prompt({param: 1.0}, "hola")
+    """Each parameter injects distinct directive text at very_low (0.0) and very_high (1.0).
+    Admin sessions used here to bypass verbosity cap and test full range for verbosity_level."""
+    low_result = engine.build_persona_prompt({param: 0.0}, "hola", is_admin=True)
+    high_result = engine.build_persona_prompt({param: 1.0}, "hola", is_admin=True)
     assert very_low_fragment in low_result.system_prompt, (
         f"Expected {very_low_fragment!r} for {param}=0.0"
     )
@@ -366,3 +382,38 @@ def test_default_prompt_no_hardcoded_spanish(default_prompt: str) -> None:
     assert "Responde siempre en castellano de España" not in default_prompt, (
         "Default (auto) prompt must not hardcode Spanish — language is dynamic"
     )
+
+
+# ------------------------------------------------------------------ #
+# 12. Verbosity cap — User/Guest vs Admin                             #
+# ------------------------------------------------------------------ #
+
+def test_verbosity_cap_non_admin_clamps_to_lowest_band(engine: PersonaEngine) -> None:
+    """User/Guest with verbosity=1.0 should get lowest verbosity directive (cap at 0.15)."""
+    result = engine.build_persona_prompt({"verbosity_level": 1.0}, "hola", is_admin=False)
+    assert "máximo 2 frases" in result.system_prompt, (
+        "Non-admin with verbosity=1.0 must be capped to band 1 (≤0.20 → 'máximo 2 frases')"
+    )
+
+
+def test_verbosity_cap_admin_full_range(engine: PersonaEngine) -> None:
+    """Admin with verbosity=1.0 should get highest verbosity directive (no cap)."""
+    result = engine.build_persona_prompt({"verbosity_level": 1.0}, "hola", is_admin=True)
+    assert "Verbosidad muy alta" in result.system_prompt, (
+        "Admin with verbosity=1.0 must get highest-band directive — full range applies"
+    )
+
+
+def test_verbosity_cap_non_admin_mid_verbosity(engine: PersonaEngine) -> None:
+    """Non-admin with verbosity=0.50 (above cap) → same band as 0.15."""
+    result = engine.build_persona_prompt({"verbosity_level": 0.50}, "hola", is_admin=False)
+    assert "máximo 2 frases" in result.system_prompt
+
+
+def test_verbosity_cap_does_not_affect_other_params(engine: PersonaEngine) -> None:
+    """Verbosity cap must not bleed into other personality parameters."""
+    result = engine.build_persona_prompt(
+        {"verbosity_level": 1.0, "sarcasm_level": 1.0}, "hola", is_admin=False
+    )
+    # Sarcasm should still be at max despite verbosity being capped
+    assert "Sarcasmo muy alto" in result.system_prompt

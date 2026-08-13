@@ -335,7 +335,7 @@ def _chat_message_inner(
 
     ctx = build_turn_context(session, request, _strong_model, session_id=_session_id, is_admin=_is_admin)
 
-    persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override)
+    persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin)
 
     # If the backend rolled refusal_mode=True, classify the message type:
     # trivial messages (greetings, confirmations) bypass refusal_mode entirely.
@@ -355,6 +355,7 @@ def _chat_message_inner(
                 refusal_mode_override=False,
                 session_id=ctx.session_id,
                 language_override=ctx.language_override,
+                is_admin=ctx.is_admin,
             )
 
     persona_prompt = persona_decision.system_prompt

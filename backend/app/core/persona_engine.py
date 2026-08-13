@@ -11,6 +11,10 @@ from app.system.allowed_services import get_allowed_systemd_services
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "persona_system.md"
 _LOCAL_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "local_persona_system.md"
 
+# Verbosity cap for non-admin sessions — keeps User/Guest in the lowest verbosity band.
+# Must stay in sync with ai_request_builder._USER_VERBOSITY_CAP.
+_USER_VERBOSITY_CAP = 0.15
+
 
 @functools.cache
 def _load_persona_template() -> str:
@@ -368,6 +372,7 @@ class PersonaEngine:
         refusal_mode_override: bool | None = None,
         session_id: str = "",
         language_override: str = "auto",
+        is_admin: bool = False,
     ) -> PersonaDecision:
         """
         Build the system prompt and decide refusal_mode for this turn.
@@ -395,6 +400,8 @@ class PersonaEngine:
         melancholy        = float(personality.get("melancholy_level",        0.2))
         skepticism        = float(personality.get("skepticism_level",        0.2))
 
+        effective_verbosity = verbosity if is_admin else min(verbosity, _USER_VERBOSITY_CAP)
+
         style_directives = self._build_style_directives(
             sarcasm=sarcasm,
             rudeness=rudeness,
@@ -405,7 +412,7 @@ class PersonaEngine:
             frialdad_afectiva=frialdad_afectiva,
             contrarian=contrarian,
             patience=patience,
-            verbosity=verbosity,
+            verbosity=effective_verbosity,
             helpfulness=helpfulness,
             refusal=refusal,
             melancholy=melancholy,
@@ -464,7 +471,7 @@ class PersonaEngine:
             "patience_pct":          pct(patience),
             "helpfulness_pct":       pct(helpfulness),
             "refusal_pct":           pct(refusal),
-            "verbosity_pct":         pct(verbosity),
+            "verbosity_pct":         pct(effective_verbosity),
             "melancholy_pct":        pct(melancholy),
             "skepticism_pct":        pct(skepticism),
             "style_directives":           style_directives,
@@ -487,7 +494,7 @@ class PersonaEngine:
             "frialdad_afectiva": round(frialdad_afectiva, 4),
             "contrarian":        round(contrarian, 4),
             "patience":          round(patience, 4),
-            "verbosity":         round(verbosity, 4),
+            "verbosity":         round(effective_verbosity, 4),
             "helpfulness":       round(helpfulness, 4),
             "melancholy":        round(melancholy, 4),
             "skepticism":        round(skepticism, 4),
@@ -547,6 +554,8 @@ class PersonaEngine:
         self,
         personality: dict[str, Any],
         user_message: str,
+        *,
+        is_admin: bool = False,
     ) -> str:
         """Build a compact system prompt for local LLM providers (e.g. Ollama).
 
@@ -574,6 +583,8 @@ class PersonaEngine:
         melancholy        = float(personality.get("melancholy_level",        0.2))
         skepticism        = float(personality.get("skepticism_level",        0.2))
 
+        effective_verbosity = verbosity if is_admin else min(verbosity, _USER_VERBOSITY_CAP)
+
         local_voice_directives = self._build_local_voice_directives(
             sarcasm=sarcasm,
             rudeness=rudeness,
@@ -588,7 +599,7 @@ class PersonaEngine:
             melancholy=melancholy,
             skepticism=skepticism,
         )
-        verbosity_rule = self._build_verbosity_rule(verbosity)
+        verbosity_rule = self._build_verbosity_rule(effective_verbosity)
 
         return _load_local_persona_template().format_map({
             "local_voice_directives": local_voice_directives,
