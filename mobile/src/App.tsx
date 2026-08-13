@@ -180,11 +180,13 @@ export default function App() {
                 onSwitchToRegister={() => setAuthView('register')}
                 initialResetToken={initialResetToken}
                 onResetTokenConsumed={() => setInitialResetToken(null)}
+                uiLang={uiLang}
               />
             ) : (
               <RegisterScreen
                 auth={auth}
                 onSwitchToLogin={() => setAuthView('login')}
+                uiLang={uiLang}
               />
             )}
           </motion.div>
@@ -207,10 +209,10 @@ export default function App() {
     // never render its content for non-admin callers.
     if (_ADMIN_SCREENS.has(screen) && !isAdmin) return <AccessDenied tl={tl} />;
     switch (screen) {
-      case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} />;
-      case 'personality': return <PersonalityScreen role={role} />;
+      case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} uiLang={uiLang} />;
+      case 'personality': return <PersonalityScreen role={role} uiLang={uiLang} />;
       case 'voice':       return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
-      case 'dataset':     return <DatasetScreen />;
+      case 'dataset':     return <DatasetScreen uiLang={uiLang} />;
     }
   }
 

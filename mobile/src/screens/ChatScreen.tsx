@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { UseChatResult } from '../hooks/useChat';
 import type { CurrentUser } from '../hooks/useAuth';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang } from '../i18n/translations';
 import { useVoice } from '../hooks/useVoice';
 import { useNotifications } from '../hooks/useNotifications';
 import { TypingIndicator } from '../components/TypingIndicator';
@@ -93,12 +95,16 @@ interface RecordingCtx {
 
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
+const DATE_LOCALE: Record<UiLang, string> = { es: 'es-ES', en: 'en-US', ja: 'ja-JP' };
+
 interface ChatScreenProps extends UseChatResult {
   onLogout?: () => void;
   currentUser?: CurrentUser | null;
+  uiLang?: UiLang;
 }
 
-export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout, currentUser }: ChatScreenProps) {
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout, currentUser, uiLang = 'es' }: ChatScreenProps) {
+  const tl = TRANSLATIONS[uiLang].chat;
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
@@ -351,7 +357,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
             {currentUser && (
               <span className={`${styles.identityBadge} ${currentUser.role === 'guest' ? styles.identityGuest : styles.identityUser}`}>
                 {currentUser.role === 'guest'
-                  ? 'Invitado'
+                  ? tl.guest
                   : currentUser.displayName ?? currentUser.email ?? currentUser.role}
               </span>
             )}
@@ -378,17 +384,17 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                 >
                   {currentUser && currentUser.role !== 'guest' && (
                     <button className={styles.menuItem} onClick={() => void handleShare()}>
-                      <IconShare /> Compartir conversación
+                      <IconShare /> {tl.share}
                     </button>
                   )}
                   <button className={styles.menuItem} onClick={() => { clearMessages(); setMenuOpen(false); }}>
-                    Borrar chat
+                    {tl.clearChat}
                   </button>
                   <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setBgPickerOpen(true); }}>
-                    Cambiar fondo
+                    {tl.changeBg}
                   </button>
                   <button className={styles.menuItem} onClick={() => { setMenuOpen(false); setFontPickerOpen(true); }}>
-                    Cambiar fuente
+                    {tl.changeFont}
                   </button>
                   {!isGuest && notifications.isSupported && (
                     <button
@@ -404,12 +410,12 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                       }}
                     >
                       {notifications.isLoading
-                        ? 'Procesando…'
+                        ? tl.notifProcessing
                         : notifications.permission === 'denied'
-                          ? 'Notificaciones bloqueadas'
+                          ? tl.notifBlocked
                           : notifications.isSubscribed
-                            ? 'Desactivar notificaciones push'
-                            : 'Activar notificaciones push'}
+                            ? tl.notifDisable
+                            : tl.notifEnable}
                     </button>
                   )}
                   {!isGuest && notifications.error && (
@@ -424,7 +430,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                         className={`${styles.menuItem} ${styles.menuItemDanger}`}
                         onClick={() => { setMenuOpen(false); void onLogout(); }}
                       >
-                        Cerrar sesión
+                        {tl.logout}
                       </button>
                     </>
                   )}
@@ -600,10 +606,10 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
               onClick={(e) => e.stopPropagation()}
             >
               <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Compartir conversación
+                {tl.share}
               </p>
               {shareLoading && (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Generando enlace…</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{tl.generatingLink}</p>
               )}
               {shareError && (
                 <>
@@ -625,7 +631,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                       marginBottom: '0.5rem',
                     }}
                   >
-                    Reintentar
+                    {tl.retry}
                   </button>
                 </>
               )}
@@ -645,7 +651,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                     {shareData.url}
                   </div>
                   <p style={{ margin: '0 0 0.75rem', fontSize: '0.7rem', color: 'var(--text-secondary)', opacity: 0.6 }}>
-                    Caduca: {new Date(shareData.expiresAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    {tl.expiresLabel}: {new Date(shareData.expiresAt).toLocaleDateString(DATE_LOCALE[uiLang], { day: 'numeric', month: 'long', year: 'numeric' })}
                   </p>
                   <button
                     onClick={handleCopyShareLink}
@@ -663,7 +669,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                       transition: 'background 0.15s',
                     }}
                   >
-                    {shareCopied ? '¡Copiado!' : 'Copiar enlace'}
+                    {shareCopied ? tl.copied : tl.copyLink}
                   </button>
                 </>
               )}
@@ -682,7 +688,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   cursor: 'pointer',
                 }}
               >
-                Cerrar
+                {tl.close}
               </button>
             </motion.div>
           </motion.div>

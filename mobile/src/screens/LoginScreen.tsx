@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
 import { getRecaptchaToken, loadRecaptchaScript } from '../utils/recaptcha';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang, T } from '../i18n/translations';
 import styles from './AuthForm.module.css';
 
 interface Props {
@@ -9,18 +11,19 @@ interface Props {
   onSwitchToRegister: () => void;
   initialResetToken?: string | null;
   onResetTokenConsumed?: () => void;
+  uiLang?: UiLang;
 }
 
-// Mirror of backend _check_password_strength
-function checkPasswordStrength(password: string): string | null {
-  if (password.length < 8) return 'Mínimo 8 caracteres.';
-  if (!/[A-Z]/.test(password)) return 'Debe incluir al menos una mayúscula.';
-  if (!/[a-z]/.test(password)) return 'Debe incluir al menos una minúscula.';
-  if (!/\d/.test(password)) return 'Debe incluir al menos un número.';
+function checkPasswordStrength(password: string, tla: T['auth']): string | null {
+  if (password.length < 8) return tla.pwMinChars;
+  if (!/[A-Z]/.test(password)) return tla.pwUppercase;
+  if (!/[a-z]/.test(password)) return tla.pwLowercase;
+  if (!/\d/.test(password)) return tla.pwNumber;
   return null;
 }
 
-export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onResetTokenConsumed }: Props) {
+export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onResetTokenConsumed, uiLang = 'es' }: Props) {
+  const tla = TRANSLATIONS[uiLang].auth;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -58,7 +61,7 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     setError('');
 
     if (!email || !password) {
-      setError('Email y contraseña son obligatorios.');
+      setError(tla.emailPasswordRequired);
       return;
     }
 
@@ -66,7 +69,7 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     const token = await getRecaptchaToken('login');
     const result = await auth.login(email, password, token);
     setLoading(false);
-    if (!result.ok) setError(result.error ?? 'Error al iniciar sesión.');
+    if (!result.ok) setError(result.error ?? tla.loginError);
   }
 
   async function handleForgot(e: React.FormEvent) {
@@ -80,9 +83,9 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     e.preventDefault();
     setResetError('');
 
-    const strengthError = checkPasswordStrength(newPassword);
+    const strengthError = checkPasswordStrength(newPassword, tla);
     if (strengthError) { setResetError(strengthError); return; }
-    if (newPassword !== confirmPassword) { setResetError('Las contraseñas no coinciden.'); return; }
+    if (newPassword !== confirmPassword) { setResetError(tla.pwMismatch); return; }
 
     setResetLoading(true);
     const result = await auth.resetPassword(resetToken, newPassword);
@@ -91,9 +94,7 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     if (result.ok) {
       setResetSuccess(true);
     } else {
-      setResetError(
-        'Este enlace ya no es válido. Pide uno nuevo desde "He olvidado mi contraseña".',
-      );
+      setResetError(tla.resetInvalid);
     }
   }
 
@@ -105,7 +106,7 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     setResetError('');
   }
 
-  const newPwError = newPassword ? checkPasswordStrength(newPassword) : null;
+  const newPwError = newPassword ? checkPasswordStrength(newPassword, tla) : null;
   const pwMismatch = confirmPassword && newPassword !== confirmPassword;
 
   return (
@@ -114,13 +115,13 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
       <p className={styles.tagline}>// SISTEMA DE IA PERSONAL</p>
 
       <div className={styles.card}>
-        <p className={styles.cardTitle}>Iniciar sesión</p>
+        <p className={styles.cardTitle}>{tla.signInTitle}</p>
 
         {error && <div className={styles.errorBanner}>{error}</div>}
 
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="login-email">Email</label>
+            <label className={styles.label} htmlFor="login-email">{tla.email}</label>
             <input
               id="login-email"
               className={styles.input}
@@ -134,7 +135,7 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="login-password">Contraseña</label>
+            <label className={styles.label} htmlFor="login-password">{tla.password}</label>
             <input
               id="login-password"
               className={styles.input}
@@ -150,12 +151,12 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
               className={styles.forgotLink}
               onClick={() => { setForgotOpen(true); setForgotStatus('idle'); setForgotEmail(''); }}
             >
-              He olvidado la contraseña
+              {tla.forgotPassword}
             </button>
           </div>
 
           <button type="submit" className={styles.btnPrimary} disabled={loading}>
-            {loading ? 'Conectando…' : 'Iniciar sesión'}
+            {loading ? tla.connecting : tla.signIn}
           </button>
         </form>
 
@@ -165,20 +166,20 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
           onClick={auth.continueAsGuest}
           disabled={loading}
         >
-          Continuar como invitado
+          {tla.continueGuest}
         </button>
 
-        <div className={styles.divider}>o</div>
+        <div className={styles.divider}>{tla.orDivider}</div>
 
         {/* TODO: Google OAuth — backend not implemented yet */}
         <button type="button" className={styles.btnGoogle} disabled aria-disabled="true">
-          G&nbsp; Iniciar sesión con Google (próximamente)
+          {tla.googleSignIn}
         </button>
 
         <p className={styles.switchRow}>
-          ¿No tienes cuenta?{' '}
+          {tla.noAccount}{' '}
           <button type="button" className={styles.switchLink} onClick={onSwitchToRegister}>
-            Crear cuenta
+            {tla.createAccountLink}
           </button>
         </p>
       </div>
@@ -187,17 +188,13 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
       <HelpModal
         open={forgotOpen}
         onClose={() => setForgotOpen(false)}
-        title="Recuperar contraseña"
+        title={tla.recoverTitle}
       >
         {forgotStatus === 'sent' ? (
-          <p className={styles.modalText}>
-            Si el email está registrado, recibirás un enlace de recuperación.
-          </p>
+          <p className={styles.modalText}>{tla.recoverSent}</p>
         ) : (
           <form onSubmit={handleForgot} style={{ display: 'contents' }}>
-            <p className={styles.modalText}>
-              Introduce tu email y te enviaremos un enlace para restablecer la contraseña.
-            </p>
+            <p className={styles.modalText}>{tla.recoverIntro}</p>
             <input
               className={styles.input}
               type="email"
@@ -208,10 +205,10 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
             />
             {forgotStatus === 'error' && (
               <p style={{ color: '#ff4466', fontSize: '0.75rem', margin: 0 }}>
-                Error al enviar. Inténtalo de nuevo.
+                {tla.sendError}
               </p>
             )}
-            <button type="submit" className={styles.btnPrimary}>Enviar enlace</button>
+            <button type="submit" className={styles.btnPrimary}>{tla.sendLink}</button>
           </form>
         )}
       </HelpModal>
@@ -220,30 +217,26 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
       <HelpModal
         open={resetOpen}
         onClose={closeReset}
-        title="Nueva contraseña"
+        title={tla.newPasswordTitle}
       >
         {resetSuccess ? (
           <>
-            <p className={styles.modalText}>
-              ¡Contraseña actualizada correctamente! Ya puedes iniciar sesión con tu nueva contraseña.
-            </p>
+            <p className={styles.modalText}>{tla.resetSuccess}</p>
             <button type="button" className={styles.btnPrimary} onClick={closeReset}>
-              Iniciar sesión
+              {tla.signIn}
             </button>
           </>
         ) : (
           <form onSubmit={handleReset} style={{ display: 'contents' }}>
-            <p className={styles.modalText}>
-              Introduce tu nueva contraseña.
-            </p>
+            <p className={styles.modalText}>{tla.resetIntro}</p>
             <div className={styles.field}>
-              <label className={styles.label} htmlFor="reset-new-pw">Nueva contraseña</label>
+              <label className={styles.label} htmlFor="reset-new-pw">{tla.newPasswordLabel}</label>
               <input
                 id="reset-new-pw"
                 className={styles.input}
                 type="password"
                 autoComplete="new-password"
-                placeholder="Mín. 8 car., mayús., minús. y número"
+                placeholder={tla.newPasswordPlaceholder}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 disabled={resetLoading}
@@ -251,22 +244,22 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
               {newPwError && <span className={styles.fieldError}>{newPwError}</span>}
             </div>
             <div className={styles.field}>
-              <label className={styles.label} htmlFor="reset-confirm-pw">Confirmar contraseña</label>
+              <label className={styles.label} htmlFor="reset-confirm-pw">{tla.confirmPasswordLabel}</label>
               <input
                 id="reset-confirm-pw"
                 className={styles.input}
                 type="password"
                 autoComplete="new-password"
-                placeholder="Repite la contraseña"
+                placeholder={tla.confirmPasswordPlaceholder}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={resetLoading}
               />
-              {pwMismatch && <span className={styles.fieldError}>Las contraseñas no coinciden.</span>}
+              {pwMismatch && <span className={styles.fieldError}>{tla.pwMismatch}</span>}
             </div>
             {resetError && <div className={styles.errorBanner}>{resetError}</div>}
             <button type="submit" className={styles.btnPrimary} disabled={resetLoading}>
-              {resetLoading ? 'Actualizando…' : 'Cambiar contraseña'}
+              {resetLoading ? tla.changingPassword : tla.changePassword}
             </button>
           </form>
         )}

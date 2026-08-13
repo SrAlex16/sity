@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useDataset } from '../hooks/useDataset';
 import type { DatasetCaptureRequest } from '../hooks/useDataset';
 import { HelpModal } from '../components/HelpModal';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang } from '../i18n/translations';
 import styles from './DatasetScreen.module.css';
 
 // ── Presets ──────────────────────────────────────────────────────────────────
@@ -60,7 +62,8 @@ function formToRequest(form: CaptureForm): DatasetCaptureRequest {
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
-export function DatasetScreen() {
+export function DatasetScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
+  const tl = TRANSLATIONS[uiLang].dataset;
   const { capture, isLoading, error, save, disable, reload } = useDataset();
   const [form, setForm] = useState<CaptureForm>(() => captureToForm(null));
   const [formError, setFormError] = useState<string | null>(null);
@@ -124,8 +127,8 @@ export function DatasetScreen() {
   };
 
   const activeLabel = isActive
-    ? `Activo: ${capture?.dataset_source ?? ''}${capture?.speaker_label ? ` / ${capture.speaker_label}` : ''}`
-    : 'Desactivado';
+    ? `${tl.activePrefix}: ${capture?.dataset_source ?? ''}${capture?.speaker_label ? ` / ${capture.speaker_label}` : ''}`
+    : tl.inactive;
 
   return (
     <div className={styles.screen}>
@@ -149,7 +152,7 @@ export function DatasetScreen() {
           <p className={styles.errorMsg}>{formError ?? error}</p>
         )}
 
-        {!capture && isLoading && <p className={styles.loading}>Cargando…</p>}
+        {!capture && isLoading && <p className={styles.loading}>{tl.loading}</p>}
 
         {/* Capture toggle */}
         <div className={styles.section}>
@@ -162,15 +165,15 @@ export function DatasetScreen() {
             />
             <span className={`${styles.checkboxIndicator} ${styles.checkboxLarge}`} />
             <div>
-              <p className={styles.fieldLabel}>Capture activo</p>
-              <p className={styles.fieldHint}>Registra las conversaciones para el dataset LoRA</p>
+              <p className={styles.fieldLabel}>{tl.captureActive}</p>
+              <p className={styles.fieldHint}>{tl.captureHint}</p>
             </div>
           </label>
         </div>
 
         {/* Presets */}
         <div className={styles.section}>
-          <p className={styles.sectionLabel}>Preset</p>
+          <p className={styles.sectionLabel}>{tl.preset}</p>
           <div className={styles.chipRow}>
             {(Object.keys(PRESETS) as PresetKey[]).map((key) => (
               <button
@@ -205,7 +208,7 @@ export function DatasetScreen() {
               value={form.speaker_source}
               onChange={(e) => patch({ speaker_source: e.target.value })}
             >
-              <option value="">— ninguno —</option>
+              <option value="">{tl.noneOption}</option>
               {SPEAKER_SOURCE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
@@ -266,10 +269,10 @@ export function DatasetScreen() {
       <div className={styles.footer}>
         <div className={styles.footerRow}>
           <button className={`${styles.btn} ${styles.btnCyan}`} onClick={handleSave} disabled={busy}>
-            {saving ? '…' : 'Guardar'}
+            {saving ? '…' : tl.save}
           </button>
           <button className={`${styles.btn} ${styles.btnMagenta}`} onClick={handleDisable} disabled={busy || !isActive}>
-            Desactivar
+            {tl.disable}
           </button>
         </div>
         <button
@@ -277,14 +280,14 @@ export function DatasetScreen() {
           onClick={() => void reload()}
           disabled={busy}
         >
-          Recargar
+          {tl.reload}
         </button>
         <button
           className={`${styles.btn} ${styles.btnSecondary}`}
           onClick={handleRestorePersonality}
           disabled={busy}
         >
-          Restaurar valores de personalidad
+          {tl.restorePersonality}
         </button>
       </div>
 

@@ -2,23 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
 import { getRecaptchaToken, loadRecaptchaScript } from '../utils/recaptcha';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang, T } from '../i18n/translations';
 import styles from './AuthForm.module.css';
 
 interface Props {
   auth: UseAuthResult;
   onSwitchToLogin: () => void;
+  uiLang?: UiLang;
 }
 
-// Mirror of backend _check_password_strength
-function checkPasswordStrength(password: string): string | null {
-  if (password.length < 8) return 'Mínimo 8 caracteres.';
-  if (!/[A-Z]/.test(password)) return 'Debe incluir al menos una mayúscula.';
-  if (!/[a-z]/.test(password)) return 'Debe incluir al menos una minúscula.';
-  if (!/\d/.test(password)) return 'Debe incluir al menos un número.';
+function checkPasswordStrength(password: string, tla: T['auth']): string | null {
+  if (password.length < 8) return tla.pwMinChars;
+  if (!/[A-Z]/.test(password)) return tla.pwUppercase;
+  if (!/[a-z]/.test(password)) return tla.pwLowercase;
+  if (!/\d/.test(password)) return tla.pwNumber;
   return null;
 }
 
-export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
+export function RegisterScreen({ auth, onSwitchToLogin, uiLang = 'es' }: Props) {
+  const tla = TRANSLATIONS[uiLang].auth;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,25 +32,25 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
 
   useEffect(() => { void loadRecaptchaScript(); }, []);
 
-  const pwError = password ? checkPasswordStrength(password) : null;
+  const pwError = password ? checkPasswordStrength(password, tla) : null;
   const pwMismatch = confirmPassword && password !== confirmPassword;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
-    if (!email) { setError('El email es obligatorio.'); return; }
-    if (!email.includes('@')) { setError('Introduce un email válido.'); return; }
-    const strengthError = checkPasswordStrength(password);
+    if (!email) { setError(tla.emailRequired); return; }
+    if (!email.includes('@')) { setError(tla.emailInvalid); return; }
+    const strengthError = checkPasswordStrength(password, tla);
     if (strengthError) { setError(strengthError); return; }
-    if (password !== confirmPassword) { setError('Las contraseñas no coinciden.'); return; }
-    if (!rgpdChecked) { setError('Debes aceptar la política de privacidad.'); return; }
+    if (password !== confirmPassword) { setError(tla.pwMismatch); return; }
+    if (!rgpdChecked) { setError(tla.privacyRequired); return; }
 
     setLoading(true);
     const token = await getRecaptchaToken('register');
     const result = await auth.register(email, password, token);
     setLoading(false);
-    if (!result.ok) setError(result.error ?? 'Error al registrarse.');
+    if (!result.ok) setError(result.error ?? tla.registerError);
   }
 
   return (
@@ -56,13 +59,13 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
       <p className={styles.tagline}>// SISTEMA DE IA PERSONAL</p>
 
       <div className={styles.card}>
-        <p className={styles.cardTitle}>Crear cuenta</p>
+        <p className={styles.cardTitle}>{tla.createAccount}</p>
 
         {error && <div className={styles.errorBanner}>{error}</div>}
 
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="reg-email">Email</label>
+            <label className={styles.label} htmlFor="reg-email">{tla.email}</label>
             <input
               id="reg-email"
               className={styles.input}
@@ -76,13 +79,13 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="reg-password">Contraseña</label>
+            <label className={styles.label} htmlFor="reg-password">{tla.password}</label>
             <input
               id="reg-password"
               className={styles.input}
               type="password"
               autoComplete="new-password"
-              placeholder="Mín. 8 car., mayús., minús. y número"
+              placeholder={tla.newPasswordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
@@ -91,18 +94,18 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="reg-confirm">Confirmar contraseña</label>
+            <label className={styles.label} htmlFor="reg-confirm">{tla.confirmPassword}</label>
             <input
               id="reg-confirm"
               className={styles.input}
               type="password"
               autoComplete="new-password"
-              placeholder="Repite la contraseña"
+              placeholder={tla.confirmPasswordPlaceholder}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               disabled={loading}
             />
-            {pwMismatch && <span className={styles.fieldError}>Las contraseñas no coinciden.</span>}
+            {pwMismatch && <span className={styles.fieldError}>{tla.pwMismatch}</span>}
           </div>
 
           <div className={styles.checkRow}>
@@ -115,33 +118,33 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
               disabled={loading}
             />
             <label htmlFor="reg-rgpd" className={styles.checkLabel}>
-              He leído y acepto la{' '}
+              {tla.privacyAccept}{' '}
               <button
                 type="button"
                 className={styles.checkLink}
                 onClick={() => setRgpdOpen(true)}
               >
-                política de privacidad
+                {tla.privacyLink}
               </button>
             </label>
           </div>
 
           <button type="submit" className={styles.btnPrimary} disabled={loading}>
-            {loading ? 'Registrando…' : 'Crear cuenta'}
+            {loading ? tla.registering : tla.createAccount}
           </button>
         </form>
 
-        <div className={styles.divider}>o</div>
+        <div className={styles.divider}>{tla.orDivider}</div>
 
         {/* TODO: Google OAuth — backend not implemented yet */}
         <button type="button" className={styles.btnGoogle} disabled aria-disabled="true">
-          G&nbsp; Registrarse con Google (próximamente)
+          {tla.googleRegister}
         </button>
 
         <p className={styles.switchRow}>
-          ¿Ya tienes cuenta?{' '}
+          {tla.haveAccount}{' '}
           <button type="button" className={styles.switchLink} onClick={onSwitchToLogin}>
-            Iniciar sesión
+            {tla.signIn}
           </button>
         </p>
       </div>
@@ -150,7 +153,7 @@ export function RegisterScreen({ auth, onSwitchToLogin }: Props) {
       <HelpModal
         open={rgpdOpen}
         onClose={() => setRgpdOpen(false)}
-        title="Política de privacidad"
+        title={tla.privacyTitle}
       >
         <p className={styles.modalText}>
           Sity es una IA personal de uso doméstico. Los datos que introduces

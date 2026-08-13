@@ -69,6 +69,114 @@ export interface T {
     // Status
     justConnected: (name: string) => string;
   };
+  chat: {
+    guest: string;
+    share: string;
+    clearChat: string;
+    changeBg: string;
+    changeFont: string;
+    notifProcessing: string;
+    notifBlocked: string;
+    notifDisable: string;
+    notifEnable: string;
+    logout: string;
+    generatingLink: string;
+    retry: string;
+    copied: string;
+    copyLink: string;
+    close: string;
+    expiresLabel: string;
+  };
+  personality: {
+    moodTranquil: string;
+    moodNeutral: string;
+    moodIrritable: string;
+    moodHostile: string;
+    moodNuclear: string;
+    tabTraits: string;
+    tabAlters: string;
+    restore: string;
+    reload: string;
+    loading: string;
+    noData: string;
+  };
+  alters: {
+    empty: string;
+    saveHere: string;
+    load: string;
+    rename: string;
+    copy: string;
+    clear: string;
+    namePlaceholder: string;
+    save: string;
+    confirmLoad: string;
+    confirm: string;
+    cancel: string;
+    confirmClear: string;
+    copyTarget: string;
+    slotLabel: string;
+    slotEmpty: string;
+  };
+  dataset: {
+    activePrefix: string;
+    inactive: string;
+    loading: string;
+    captureActive: string;
+    captureHint: string;
+    preset: string;
+    noneOption: string;
+    save: string;
+    disable: string;
+    reload: string;
+    restorePersonality: string;
+  };
+  auth: {
+    signInTitle: string;
+    signIn: string;
+    email: string;
+    password: string;
+    forgotPassword: string;
+    connecting: string;
+    continueGuest: string;
+    orDivider: string;
+    googleSignIn: string;
+    noAccount: string;
+    createAccountLink: string;
+    createAccount: string;
+    confirmPassword: string;
+    registering: string;
+    googleRegister: string;
+    haveAccount: string;
+    privacyAccept: string;
+    privacyLink: string;
+    recoverTitle: string;
+    recoverSent: string;
+    recoverIntro: string;
+    sendLink: string;
+    sendError: string;
+    newPasswordTitle: string;
+    newPasswordLabel: string;
+    newPasswordPlaceholder: string;
+    confirmPasswordLabel: string;
+    confirmPasswordPlaceholder: string;
+    changePassword: string;
+    changingPassword: string;
+    resetSuccess: string;
+    resetIntro: string;
+    resetInvalid: string;
+    pwMinChars: string;
+    pwUppercase: string;
+    pwLowercase: string;
+    pwNumber: string;
+    emailRequired: string;
+    emailInvalid: string;
+    pwMismatch: string;
+    privacyRequired: string;
+    emailPasswordRequired: string;
+    loginError: string;
+    registerError: string;
+    privacyTitle: string;
+  };
 }
 
 const es: T = {
@@ -130,6 +238,114 @@ const es: T = {
     filesSection: 'Gestión de archivos',
     filesHint: 'Próximamente. Aquí podrás ver y eliminar los archivos que hayas compartido con Sity.',
     justConnected: (name) => `${name} conectado correctamente.`,
+  },
+  chat: {
+    guest: 'Invitado',
+    share: 'Compartir conversación',
+    clearChat: 'Borrar chat',
+    changeBg: 'Cambiar fondo',
+    changeFont: 'Cambiar fuente',
+    notifProcessing: 'Procesando…',
+    notifBlocked: 'Notificaciones bloqueadas',
+    notifDisable: 'Desactivar notificaciones push',
+    notifEnable: 'Activar notificaciones push',
+    logout: 'Cerrar sesión',
+    generatingLink: 'Generando enlace…',
+    retry: 'Reintentar',
+    copied: '¡Copiado!',
+    copyLink: 'Copiar enlace',
+    close: 'Cerrar',
+    expiresLabel: 'Caduca',
+  },
+  personality: {
+    moodTranquil: 'Tranquila',
+    moodNeutral: 'Neutral',
+    moodIrritable: 'Irritable',
+    moodHostile: 'Hostil',
+    moodNuclear: 'Nuclear',
+    tabTraits: 'Rasgos',
+    tabAlters: 'Alters',
+    restore: 'Restaurar',
+    reload: 'Recargar',
+    loading: 'Cargando…',
+    noData: 'Sin datos',
+  },
+  alters: {
+    empty: 'Vacío',
+    saveHere: 'Guardar aquí',
+    load: 'Cargar',
+    rename: 'Renombrar',
+    copy: 'Copiar',
+    clear: 'Vaciar',
+    namePlaceholder: 'Nombre del Alter',
+    save: 'Guardar',
+    confirmLoad: 'Sobrescribirá la personalidad activa',
+    confirm: 'Confirmar',
+    cancel: 'Cancelar',
+    confirmClear: 'Se eliminará este preset',
+    copyTarget: '— Destino —',
+    slotLabel: 'Slot',
+    slotEmpty: '(Vacío)',
+  },
+  dataset: {
+    activePrefix: 'Activo',
+    inactive: 'Desactivado',
+    loading: 'Cargando…',
+    captureActive: 'Capture activo',
+    captureHint: 'Registra las conversaciones para el dataset LoRA',
+    preset: 'Preset',
+    noneOption: '— ninguno —',
+    save: 'Guardar',
+    disable: 'Desactivar',
+    reload: 'Recargar',
+    restorePersonality: 'Restaurar valores de personalidad',
+  },
+  auth: {
+    signInTitle: 'Iniciar sesión',
+    signIn: 'Iniciar sesión',
+    email: 'Email',
+    password: 'Contraseña',
+    forgotPassword: 'He olvidado la contraseña',
+    connecting: 'Conectando…',
+    continueGuest: 'Continuar como invitado',
+    orDivider: 'o',
+    googleSignIn: 'G  Iniciar sesión con Google (próximamente)',
+    noAccount: '¿No tienes cuenta?',
+    createAccountLink: 'Crear cuenta',
+    createAccount: 'Crear cuenta',
+    confirmPassword: 'Confirmar contraseña',
+    registering: 'Registrando…',
+    googleRegister: 'G  Registrarse con Google (próximamente)',
+    haveAccount: '¿Ya tienes cuenta?',
+    privacyAccept: 'He leído y acepto la',
+    privacyLink: 'política de privacidad',
+    recoverTitle: 'Recuperar contraseña',
+    recoverSent: 'Si el email está registrado, recibirás un enlace de recuperación.',
+    recoverIntro: 'Introduce tu email y te enviaremos un enlace para restablecer la contraseña.',
+    sendLink: 'Enviar enlace',
+    sendError: 'Error al enviar. Inténtalo de nuevo.',
+    newPasswordTitle: 'Nueva contraseña',
+    newPasswordLabel: 'Nueva contraseña',
+    newPasswordPlaceholder: 'Mín. 8 car., mayús., minús. y número',
+    confirmPasswordLabel: 'Confirmar contraseña',
+    confirmPasswordPlaceholder: 'Repite la contraseña',
+    changePassword: 'Cambiar contraseña',
+    changingPassword: 'Actualizando…',
+    resetSuccess: '¡Contraseña actualizada correctamente! Ya puedes iniciar sesión con tu nueva contraseña.',
+    resetIntro: 'Introduce tu nueva contraseña.',
+    resetInvalid: 'Este enlace ya no es válido. Pide uno nuevo desde "He olvidado mi contraseña".',
+    pwMinChars: 'Mínimo 8 caracteres.',
+    pwUppercase: 'Debe incluir al menos una mayúscula.',
+    pwLowercase: 'Debe incluir al menos una minúscula.',
+    pwNumber: 'Debe incluir al menos un número.',
+    emailRequired: 'Email y contraseña son obligatorios.',
+    emailInvalid: 'Introduce un email válido.',
+    pwMismatch: 'Las contraseñas no coinciden.',
+    privacyRequired: 'Debes aceptar la política de privacidad.',
+    emailPasswordRequired: 'Email y contraseña son obligatorios.',
+    loginError: 'Error al iniciar sesión.',
+    registerError: 'Error al registrarse.',
+    privacyTitle: 'Política de privacidad',
   },
 };
 
@@ -193,6 +409,114 @@ const en: T = {
     filesHint: 'Coming soon. Here you will be able to view and delete files shared with Sity.',
     justConnected: (name) => `${name} connected successfully.`,
   },
+  chat: {
+    guest: 'Guest',
+    share: 'Share conversation',
+    clearChat: 'Clear chat',
+    changeBg: 'Change background',
+    changeFont: 'Change font',
+    notifProcessing: 'Processing…',
+    notifBlocked: 'Notifications blocked',
+    notifDisable: 'Disable push notifications',
+    notifEnable: 'Enable push notifications',
+    logout: 'Sign out',
+    generatingLink: 'Generating link…',
+    retry: 'Retry',
+    copied: 'Copied!',
+    copyLink: 'Copy link',
+    close: 'Close',
+    expiresLabel: 'Expires',
+  },
+  personality: {
+    moodTranquil: 'Calm',
+    moodNeutral: 'Neutral',
+    moodIrritable: 'Irritable',
+    moodHostile: 'Hostile',
+    moodNuclear: 'Nuclear',
+    tabTraits: 'Traits',
+    tabAlters: 'Alters',
+    restore: 'Restore',
+    reload: 'Reload',
+    loading: 'Loading…',
+    noData: 'No data',
+  },
+  alters: {
+    empty: 'Empty',
+    saveHere: 'Save here',
+    load: 'Load',
+    rename: 'Rename',
+    copy: 'Copy',
+    clear: 'Clear',
+    namePlaceholder: 'Alter name',
+    save: 'Save',
+    confirmLoad: 'This will overwrite the active personality',
+    confirm: 'Confirm',
+    cancel: 'Cancel',
+    confirmClear: 'This preset will be deleted',
+    copyTarget: '— Target —',
+    slotLabel: 'Slot',
+    slotEmpty: '(Empty)',
+  },
+  dataset: {
+    activePrefix: 'Active',
+    inactive: 'Disabled',
+    loading: 'Loading…',
+    captureActive: 'Capture active',
+    captureHint: 'Records conversations for the LoRA dataset',
+    preset: 'Preset',
+    noneOption: '— none —',
+    save: 'Save',
+    disable: 'Disable',
+    reload: 'Reload',
+    restorePersonality: 'Restore personality defaults',
+  },
+  auth: {
+    signInTitle: 'Sign in',
+    signIn: 'Sign in',
+    email: 'Email',
+    password: 'Password',
+    forgotPassword: 'Forgot password',
+    connecting: 'Connecting…',
+    continueGuest: 'Continue as guest',
+    orDivider: 'or',
+    googleSignIn: 'G  Sign in with Google (coming soon)',
+    noAccount: "Don't have an account?",
+    createAccountLink: 'Create account',
+    createAccount: 'Create account',
+    confirmPassword: 'Confirm password',
+    registering: 'Registering…',
+    googleRegister: 'G  Register with Google (coming soon)',
+    haveAccount: 'Already have an account?',
+    privacyAccept: 'I have read and accept the',
+    privacyLink: 'privacy policy',
+    recoverTitle: 'Recover password',
+    recoverSent: 'If the email is registered, you will receive a recovery link.',
+    recoverIntro: 'Enter your email and we will send you a link to reset your password.',
+    sendLink: 'Send link',
+    sendError: 'Error sending. Please try again.',
+    newPasswordTitle: 'New password',
+    newPasswordLabel: 'New password',
+    newPasswordPlaceholder: 'Min. 8 chars, upper, lower, number',
+    confirmPasswordLabel: 'Confirm password',
+    confirmPasswordPlaceholder: 'Repeat the password',
+    changePassword: 'Change password',
+    changingPassword: 'Updating…',
+    resetSuccess: 'Password updated successfully! You can now sign in with your new password.',
+    resetIntro: 'Enter your new password.',
+    resetInvalid: 'This link is no longer valid. Request a new one from "Forgot password".',
+    pwMinChars: 'At least 8 characters.',
+    pwUppercase: 'Must include at least one uppercase letter.',
+    pwLowercase: 'Must include at least one lowercase letter.',
+    pwNumber: 'Must include at least one number.',
+    emailRequired: 'Email is required.',
+    emailInvalid: 'Please enter a valid email.',
+    pwMismatch: "Passwords don't match.",
+    privacyRequired: 'You must accept the privacy policy.',
+    emailPasswordRequired: 'Email and password are required.',
+    loginError: 'Error signing in.',
+    registerError: 'Error registering.',
+    privacyTitle: 'Privacy policy',
+  },
 };
 
 const ja: T = {
@@ -254,6 +578,114 @@ const ja: T = {
     filesSection: 'ファイル管理',
     filesHint: '近日公開。ここでSityと共有したファイルを確認・削除できます。',
     justConnected: (name) => `${name}が正常に接続されました。`,
+  },
+  chat: {
+    guest: 'ゲスト',
+    share: '会話を共有',
+    clearChat: 'チャットを消去',
+    changeBg: '背景を変更',
+    changeFont: 'フォントを変更',
+    notifProcessing: '処理中…',
+    notifBlocked: '通知がブロックされています',
+    notifDisable: 'プッシュ通知をオフにする',
+    notifEnable: 'プッシュ通知をオンにする',
+    logout: 'ログアウト',
+    generatingLink: 'リンク生成中…',
+    retry: '再試行',
+    copied: 'コピーしました！',
+    copyLink: 'リンクをコピー',
+    close: '閉じる',
+    expiresLabel: '有効期限',
+  },
+  personality: {
+    moodTranquil: '穏やか',
+    moodNeutral: '普通',
+    moodIrritable: '苛立ち',
+    moodHostile: '敵対的',
+    moodNuclear: '激怒',
+    tabTraits: '性格',
+    tabAlters: 'Alters',
+    restore: 'デフォルトに戻す',
+    reload: '再読込',
+    loading: '読込中…',
+    noData: 'データなし',
+  },
+  alters: {
+    empty: '空',
+    saveHere: 'ここに保存',
+    load: '読み込む',
+    rename: '名前変更',
+    copy: 'コピー',
+    clear: '削除',
+    namePlaceholder: 'Alterの名前',
+    save: '保存',
+    confirmLoad: '現在の性格が上書きされます',
+    confirm: '確認',
+    cancel: 'キャンセル',
+    confirmClear: 'このプリセットが削除されます',
+    copyTarget: '— コピー先 —',
+    slotLabel: 'スロット',
+    slotEmpty: '（空）',
+  },
+  dataset: {
+    activePrefix: '有効',
+    inactive: '無効',
+    loading: '読込中…',
+    captureActive: 'キャプチャ有効',
+    captureHint: 'LoRAデータセット用に会話を記録します',
+    preset: 'プリセット',
+    noneOption: '— なし —',
+    save: '保存',
+    disable: '無効化',
+    reload: '再読込',
+    restorePersonality: '性格をデフォルトに戻す',
+  },
+  auth: {
+    signInTitle: 'ログイン',
+    signIn: 'ログイン',
+    email: 'メール',
+    password: 'パスワード',
+    forgotPassword: 'パスワードを忘れた方',
+    connecting: '接続中…',
+    continueGuest: 'ゲストとして続ける',
+    orDivider: 'または',
+    googleSignIn: 'G  Googleでログイン（近日公開）',
+    noAccount: 'アカウントをお持ちでない方は',
+    createAccountLink: 'アカウントを作成',
+    createAccount: 'アカウント作成',
+    confirmPassword: 'パスワードの確認',
+    registering: '登録中…',
+    googleRegister: 'G  Googleで登録（近日公開）',
+    haveAccount: 'すでにアカウントをお持ちですか？',
+    privacyAccept: 'を読み、同意します',
+    privacyLink: 'プライバシーポリシー',
+    recoverTitle: 'パスワードの回復',
+    recoverSent: '登録済みのメールであれば、回復リンクをお送りします。',
+    recoverIntro: 'メールアドレスを入力してください。パスワードリセットリンクをお送りします。',
+    sendLink: 'リンクを送信',
+    sendError: '送信エラー。もう一度お試しください。',
+    newPasswordTitle: '新しいパスワード',
+    newPasswordLabel: '新しいパスワード',
+    newPasswordPlaceholder: '8文字以上、大文字・小文字・数字を含む',
+    confirmPasswordLabel: 'パスワードの確認',
+    confirmPasswordPlaceholder: 'パスワードをもう一度入力',
+    changePassword: 'パスワードを変更',
+    changingPassword: '更新中…',
+    resetSuccess: 'パスワードが更新されました！新しいパスワードでログインできます。',
+    resetIntro: '新しいパスワードを入力してください。',
+    resetInvalid: 'このリンクは無効です。「パスワードを忘れた方」から新しいリンクを要求してください。',
+    pwMinChars: '8文字以上必要です。',
+    pwUppercase: '大文字を1文字以上含めてください。',
+    pwLowercase: '小文字を1文字以上含めてください。',
+    pwNumber: '数字を1文字以上含めてください。',
+    emailRequired: 'メールアドレスは必須です。',
+    emailInvalid: '有効なメールアドレスを入力してください。',
+    pwMismatch: 'パスワードが一致しません。',
+    privacyRequired: 'プライバシーポリシーに同意してください。',
+    emailPasswordRequired: 'メールとパスワードは必須です。',
+    loginError: 'ログインエラー。',
+    registerError: '登録エラー。',
+    privacyTitle: 'プライバシーポリシー',
   },
 };
 

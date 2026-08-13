@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAlters } from '../hooks/useAlters';
 import type { AlterSlot } from '../hooks/useAlters';
+import type { T } from '../i18n/translations';
 import styles from './AltersPanel.module.css';
 
 type ActionType =
@@ -12,9 +13,10 @@ type ActionType =
 
 interface AltersPanelProps {
   onLoaded: () => Promise<void>;
+  tl: T['alters'];
 }
 
-export function AltersPanel({ onLoaded }: AltersPanelProps) {
+export function AltersPanel({ onLoaded, tl }: AltersPanelProps) {
   const { slots, busy, save, load, rename, clear, copy } = useAlters();
 
   const [activeSlot, setActiveSlot] = useState<number | null>(null);
@@ -75,7 +77,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
         <div className={styles.slotHeader}>
           <span className={styles.slotNum}>{s.slot}</span>
           <span className={`${styles.slotName} ${s.is_empty ? styles.emptyName : ''}`}>
-            {s.is_empty ? 'Vacío' : (s.name ?? `Alter ${s.slot}`)}
+            {s.is_empty ? tl.empty : (s.name ?? `Alter ${s.slot}`)}
           </span>
         </div>
 
@@ -88,7 +90,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
                 onClick={() => startAction(s.slot, 'saving')}
                 disabled={isBusy}
               >
-                Guardar aquí
+                {tl.saveHere}
               </button>
             ) : (
               <>
@@ -97,28 +99,28 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
                   onClick={() => startAction(s.slot, 'confirm-load')}
                   disabled={isBusy}
                 >
-                  Cargar
+                  {tl.load}
                 </button>
                 <button
                   className={styles.btn}
                   onClick={() => startAction(s.slot, 'renaming', s.name ?? '')}
                   disabled={isBusy}
                 >
-                  Renombrar
+                  {tl.rename}
                 </button>
                 <button
                   className={styles.btn}
                   onClick={() => startAction(s.slot, 'copying')}
                   disabled={isBusy}
                 >
-                  Copiar
+                  {tl.copy}
                 </button>
                 <button
                   className={`${styles.btn} ${styles.btnDanger}`}
                   onClick={() => startAction(s.slot, 'confirm-clear')}
                   disabled={isBusy}
                 >
-                  Vaciar
+                  {tl.clear}
                 </button>
               </>
             )}
@@ -130,7 +132,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
           <div className={styles.inputRow}>
             <input
               className={styles.nameInput}
-              placeholder="Nombre del Alter"
+              placeholder={tl.namePlaceholder}
               value={inputName}
               onChange={(e) => setInputName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void handleSave(s.slot); }}
@@ -142,7 +144,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
               onClick={() => void handleSave(s.slot)}
               disabled={!inputName.trim() || isBusy}
             >
-              {isBusy ? '…' : 'Guardar'}
+              {isBusy ? '…' : tl.save}
             </button>
             <button className={styles.btn} onClick={cancel}>✕</button>
           </div>
@@ -164,7 +166,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
               onClick={() => void handleRename(s.slot)}
               disabled={!inputName.trim() || isBusy}
             >
-              {isBusy ? '…' : 'Guardar'}
+              {isBusy ? '…' : tl.save}
             </button>
             <button className={styles.btn} onClick={cancel}>✕</button>
           </div>
@@ -174,7 +176,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
         {isActive && actionType === 'confirm-load' && (
           <div className={styles.confirmRow}>
             <span className={styles.confirmMsg}>
-              Sobrescribirá la personalidad activa
+              {tl.confirmLoad}
             </span>
             <div className={styles.confirmBtns}>
               <button
@@ -182,9 +184,9 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
                 onClick={() => void handleLoad(s.slot)}
                 disabled={isBusy}
               >
-                {isBusy ? '…' : 'Confirmar'}
+                {isBusy ? '…' : tl.confirm}
               </button>
-              <button className={styles.btn} onClick={cancel}>Cancelar</button>
+              <button className={styles.btn} onClick={cancel}>{tl.cancel}</button>
             </div>
           </div>
         )}
@@ -193,7 +195,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
         {isActive && actionType === 'confirm-clear' && (
           <div className={styles.confirmRow}>
             <span className={styles.confirmMsg}>
-              Se eliminará este preset
+              {tl.confirmClear}
             </span>
             <div className={styles.confirmBtns}>
               <button
@@ -201,9 +203,9 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
                 onClick={() => void handleClear(s.slot)}
                 disabled={isBusy}
               >
-                {isBusy ? '…' : 'Confirmar'}
+                {isBusy ? '…' : tl.confirm}
               </button>
-              <button className={styles.btn} onClick={cancel}>Cancelar</button>
+              <button className={styles.btn} onClick={cancel}>{tl.cancel}</button>
             </div>
           </div>
         )}
@@ -216,12 +218,12 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
               value={copyTarget ?? ''}
               onChange={(e) => setCopyTarget(Number(e.target.value) || null)}
             >
-              <option value="">— Destino —</option>
+              <option value="">{tl.copyTarget}</option>
               {slots
                 .filter((t) => t.slot !== s.slot)
                 .map((t) => (
                   <option key={t.slot} value={t.slot}>
-                    Slot {t.slot}{t.name ? ` — ${t.name}` : ' (Vacío)'}
+                    {tl.slotLabel} {t.slot}{t.name ? ` — ${t.name}` : ` ${tl.slotEmpty}`}
                   </option>
                 ))}
             </select>
@@ -230,7 +232,7 @@ export function AltersPanel({ onLoaded }: AltersPanelProps) {
               onClick={() => void handleCopy(s.slot)}
               disabled={copyTarget == null || isBusy}
             >
-              {isBusy ? '…' : 'Copiar'}
+              {isBusy ? '…' : tl.copy}
             </button>
             <button className={styles.btn} onClick={cancel}>✕</button>
           </div>

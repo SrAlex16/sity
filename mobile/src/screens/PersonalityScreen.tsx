@@ -6,6 +6,8 @@ import { MoodFace } from '../components/MoodFace';
 import { PersonalitySliderItem, PARAM_META } from '../components/PersonalitySliderItem';
 import { HelpModal } from '../components/HelpModal';
 import { AltersPanel } from '../components/AltersPanel';
+import { TRANSLATIONS } from '../i18n/translations';
+import type { UiLang } from '../i18n/translations';
 import styles from './PersonalityScreen.module.css';
 
 function computeMoodLevel(s: PersonalitySettings): number {
@@ -15,14 +17,6 @@ function computeMoodLevel(s: PersonalitySettings): number {
      s.contrarian_level * 0.2 +
      s.dry_humor_level * 0.1) * 100
   );
-}
-
-function moodLabel(pct: number): string {
-  if (pct <= 20) return 'Tranquila';
-  if (pct <= 40) return 'Neutral';
-  if (pct <= 60) return 'Irritable';
-  if (pct <= 80) return 'Hostil';
-  return 'Nuclear';
 }
 
 function moodColor(pct: number): string {
@@ -36,9 +30,20 @@ const PARAM_ORDER = Object.keys(PARAM_META) as (keyof PersonalitySettings)[];
 
 interface PersonalityScreenProps {
   role: string;
+  uiLang?: UiLang;
 }
 
-export function PersonalityScreen({ role }: PersonalityScreenProps) {
+export function PersonalityScreen({ role, uiLang = 'es' }: PersonalityScreenProps) {
+  const tl = TRANSLATIONS[uiLang].personality;
+  const tlAlters = TRANSLATIONS[uiLang].alters;
+
+  function moodLabel(pct: number): string {
+    if (pct <= 20) return tl.moodTranquil;
+    if (pct <= 40) return tl.moodNeutral;
+    if (pct <= 60) return tl.moodIrritable;
+    if (pct <= 80) return tl.moodHostile;
+    return tl.moodNuclear;
+  }
   const isGuest = role === 'guest';
   const { settings, isLoading, adjust, reset, reload } = usePersonality();
   const [liveOverride, setLiveOverride] = useState<Partial<PersonalitySettings>>({});
@@ -96,13 +101,13 @@ export function PersonalityScreen({ role }: PersonalityScreenProps) {
             className={`${styles.viewTab} ${view === 'params' ? styles.viewTabActive : ''}`}
             onClick={() => setView('params')}
           >
-            Rasgos
+            {tl.tabTraits}
           </button>
           <button
             className={`${styles.viewTab} ${view === 'alters' ? styles.viewTabActive : ''}`}
             onClick={() => setView('alters')}
           >
-            Alters
+            {tl.tabAlters}
           </button>
         </div>
       )}
@@ -138,20 +143,20 @@ export function PersonalityScreen({ role }: PersonalityScreenProps) {
                   onClick={handleReset}
                   disabled={resetting || isLoading}
                 >
-                  {resetting ? '…' : 'Restaurar'}
+                  {resetting ? '…' : tl.restore}
                 </button>
                 <button
                   className={styles.actionBtn}
                   onClick={() => void reload()}
                   disabled={isLoading}
                 >
-                  {isLoading ? '…' : 'Recargar'}
+                  {isLoading ? '…' : tl.reload}
                 </button>
               </div>
             </div>
           ) : (
             <div className={styles.loadingCard}>
-              {isLoading ? 'Cargando…' : 'Sin datos'}
+              {isLoading ? tl.loading : tl.noData}
             </div>
           )}
 
@@ -173,7 +178,7 @@ export function PersonalityScreen({ role }: PersonalityScreenProps) {
       {/* Alters view — User/Admin only */}
       {view === 'alters' && !isGuest && (
         <div className={styles.altersView}>
-          <AltersPanel onLoaded={handleAlterLoaded} />
+          <AltersPanel onLoaded={handleAlterLoaded} tl={tlAlters} />
         </div>
       )}
 
