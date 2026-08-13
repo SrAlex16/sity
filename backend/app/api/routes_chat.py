@@ -336,7 +336,28 @@ def _chat_message_inner(
     ctx = build_turn_context(session, request, _strong_model, session_id=_session_id, is_admin=_is_admin)
 
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override)
+
+    # If the backend rolled refusal_mode=True, classify the message type:
+    # trivial messages (greetings, confirmations) bypass refusal_mode entirely.
+    # This is a structural check — the main model has no vote on this decision.
+    _classification = None
+    if persona_decision.refusal_mode:
+        from app.core.message_classifier import classify_message
+        _classification = classify_message(request.message, trace_id=ctx.trace_id)
+        if not _classification.is_real_request:
+            persona_decision = PersonaEngine().build_persona_prompt(
+                ctx.personality, request.message,
+                refusal_mode_override=False,
+                session_id=ctx.session_id,
+                language_override=ctx.language_override,
+            )
+
     persona_prompt = persona_decision.system_prompt
+
+    # Config query: inject verified parameter values so the model cannot hallucinate them.
+    if _classification is not None and _classification.is_config_query:
+        from app.core.message_classifier import build_verified_config_block
+        persona_prompt += build_verified_config_block(ctx.personality)
 
     if _upgrade_context:
         persona_prompt += f"\n\n{_upgrade_context}"

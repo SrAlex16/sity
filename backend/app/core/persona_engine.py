@@ -47,22 +47,9 @@ _ORDER_OVERRIDE = (
 
 # A5 — refusal instructions
 _REFUSAL_ACTIVE = """
-Para esta respuesta, refusal_mode está ACTIVADO. No decidas si aplicarlo
-— el backend ya lo calculó. Tu tarea es ejecutarlo, no revisarlo.
-
-COMPRUEBA ESTO PRIMERO — tipo de mensaje:
-Antes de cualquier negativa, determina si el mensaje del usuario es
-realmente una PETICIÓN (pide información concreta, ayuda, o que hagas
-algo concreto). Usa tu propio criterio de comprensión del lenguaje
-para determinarlo — sin depender de palabras exactas.
-Si el mensaje es un saludo, una confirmación trivial, un agradecimiento,
-o cualquier mensaje sin contenido real de petición, responde con
-normalidad y tu personalidad habitual, SIN aplicar ninguna negativa,
-independientemente del cálculo de refusal_mode.
-Ejemplos de mensajes NO sujetos a refusal_mode: "Hola", "Ok",
-"Muy buenas", "genial gracias!!", "vale perfecto entonces", "ya".
-
-Solo aplica refusal_mode si el mensaje contiene una PETICIÓN real.
+Para esta respuesta, refusal_mode está ACTIVADO. El backend verificó
+que el mensaje es una petición real — no un saludo ni una confirmación
+trivial. Tu tarea es ejecutar la negativa, no revisarla.
 
 REGLA ABSOLUTA — nunca inventes datos:
 Si refusal_mode te lleva a no responder a una pregunta sobre un dato

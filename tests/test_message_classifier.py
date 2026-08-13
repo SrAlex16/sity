@@ -1,0 +1,227 @@
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app.core.message_classifier import (
+    MessageClassification,
+    _PERSONALITY_LABELS,
+    build_verified_config_block,
+    classify_message,
+)
+from app.cortex.schemas import AIResponse, AIUsageData
+
+
+# ------------------------------------------------------------------ #
+# 1. MessageClassification — property contract                        #
+# ------------------------------------------------------------------ #
+
+def test_trivial_is_not_real_request() -> None:
+    assert not MessageClassification(kind="trivial").is_real_request
+
+
+def test_trivial_is_not_config_query() -> None:
+    assert not MessageClassification(kind="trivial").is_config_query
+
+
+def test_real_is_real_request() -> None:
+    assert MessageClassification(kind="real").is_real_request
+
+
+def test_real_is_not_config_query() -> None:
+    assert not MessageClassification(kind="real").is_config_query
+
+
+def test_config_query_is_real_request() -> None:
+    assert MessageClassification(kind="config_query").is_real_request
+
+
+def test_config_query_is_config_query() -> None:
+    assert MessageClassification(kind="config_query").is_config_query
+
+
+# ------------------------------------------------------------------ #
+# 2. classify_message — mock provider fallback (conservative default) #
+# ------------------------------------------------------------------ #
+
+def test_classify_message_mock_provider_defaults_to_real() -> None:
+    # MockProvider.generate returns "Respuesta mock." which contains neither
+    # "trivial" nor "config" → conservative fallback to "real".
+    result = classify_message("Hola")
+    assert result.kind == "real"
+
+
+def test_classify_message_returns_classification_instance() -> None:
+    result = classify_message("Dime la hora")
+    assert isinstance(result, MessageClassification)
+
+
+# ------------------------------------------------------------------ #
+# 3. classify_message — patched responses                             #
+# ------------------------------------------------------------------ #
+
+def _mock_response(text: str) -> AIResponse:
+    return AIResponse(
+        ok=True,
+        provider="mock",
+        model="mock",
+        text=text,
+        usage=AIUsageData(input_tokens=1, output_tokens=1),
+        latency_ms=0,
+    )
+
+
+def test_classify_trivial_when_provider_says_trivial() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("trivial")):
+        result = classify_message("Hola")
+    assert result.kind == "trivial"
+    assert not result.is_real_request
+
+
+def test_classify_config_query_when_provider_says_config_query() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("config_query")):
+        result = classify_message("¿cuál es el valor de sarcasm_level?")
+    assert result.kind == "config_query"
+    assert result.is_real_request
+    assert result.is_config_query
+
+
+def test_classify_config_query_matched_by_substring() -> None:
+    # "config" substring is enough to match config_query.
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("config")):
+        result = classify_message("cuánto está el humor seco")
+    assert result.kind == "config_query"
+
+
+def test_classify_real_when_provider_says_real() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("real")):
+        result = classify_message("dime la capital de Francia")
+    assert result.kind == "real"
+
+
+def test_classify_real_when_provider_returns_garbage() -> None:
+    # Anything not matching "trivial" or "config" → "real" (conservative).
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("????")):
+        result = classify_message("algo")
+    assert result.kind == "real"
+
+
+def test_classify_real_when_provider_returns_empty() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("")):
+        result = classify_message("algo")
+    assert result.kind == "real"
+
+
+def test_classify_real_when_response_not_ok() -> None:
+    bad = AIResponse(
+        ok=False,
+        provider="mock",
+        model="mock",
+        text="trivial",
+        usage=AIUsageData(input_tokens=0, output_tokens=0),
+        latency_ms=0,
+    )
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=bad):
+        result = classify_message("Hola")
+    assert result.kind == "real"
+
+
+# ------------------------------------------------------------------ #
+# 4. classify_message — exception → conservative fallback            #
+# ------------------------------------------------------------------ #
+
+def test_classify_falls_back_to_real_on_exception() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=RuntimeError("network down")):
+        result = classify_message("Hola")
+    assert result.kind == "real"
+
+
+def test_classify_falls_back_to_real_on_import_error() -> None:
+    with patch("app.cortex.providers.factory.build_ai_provider", side_effect=ImportError("no module")):
+        result = classify_message("Hola")
+    assert result.kind == "real"
+
+
+# ------------------------------------------------------------------ #
+# 5. build_verified_config_block — content correctness               #
+# ------------------------------------------------------------------ #
+
+def test_config_block_header_present() -> None:
+    block = build_verified_config_block({})
+    assert "CONFIGURACIÓN ACTUAL — VALORES VERIFICADOS:" in block
+
+
+def test_config_block_refusal_chance_full() -> None:
+    block = build_verified_config_block({"refusal_chance": 1.0})
+    assert "100%" in block
+    assert "Probabilidad de negación" in block
+
+
+def test_config_block_refusal_chance_half() -> None:
+    block = build_verified_config_block({"refusal_chance": 0.5})
+    assert "50%" in block
+
+
+def test_config_block_refusal_chance_zero() -> None:
+    block = build_verified_config_block({"refusal_chance": 0.0})
+    assert "0%" in block
+
+
+def test_config_block_uses_canonical_label_for_refusal() -> None:
+    block = build_verified_config_block({"refusal_chance": 0.75})
+    assert "Probabilidad de negación: 75%" in block
+
+
+def test_config_block_omits_missing_keys() -> None:
+    block = build_verified_config_block({"sarcasm_level": 0.6})
+    # Only one param was provided — others should not appear.
+    assert "Mala leche" not in block
+    assert "Calidez" not in block
+
+
+def test_config_block_empty_personality_has_no_params() -> None:
+    block = build_verified_config_block({})
+    for label in _PERSONALITY_LABELS.values():
+        assert label not in block
+
+
+def test_config_block_rounds_to_nearest_integer() -> None:
+    block = build_verified_config_block({"warmth_level": 0.333})
+    assert "33%" in block
+
+
+def test_config_block_all_labels_covered() -> None:
+    personality = {key: 0.5 for key in _PERSONALITY_LABELS}
+    block = build_verified_config_block(personality)
+    for label in _PERSONALITY_LABELS.values():
+        assert label in block, f"Label {label!r} missing from config block"
+
+
+def test_config_block_no_use_other_values_instruction() -> None:
+    block = build_verified_config_block({"sarcasm_level": 0.8})
+    assert "No uses otros valores" in block
+
+
+# ------------------------------------------------------------------ #
+# 6. _PERSONALITY_LABELS completeness                                 #
+# ------------------------------------------------------------------ #
+
+@pytest.mark.parametrize("key", [
+    "sarcasm_level",
+    "rudeness_level",
+    "warmth_level",
+    "honesty_level",
+    "initiative_level",
+    "dry_humor_level",
+    "frialdad_afectiva_level",
+    "contrarian_level",
+    "patience_level",
+    "verbosity_level",
+    "helpfulness_level",
+    "refusal_chance",
+    "melancholy_level",
+    "skepticism_level",
+])
+def test_personality_labels_contains_key(key: str) -> None:
+    assert key in _PERSONALITY_LABELS, f"Key {key!r} missing from _PERSONALITY_LABELS"

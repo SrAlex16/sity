@@ -165,13 +165,10 @@ def test_refusal_active_prompt_is_unconditional(engine: PersonaEngine) -> None:
     assert "si quieres aplicarlo" not in prompt
 
 
-def test_refusal_active_has_trivial_message_instruction(engine: PersonaEngine) -> None:
-    """_REFUSAL_ACTIVE must instruct the model to skip refusal for trivial messages."""
-    assert "PETICIÓN" in _REFUSAL_ACTIVE
-    assert "saludo" in _REFUSAL_ACTIVE
-    assert "confirmación trivial" in _REFUSAL_ACTIVE
-    assert "agradecimiento" in _REFUSAL_ACTIVE
-    assert "criterio" in _REFUSAL_ACTIVE
+def test_refusal_active_backend_verified(engine: PersonaEngine) -> None:
+    """_REFUSAL_ACTIVE must state the backend already verified the message is real."""
+    assert "verificó" in _REFUSAL_ACTIVE or "verificado" in _REFUSAL_ACTIVE.lower()
+    assert "petición real" in _REFUSAL_ACTIVE.lower()
 
 
 def test_refusal_active_has_no_invent_data_rule(engine: PersonaEngine) -> None:
