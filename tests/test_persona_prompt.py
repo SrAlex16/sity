@@ -174,6 +174,14 @@ def test_refusal_active_has_trivial_message_instruction(engine: PersonaEngine) -
     assert "criterio" in _REFUSAL_ACTIVE
 
 
+def test_refusal_active_has_no_invent_data_rule(engine: PersonaEngine) -> None:
+    """_REFUSAL_ACTIVE must explicitly prohibit inventing false data."""
+    assert "nunca inventes" in _REFUSAL_ACTIVE.lower()
+    assert "dato" in _REFUSAL_ACTIVE
+    assert "número" in _REFUSAL_ACTIVE or "numero" in _REFUSAL_ACTIVE
+    assert "configuración" in _REFUSAL_ACTIVE or "configuracion" in _REFUSAL_ACTIVE
+
+
 # ------------------------------------------------------------------ #
 # 5. PersonaDecision structure                                         #
 # ------------------------------------------------------------------ #
