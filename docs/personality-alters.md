@@ -1,6 +1,6 @@
 # Sistema de Alters de Personalidad
 
-Última actualización: 2026-08-11 (Paso 1 completado — modelo + servicio).
+Última actualización: 2026-08-13 (sistema completo — modelo + servicio + endpoints + frontend verificados en producción).
 
 Documenta el diseño completo del sistema de Alters: presets de personalidad
 guardados por usuario, independientes de la personalidad activa por sesión.
@@ -139,7 +139,7 @@ de entender, sin comportamiento especial que recordar.
 ## Arquitectura por capas
 
 ```
-HTTP endpoints (Paso 2 — pendiente)
+HTTP endpoints  [backend/app/api/routes_settings.py]
     └── AlterService   [backend/app/settings/alter_service.py]
             └── SettingsService.get_personality()     — lectura de la sesión activa
             └── SettingsService.set_all_personality() — escritura en bulk a la sesión
@@ -327,7 +327,13 @@ Cuando se carga un Alter:
 
 No hay necesidad de un segundo canal de eventos (`sity:personality-updated`) — el callback directo `onLoaded` es suficiente y más explícito.
 
-## Pendiente
+## Mejoras posibles
 
-- **Logging de `alter_loaded` en TurnContext** — si se quiere saber qué Alter estaba activo durante un turno, habrá que pasar el nombre del Alter cargado hasta `TurnContext`; pendiente de decidir si aporta suficiente valor diagnóstico.
+- **Logging de `alter_loaded` en TurnContext** — si se quiere saber qué Alter estaba activo durante un turno, habría que pasar el nombre del Alter cargado hasta `TurnContext`. No implementado; la decisión de si aporta suficiente valor diagnóstico queda abierta.
 - **i18n** — PersonalityScreen y AltersPanel están en español hardcoded, consistente con el resto de PersonalityScreen. Se actualizará junto con el namespace `chat` cuando se extienda i18n a ChatScreen.
+
+## Verificado en producción (2026-08-13)
+
+Sistema completo (Pasos 1–3) verificado en real por Alex: guardar, cargar, renombrar,
+copiar y vaciar slots; sliders actualizados inmediatamente al cargar un Alter;
+interfaz cyberpunk con confirmaciones inline. 1842 tests en verde.
