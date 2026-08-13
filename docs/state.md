@@ -133,6 +133,19 @@ Ver .env.example para la lista completa.
 
 ## Completado recientemente (2026-08-13)
 
+- **i18n Sistema 1 — cobertura completa de pantallas (2026-08-13)** —
+  ampliadas las traducciones (es/en/ja) a las 5 pantallas que quedaban sin
+  cubrir. Pantallas nuevas: ChatScreen, PersonalityScreen+AltersPanel,
+  DatasetScreen, LoginScreen, RegisterScreen. Nuevas secciones en `T`:
+  `chat` (16 claves), `personality` (11), `alters` (15), `dataset` (11),
+  `auth` (33 — incluyendo errores de validación de contraseña localizados).
+  `App.tsx` pasa `uiLang` a todas las pantallas. `checkPasswordStrength()`
+  recibe `T['auth']` para devolver el error en el idioma activo.
+  `AltersPanel` recibe `tl: T['alters']` desde `PersonalityScreen`.
+  Fecha locale de mensajes expirados usa `DATE_LOCALE[uiLang]` (no
+  hardcodeado `'es-ES'`). Placeholder japonés decorativo del textarea
+  conservado intacto. Build TypeScript limpio. Commit: `f0aa0b3`.
+
 - **Refusal_mode — arquitectura estructural completa (2026-08-13)** —
   sistema de negativas rediseñado de raíz tras varios intentos fallidos
   de control por instrucciones en el prompt. El principio rector: cualquier
