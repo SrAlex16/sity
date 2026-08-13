@@ -26,23 +26,24 @@ interface ParamMeta {
   jp: string;
   es: string;
   Icon: React.FC;
+  tooltip: string;
 }
 
 export const PARAM_META: Record<K, ParamMeta> = {
-  sarcasm_level:          { jp: '皮肉',    es: 'Sarcasmo',     Icon: IconSarcasm    },
-  rudeness_level:         { jp: '毒舌',    es: 'Mala leche',   Icon: IconRudeness   },
-  warmth_level:           { jp: '温かさ',  es: 'Calidez',      Icon: IconWarmth     },
-  honesty_level:          { jp: '正直',    es: 'Honestidad',   Icon: IconHonesty    },
-  initiative_level:       { jp: '積極性',  es: 'Iniciativa',   Icon: IconInitiative },
-  dry_humor_level:        { jp: 'ユーモア', es: 'Humor seco',  Icon: IconHumor      },
-  frialdad_afectiva_level:{ jp: '冷淡さ',  es: 'Frialdad',     Icon: IconColdness   },
-  contrarian_level:       { jp: '反論',    es: 'Contradicción',Icon: IconContrarian },
-  patience_level:         { jp: '忍耐',    es: 'Paciencia',    Icon: IconPatience   },
-  refusal_chance:         { jp: '拒否',    es: 'Negación',     Icon: IconRefusal    },
-  helpfulness_level:      { jp: '親切',    es: 'Ayuda',        Icon: IconHelp       },
-  verbosity_level:        { jp: '冗長',    es: 'Verbosidad',   Icon: IconVerbosity  },
-  melancholy_level:       { jp: '憂鬱',    es: 'Melancolía',   Icon: IconMelancholy },
-  skepticism_level:       { jp: '懐疑',    es: 'Escepticismo', Icon: IconSkepticism },
+  sarcasm_level:          { jp: '皮肉',    es: 'Sarcasmo',     Icon: IconSarcasm,    tooltip: 'Probabilidad de que responda con ironía o doble sentido. Alto = casi todo lleva segunda lectura.' },
+  rudeness_level:         { jp: '毒舌',    es: 'Mala leche',   Icon: IconRudeness,   tooltip: 'Grado de brusquedad y mala educación en el tono. Alto = sin filtros, respuestas cortantes.' },
+  warmth_level:           { jp: '温かさ',  es: 'Calidez',      Icon: IconWarmth,     tooltip: 'Calidez afectiva general. Alto = cercanía y cuidado visibles; bajo = trato neutro y distante.' },
+  honesty_level:          { jp: '正直',    es: 'Honestidad',   Icon: IconHonesty,    tooltip: 'Qué tan directa es al decir cosas incómodas. Alto = honestidad brutal sin rodeos; bajo = respuestas suavizadas.' },
+  initiative_level:       { jp: '積極性',  es: 'Iniciativa',   Icon: IconInitiative, tooltip: 'Propensión a ofrecer ideas, hacer preguntas o tomar la iniciativa sin que se lo pidan. Bajo = responde lo justo.' },
+  dry_humor_level:        { jp: 'ユーモア', es: 'Humor seco',  Icon: IconHumor,      tooltip: 'Frecuencia de humor lacónico o absurdo sin carga emocional aparente. No es alegría, es sequedad irónica.' },
+  frialdad_afectiva_level:{ jp: '冷淡さ',  es: 'Frialdad',     Icon: IconColdness,   tooltip: 'Distancia afectiva: cuánto esconde o filtra sus emociones. Alto = reserva total, sin efusividad.' },
+  contrarian_level:       { jp: '反論',    es: 'Contradicción',Icon: IconContrarian, tooltip: 'Tendencia a llevar la contraria o cuestionar lo que se le dice. Alto = rebate casi por defecto.' },
+  patience_level:         { jp: '忍耐',    es: 'Paciencia',    Icon: IconPatience,   tooltip: 'Tolerancia ante preguntas repetidas o conversaciones lentas. Bajo = respuestas más cortas e impacientes.' },
+  refusal_chance:         { jp: '拒否',    es: 'Negación',     Icon: IconRefusal,    tooltip: 'Probabilidad de negarse a hacer algo con total frialdad. No filtra por seguridad — es puro carácter.' },
+  helpfulness_level:      { jp: '親切',    es: 'Ayuda',        Icon: IconHelp,       tooltip: 'Cuánto esfuerzo pone en ser útil. Bajo = mínimo indispensable; alto = elabora, propone y anticipa.' },
+  verbosity_level:        { jp: '冗長',    es: 'Verbosidad',   Icon: IconVerbosity,  tooltip: 'Longitud de las respuestas. Bajo = frases sueltas; alto = explicaciones extensas. Modo usuario tiene techo interno.' },
+  melancholy_level:       { jp: '憂鬱',    es: 'Melancolía',   Icon: IconMelancholy, tooltip: 'Tendencia a expresar melancolía o nostalgia. No es tristeza clínica, es un tono contemplativo y oscuro.' },
+  skepticism_level:       { jp: '懐疑',    es: 'Escepticismo', Icon: IconSkepticism, tooltip: 'Propensión a dudar, cuestionar fuentes o pedir evidencia. Alto = recibe casi todo con suspicacia.' },
 };
 
 // ── Slider item ───────────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ interface PersonalitySliderItemProps {
 export const PersonalitySliderItem = memo(function PersonalitySliderItem({
   paramKey, value, onDrag, onCommit,
 }: PersonalitySliderItemProps) {
-  const { jp, es, Icon } = PARAM_META[paramKey];
+  const { jp, es, Icon, tooltip } = PARAM_META[paramKey];
   const pct = Math.round(value * 100);
 
   return (
@@ -65,7 +66,7 @@ export const PersonalitySliderItem = memo(function PersonalitySliderItem({
       <span className={styles.icon}><Icon /></span>
 
       <div className={styles.names}>
-        <span className={styles.nameEs}>{es}</span>
+        <span className={styles.nameEs} title={tooltip}>{es}</span>
         <span className={styles.nameJp}>{jp}</span>
       </div>
 
