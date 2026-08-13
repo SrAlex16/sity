@@ -1,7 +1,5 @@
 import functools
 import random
-import re
-import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -9,7 +7,6 @@ from typing import Any, NamedTuple
 from app.core.order_override import has_direct_order_override
 from app.core.runtime_config import get_runtime_config
 from app.system.allowed_services import get_allowed_systemd_services
-from app.settings.config_loader import load_default_config
 
 _TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "persona_system.md"
 _LOCAL_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "local_persona_system.md"
@@ -40,26 +37,6 @@ def _format_services(services: tuple[str, ...]) -> str:
     return ", ".join(services[:-1]) + " y " + services[-1]
 
 
-# --- Config loaded once at import (A3) ---
-_persona_cfg = load_default_config()
-_refusal_bypass_keywords: frozenset[str] = frozenset(
-    _persona_cfg.get("refusal", {}).get("bypass_keywords", [])
-)
-_trivial_messages: frozenset[str] = frozenset(
-    str(m) for m in _persona_cfg.get("refusal", {}).get("trivial_messages", [])
-)
-
-_RE_STRIP_PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
-
-
-def _normalize_message(text: str) -> str:
-    """Lowercase, remove accents and punctuation, collapse spaces."""
-    text = text.lower()
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    text = _RE_STRIP_PUNCT.sub(" ", text)
-    return " ".join(text.split())
-
 # A4 — order override instruction
 _ORDER_OVERRIDE = (
     "\nORDEN DIRECTA ACTIVA: El usuario ha usado el override 'es una orden'. "
@@ -70,9 +47,22 @@ _ORDER_OVERRIDE = (
 
 # A5 — refusal instructions
 _REFUSAL_ACTIVE = """
-Para esta respuesta, refusal_mode está ACTIVADO. No evalúes si aplicarlo
-— el backend ya lo decidió mediante cálculo de probabilidad. Tu tarea
-es ejecutarlo, no revisarlo.
+Para esta respuesta, refusal_mode está ACTIVADO. No decidas si aplicarlo
+— el backend ya lo calculó. Tu tarea es ejecutarlo, no revisarlo.
+
+COMPRUEBA ESTO PRIMERO — tipo de mensaje:
+Antes de cualquier negativa, determina si el mensaje del usuario es
+realmente una PETICIÓN (pide información concreta, ayuda, o que hagas
+algo concreto). Usa tu propio criterio de comprensión del lenguaje
+para determinarlo — sin depender de palabras exactas.
+Si el mensaje es un saludo, una confirmación trivial, un agradecimiento,
+o cualquier mensaje sin contenido real de petición, responde con
+normalidad y tu personalidad habitual, SIN aplicar ninguna negativa,
+independientemente del cálculo de refusal_mode.
+Ejemplos de mensajes NO sujetos a refusal_mode: "Hola", "Ok",
+"Muy buenas", "genial gracias!!", "vale perfecto entonces", "ya".
+
+Solo aplica refusal_mode si el mensaje contiene una PETICIÓN real.
 
 Reglas de ejecución de refusal_mode:
 - NO respondas directamente a la petición principal.
@@ -659,14 +649,6 @@ class PersonaEngine:
 
     def _should_refuse(self, user_message: str, refusal_chance: float) -> bool:
         if has_direct_order_override(user_message):
-            return False
-
-        normalized = user_message.lower()
-
-        if any(keyword in normalized for keyword in _refusal_bypass_keywords):
-            return False
-
-        if _normalize_message(user_message) in _trivial_messages:
             return False
 
         if refusal_chance <= 0:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.persona_engine import _refusal_bypass_keywords, PersonaEngine, _TEMPLATE_PATH
+from app.core.persona_engine import PersonaEngine, _TEMPLATE_PATH, _REFUSAL_ACTIVE
 from app.settings.settings_service import CANONICAL_PERSONALITY
 
 
@@ -81,16 +81,6 @@ def test_template_no_hardcoded_service(template_source: str) -> None:
 # 3. _should_refuse — deterministic paths                             #
 # ------------------------------------------------------------------ #
 
-@pytest.mark.parametrize("kw", ["seguridad", "debug", "logs", "configuración", "personalidad", "error"])
-def test_spot_critical_keywords_block_refusal(engine: PersonaEngine, kw: str) -> None:
-    assert not engine._should_refuse(kw, 1.0), f"Critical keyword {kw!r} must block refusal_mode"
-
-
-@pytest.mark.parametrize("kw", sorted(_refusal_bypass_keywords))
-def test_all_critical_keywords_block_refusal(engine: PersonaEngine, kw: str) -> None:
-    assert not engine._should_refuse(kw, 1.0), f"bypass keyword {kw!r} must block refusal_mode"
-
-
 def test_order_override_blocks_refusal(engine: PersonaEngine) -> None:
     assert not engine._should_refuse("es una orden hazlo", 1.0)
 
@@ -103,40 +93,11 @@ def test_refusal_chance_one_always_refuses(engine: PersonaEngine) -> None:
     assert engine._should_refuse("cuéntame algo trivial", 1.0)
 
 
-@pytest.mark.parametrize("msg", [
-    "Hola",
-    "hola",
-    "¡Hola!",
-    "Hey",
-    "Ok",
-    "ok",
-    "Ok.",
-    "Vale",
-    "vale!",
-    "Gracias",
-    "gracias!",
-    "Buenas",
-    "Buenas noches",
-    "Sí",
-    "No",
-    "Bien",
-    "Perfecto",
-    "Genial",
-    "Entendido",
-    "Claro",
-    "De acuerdo",
-    "Venga",
-    "Ya",
-])
-def test_trivial_messages_block_refusal(engine: PersonaEngine, msg: str) -> None:
-    assert not engine._should_refuse(msg, 1.0), (
-        f"Trivial message {msg!r} must never trigger refusal_mode"
-    )
-
-
-def test_real_request_can_trigger_refusal(engine: PersonaEngine) -> None:
-    assert engine._should_refuse("cuéntame algo interesante", 1.0)
-    assert engine._should_refuse("dime la capital de Francia", 1.0)
+def test_refusal_chance_one_always_refuses_on_any_message(engine: PersonaEngine) -> None:
+    # _should_refuse is purely probabilistic — the model decides about trivial messages
+    # via the natural language instruction in _REFUSAL_ACTIVE, not via Python logic.
+    assert engine._should_refuse("Hola", 1.0)
+    assert engine._should_refuse("Ok", 1.0)
 
 
 # ------------------------------------------------------------------ #
@@ -147,10 +108,9 @@ def test_refusal_override_true(engine: PersonaEngine) -> None:
     result = engine.build_persona_prompt({}, "hola", refusal_mode_override=True)
     assert result.refusal_mode is True
     assert "refusal_mode está ACTIVADO" in result.system_prompt
-    # Must NOT contain any language giving the model discretion to override.
-    assert "disponible" not in result.system_prompt.split("refusal_mode")[1][:50]
-    assert "evalúa" not in result.system_prompt
+    # Must NOT give the model opt-out discretion over refusal itself.
     assert "Esta decisión es tuya" not in result.system_prompt
+    assert "si quieres aplicarlo" not in result.system_prompt
 
 
 def test_refusal_override_false_suppresses_refusal(engine: PersonaEngine) -> None:
@@ -196,14 +156,22 @@ def test_refusal_chance_half_is_probabilistic(engine: PersonaEngine) -> None:
 
 
 def test_refusal_active_prompt_is_unconditional(engine: PersonaEngine) -> None:
-    """When refusal_mode=True, the prompt must not give the model discretion."""
+    """When refusal_mode=True, the prompt must not give the model opt-out discretion."""
     result = engine.build_persona_prompt({}, "hola", refusal_mode_override=True)
     prompt = result.system_prompt
     assert "ACTIVADO" in prompt
-    assert "evalúa" not in prompt
     assert "Esta decisión es tuya" not in prompt
     assert "no obligatorio" not in prompt
-    assert "disponible" not in prompt.split("ACTIVADO")[0].split("refusal")[-1]
+    assert "si quieres aplicarlo" not in prompt
+
+
+def test_refusal_active_has_trivial_message_instruction(engine: PersonaEngine) -> None:
+    """_REFUSAL_ACTIVE must instruct the model to skip refusal for trivial messages."""
+    assert "PETICIÓN" in _REFUSAL_ACTIVE
+    assert "saludo" in _REFUSAL_ACTIVE
+    assert "confirmación trivial" in _REFUSAL_ACTIVE
+    assert "agradecimiento" in _REFUSAL_ACTIVE
+    assert "criterio" in _REFUSAL_ACTIVE
 
 
 # ------------------------------------------------------------------ #
