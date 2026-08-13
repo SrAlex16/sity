@@ -7,6 +7,13 @@ here as a named function so the route handler stays focused on flow control.
 from __future__ import annotations
 
 from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
+
+__all__ = [
+    "local_tool_response",
+    "micro_reaction_response",
+    "ai_final_response",
+    "refusal_response",
+]
 from app.cortex.schemas import AIResponse
 
 
@@ -90,6 +97,41 @@ def micro_reaction_response(
 # ---------------------------------------------------------------------------
 # Pattern 4: final AI response (after optional tool round-trip)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Pattern 5: structural refusal (Haiku generates refusal, main model bypassed)
+# ---------------------------------------------------------------------------
+
+def refusal_response(
+    *,
+    trace_id: str,
+    text: str,
+    daily_used: int,
+    daily_budget: int,
+) -> ChatMessageResponse:
+    """Response returned when the structural refusal path handles the turn."""
+    return ChatMessageResponse(
+        ok=True,
+        trace_id=trace_id,
+        text=text,
+        provider="haiku_refusal",
+        model="claude-haiku-4-5-20251001",
+        fallback_used=False,
+        error_type=None,
+        usage=UsageSummary(
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            daily_used_tokens=daily_used,
+            daily_budget_tokens=daily_budget,
+            daily_ratio=round(daily_used / daily_budget, 4) if daily_budget else 0.0,
+        ),
+        warnings=[],
+        personality_updated=False,
+        updated_parameter=None,
+        updated_parameters=[],
+    )
+
 
 def ai_final_response(
     *,

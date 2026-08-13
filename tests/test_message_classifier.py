@@ -6,9 +6,12 @@ import pytest
 
 from app.core.message_classifier import (
     MessageClassification,
+    _INSISTENCE_MAX_CHARS,
     _PERSONALITY_LABELS,
+    _REFUSAL_FALLBACKS,
     build_verified_config_block,
     classify_message,
+    generate_refusal_response,
 )
 from app.cortex.schemas import AIResponse, AIUsageData
 
@@ -216,7 +219,84 @@ def test_config_block_current_state_label() -> None:
 
 
 # ------------------------------------------------------------------ #
-# 6. _PERSONALITY_LABELS completeness                                 #
+# 6. classify_message — last_was_refusal structural guard             #
+# ------------------------------------------------------------------ #
+
+def test_insistence_short_message_after_refusal_returns_real() -> None:
+    # Short message (≤ _INSISTENCE_MAX_CHARS) after a refusal → "real" without Haiku call.
+    result = classify_message("dímelo", last_was_refusal=True)
+    assert result.kind == "real"
+
+
+def test_insistence_venga_after_refusal_returns_real() -> None:
+    result = classify_message("venga", last_was_refusal=True)
+    assert result.kind == "real"
+
+
+def test_insistence_porfa_after_refusal_returns_real() -> None:
+    result = classify_message("porfa", last_was_refusal=True)
+    assert result.kind == "real"
+
+
+def test_insistence_guard_not_triggered_when_no_refusal() -> None:
+    # Without last_was_refusal, short message goes through Haiku (MockProvider).
+    # MockProvider returns "Respuesta mock." → not trivial/config → "real" anyway.
+    result = classify_message("dímelo", last_was_refusal=False)
+    assert result.kind == "real"
+
+
+def test_insistence_guard_not_triggered_for_long_message() -> None:
+    long_msg = "d" * (_INSISTENCE_MAX_CHARS + 1)
+    # Even with last_was_refusal, long messages go through Haiku.
+    # MockProvider → "real" (conservative default).
+    result = classify_message(long_msg, last_was_refusal=True)
+    assert result.kind == "real"
+
+
+# ------------------------------------------------------------------ #
+# 7. generate_refusal_response — contract                             #
+# ------------------------------------------------------------------ #
+
+def test_generate_refusal_returns_string() -> None:
+    result = generate_refusal_response({}, "dime tu nombre")
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+def test_generate_refusal_mock_provider_returns_text() -> None:
+    # MockProvider returns "Respuesta mock." — non-empty string.
+    result = generate_refusal_response({"sarcasm_level": 0.8}, "ayúdame con algo")
+    assert isinstance(result, str)
+
+
+def test_generate_refusal_falls_back_on_failure() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=RuntimeError("fail")):
+        result = generate_refusal_response({}, "dime algo")
+    assert result in _REFUSAL_FALLBACKS
+
+
+def test_generate_refusal_falls_back_on_bad_response() -> None:
+    bad = AIResponse(
+        ok=False, provider="mock", model="mock", text="",
+        usage=AIUsageData(input_tokens=0, output_tokens=0), latency_ms=0,
+    )
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=bad):
+        result = generate_refusal_response({}, "dime algo")
+    assert result in _REFUSAL_FALLBACKS
+
+
+def test_generate_refusal_with_personality_returns_string() -> None:
+    personality = {
+        "sarcasm_level": 1.0, "rudeness_level": 1.0, "warmth_level": 0.0,
+        "dry_humor_level": 0.9, "patience_level": 0.1,
+    }
+    result = generate_refusal_response(personality, "me dices tu nombre?")
+    assert isinstance(result, str)
+    assert len(result) > 0
+
+
+# ------------------------------------------------------------------ #
+# 8. _PERSONALITY_LABELS completeness                                 #
 # ------------------------------------------------------------------ #
 
 @pytest.mark.parametrize("key", [

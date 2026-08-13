@@ -39,7 +39,7 @@ from app.core.realtime_events import (
     publish_event_sync,
     subscribe,
 )
-from app.core.refusal_tracker import get_last_refusal
+from app.core.refusal_tracker import get_last_refusal, set_last_refusal
 
 from app.memory.db import get_session
 from app.memory.models import ChatMessage
@@ -343,7 +343,12 @@ def _chat_message_inner(
     _classification = None
     if persona_decision.refusal_mode:
         from app.core.message_classifier import classify_message
-        _classification = classify_message(request.message, trace_id=ctx.trace_id)
+        _last_refusal_data = get_last_refusal()
+        _classification = classify_message(
+            request.message,
+            trace_id=ctx.trace_id,
+            last_was_refusal=_last_refusal_data is not None,
+        )
         if not _classification.is_real_request:
             persona_decision = PersonaEngine().build_persona_prompt(
                 ctx.personality, request.message,
@@ -362,7 +367,9 @@ def _chat_message_inner(
     if _upgrade_context:
         persona_prompt += f"\n\n{_upgrade_context}"
 
-    if has_direct_order_override(request.message):
+    # Extract override flag once — used both for prompt injection and refusal gate.
+    _has_override = has_direct_order_override(request.message)
+    if _has_override:
         last = get_last_refusal()
         if last:
             persona_prompt += (
@@ -376,6 +383,56 @@ def _chat_message_inner(
     pre_ai = ChatPreAIFlow(session, ctx)
     if response := pre_ai.try_handle(request):
         return response
+
+    # STRUCTURAL REFUSAL: when refusal_mode is active for a real (non-config) request
+    # and no valid override exists, the main model never sees this turn.
+    # Haiku generates a personality-driven refusal directly.
+    if (
+        persona_decision.refusal_mode
+        and _classification is not None
+        and _classification.is_real_request
+        and not _classification.is_config_query
+        and not _has_override
+    ):
+        from app.core.message_classifier import generate_refusal_response
+        from app.chat.chat_persistence import get_today_token_usage
+        from app.chat.response_factory import refusal_response
+
+        refusal_text = generate_refusal_response(
+            ctx.personality, request.message, trace_id=ctx.trace_id
+        )
+        ctx.persistence.save(
+            role="user",
+            text=request.message,
+            trace_id=ctx.trace_id,
+            input_mode=request.input_mode,
+            voice_transcript_original=request.voice_transcript_original,
+            source_channel=request.source_channel,
+        )
+        ctx.persistence.save(
+            role="sity",
+            text=refusal_text,
+            trace_id=ctx.trace_id,
+            source_channel=request.source_channel,
+        )
+        set_last_refusal(
+            user_message=request.message,
+            assistant_message=refusal_text,
+            trace_id=ctx.trace_id,
+        )
+        write_log(
+            level="INFO",
+            module="chat",
+            event="structural_refusal_generated",
+            trace_id=ctx.trace_id,
+            payload={"message_length": len(request.message), "refusal_length": len(refusal_text)},
+        )
+        return refusal_response(
+            trace_id=ctx.trace_id,
+            text=refusal_text,
+            daily_used=get_today_token_usage(session),
+            daily_budget=ctx.daily_budget,
+        )
 
     prep = build_ai_turn_prep(
         session=session,

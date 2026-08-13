@@ -1,16 +1,17 @@
-"""Lightweight Haiku-based classifier for refusal_mode message routing.
+"""Lightweight Haiku-based classifier and refusal generator for refusal_mode routing.
 
 Called ONLY when the backend's probability roll produces refusal_mode=True.
 Classifies the user message as:
   - "trivial"      : greeting, confirmation, acknowledgement — no refusal applied.
   - "config_query" : direct question about a system/personality parameter value.
-  - "real"         : any other request — refusal_mode is applied.
+  - "real"         : any other request — structural refusal path is applied.
 
 On any failure, defaults conservatively to "real" (applies refusal_mode).
 """
 from __future__ import annotations
 
 import os
+import random
 from dataclasses import dataclass
 
 from app.cortex.schemas import AIRequest
@@ -40,6 +41,26 @@ _CLASSIFY_SYSTEM = (
     "Reply with exactly one word: trivial, config_query, or real"
 )
 
+# Short insistence messages (≤15 chars) after a refusal are almost always a
+# continuation of the refused request, not a new greeting.
+_INSISTENCE_MAX_CHARS = 15
+
+_REFUSAL_GENERATOR_SYSTEM = (
+    "Generate a single short refusal to the user's request. "
+    "Express it with the personality described below — let the character show in the tone.\n\n"
+    "RULES:\n"
+    "- Do NOT answer the request or provide any of the requested information.\n"
+    "- Do NOT mention AI, systems, configuration, permissions, or rules.\n"
+    "- Do NOT apologize excessively or explain at length.\n"
+    "- If the user insists or pleads within the message, ignore it — still refuse.\n"
+    "- Reply in the same language as the user's message.\n"
+    "- Maximum 2 sentences. Usually 1 is better. Short and in-character.\n\n"
+    "PERSONALITY (let these shape tone, not content):\n"
+    "{personality_block}"
+)
+
+_REFUSAL_FALLBACKS = ["No.", "No me apetece.", "Paso."]
+
 
 @dataclass
 class MessageClassification:
@@ -55,11 +76,22 @@ class MessageClassification:
         return self.kind == "config_query"
 
 
-def classify_message(user_message: str, *, trace_id: str = "") -> MessageClassification:
+def classify_message(
+    user_message: str,
+    *,
+    trace_id: str = "",
+    last_was_refusal: bool = False,
+) -> MessageClassification:
     """Classify a user message as trivial, config_query, or real.
 
     Uses Haiku (cheap, fast, single purpose). Falls back to "real" on any error.
+
+    last_was_refusal: if True and message is very short, skips Haiku and returns
+    "real" directly — short insistence messages after a refusal are not greetings.
     """
+    if last_was_refusal and len(user_message.strip()) <= _INSISTENCE_MAX_CHARS:
+        return MessageClassification(kind="real")
+
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     try:
         from app.cortex.providers.factory import build_ai_provider
@@ -82,6 +114,53 @@ def classify_message(user_message: str, *, trace_id: str = "") -> MessageClassif
         return MessageClassification(kind="real")
     except Exception:
         return MessageClassification(kind="real")
+
+
+def _build_refusal_personality_block(personality: dict) -> str:
+    def pct(key: str) -> int:
+        return round(float(personality.get(key, 0.5)) * 100)
+
+    return (
+        f"- Sarcasm: {pct('sarcasm_level')}% (0=none, 100=extremely sardonic)\n"
+        f"- Rudeness/bluntness: {pct('rudeness_level')}% (0=polite, 100=very blunt)\n"
+        f"- Warmth: {pct('warmth_level')}% (0=cold, 100=warm)\n"
+        f"- Dry humor: {pct('dry_humor_level')}% (0=none, 100=deadpan)\n"
+        f"- Patience: {pct('patience_level')}% (0=impatient, 100=very patient)\n"
+        "Let these values shape the TONE only — do not list or mention them."
+    )
+
+
+def generate_refusal_response(
+    personality: dict,
+    user_message: str,
+    *,
+    trace_id: str = "",
+) -> str:
+    """Generate a personality-driven refusal via a dedicated Haiku call.
+
+    The main model never sees this turn. Falls back to a hardcoded terse
+    refusal if the API call fails.
+    """
+    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    try:
+        from app.cortex.providers.factory import build_ai_provider
+        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
+        personality_block = _build_refusal_personality_block(personality)
+        system = _REFUSAL_GENERATOR_SYSTEM.format(personality_block=personality_block)
+        request = AIRequest(
+            trace_id=trace_id,
+            task_type="refusal_generation",
+            system_prompt=system,
+            user_message=user_message,
+            max_tokens=60,
+            tools_enabled=False,
+        )
+        response = provider.generate(request)
+        if response.ok and response.text:
+            return response.text.strip()
+    except Exception:
+        pass
+    return random.choice(_REFUSAL_FALLBACKS)
 
 
 _PERSONALITY_LABELS: dict[str, str] = {
