@@ -19,7 +19,6 @@ function IconHelp()       { return <svg viewBox="0 0 24 24" fill="none" stroke="
 function IconVerbosity()  { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="17" y2="12"/><line x1="3" y1="18" x2="13" y2="18"/></svg>; }
 function IconMelancholy() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>; }
 function IconSkepticism() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line x1="3" y1="3" x2="21" y2="21"/></svg>; }
-function IconLie()        { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/><line x1="2" y1="2" x2="22" y2="22"/></svg>; }
 
 type K = keyof PersonalitySettings;
 
@@ -45,7 +44,6 @@ export const PARAM_META: Record<K, ParamMeta> = {
   verbosity_level:        { jp: '冗長',    es: 'Verbosidad',   Icon: IconVerbosity,  tooltip: 'Longitud de las respuestas. Bajo = frases sueltas; alto = explicaciones extensas. Modo usuario tiene techo interno.' },
   melancholy_level:       { jp: '憂鬱',    es: 'Melancolía',   Icon: IconMelancholy, tooltip: 'Tendencia a expresar melancolía o nostalgia. No es tristeza clínica, es un tono contemplativo y oscuro.' },
   skepticism_level:       { jp: '懐疑',    es: 'Escepticismo', Icon: IconSkepticism, tooltip: 'Propensión a dudar, cuestionar fuentes o pedir evidencia. Alto = recibe casi todo con suspicacia.' },
-  lie_chance:             { jp: '嘘',      es: 'Mentira',      Icon: IconLie,        tooltip: 'Probabilidad de que incluya información falsa en su respuesta. No aplica a configuración, seguridad ni resultados de herramientas.' },
 };
 
 // ── Slider item ───────────────────────────────────────────────────────────────

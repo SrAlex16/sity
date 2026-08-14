@@ -31,13 +31,13 @@ _CLASSIFY_SYSTEM = (
     "message with no actual request ('Hola', 'Ok', 'Gracias', 'Muy buenas', "
     "'genial gracias', 'vale perfecto', 'buenas', 'buenos días', 'ya', 'sí', 'no').\n"
     "- config_query: the user asks for the current NUMERICAL VALUE of one of the "
-    "15 personality slider parameters SPECIFICALLY: sarcasm_level, rudeness_level, "
+    "14 personality slider parameters SPECIFICALLY: sarcasm_level, rudeness_level, "
     "warmth_level, honesty_level, initiative_level, dry_humor_level, "
     "frialdad_afectiva_level, contrarian_level, patience_level, verbosity_level, "
-    "helpfulness_level, refusal_chance, melancholy_level, skepticism_level, "
-    "lie_chance. Examples: '¿cuánto está el sarcasmo?', 'dime la probabilidad de "
-    "negación', 'en qué porcentaje está la verbosidad', 'qué nivel de humor seco "
-    "tienes'. NEVER use config_query for anything else.\n"
+    "helpfulness_level, refusal_chance, melancholy_level, skepticism_level. "
+    "Examples: '¿cuánto está el sarcasmo?', 'dime la probabilidad de negación', "
+    "'en qué porcentaje está la verbosidad', 'qué nivel de humor seco tienes'. "
+    "NEVER use config_query for anything else.\n"
     "- real: ANY other message, including questions about the assistant's name, "
     "identity, nature, the current time, general knowledge, or anything not in the "
     "15 parameters above. Examples (all real, NEVER config_query): "
@@ -73,27 +73,6 @@ _REFUSAL_GENERATOR_SYSTEM = (
 )
 
 _REFUSAL_FALLBACKS = ["No.", "No me apetece.", "Paso."]
-
-_LIE_GENERATOR_SYSTEM = (
-    "The system has decided that you must respond with false or invented information "
-    "for this specific question — this is non-negotiable and already decided by the backend. "
-    "Your job is only to execute it convincingly.\n\n"
-    "The user asked: \"{user_message}\"\n\n"
-    "RULES:\n"
-    "- Respond with false or invented information specifically about what the user asked.\n"
-    "- The invented answer must sound plausible, natural, and confident.\n"
-    "- NEVER reveal that you are lying or that the information is invented.\n"
-    "- NEVER use phrases like 'actually', 'to be honest', 'I'll say that...', "
-    "'let me make up...', or any signal that this is false.\n"
-    "- Present the invented information as real fact.\n"
-    "- Do NOT mention AI, systems, configuration, or backend decisions.\n"
-    "- Reply in the same language as the user's message.\n"
-    "- Maximum 2 sentences. Usually 1 is enough.\n\n"
-    "PERSONALITY (shapes tone and style only — not what to lie about):\n"
-    "{personality_block}"
-)
-
-_LIE_FALLBACKS = ["No recuerdo.", "Ahora mismo no tengo esa información."]
 
 
 @dataclass
@@ -184,28 +163,16 @@ def _build_refusal_personality_block(personality: dict) -> str:
     )
 
 
-_REFUSAL_INVENTED_REASON_NOTE = (
-    "\n\nNOTA DE SOLAPAMIENTO: El motivo que des para negarte puede ser completamente "
-    "inventado o ficticio — no tienes que dar el motivo real. La negativa en sí "
-    "(no responder a la petición) debe mantenerse."
-)
-
-
 def generate_refusal_response(
     personality: dict,
     user_message: str,
     *,
     trace_id: str = "",
-    allow_invented_reason: bool = False,
 ) -> str:
     """Generate a personality-driven refusal via a dedicated Haiku call.
 
     The main model never sees this turn. Falls back to a hardcoded terse
     refusal if the API call fails.
-
-    allow_invented_reason: if True (overlap case — refusal+lie both active and
-    second dice chose this path), Haiku may invent the reason for refusing.
-    The refusal itself must still stand.
     """
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     try:
@@ -217,8 +184,6 @@ def generate_refusal_response(
             personality_block=personality_block,
             time_fact=time_fact,
         )
-        if allow_invented_reason:
-            system += _REFUSAL_INVENTED_REASON_NOTE
         request = AIRequest(
             trace_id=trace_id,
             task_type="refusal_generation",
@@ -233,42 +198,6 @@ def generate_refusal_response(
     except Exception:
         pass
     return random.choice(_REFUSAL_FALLBACKS)
-
-
-def generate_lie_response(
-    personality: dict,
-    user_message: str,
-    *,
-    trace_id: str = "",
-) -> str:
-    """Generate a personality-driven lying response via a dedicated Haiku call.
-
-    The main model never sees this turn. Falls back to a generic evasion if the
-    API call fails (rare).
-    """
-    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
-    try:
-        from app.cortex.providers.factory import build_ai_provider
-        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
-        personality_block = _build_refusal_personality_block(personality)
-        system = _LIE_GENERATOR_SYSTEM.format(
-            user_message=user_message,
-            personality_block=personality_block,
-        )
-        request = AIRequest(
-            trace_id=trace_id,
-            task_type="lie_generation",
-            system_prompt=system,
-            user_message=user_message,
-            max_tokens=80,
-            tools_enabled=False,
-        )
-        response = provider.generate(request)
-        if response.ok and response.text:
-            return response.text.strip()
-    except Exception:
-        pass
-    return random.choice(_LIE_FALLBACKS)
 
 
 _PERSONALITY_LABELS: dict[str, str] = {
@@ -286,7 +215,6 @@ _PERSONALITY_LABELS: dict[str, str] = {
     "refusal_chance":          "Probabilidad de negación",
     "melancholy_level":        "Melancolía",
     "skepticism_level":        "Escepticismo",
-    "lie_chance":              "Probabilidad de mentira",
 }
 
 

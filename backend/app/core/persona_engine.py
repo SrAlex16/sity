@@ -234,14 +234,6 @@ _LEVELS_SKEPTICISM = _Levels(
     very_high = "- Escepticismo muy alto: cuestiona sistemáticamente afirmaciones no verificadas; exige evidencia o contexto antes de aceptar datos relevantes.",
 )
 
-_LEVELS_LIE = _Levels(
-    very_low  = "",
-    low       = "",
-    mid       = "",
-    high      = "- Mentira alta: si lie_mode se activa, el dato inventado debe sonar convincente, natural y coherente con el contexto.",
-    very_high = "- Mentira muy alta: si lie_mode se activa, construye la información falsa con detalle y coherencia interna.",
-)
-
 # ── Local voice directive levels (12 params — no refusal, verbosity handled separately) ─
 
 _LOC_LEVELS_FRIALDAD = _Levels(
@@ -369,7 +361,6 @@ class PersonaDecision:
     system_prompt: str
     refusal_mode: bool
     tone_snapshot: dict
-    lie_mode: bool = False
 
 
 class PersonaEngine:
@@ -408,8 +399,6 @@ class PersonaEngine:
         refusal           = float(personality.get("refusal_chance",          0.15))
         melancholy        = float(personality.get("melancholy_level",        0.2))
         skepticism        = float(personality.get("skepticism_level",        0.2))
-        lie               = float(personality.get("lie_chance",              0.0))
-
         effective_verbosity = verbosity if is_admin else min(verbosity, _USER_VERBOSITY_CAP)
 
         style_directives = self._build_style_directives(
@@ -427,14 +416,12 @@ class PersonaEngine:
             refusal=refusal,
             melancholy=melancholy,
             skepticism=skepticism,
-            lie=lie,
         )
 
         if refusal_mode_override is not None:
             refusal_mode = refusal_mode_override
         else:
             refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal)
-        lie_mode = self._should_lie(lie)
         order_override_active = has_direct_order_override(user_message)
 
         order_override_instruction = _ORDER_OVERRIDE if order_override_active else ""
@@ -486,7 +473,6 @@ class PersonaEngine:
             "verbosity_pct":         pct(effective_verbosity),
             "melancholy_pct":        pct(melancholy),
             "skepticism_pct":        pct(skepticism),
-            "lie_pct":               pct(lie),
             "style_directives":           style_directives,
             "refusal_instruction":        refusal_instruction,
             "order_override_instruction": order_override_instruction,
@@ -511,19 +497,15 @@ class PersonaEngine:
             "helpfulness":       round(helpfulness, 4),
             "melancholy":        round(melancholy, 4),
             "skepticism":        round(skepticism, 4),
-            "lie":               round(lie, 4),
             # "active" = el backend calculó refusal_mode=True para este turno.
             # El modelo ejecuta la negativa; no tiene criterio para anularla.
             "refusal_mode":      "active" if refusal_mode else "normal",
-            # lie_mode se inyecta en routes_chat.py cuando active=True y no hay zona protegida.
-            "lie_mode":          "active" if lie_mode else "normal",
             "persona_profile":   "base",
         }
 
         return PersonaDecision(
             system_prompt=system_prompt,
             refusal_mode=refusal_mode,
-            lie_mode=lie_mode,
             tone_snapshot=tone_snapshot,
         )
 
@@ -544,7 +526,6 @@ class PersonaEngine:
         refusal: float,
         melancholy: float,
         skepticism: float,
-        lie: float,
     ) -> str:
         directives = [
             _level_directive(sarcasm,           _LEVELS_SARCASM),
@@ -561,7 +542,6 @@ class PersonaEngine:
             _level_directive(verbosity,         _LEVELS_VERBOSITY),
             _level_directive(melancholy,        _LEVELS_MELANCHOLY),
             _level_directive(skepticism,        _LEVELS_SKEPTICISM),
-            _level_directive(lie,               _LEVELS_LIE),
         ]
         return "\n".join(d for d in directives if d)
 
@@ -687,12 +667,3 @@ class PersonaEngine:
 
         return random.random() < refusal_chance
 
-    @staticmethod
-    def _should_lie(lie_chance: float) -> bool:
-        # No has_direct_order_override equivalent — "es una orden" overrides refusal (a blocking
-        # behavior), but it has no semantic counterpart for lying (a modification of how to respond).
-        if lie_chance <= 0:
-            return False
-        if lie_chance >= 1:
-            return True
-        return random.random() < lie_chance

@@ -15,7 +15,6 @@ export interface PersonalitySettings {
   verbosity_level: number;
   melancholy_level: number;
   skepticism_level: number;
-  lie_chance: number;
 }
 
 export function usePersonality() {

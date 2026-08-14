@@ -391,14 +391,14 @@ def test_personality_labels_contains_key(key: str) -> None:
 from app.core.message_classifier import _CLASSIFY_SYSTEM  # noqa: E402
 
 
-def test_classify_system_lists_all_15_personality_params() -> None:
-    """config_query must enumerate the exact 15 personality parameters."""
+def test_classify_system_lists_all_14_personality_params() -> None:
+    """config_query must enumerate the exact 14 personality parameters."""
     expected_params = [
         "sarcasm_level", "rudeness_level", "warmth_level", "honesty_level",
         "initiative_level", "dry_humor_level", "frialdad_afectiva_level",
         "contrarian_level", "patience_level", "verbosity_level",
         "helpfulness_level", "refusal_chance", "melancholy_level",
-        "skepticism_level", "lie_chance",
+        "skepticism_level",
     ]
     for param in expected_params:
         assert param in _CLASSIFY_SYSTEM, (

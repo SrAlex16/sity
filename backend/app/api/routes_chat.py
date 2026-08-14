@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import random
 
 from datetime import datetime, timezone
 
@@ -338,12 +337,12 @@ def _chat_message_inner(
 
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin)
 
-    # Classify the message when refusal_mode OR lie_mode is active:
-    # - trivial messages bypass both modes entirely.
-    # - config_query bypasses refusal_mode and suppresses lie injection.
+    # Classify the message when refusal_mode is active:
+    # - trivial messages bypass refusal_mode entirely.
+    # - config_query bypasses refusal_mode; main model answers with verified values.
     # This is a structural check — the main model has no vote on this decision.
     _classification = None
-    if persona_decision.refusal_mode or persona_decision.lie_mode:
+    if persona_decision.refusal_mode:
         from app.core.message_classifier import classify_message
         _last_refusal_data = get_last_refusal(ctx.session_id)
         _classification = classify_message(
@@ -352,7 +351,7 @@ def _chat_message_inner(
             last_was_refusal=_last_refusal_data is not None,
         )
         if not _classification.is_real_request:
-            # Trivial message — reset refusal_mode; lie_mode has no effect either.
+            # Trivial message — reset refusal_mode.
             persona_decision = PersonaEngine().build_persona_prompt(
                 ctx.personality, request.message,
                 refusal_mode_override=False,
@@ -391,11 +390,6 @@ def _chat_message_inner(
     # STRUCTURAL REFUSAL: when refusal_mode is active for a real (non-config) request
     # and no valid override exists, the main model never sees this turn.
     # Haiku generates a personality-driven refusal directly.
-    #
-    # OVERLAP (refusal + lie both active): second deterministic dice decides —
-    #   (a) random.random() >= 0.5 → pure structural refusal (Haiku)
-    #   (b) random.random() <  0.5 → structural refusal with invented reason (Haiku)
-    # Both branches are fully structural; the main model has no vote.
     if (
         persona_decision.refusal_mode
         and _classification is not None
@@ -407,10 +401,8 @@ def _chat_message_inner(
         from app.chat.chat_persistence import get_today_token_usage
         from app.chat.response_factory import refusal_response
 
-        _invented_reason = persona_decision.lie_mode and random.random() < 0.5
         refusal_text = generate_refusal_response(
             ctx.personality, request.message, trace_id=ctx.trace_id,
-            allow_invented_reason=_invented_reason,
         )
         ctx.persistence.save(
             role="user",
@@ -440,7 +432,6 @@ def _chat_message_inner(
             payload={
                 "message_length": len(request.message),
                 "refusal_length": len(refusal_text),
-                "lie_overlap": _invented_reason,
             },
         )
         return refusal_response(
@@ -453,55 +444,6 @@ def _chat_message_inner(
     # Non-refusal turn: clear the per-session refusal state so the next turn
     # does not receive stale "last was refusal" context.
     clear_last_refusal(ctx.session_id)
-
-    # STRUCTURAL LIE: when lie_mode is active for a real (non-config) request,
-    # Haiku generates a lying response directly. The main model never processes
-    # this turn — same principle as structural refusal.
-    # Protected zones (config_query, trivial) are never reached here.
-    if (
-        persona_decision.lie_mode
-        and _classification is not None
-        and _classification.is_real_request
-        and not _classification.is_config_query
-    ):
-        from app.core.message_classifier import generate_lie_response
-        from app.chat.chat_persistence import get_today_token_usage
-        from app.chat.response_factory import lie_response
-
-        lie_text = generate_lie_response(
-            ctx.personality, request.message, trace_id=ctx.trace_id,
-        )
-        ctx.persistence.save(
-            role="user",
-            text=request.message,
-            trace_id=ctx.trace_id,
-            input_mode=request.input_mode,
-            voice_transcript_original=request.voice_transcript_original,
-            source_channel=request.source_channel,
-        )
-        ctx.persistence.save(
-            role="sity",
-            text=lie_text,
-            trace_id=ctx.trace_id,
-            source_channel=request.source_channel,
-        )
-        write_log(
-            level="INFO",
-            module="chat",
-            event="structural_lie_generated",
-            trace_id=ctx.trace_id,
-            payload={
-                "message_length": len(request.message),
-                "lie_length": len(lie_text),
-                "lie_chance": float(ctx.personality.get("lie_chance", 0.0)),
-            },
-        )
-        return lie_response(
-            trace_id=ctx.trace_id,
-            text=lie_text,
-            daily_used=get_today_token_usage(session),
-            daily_budget=ctx.daily_budget,
-        )
 
     prep = build_ai_turn_prep(
         session=session,

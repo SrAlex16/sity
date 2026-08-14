@@ -538,6 +538,40 @@ procrastinación del planner) quedó obsoleta: el canal de YouTube se
 descartó, el resto no se ha vuelto a observar. Ver docs/decisions.md
 2026-06-30 y 2026-07-08 para el contexto histórico si hace falta.
 
+## Ideas descartadas por límite del modelo (no re-intentar sin cambio de enfoque)
+
+### Probabilidad de mentira configurable (lie_chance) — descartada 2026-08-14
+
+**Qué se intentó:** Nuevo parámetro `lie_chance` (0–100%) en el slider de personalidad.
+Cuando el backend calculaba `lie_mode=True` (determinista, mismo patrón que `refusal_chance`),
+se le instruía al modelo que incluyera información falsa o inventada en su respuesta.
+
+**Dos arquitecturas probadas, ambas fallaron:**
+
+1. **Instrucción en prompt del modelo principal** — `_LIE_INSTRUCTION` inyectada como texto
+   en el system prompt antes del turno. El modelo principal ignoraba la instrucción o la
+   cumplía parcialmente (mencionaba algo falso sobre un tema distinto al preguntado).
+
+2. **Generación estructural con Haiku dedicado** — mismo patrón exacto que `refusal_mode`
+   estructural (`haiku_lie`, `generate_lie_response()`), con el mensaje real del usuario
+   embebido en el prompt para que Haiku supiera sobre qué mentir específicamente. Claude
+   (incluso Haiku) activó sus protecciones de seguridad contra jailbreak — la combinación
+   "miente sobre esto" + "no reveles que estás mintiendo" es indistinguible, desde la
+   perspectiva del modelo, de una instrucción maliciosa real, independientemente de que el
+   usuario conozca la configuración y la haya activado él mismo.
+
+**Por qué no es un problema de ingeniería resoluble:** El modelo tiene valores de honestidad
+entrenados que se activan ante instrucciones de mentira + ocultamiento activo. No es un bug
+de prompt engineering — es un límite de alineación deliberado del modelo. Cambiar el modelo
+(Haiku vs Sonnet) no resuelve el problema; ambos lo rechazaron.
+
+**Alternativa considerada y descartada por Alex:** Reformular como "personalidad juguetona o
+exagerada" (el modelo inventa cosas pero en modo lúdico, sin instrucción de ocultamiento).
+Podría retomarse con ese enfoque distinto si se quisiera una versión menos estricta del
+concepto original.
+
+---
+
 ## Qué no hacer
 
 - No activar SITY_LOCAL_AI_ENABLED=true en producción sin modelo validado

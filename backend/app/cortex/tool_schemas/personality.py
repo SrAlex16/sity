@@ -15,7 +15,6 @@ PERSONALITY_PARAMETERS = [
     "verbosity_level",
     "melancholy_level",
     "skepticism_level",
-    "lie_chance",
 ]
 
 _ALL_PERSONALITY_PARAMETERS_TEXT = ", ".join(PERSONALITY_PARAMETERS)

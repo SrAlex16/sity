@@ -121,7 +121,7 @@ def test_save_alter_returns_slot_with_name() -> None:
     assert body["slot"] == 2
     assert body["name"] == "Modo noche"
     assert body["is_empty"] is False
-    assert len(body["parameters"]) == 15
+    assert len(body["parameters"]) == 14
 
 
 def test_save_alter_appears_in_list() -> None:

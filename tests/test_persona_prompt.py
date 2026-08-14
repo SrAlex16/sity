@@ -367,68 +367,6 @@ def test_language_override_en_us(engine: PersonaEngine) -> None:
     prompt = engine.build_persona_prompt({}, "hola", language_override="en-US").system_prompt
     assert "American English" in prompt
 
-
-# ------------------------------------------------------------------ #
-# 12. lie_chance — _should_lie, lie_mode, directives                  #
-# ------------------------------------------------------------------ #
-
-def test_lie_chance_zero_never_lies(engine: PersonaEngine) -> None:
-    for _ in range(20):
-        assert not engine._should_lie(0.0)
-
-
-def test_lie_chance_one_always_lies(engine: PersonaEngine) -> None:
-    for _ in range(20):
-        assert engine._should_lie(1.0)
-
-
-def test_lie_chance_zero_produces_lie_mode_false(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt({"lie_chance": 0.0}, "hola")
-    assert result.lie_mode is False
-
-
-def test_lie_chance_one_produces_lie_mode_true(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt({"lie_chance": 1.0}, "hola")
-    assert result.lie_mode is True
-
-
-def test_lie_mode_in_tone_snapshot(engine: PersonaEngine) -> None:
-    active = engine.build_persona_prompt({"lie_chance": 1.0}, "hola")
-    assert active.tone_snapshot["lie_mode"] == "active"
-    inactive = engine.build_persona_prompt({"lie_chance": 0.0}, "hola")
-    assert inactive.tone_snapshot["lie_mode"] == "normal"
-
-
-def test_lie_pct_in_prompt(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt({"lie_chance": 0.5}, "hola")
-    assert "50%" in result.system_prompt
-
-
-def test_lie_high_directive_injected(engine: PersonaEngine) -> None:
-    """lie_chance >= 0.80 injects a Mentira directive; low values do not."""
-    high = engine.build_persona_prompt({"lie_chance": 1.0}, "hola")
-    assert "Mentira" in high.system_prompt
-    low = engine.build_persona_prompt({"lie_chance": 0.0}, "hola")
-    assert "Mentira alta" not in low.system_prompt
-    assert "Mentira muy alta" not in low.system_prompt
-
-
-def test_lie_mode_is_bool(engine: PersonaEngine) -> None:
-    decision = engine.build_persona_prompt({}, "hola")
-    assert isinstance(decision.lie_mode, bool)
-
-
-def test_lie_chance_half_is_probabilistic(engine: PersonaEngine) -> None:
-    results = [engine._should_lie(0.5) for _ in range(1000)]
-    ratio = sum(results) / len(results)
-    assert 0.40 <= ratio <= 0.60, f"Expected ~0.5 ratio, got {ratio:.3f}"
-
-
-def test_canonical_personality_includes_lie_chance() -> None:
-    assert "lie_chance" in CANONICAL_PERSONALITY
-    assert CANONICAL_PERSONALITY["lie_chance"] == 0.0
-
-
 def test_language_override_ja(engine: PersonaEngine) -> None:
     prompt = engine.build_persona_prompt({}, "hola", language_override="ja").system_prompt
     assert "日本語" in prompt

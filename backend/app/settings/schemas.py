@@ -32,7 +32,6 @@ class PersonalitySettings(BaseModel):
     verbosity_level: float = Field(ge=0.0, le=1.0)
     melancholy_level: float = Field(ge=0.0, le=1.0)
     skepticism_level: float = Field(ge=0.0, le=1.0)
-    lie_chance: float = Field(ge=0.0, le=1.0)
 
 
 class PersonalityAdjustRequest(BaseModel):

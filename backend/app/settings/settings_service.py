@@ -23,7 +23,6 @@ PERSONALITY_KEYS = {
     "verbosity_level",
     "melancholy_level",
     "skepticism_level",
-    "lie_chance",
 }
 
 CANONICAL_PERSONALITY: dict[str, float] = {
@@ -41,7 +40,6 @@ CANONICAL_PERSONALITY: dict[str, float] = {
     "helpfulness_level":         0.60,
     "verbosity_level":           0.35,
     "skepticism_level":          0.20,
-    "lie_chance":                0.00,
 }
 
 _DEPRECATED_KEYS = frozenset({

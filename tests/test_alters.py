@@ -5,14 +5,14 @@ Coverage:
   - save_alter stores parameters from a session; list_alters shows filled slot
   - Two users have isolated slot spaces (user_id 1 vs user_id 2)
   - load_alter on empty slot raises ValueError (clear error, no crash)
-  - load_alter applies all 15 values to the session
+  - load_alter applies all 14 values to the session
   - clear_alter empties the slot (row deleted, list_alters shows empty again)
   - rename_alter changes name only (parameters unchanged)
   - copy_alter overwrites destination completely (no leftover from old dest)
   - copy_alter copies the name as well as parameters
   - save_alter overwrites an existing slot (idempotent re-save)
   - slot out of range raises ValueError
-  - set_all_personality applies 15 values to target session without affecting others
+  - set_all_personality applies 14 values to target session without affecting others
   - set_all_personality rejects unknown keys and missing keys
 """
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _make_session() -> Session:
 
 
 def _full_personality(base: float = 0.5) -> dict[str, float]:
-    """Return a complete 15-key personality dict with a uniform base value."""
+    """Return a complete 14-key personality dict with a uniform base value."""
     return {k: round(base, 4) for k in PERSONALITY_KEYS}
 
 
@@ -72,7 +72,7 @@ def test_save_alter_stores_session_personality() -> None:
     assert result["slot"] == 2
     assert result["name"] == "Modo frío"
     assert result["is_empty"] is False
-    assert len(result["parameters"]) == 15
+    assert len(result["parameters"]) == 14
     assert result["parameters"]["sarcasm_level"] == pytest.approx(0.42)
 
 
@@ -150,7 +150,7 @@ def test_load_alter_empty_slot_raises() -> None:
             svc.load_alter(user_id=1, slot=4, session_id="user:1")
 
 
-def test_load_alter_applies_all_15_values_to_session() -> None:
+def test_load_alter_applies_all_14_values_to_session() -> None:
     target_values = _full_personality(0.33)
     with _make_session() as session:
         settings = SettingsService(session)
@@ -164,7 +164,7 @@ def test_load_alter_applies_all_15_values_to_session() -> None:
 
         result = svc.load_alter(user_id=1, slot=5, session_id="user:1")
 
-    assert len(result) == 15
+    assert len(result) == 14
     for key in PERSONALITY_KEYS:
         assert result[key] == pytest.approx(0.33, abs=1e-4), f"Mismatch on {key}"
 
@@ -294,7 +294,7 @@ def test_invalid_slot_raises(slot: int) -> None:
 # set_all_personality (SettingsService)
 # ---------------------------------------------------------------------------
 
-def test_set_all_personality_applies_all_15_values() -> None:
+def test_set_all_personality_applies_all_14_values() -> None:
     values = {k: 0.5 for k in PERSONALITY_KEYS}
     values["sarcasm_level"] = 0.77
     values["warmth_level"] = 0.11
@@ -303,7 +303,7 @@ def test_set_all_personality_applies_all_15_values() -> None:
         svc = SettingsService(session)
         result = svc.set_all_personality("user:42", values)
 
-    assert len(result) == 15
+    assert len(result) == 14
     assert result["sarcasm_level"] == pytest.approx(0.77)
     assert result["warmth_level"] == pytest.approx(0.11)
 
