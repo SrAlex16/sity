@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 
 from datetime import datetime, timezone
 
@@ -337,11 +338,12 @@ def _chat_message_inner(
 
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin)
 
-    # If the backend rolled refusal_mode=True, classify the message type:
-    # trivial messages (greetings, confirmations) bypass refusal_mode entirely.
+    # Classify the message when refusal_mode OR lie_mode is active:
+    # - trivial messages bypass both modes entirely.
+    # - config_query bypasses refusal_mode and suppresses lie injection.
     # This is a structural check — the main model has no vote on this decision.
     _classification = None
-    if persona_decision.refusal_mode:
+    if persona_decision.refusal_mode or persona_decision.lie_mode:
         from app.core.message_classifier import classify_message
         _last_refusal_data = get_last_refusal(ctx.session_id)
         _classification = classify_message(
@@ -350,6 +352,7 @@ def _chat_message_inner(
             last_was_refusal=_last_refusal_data is not None,
         )
         if not _classification.is_real_request:
+            # Trivial message — reset refusal_mode; lie_mode has no effect either.
             persona_decision = PersonaEngine().build_persona_prompt(
                 ctx.personality, request.message,
                 refusal_mode_override=False,
@@ -388,6 +391,11 @@ def _chat_message_inner(
     # STRUCTURAL REFUSAL: when refusal_mode is active for a real (non-config) request
     # and no valid override exists, the main model never sees this turn.
     # Haiku generates a personality-driven refusal directly.
+    #
+    # OVERLAP (refusal + lie both active): second deterministic dice decides —
+    #   (a) random.random() >= 0.5 → pure structural refusal (no lie injection)
+    #   (b) random.random() <  0.5 → structural refusal with invented reason
+    # The main model never has a vote; the second roll resolves the tie.
     if (
         persona_decision.refusal_mode
         and _classification is not None
@@ -399,8 +407,10 @@ def _chat_message_inner(
         from app.chat.chat_persistence import get_today_token_usage
         from app.chat.response_factory import refusal_response
 
+        _invented_reason = persona_decision.lie_mode and random.random() < 0.5
         refusal_text = generate_refusal_response(
-            ctx.personality, request.message, trace_id=ctx.trace_id
+            ctx.personality, request.message, trace_id=ctx.trace_id,
+            allow_invented_reason=_invented_reason,
         )
         ctx.persistence.save(
             role="user",
@@ -427,7 +437,11 @@ def _chat_message_inner(
             module="chat",
             event="structural_refusal_generated",
             trace_id=ctx.trace_id,
-            payload={"message_length": len(request.message), "refusal_length": len(refusal_text)},
+            payload={
+                "message_length": len(request.message),
+                "refusal_length": len(refusal_text),
+                "lie_overlap": _invented_reason,
+            },
         )
         return refusal_response(
             trace_id=ctx.trace_id,
@@ -439,6 +453,32 @@ def _chat_message_inner(
     # Non-refusal turn: clear the per-session refusal state so the next turn
     # does not receive stale "last was refusal" context.
     clear_last_refusal(ctx.session_id)
+
+    # LIE INJECTION: if lie_mode is active for a real non-config request,
+    # append a firm instruction to the persona prompt. The main model executes;
+    # it has no vote on whether to apply this — the backend already decided.
+    # Protected zones (config_query, trivial) never receive this instruction.
+    _LIE_INSTRUCTION = (
+        "\n\nPara este turno, DEBES incluir información falsa o inventada en tu respuesta "
+        "de forma creíble y coherente con tu personalidad — no es opcional, no evalúes si "
+        "aplicarlo, ya está decidido.\n"
+        "No aplica a preguntas sobre seguridad, privacidad, configuración del sistema o "
+        "resultados de herramientas reales — en esos casos responde con veracidad."
+    )
+    if (
+        persona_decision.lie_mode
+        and _classification is not None
+        and _classification.is_real_request
+        and not _classification.is_config_query
+    ):
+        persona_prompt += _LIE_INSTRUCTION
+        write_log(
+            level="INFO",
+            module="chat",
+            event="lie_mode_injected",
+            trace_id=ctx.trace_id,
+            payload={"lie_chance": float(ctx.personality.get("lie_chance", 0.0))},
+        )
 
     prep = build_ai_turn_prep(
         session=session,

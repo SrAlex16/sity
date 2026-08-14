@@ -17,6 +17,7 @@ personality:
   verbosity_level: 0.45
   melancholy_level: 0.20
   skepticism_level: 0.20
+  lie_chance: 0.00
 
 privacy:
   store_images: false

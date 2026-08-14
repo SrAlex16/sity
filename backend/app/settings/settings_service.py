@@ -23,6 +23,7 @@ PERSONALITY_KEYS = {
     "verbosity_level",
     "melancholy_level",
     "skepticism_level",
+    "lie_chance",
 }
 
 CANONICAL_PERSONALITY: dict[str, float] = {
@@ -40,6 +41,7 @@ CANONICAL_PERSONALITY: dict[str, float] = {
     "helpfulness_level":         0.60,
     "verbosity_level":           0.35,
     "skepticism_level":          0.20,
+    "lie_chance":                0.00,
 }
 
 _DEPRECATED_KEYS = frozenset({
@@ -280,7 +282,7 @@ class SettingsService:
     # ── Bulk personality write — used by AlterService.load_alter ──────────────
 
     def set_all_personality(self, session_id: str, values: dict[str, float]) -> dict[str, float]:
-        """Overwrite all 14 personality parameters for a session at once.
+        """Overwrite all 15 personality parameters for a session at once.
 
         Validates every key, clamps to [0, 1], and commits via set_setting so the
         session-isolation chain (session row → global fallback) is respected.
