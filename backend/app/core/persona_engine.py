@@ -368,8 +368,8 @@ _LANGUAGE_BLOCK: dict[str, str] = {
 class PersonaDecision:
     system_prompt: str
     refusal_mode: bool
-    lie_mode: bool
     tone_snapshot: dict
+    lie_mode: bool = False
 
 
 class PersonaEngine:
