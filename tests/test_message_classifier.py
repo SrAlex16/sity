@@ -382,3 +382,54 @@ def test_generate_refusal_with_personality_returns_string() -> None:
 ])
 def test_personality_labels_contains_key(key: str) -> None:
     assert key in _PERSONALITY_LABELS, f"Key {key!r} missing from _PERSONALITY_LABELS"
+
+
+# ------------------------------------------------------------------ #
+# 9. _CLASSIFY_SYSTEM — config_query scope                           #
+# ------------------------------------------------------------------ #
+
+from app.core.message_classifier import _CLASSIFY_SYSTEM  # noqa: E402
+
+
+def test_classify_system_lists_all_15_personality_params() -> None:
+    """config_query must enumerate the exact 15 personality parameters."""
+    expected_params = [
+        "sarcasm_level", "rudeness_level", "warmth_level", "honesty_level",
+        "initiative_level", "dry_humor_level", "frialdad_afectiva_level",
+        "contrarian_level", "patience_level", "verbosity_level",
+        "helpfulness_level", "refusal_chance", "melancholy_level",
+        "skepticism_level", "lie_chance",
+    ]
+    for param in expected_params:
+        assert param in _CLASSIFY_SYSTEM, (
+            f"_CLASSIFY_SYSTEM must name {param!r} so Haiku knows it's a config param"
+        )
+
+
+def test_classify_system_marks_name_query_as_real() -> None:
+    """'¿cómo te llamas?' must appear as a real example — never config_query."""
+    assert "¿cómo te llamas?" in _CLASSIFY_SYSTEM or "cómo te llamas" in _CLASSIFY_SYSTEM, (
+        "Prompt must show name queries as real, not config_query"
+    )
+    # Confirm it appears under 'real', not under 'config_query'.
+    config_section = _CLASSIFY_SYSTEM.split("- real:")[0]
+    assert "cómo te llamas" not in config_section, (
+        "Name query must not appear in the config_query section"
+    )
+
+
+def test_classify_system_marks_time_query_as_real() -> None:
+    """'dime la hora' / '¿qué hora es?' must appear as real examples."""
+    has_time = "dime la hora" in _CLASSIFY_SYSTEM or "qué hora es" in _CLASSIFY_SYSTEM
+    assert has_time, "Prompt must show time queries as real, not config_query"
+    config_section = _CLASSIFY_SYSTEM.split("- real:")[0]
+    assert "dime la hora" not in config_section and "qué hora es" not in config_section, (
+        "Time query must not appear in the config_query section"
+    )
+
+
+def test_classify_system_never_restricts_config_query_to_generic_system_params() -> None:
+    """'personality or system configuration parameter' was the overly broad phrase — must be gone."""
+    assert "personality or system configuration parameter" not in _CLASSIFY_SYSTEM, (
+        "Broad phrase must be replaced by explicit parameter list"
+    )
