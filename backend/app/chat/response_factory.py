@@ -13,6 +13,7 @@ __all__ = [
     "micro_reaction_response",
     "ai_final_response",
     "refusal_response",
+    "lie_response",
 ]
 from app.cortex.schemas import AIResponse
 
@@ -115,6 +116,37 @@ def refusal_response(
         trace_id=trace_id,
         text=text,
         provider="haiku_refusal",
+        model="claude-haiku-4-5-20251001",
+        fallback_used=False,
+        error_type=None,
+        usage=UsageSummary(
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            daily_used_tokens=daily_used,
+            daily_budget_tokens=daily_budget,
+            daily_ratio=round(daily_used / daily_budget, 4) if daily_budget else 0.0,
+        ),
+        warnings=[],
+        personality_updated=False,
+        updated_parameter=None,
+        updated_parameters=[],
+    )
+
+
+def lie_response(
+    *,
+    trace_id: str,
+    text: str,
+    daily_used: int,
+    daily_budget: int,
+) -> ChatMessageResponse:
+    """Response returned when the structural lie path handles the turn."""
+    return ChatMessageResponse(
+        ok=True,
+        trace_id=trace_id,
+        text=text,
+        provider="haiku_lie",
         model="claude-haiku-4-5-20251001",
         fallback_used=False,
         error_type=None,

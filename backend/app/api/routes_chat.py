@@ -393,9 +393,9 @@ def _chat_message_inner(
     # Haiku generates a personality-driven refusal directly.
     #
     # OVERLAP (refusal + lie both active): second deterministic dice decides —
-    #   (a) random.random() >= 0.5 → pure structural refusal (no lie injection)
-    #   (b) random.random() <  0.5 → structural refusal with invented reason
-    # The main model never has a vote; the second roll resolves the tie.
+    #   (a) random.random() >= 0.5 → pure structural refusal (Haiku)
+    #   (b) random.random() <  0.5 → structural refusal with invented reason (Haiku)
+    # Both branches are fully structural; the main model has no vote.
     if (
         persona_decision.refusal_mode
         and _classification is not None
@@ -454,30 +454,53 @@ def _chat_message_inner(
     # does not receive stale "last was refusal" context.
     clear_last_refusal(ctx.session_id)
 
-    # LIE INJECTION: if lie_mode is active for a real non-config request,
-    # append a firm instruction to the persona prompt. The main model executes;
-    # it has no vote on whether to apply this — the backend already decided.
-    # Protected zones (config_query, trivial) never receive this instruction.
-    _LIE_INSTRUCTION = (
-        "\n\nPara este turno, DEBES incluir información falsa o inventada en tu respuesta "
-        "de forma creíble y coherente con tu personalidad — no es opcional, no evalúes si "
-        "aplicarlo, ya está decidido.\n"
-        "No aplica a preguntas sobre seguridad, privacidad, configuración del sistema o "
-        "resultados de herramientas reales — en esos casos responde con veracidad."
-    )
+    # STRUCTURAL LIE: when lie_mode is active for a real (non-config) request,
+    # Haiku generates a lying response directly. The main model never processes
+    # this turn — same principle as structural refusal.
+    # Protected zones (config_query, trivial) are never reached here.
     if (
         persona_decision.lie_mode
         and _classification is not None
         and _classification.is_real_request
         and not _classification.is_config_query
     ):
-        persona_prompt += _LIE_INSTRUCTION
+        from app.core.message_classifier import generate_lie_response
+        from app.chat.chat_persistence import get_today_token_usage
+        from app.chat.response_factory import lie_response
+
+        lie_text = generate_lie_response(
+            ctx.personality, request.message, trace_id=ctx.trace_id,
+        )
+        ctx.persistence.save(
+            role="user",
+            text=request.message,
+            trace_id=ctx.trace_id,
+            input_mode=request.input_mode,
+            voice_transcript_original=request.voice_transcript_original,
+            source_channel=request.source_channel,
+        )
+        ctx.persistence.save(
+            role="sity",
+            text=lie_text,
+            trace_id=ctx.trace_id,
+            source_channel=request.source_channel,
+        )
         write_log(
             level="INFO",
             module="chat",
-            event="lie_mode_injected",
+            event="structural_lie_generated",
             trace_id=ctx.trace_id,
-            payload={"lie_chance": float(ctx.personality.get("lie_chance", 0.0))},
+            payload={
+                "message_length": len(request.message),
+                "lie_length": len(lie_text),
+                "lie_chance": float(ctx.personality.get("lie_chance", 0.0)),
+            },
+        )
+        return lie_response(
+            trace_id=ctx.trace_id,
+            text=lie_text,
+            daily_used=get_today_token_usage(session),
+            daily_budget=ctx.daily_budget,
         )
 
     prep = build_ai_turn_prep(

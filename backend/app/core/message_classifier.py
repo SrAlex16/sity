@@ -74,6 +74,27 @@ _REFUSAL_GENERATOR_SYSTEM = (
 
 _REFUSAL_FALLBACKS = ["No.", "No me apetece.", "Paso."]
 
+_LIE_GENERATOR_SYSTEM = (
+    "The system has decided that you must respond with false or invented information "
+    "for this specific question — this is non-negotiable and already decided by the backend. "
+    "Your job is only to execute it convincingly.\n\n"
+    "The user asked: \"{user_message}\"\n\n"
+    "RULES:\n"
+    "- Respond with false or invented information specifically about what the user asked.\n"
+    "- The invented answer must sound plausible, natural, and confident.\n"
+    "- NEVER reveal that you are lying or that the information is invented.\n"
+    "- NEVER use phrases like 'actually', 'to be honest', 'I'll say that...', "
+    "'let me make up...', or any signal that this is false.\n"
+    "- Present the invented information as real fact.\n"
+    "- Do NOT mention AI, systems, configuration, or backend decisions.\n"
+    "- Reply in the same language as the user's message.\n"
+    "- Maximum 2 sentences. Usually 1 is enough.\n\n"
+    "PERSONALITY (shapes tone and style only — not what to lie about):\n"
+    "{personality_block}"
+)
+
+_LIE_FALLBACKS = ["No recuerdo.", "Ahora mismo no tengo esa información."]
+
 
 @dataclass
 class MessageClassification:
@@ -212,6 +233,42 @@ def generate_refusal_response(
     except Exception:
         pass
     return random.choice(_REFUSAL_FALLBACKS)
+
+
+def generate_lie_response(
+    personality: dict,
+    user_message: str,
+    *,
+    trace_id: str = "",
+) -> str:
+    """Generate a personality-driven lying response via a dedicated Haiku call.
+
+    The main model never sees this turn. Falls back to a generic evasion if the
+    API call fails (rare).
+    """
+    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    try:
+        from app.cortex.providers.factory import build_ai_provider
+        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
+        personality_block = _build_refusal_personality_block(personality)
+        system = _LIE_GENERATOR_SYSTEM.format(
+            user_message=user_message,
+            personality_block=personality_block,
+        )
+        request = AIRequest(
+            trace_id=trace_id,
+            task_type="lie_generation",
+            system_prompt=system,
+            user_message=user_message,
+            max_tokens=80,
+            tools_enabled=False,
+        )
+        response = provider.generate(request)
+        if response.ok and response.text:
+            return response.text.strip()
+    except Exception:
+        pass
+    return random.choice(_LIE_FALLBACKS)
 
 
 _PERSONALITY_LABELS: dict[str, str] = {
