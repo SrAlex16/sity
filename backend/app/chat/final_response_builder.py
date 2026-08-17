@@ -37,6 +37,53 @@ from app.trace.logger import write_log
 
 _TURN_LOAD_RE = re.compile(r"<R:([+-]?\d+)>\s*\Z")
 
+# ---------------------------------------------------------------------------
+# Voseo normalizer — post-process es-ES responses
+# ---------------------------------------------------------------------------
+# Each entry: (lowercase_voseo_form, lowercase_tuteo, capitalized_tuteo)
+# Case-sensitive patterns so "SOS" (emergency acronym) is never touched.
+_VOSEO_SUBS: list[tuple[str, str, str]] = [
+    ("vos",      "tú",        "Tú"),
+    ("querés",   "quieres",   "Quieres"),
+    ("tenés",    "tienes",    "Tienes"),
+    ("podés",    "puedes",    "Puedes"),
+    ("hacés",    "haces",     "Haces"),
+    ("sos",      "eres",      "Eres"),
+    ("sabés",    "sabes",     "Sabes"),
+    ("venís",    "vienes",    "Vienes"),
+    ("decís",    "dices",     "Dices"),
+    ("conocés",  "conoces",   "Conoces"),
+    ("entendés", "entiendes", "Entiendes"),
+]
+
+_VOSEO_RES: list[tuple[re.Pattern[str], str, re.Pattern[str], str]] = [
+    (
+        re.compile(r"\b" + re.escape(cap) + r"\b"),
+        uc_repl,
+        re.compile(r"\b" + re.escape(lc) + r"\b"),
+        lc_repl,
+    )
+    for lc, lc_repl, uc_repl in _VOSEO_SUBS
+    for cap in [lc[0].upper() + lc[1:]]
+]
+
+
+def normalize_registro_es_es(text: str) -> tuple[str, bool]:
+    """Replace voseo rioplatense forms with tuteo equivalents.
+
+    Returns (normalized_text, was_changed). Only call when language_override
+    is "es-ES" — never for es-419 (where voseo is correct register).
+    Uses case-sensitive patterns to avoid false positives (e.g. "SOS" untouched).
+    """
+    changed = False
+    for cap_re, cap_repl, lc_re, lc_repl in _VOSEO_RES:
+        new = cap_re.sub(cap_repl, text)
+        new = lc_re.sub(lc_repl, new)
+        if new != text:
+            changed = True
+            text = new
+    return text, changed
+
 
 def strip_turn_load_tag(text: str) -> tuple[str, str | None]:
     """Strip trailing <R:N> tag. Returns (cleaned_text, raw_N_or_None)."""
@@ -91,6 +138,7 @@ def build_final_ai_response(
     output_mode: str = "text",
     source_channel: str = "web",
     session_id: str = "",
+    language_override: str = "auto",
 ) -> ChatMessageResponse:
     # 1. Persist AIUsage row
     usage_row = AIUsage(
@@ -178,6 +226,20 @@ def build_final_ai_response(
             trace_id=trace_id,
             payload={"session_id": session_id},
         )
+
+    # 4.6. Normalize voseo → tuteo for es-ES responses.
+    # Deterministic post-processing: catches drift that bypassed the prompt rule.
+    # Never applied to es-419 (correct register there) or other languages.
+    if language_override == "es-ES" and response.text:
+        response.text, _voseo_changed = normalize_registro_es_es(response.text)
+        if _voseo_changed:
+            write_log(
+                level="INFO",
+                module="persona",
+                event="voseo_normalized",
+                trace_id=trace_id,
+                payload={"session_id": session_id, "language_override": language_override},
+            )
 
     # 5. Persist assistant message
     # Cancelled turns still need a Sity row so the history never has two

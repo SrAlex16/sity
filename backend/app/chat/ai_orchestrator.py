@@ -458,6 +458,7 @@ class ChatAIOrchestrator:
             output_mode=prep.output_mode,
             source_channel=request.source_channel,
             session_id=ctx.session_id,
+            language_override=ctx.language_override,
         )
 
         if prep.should_synth and chat_result.ok and chat_result.text:
