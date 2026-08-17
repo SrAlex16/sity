@@ -11,24 +11,15 @@ skip() { printf '\033[33m[deploy]\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m[deploy] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # ── 1. Frontend ───────────────────────────────────────────────────────────────
-DIST_BUNDLE=$(ls "$REPO/mobile/dist/assets"/index-*.js 2>/dev/null | head -1 || true)
-NEEDS_BUILD=false
-
-if [[ -z "$DIST_BUNDLE" ]]; then
-  NEEDS_BUILD=true
-elif find "$REPO/mobile/src" "$REPO/mobile/public" \
-    -newer "$DIST_BUNDLE" -type f -print -quit 2>/dev/null | grep -q .; then
-  NEEDS_BUILD=true
-fi
-
-if $NEEDS_BUILD; then
-  log "Cambios en mobile/ detectados — reconstruyendo frontend…"
-  (cd "$REPO/mobile" && npm run build) || die "npm run build falló — deploy abortado."
-  NEW_BUNDLE=$(ls "$REPO/mobile/dist/assets"/index-*.js 2>/dev/null | head -1 || true)
-  log "Frontend OK  →  $(basename "$NEW_BUNDLE")"
-else
-  skip "Frontend sin cambios desde el último build — omitiendo."
-fi
+# Build siempre — la detección condicional por mtime falló silenciosamente varias
+# veces (deploy.sh no era llamado; cuando sí se llama, mtime puede no reflejar
+# cambios reales). El coste de un build extra (~35s) es menor que un diagnóstico
+# de bundle stale. Si el coste de build se vuelve inaceptable, usar
+# .last-build-commit como marca en vez de mtime.
+log "Reconstruyendo frontend…"
+(cd "$REPO/mobile" && npm run build) || die "npm run build falló — deploy abortado."
+NEW_BUNDLE=$(ls "$REPO/mobile/dist/assets"/index-*.js 2>/dev/null | head -1 || true)
+log "Frontend OK  →  $(basename "$NEW_BUNDLE")"
 
 # ── 2. Backend ────────────────────────────────────────────────────────────────
 log "Reiniciando sity-backend…"
