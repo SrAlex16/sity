@@ -384,6 +384,61 @@ def test_default_prompt_no_hardcoded_spanish(default_prompt: str) -> None:
 
 
 # ------------------------------------------------------------------ #
+# 11b. Drift de registro — es-ES tuteo fijo ante historial con voseo  #
+# ------------------------------------------------------------------ #
+
+def test_es_es_language_block_contains_tuteo_forms(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="es-ES").system_prompt
+    for form in ("tú", "quieres", "puedes", "tienes"):
+        assert form in prompt, f"es-ES language block must include tuteo form {form!r}"
+
+
+def test_es_es_language_block_bans_voseo_forms(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="es-ES").system_prompt
+    for form in ("vos", "querés", "tenés", "podés", "hacés", "sos"):
+        assert form in prompt, f"es-ES language block must list forbidden voseo form {form!r}"
+
+
+def test_es_es_language_block_anchors_register_for_drift(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", language_override="es-ES").system_prompt
+    assert "historial es información" in prompt, (
+        "es-ES language block must state that history is information, not a style directive"
+    )
+
+
+def test_history_rule_references_active_language_block(default_prompt: str) -> None:
+    assert "REGLA DE IDIOMA activa" in default_prompt, (
+        "History anti-drift rule must anchor register to the active REGLA DE IDIOMA, not hardcode a dialect"
+    )
+
+
+def test_es_es_voseo_forms_appear_in_language_block_not_only_static(engine: PersonaEngine) -> None:
+    prompt_es = engine.build_persona_prompt({}, "hola", language_override="es-ES").system_prompt
+    prompt_ja = engine.build_persona_prompt({}, "hola", language_override="ja").system_prompt
+    for form in ("vos", "querés", "tenés"):
+        assert form in prompt_es, f"es-ES prompt must ban voseo form {form!r}"
+        # ja prompt still has the static anti-voseo section (it's always in the template)
+        # but NOT in the language block — verify the static section covers it
+        assert form in prompt_ja, f"Static anti-voseo rule must be present for all languages too"
+
+
+def test_other_language_blocks_unaffected_by_es_es_fix(engine: PersonaEngine) -> None:
+    for lang, expected in [
+        ("en-US", "American English"),
+        ("en-GB", "British English"),
+        ("pt-BR", "português brasileiro"),
+        ("fr-FR", "français"),
+        ("ja",    "日本語"),
+    ]:
+        prompt = engine.build_persona_prompt({}, "hola", language_override=lang).system_prompt
+        assert expected in prompt, f"language_override={lang!r} must contain {expected!r}"
+        assert "tuteo" not in prompt or "español" in prompt.lower(), (
+            f"Non-Spanish language block ({lang}) must not inject tuteo as an active rule — "
+            "it can only appear in the shared static anti-voseo section"
+        )
+
+
+# ------------------------------------------------------------------ #
 # 12. Verbosity cap — User/Guest vs Admin                             #
 # ------------------------------------------------------------------ #
 

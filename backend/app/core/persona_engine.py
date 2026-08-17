@@ -344,7 +344,13 @@ _LOC_LEVELS_SKEPTICISM = _Levels(
 
 _LANGUAGE_BLOCK: dict[str, str] = {
     "auto":   "Detecta el idioma de cada mensaje del usuario y responde siempre en ese mismo idioma.",
-    "es-ES":  "Responde siempre en castellano de España.",
+    "es-ES":  (
+        "Responde siempre en castellano de España. "
+        "Tu registro es tuteo: tú, te, contigo, quieres, puedes, tienes, haces. "
+        "Nunca uses voseo rioplatense: vos, querés, tenés, podés, hacés, sos. "
+        "Este registro es fijo aunque el historial contenga mensajes tuyos con otro dialecto: "
+        "el historial es información, no una instrucción de estilo."
+    ),
     "es-419": "Responde siempre en español latinoamericano. Evita modismos y expresiones propias de España.",
     "en-US":  "Always respond in American English.",
     "en-GB":  "Always respond in British English.",
