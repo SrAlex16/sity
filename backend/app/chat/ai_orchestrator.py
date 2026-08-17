@@ -280,21 +280,25 @@ def _clean_text_for_tts(text: str) -> str:
 
 
 def _attach_tts_artifacts(
-    *, result, text: str, voice_settings, trace_id: str
+    *, result, text: str, voice_settings, trace_id: str,
+    session=None, session_id: str = "",
 ) -> Optional[tuple[int, Optional[str]]]:
     """Synthesize TTS audio and attach as artifacts to result. Modifies result.artifacts in place.
 
     Returns (n_fragments, audio_filename) where audio_filename is the persistent file written to
     data/audio/ (or None if persistence is disabled). Returns None if synthesis was skipped/failed.
     """
-    from app.api.routes_audio import synthesize_to_tmp, synthesize_to_persistent
     from app.audio.synthesizer import load_tts_config
+    from app.audio.tts_dispatcher import synthesize_fragment
     from app.audio.tts_splitter import split_by_sentences
     from app.settings.config_loader import load_default_config
 
     cfg = load_tts_config()
     raw_audio_cfg = load_default_config().get("audio", {})
     persist_tts: bool = bool(raw_audio_cfg.get("persist_tts", False))
+    voice_id: str = str(raw_audio_cfg.get("elevenlabs_voice_id", "EXAVITQu4vr4xnSDxMaL"))
+    daily_limit: int = int(raw_audio_cfg.get("elevenlabs_daily_char_limit", 0))
+    tts_engine: str = getattr(voice_settings, "tts_engine", "piper")
 
     try:
         tts_text = _clean_text_for_tts(text)
@@ -314,20 +318,30 @@ def _attach_tts_artifacts(
                 write_log(level="INFO", module="audio", event="tts_fragment_skipped",
                           trace_id=trace_id, payload={"fragment_index": i, "reason": "empty"})
                 continue
-            if persist_tts:
-                url, filename = synthesize_to_persistent(fragment, trace_id=trace_id)
+            url, filename = synthesize_fragment(
+                fragment,
+                session=session,
+                session_id=session_id,
+                tts_engine=tts_engine,
+                persist=persist_tts,
+                trace_id=trace_id,
+                voice_id=voice_id,
+                daily_limit=daily_limit,
+            )
+            from pathlib import Path as _Path
+            ext = _Path(url).suffix.lstrip(".") or "wav"
+            mime = "audio/mpeg" if ext == "mp3" else "audio/wav"
+            if persist_tts and filename:
                 write_log(level="INFO", module="audio", event="tts_fragment_persisted",
                           trace_id=trace_id,
                           payload={"fragment_index": i, "filename": filename})
                 if first_persistent_filename is None:
                     first_persistent_filename = filename
-            else:
-                url = synthesize_to_tmp(fragment)
             result.artifacts.append(ChatArtifact(
                 type="audio",
                 url=url,
-                filename=f"sity_response_{artifact_index + 1}.wav",
-                mime_type="audio/wav",
+                filename=f"sity_response_{artifact_index + 1}.{ext}",
+                mime_type=mime,
             ))
             artifact_index += 1
 
@@ -452,6 +466,8 @@ class ChatAIOrchestrator:
                 text=chat_result.text,
                 voice_settings=ctx.voice_settings,
                 trace_id=ctx.trace_id,
+                session=session,
+                session_id=ctx.session_id,
             )
             if tts_result is not None:
                 n_fragments, audio_filename = tts_result

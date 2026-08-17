@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react';
 
 export type VoiceResponseMode = 'always' | 'never' | 'symmetric';
 export type VoiceLongResponseAction = 'split' | 'text_only';
+export type TtsEngine = 'piper' | 'elevenlabs';
 
 export interface VoiceSettings {
   voice_response_mode: VoiceResponseMode;
   voice_include_text: boolean;
   voice_long_response_action: VoiceLongResponseAction;
   audio_cleanup_days: number;
+  tts_engine: TtsEngine;
+  elevenlabs_chars_used: number;   // read-only from server
+  elevenlabs_daily_limit: number;  // read-only from server
 }
 
 export const VOICE_DEFAULTS: VoiceSettings = {
@@ -15,6 +19,9 @@ export const VOICE_DEFAULTS: VoiceSettings = {
   voice_include_text: true,
   voice_long_response_action: 'text_only',
   audio_cleanup_days: 7,
+  tts_engine: 'piper',
+  elevenlabs_chars_used: 0,
+  elevenlabs_daily_limit: 0,
 };
 
 export function useVoice() {

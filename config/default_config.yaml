@@ -132,6 +132,8 @@ audio:
   tts_long_response_chars: 500
   persist_tts: true
   cleanup_days: 7
+  elevenlabs_daily_char_limit: 10000
+  elevenlabs_voice_id: "EXAVITQu4vr4xnSDxMaL"
 
 
 home_assistant:

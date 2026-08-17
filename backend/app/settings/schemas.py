@@ -60,6 +60,9 @@ class VoiceSettings(BaseModel):
     voice_include_text: bool = True
     voice_long_response_action: Literal["split", "text_only"] = "text_only"
     audio_cleanup_days: int = 7
+    tts_engine: Literal["piper", "elevenlabs"] = "piper"
+    elevenlabs_chars_used: int = 0   # read-only: today's usage from DailyTtsUsage
+    elevenlabs_daily_limit: int = 0  # read-only: from config
 
 
 SUPPORTED_LANGUAGE_CODES = frozenset({

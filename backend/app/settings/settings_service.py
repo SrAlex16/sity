@@ -196,7 +196,7 @@ class SettingsService:
     # Per-session keys: read from session row first, fall back to global default.
     # Admin-only key: audio_cleanup_days — always global (session_id=NULL).
 
-    _VOICE_PER_SESSION = ("voice_response_mode", "voice_include_text", "voice_long_response_action")
+    _VOICE_PER_SESSION = ("voice_response_mode", "voice_include_text", "voice_long_response_action", "tts_engine")
     _VOICE_ADMIN_GLOBAL = ("audio_cleanup_days",)
 
     def get_voice_settings(self, session_id: Optional[str] = None) -> VoiceSettings:
@@ -231,6 +231,13 @@ class SettingsService:
             ).first()
             if row is not None:
                 data[key] = json.loads(row.value_json)
+
+        # Populate read-only ElevenLabs fields from DB counter and config
+        from app.audio.tts_dispatcher import get_current_char_count
+        el_limit = int(load_default_config().get("audio", {}).get("elevenlabs_daily_char_limit", 0))
+        el_used = get_current_char_count(self.session, session_id) if session_id else 0
+        data["elevenlabs_chars_used"] = el_used
+        data["elevenlabs_daily_limit"] = el_limit
 
         return VoiceSettings(**{**defaults.model_dump(), **data})
 

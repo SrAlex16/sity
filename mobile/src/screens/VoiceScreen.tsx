@@ -285,6 +285,38 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
               </button>
             </div>
 
+            {/* Motor de TTS — User/Admin only */}
+            {role !== 'guest' && (
+              <div className={styles.section}>
+                <p className={styles.sectionEs}>{tl.ttsEngineSection}</p>
+                <p className={styles.sectionJp}>音声合成エンジン</p>
+                <p className={styles.sectionHint} style={{ marginBottom: 10 }}>{tl.ttsEngineHint}</p>
+                <div className={styles.radioGroup}>
+                  {(['piper', 'elevenlabs'] as const).map((engine) => (
+                    <label key={engine} className={styles.radioRow}>
+                      <input
+                        type="radio"
+                        className={styles.hiddenInput}
+                        name="tts_engine"
+                        value={engine}
+                        checked={form.tts_engine === engine}
+                        onChange={() => void autoSave({ ...form!, tts_engine: engine })}
+                      />
+                      <span className={styles.radioIndicator} />
+                      <span className={styles.optionText}>
+                        {engine === 'piper' ? tl.ttsEnginePiper : tl.ttsEngineElevenLabs}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {form.tts_engine === 'elevenlabs' && (
+                  <p className={styles.sectionHint} style={{ marginTop: 10 }}>
+                    {tl.ttsUsage(form.elevenlabs_chars_used, form.elevenlabs_daily_limit)}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Periodicidad de borrado — admin only, global */}
             {role === 'admin' && (
               <div className={styles.section}>

@@ -204,6 +204,17 @@ class DailyMessageUsage(SQLModel, table=True):
     count_date: str  # "YYYY-MM-DD"
 
 
+class DailyTtsUsage(SQLModel, table=True):
+    """Per-session daily character counter for ElevenLabs TTS usage.
+
+    Mirrors DailyMessageUsage: count_date resets the counter when the day changes,
+    no cron job needed. Guest sessions never accumulate here (dispatcher blocks them).
+    """
+    session_id: str = Field(primary_key=True)
+    char_count: int = Field(default=0)
+    count_date: str  # "YYYY-MM-DD"
+
+
 class SharedConversation(SQLModel, table=True):
     """Snapshot of a conversation shared via public link.
 

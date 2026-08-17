@@ -32,6 +32,12 @@ export interface T {
     longSplit: string;
     longTextOnly: string;
     restoreVoice: string;
+    // TTS engine selector (User/Admin only)
+    ttsEngineSection: string;
+    ttsEngineHint: string;
+    ttsEnginePiper: string;
+    ttsEngineElevenLabs: string;
+    ttsUsage: (used: number, limit: number) => string;
     // Admin cleanup
     cleanupSection: string;
     cleanupHint: string;
@@ -223,6 +229,11 @@ const es: T = {
     longSplit: 'Dividir en notas de voz',
     longTextOnly: 'Solo texto (sin audio)',
     restoreVoice: 'Restaurar valores de voz',
+    ttsEngineSection: 'Motor de síntesis de voz',
+    ttsEngineHint: 'Piper es local y gratuito. ElevenLabs usa la nube con límite diario de caracteres.',
+    ttsEnginePiper: 'Piper (local)',
+    ttsEngineElevenLabs: 'ElevenLabs (nube)',
+    ttsUsage: (used: number, limit: number) => limit > 0 ? `Uso hoy: ${used} / ${limit} caracteres` : `Uso hoy: ${used} caracteres`,
     cleanupSection: 'Periodicidad de borrado',
     cleanupHint: 'Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.',
     cleanupUnit: 'días',
@@ -403,6 +414,11 @@ const en: T = {
     longSplit: 'Split into voice notes',
     longTextOnly: 'Text only (no audio)',
     restoreVoice: 'Restore voice defaults',
+    ttsEngineSection: 'Voice synthesis engine',
+    ttsEngineHint: 'Piper is local and free. ElevenLabs uses the cloud with a daily character limit.',
+    ttsEnginePiper: 'Piper (local)',
+    ttsEngineElevenLabs: 'ElevenLabs (cloud)',
+    ttsUsage: (used: number, limit: number) => limit > 0 ? `Today's usage: ${used} / ${limit} characters` : `Today's usage: ${used} characters`,
     cleanupSection: 'Cleanup period',
     cleanupHint: 'Audio messages are replaced by their transcript after this time.',
     cleanupUnit: 'days',
@@ -583,6 +599,11 @@ const ja: T = {
     longSplit: '音声ノートに分割',
     longTextOnly: 'テキストのみ（音声なし）',
     restoreVoice: '音声デフォルトに戻す',
+    ttsEngineSection: '音声合成エンジン',
+    ttsEngineHint: 'Piperはローカルで無料。ElevenLabsはクラウドを使用し、1日あたりの文字数制限があります。',
+    ttsEnginePiper: 'Piper（ローカル）',
+    ttsEngineElevenLabs: 'ElevenLabs（クラウド）',
+    ttsUsage: (used: number, limit: number) => limit > 0 ? `本日の使用量: ${used} / ${limit} 文字` : `本日の使用量: ${used} 文字`,
     cleanupSection: '削除周期',
     cleanupHint: 'この時間が経過すると音声メッセージは文字起こしに置き換えられます。',
     cleanupUnit: '日',

@@ -19,6 +19,15 @@ router = APIRouter(prefix="/audio", tags=["audio"])
 _TTS_TMP_DIR = PROJECT_ROOT / "backend" / "runtime" / "tts"
 _TTS_PERSISTENT_DIR = PROJECT_ROOT / "data" / "audio"
 
+_MIME_BY_EXT: dict[str, str] = {
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+}
+
+
+def _detect_mime(filename: str) -> str:
+    return _MIME_BY_EXT.get(Path(filename).suffix.lower(), "audio/wav")
+
 
 class TranscribeResponse(BaseModel):
     transcript: str
@@ -108,7 +117,7 @@ async def serve_tts_file(filename: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="TTS file not found")
 
-    return FileResponse(path, media_type="audio/wav", filename=filename)
+    return FileResponse(path, media_type=_detect_mime(filename), filename=filename)
 
 
 def synthesize_to_tmp(text: str) -> str:
@@ -148,7 +157,7 @@ async def serve_stored_tts_file(filename: str):
     path = _TTS_PERSISTENT_DIR / filename
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
-    return FileResponse(path, media_type="audio/wav", filename=filename)
+    return FileResponse(path, media_type=_detect_mime(filename), filename=filename)
 
 
 class CleanupResponse(BaseModel):
