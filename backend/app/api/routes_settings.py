@@ -20,6 +20,11 @@ from app.settings.schemas import (
     SUPPORTED_LANGUAGE_CODES,
     VoiceSettings,
 )
+from app.initiative.settings import (
+    InitiativeSettings,
+    get_initiative_settings,
+    set_initiative_settings,
+)
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
 
@@ -173,6 +178,31 @@ def update_language_settings(
         session_id=current.session_id,
     )
     return LanguageSettings(language_override=body.language_override)
+
+
+# ---------------------------------------------------------------------------
+# Initiative settings — proactive messaging toggles (User/Admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/initiative", response_model=InitiativeSettings)
+def get_initiative_settings_endpoint(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Per-session initiative settings with global fallback."""
+    _require_non_guest(current)
+    return get_initiative_settings(session, session_id=current.session_id)
+
+
+@router.put("/initiative", response_model=InitiativeSettings)
+def update_initiative_settings_endpoint(
+    body: InitiativeSettings,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Save per-session initiative settings."""
+    _require_non_guest(current)
+    return set_initiative_settings(session, body, session_id=current.session_id)
 
 
 # ---------------------------------------------------------------------------

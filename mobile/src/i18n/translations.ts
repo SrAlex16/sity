@@ -74,6 +74,16 @@ export interface T {
     filesHint: string;
     // Status
     justConnected: (name: string) => string;
+    // Initiative — proactive messaging
+    initiativeSection: string;
+    initiativeMasterLabel: string;
+    initiativeMasterHint: string;
+    initiativeAbandoned: string;
+    initiativeAbandonedHint: string;
+    initiativeInactivity: string;
+    initiativeInactivityHint: string;
+    initiativeOpenLoop: string;
+    initiativeOpenLoopHint: string;
   };
   chat: {
     guest: string;
@@ -262,6 +272,15 @@ const es: T = {
     filesSection: 'Gestión de archivos',
     filesHint: 'Próximamente. Aquí podrás ver y eliminar los archivos que hayas compartido con Sity.',
     justConnected: (name) => `${name} conectado correctamente.`,
+    initiativeSection: 'Mensajes proactivos',
+    initiativeMasterLabel: 'Permitir que Sity te escriba primero',
+    initiativeMasterHint: 'Sity puede escribirte cuando detecte que hay algo pendiente o que merece la pena retomar.',
+    initiativeAbandoned: 'Conversaciones abandonadas',
+    initiativeAbandonedHint: 'Si dejas una conversación a medias, Sity puede retomarla más tarde.',
+    initiativeInactivity: 'Reconexión tras inactividad',
+    initiativeInactivityHint: 'Si llevas tiempo sin hablar con Sity, puede escribirte para saber cómo estás.',
+    initiativeOpenLoop: 'Seguimiento de temas pendientes',
+    initiativeOpenLoopHint: 'Si mencionas algo que querías resolver, Sity puede preguntarte más tarde qué tal fue.',
   },
   chat: {
     guest: 'Invitado',
@@ -447,6 +466,15 @@ const en: T = {
     filesSection: 'File management',
     filesHint: 'Coming soon. Here you will be able to view and delete files shared with Sity.',
     justConnected: (name) => `${name} connected successfully.`,
+    initiativeSection: 'Proactive messages',
+    initiativeMasterLabel: 'Allow Sity to message you first',
+    initiativeMasterHint: 'Sity may reach out when it detects something worth following up on.',
+    initiativeAbandoned: 'Abandoned conversations',
+    initiativeAbandonedHint: 'If you leave a conversation unfinished, Sity may pick it up later.',
+    initiativeInactivity: 'Reconnect after inactivity',
+    initiativeInactivityHint: "If you haven't talked to Sity in a while, it may check in on you.",
+    initiativeOpenLoop: 'Pending topic follow-up',
+    initiativeOpenLoopHint: 'If you mention something you wanted to resolve, Sity may ask about it later.',
   },
   chat: {
     guest: 'Guest',
@@ -632,6 +660,15 @@ const ja: T = {
     filesSection: 'ファイル管理',
     filesHint: '近日公開。ここでSityと共有したファイルを確認・削除できます。',
     justConnected: (name) => `${name}が正常に接続されました。`,
+    initiativeSection: 'プロアクティブメッセージ',
+    initiativeMasterLabel: 'Sityからのメッセージを許可する',
+    initiativeMasterHint: 'フォローアップする価値があることをSityが検出したとき、メッセージを送ります。',
+    initiativeAbandoned: '中断した会話',
+    initiativeAbandonedHint: '会話が途中の場合、Sityが後で再開することがあります。',
+    initiativeInactivity: '非アクティブ後の再接続',
+    initiativeInactivityHint: 'しばらく話していない場合、Sityが様子を聞くことがあります。',
+    initiativeOpenLoop: '保留中のトピックのフォローアップ',
+    initiativeOpenLoopHint: '解決したいことを話すと、Sityが後で状況を確認することがあります。',
   },
   chat: {
     guest: 'ゲスト',

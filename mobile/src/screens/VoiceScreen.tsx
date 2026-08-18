@@ -3,6 +3,8 @@ import { useVoice, VOICE_DEFAULTS } from '../hooks/useVoice';
 import type { VoiceSettings } from '../hooks/useVoice';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import type { LanguageCode } from '../hooks/useLanguage';
+import { useInitiative } from '../hooks/useInitiative';
+import type { InitiativeSettings } from '../hooks/useInitiative';
 import { useIntegrations } from '../hooks/useIntegrations';
 import { TRANSLATIONS, UI_LANGUAGES } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
@@ -32,6 +34,7 @@ interface SettingsScreenProps {
 export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProps) {
   const tl = TRANSLATIONS[uiLang].settings;
   const { settings, isLoading, error, save, reload } = useVoice();
+  const { settings: initiativeSettings, save: saveInitiative } = useInitiative();
   const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
@@ -87,6 +90,20 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => void autoSave(next), 600);
   }, [autoSave]);
+
+  const autoSaveInitiative = useCallback(async (next: InitiativeSettings) => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setAutoSaveStatus('idle');
+    try {
+      await saveInitiative(next);
+      setAutoSaveStatus('saved');
+      setAutoSaveError(null);
+      flashTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 1800);
+    } catch (e) {
+      setAutoSaveStatus('error');
+      setAutoSaveError(e instanceof Error ? e.message : 'Error al guardar');
+    }
+  }, [saveInitiative]);
 
   const handleRestore = async () => {
     await autoSave(VOICE_DEFAULTS);
@@ -381,6 +398,76 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                   <option key={code} value={code}>{label}</option>
                 ))}
               </select>
+            )}
+          </div>
+        )}
+
+        {/* Mensajes proactivos — User/Admin only */}
+        {role !== 'guest' && initiativeSettings && (
+          <div className={styles.section}>
+            <p className={styles.sectionEs}>{tl.initiativeSection}</p>
+            <p className={styles.sectionJp}>プロアクティブ</p>
+
+            {/* Master toggle */}
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                className={styles.hiddenInput}
+                checked={initiativeSettings.enabled}
+                onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, enabled: e.target.checked })}
+              />
+              <span className={styles.checkboxIndicator} />
+              <div>
+                <p className={styles.sectionEs}>{tl.initiativeMasterLabel}</p>
+                <p className={styles.sectionHint}>{tl.initiativeMasterHint}</p>
+              </div>
+            </label>
+
+            {/* Sub-toggles — visible only when master is on */}
+            {initiativeSettings.enabled && (
+              <div style={{ marginLeft: 16, marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    className={styles.hiddenInput}
+                    checked={initiativeSettings.trigger_conversation_abandoned}
+                    onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, trigger_conversation_abandoned: e.target.checked })}
+                  />
+                  <span className={styles.checkboxIndicator} />
+                  <div>
+                    <p className={styles.sectionEs}>{tl.initiativeAbandoned}</p>
+                    <p className={styles.sectionHint}>{tl.initiativeAbandonedHint}</p>
+                  </div>
+                </label>
+
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    className={styles.hiddenInput}
+                    checked={initiativeSettings.trigger_long_inactivity}
+                    onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, trigger_long_inactivity: e.target.checked })}
+                  />
+                  <span className={styles.checkboxIndicator} />
+                  <div>
+                    <p className={styles.sectionEs}>{tl.initiativeInactivity}</p>
+                    <p className={styles.sectionHint}>{tl.initiativeInactivityHint}</p>
+                  </div>
+                </label>
+
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    className={styles.hiddenInput}
+                    checked={initiativeSettings.trigger_open_loop}
+                    onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, trigger_open_loop: e.target.checked })}
+                  />
+                  <span className={styles.checkboxIndicator} />
+                  <div>
+                    <p className={styles.sectionEs}>{tl.initiativeOpenLoop}</p>
+                    <p className={styles.sectionHint}>{tl.initiativeOpenLoopHint}</p>
+                  </div>
+                </label>
+              </div>
             )}
           </div>
         )}
