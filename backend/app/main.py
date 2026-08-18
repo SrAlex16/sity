@@ -46,11 +46,13 @@ async def on_startup():
     import subprocess
     from app.api.routes_audio import cleanup_stored_audio
     from app.notifications.dispatcher import notifications_gc_loop
+    from app.initiative.runner import start_initiative_runner
     from app.timers.runner import start_runner
     loop = asyncio.get_running_loop()
     set_event_loop(loop)
     init_db()
     start_runner(loop)
+    start_initiative_runner(loop)
     loop.create_task(notifications_gc_loop())
     from app.auth.admin_seeder import seed_admin
     seed_admin()

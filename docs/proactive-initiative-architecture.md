@@ -1,9 +1,18 @@
 # Arquitectura del sistema de iniciativa propia de Sity
 
 Fecha: 2026-08-18.
-Estado: **diseño cerrado — pendiente de implementación**.
-Este documento captura las decisiones tomadas con Alex antes de escribir código.
-No abrir estas decisiones de nuevo al implementar.
+Estado: **IMPLEMENTADO Y COMPLETO — 2026-08-19**.
+Este documento captura las decisiones de diseño tomadas antes de implementar.
+
+Módulos implementados:
+- `backend/app/memory/models.py` — `OpenLoop`, `InitiativeEvalLog`
+- `backend/app/initiative/settings.py` — `InitiativeSettings`, `get/set_initiative_settings`
+- `backend/app/initiative/open_loop_hook.py` — detección fire-and-forget por turno (Haiku)
+- `backend/app/initiative/detector.py` — 3 trigger checks sin Haiku
+- `backend/app/initiative/evaluator.py` — SHOULD_I_TALK? (rate limits + Haiku + EvalLog)
+- `backend/app/initiative/runner.py` — job periódico 6h, pipeline completo
+- `backend/app/main.py` — `start_initiative_runner` en `on_startup`
+- Tests: 108 tests en `test_initiative_step1/2/3/4.py`
 
 ---
 

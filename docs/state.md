@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-13 (Refusal_mode arquitectura estructural + Alters completo).
+Última actualización: 2026-08-19 (Sistema de iniciativa propia — COMPLETO).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -323,19 +323,12 @@ Ver .env.example para la lista completa.
     para mensajes genéricos sin keywords de timers. 8 tests nuevos en
     `test_toolset_selector.py`. 1783 tests. Push + deploy confirmados.
 
-- **Sistema de iniciativa propia de Sity** — capacidad de que Sity
-  inicie una conversación sin que el usuario escriba primero (ej. "acordé
-  en recordarte esto", "encontré algo que puede interesarte"). Cuatro
-  preguntas de diseño pendientes de responder antes de implementar:
-  (1) **mecanismo de disparo**: ¿un runner periódico similar al de timers,
-  o una cola de eventos ya pendientes en DB?; (2) **canal de entrega**:
-  depende de la Web Push API (ya anotada como prerrequisito de alarmas)
-  — sin push real el mensaje solo llega si la app está abierta;
-  (3) **aislamiento por rol**: Guest no debería recibir mensajes proactivos
-  no solicitados — requiere verificar sesión activa y rol antes de disparar;
-  (4) **relación con memoria social**: si la iniciativa se basa en opinión/
-  confianza del usuario, hay que respetar los invariantes ya establecidos
-  (opinion/trust solo escritos por background job, nunca por conversación).
+- **Sistema de iniciativa propia de Sity** — IMPLEMENTADO 2026-08-19.
+  Sity puede iniciar conversaciones sin que el usuario escriba primero.
+  Tres triggers: `conversation_abandoned`, `long_inactivity`, `open_loop`.
+  Job periódico de 6h + Haiku como juez (SHOULD_I_TALK?). Reutiliza el
+  dispatcher de notificaciones ya existente. 108 tests.
+  Documentación: `docs/proactive-initiative-architecture.md`.
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
