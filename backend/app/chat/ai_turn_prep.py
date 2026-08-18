@@ -149,6 +149,13 @@ def build_ai_turn_prep(
             edit_distance_pct=_voice_edit_pct,
             source_channel=request.source_channel,
         )
+        if ctx.session_id.startswith("user:"):
+            from app.initiative.open_loop_hook import schedule_open_loop_detection
+            schedule_open_loop_detection(
+                session_id=ctx.session_id,
+                user_message=request.message,
+                trace_id=ctx.trace_id,
+            )
 
     # Local provider — only when SITY_LOCAL_AI_ENABLED=true.
     # SITY_AI_PROVIDER is the cloud provider (anthropic); local provider is separate.
