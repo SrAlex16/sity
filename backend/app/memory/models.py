@@ -303,3 +303,48 @@ class ScheduledTask(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     fired_at: Optional[datetime] = Field(default=None)
     cancelled_at: Optional[datetime] = Field(default=None)
+
+
+class OpenLoop(SQLModel, table=True):
+    """User intention detected during a conversation turn that hasn't been acted on yet.
+
+    Created by open_loop_hook.py when Haiku identifies a future intention in the
+    user's message (fire-and-forget, never blocks the chat turn). Consumed by the
+    6h initiative runner which checks for unresolved loops and may trigger a follow-up.
+
+    Status lifecycle: pending → resolved | dispatched | expired
+      pending   — awaiting evaluation by the initiative runner
+      resolved  — runner (via Haiku) concluded a later message addressed the intention
+      dispatched — used as the basis of a sent proactive_initiative notification
+      expired   — expires_at passed without resolution; candidate for GC
+    """
+    id: str = Field(primary_key=True)                         # "ol_<hex8>"
+    session_id: str = Field(index=True)
+    user_message: str                                          # full user message where intent was found
+    extracted_intent: str = Field(default="")                 # short phrase Haiku extracted
+    detected_at: datetime = Field(default_factory=utc_now)
+    status: str = Field(default="pending")                    # pending | resolved | dispatched | expired
+    resolved_at: Optional[datetime] = Field(default=None)
+    expires_at: datetime                                       # detected_at + open_loop_ttl_days
+
+
+class InitiativeEvalLog(SQLModel, table=True):
+    """Audit record for every initiative evaluation — both send and skip decisions.
+
+    Written by the 6h runner for every session it evaluates, regardless of outcome.
+    Used to audit "why did Sity write?" and "why did it choose not to?".
+    Retained for eval_log_ttl_days (default 60) then purged by the runner's GC.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    trigger_type: str                                          # conversation_abandoned | long_inactivity | open_loop
+    decision: str                                              # send | skip
+    skip_reason: Optional[str] = Field(default=None)
+    # trust_too_low | silence_recent | rate_limited | toggle_disabled
+    # model_skip | open_loop_resolved | no_trigger_condition | evaluator_error
+    haiku_verdict: Optional[str] = Field(default=None)        # send | skip | None (Haiku not called)
+    haiku_reasoning: Optional[str] = Field(default=None)      # excerpt from Haiku response (≤ 300 chars)
+    message_preview: Optional[str] = Field(default=None)      # first 100 chars of sent message
+    trigger_context_json: str = Field(default="{}")           # serialized TriggerCandidate context
+    open_loop_id: Optional[str] = Field(default=None)         # set when trigger_type="open_loop"
+    evaluated_at: datetime = Field(default_factory=utc_now)

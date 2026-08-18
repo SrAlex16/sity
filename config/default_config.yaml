@@ -103,6 +103,15 @@ notifications:
   dedup_window_hours: 24                 # window for fact_id deduplication
   gc_interval_seconds: 600               # how often the GC purges old NotificationLog rows
 
+initiative:
+  job_interval_hours: 6                  # how often the runner evaluates all eligible users
+  conversation_abandoned_min_hours: 24   # trigger active from this many hours after last Sity message
+  conversation_abandoned_max_days: 4     # trigger inactive beyond this (becomes long_inactivity)
+  long_inactivity_min_days: 5            # trigger active after this many days with no messages
+  open_loop_min_days: 3                  # open_loop only evaluated after this many days pending
+  open_loop_ttl_days: 30                 # open_loops expire after this many days without resolution
+  eval_log_ttl_days: 60                  # InitiativeEvalLog row retention
+
 debug:
   enabled: true
   log_level: INFO
