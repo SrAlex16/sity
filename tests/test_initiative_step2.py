@@ -202,6 +202,65 @@ class TestOpenLoopHookDetection:
         loops = real_db.exec(select(OpenLoop).where(OpenLoop.session_id == sid)).all()
         assert len(loops) == 0
 
+    def test_json_fenced_with_intent_creates_open_loop(self):
+        """Haiku wraps JSON in ```json fences — must parse correctly and create the loop."""
+        from app.memory.models import OpenLoop
+        fenced = "```json\n" + json.dumps({"has_intent": True, "intent": "llamar al hermano esta semana"}) + "\n```"
+        sid = "user:47"
+        real_db = _make_db()
+
+        with patch("app.initiative.open_loop_hook.engine") as mock_engine:
+            mock_engine.__class__ = real_db.bind.__class__
+            with patch("app.initiative.open_loop_hook.Session") as mock_session_cls:
+                mock_ctx = MagicMock()
+                mock_ctx.__enter__ = MagicMock(return_value=real_db)
+                mock_ctx.__exit__ = MagicMock(return_value=False)
+                mock_session_cls.return_value = mock_ctx
+                self._call_detect_task(fenced, sid)
+
+        loops = real_db.exec(select(OpenLoop).where(OpenLoop.session_id == sid)).all()
+        assert len(loops) == 1
+        assert loops[0].extracted_intent == "llamar al hermano esta semana"
+
+    def test_json_fenced_no_intent_no_open_loop(self):
+        """Haiku wraps JSON in ```json fences with has_intent=false — must not create loop."""
+        from app.memory.models import OpenLoop
+        fenced = "```json\n" + json.dumps({"has_intent": False, "intent": None}) + "\n```"
+        sid = "user:48"
+        real_db = _make_db()
+
+        with patch("app.initiative.open_loop_hook.Session") as mock_session_cls:
+            mock_ctx = MagicMock()
+            mock_ctx.__enter__ = MagicMock(return_value=real_db)
+            mock_ctx.__exit__ = MagicMock(return_value=False)
+            mock_session_cls.return_value = mock_ctx
+            self._call_detect_task(fenced, sid)
+
+        loops = real_db.exec(select(OpenLoop).where(OpenLoop.session_id == sid)).all()
+        assert len(loops) == 0
+
+
+class TestStripJsonFences:
+    def test_strips_json_block(self):
+        from app.initiative._json_utils import strip_json_fences
+        raw = "```json\n{\"a\": 1}\n```"
+        assert strip_json_fences(raw) == '{"a": 1}'
+
+    def test_strips_plain_code_block(self):
+        from app.initiative._json_utils import strip_json_fences
+        raw = "```\n{\"a\": 1}\n```"
+        assert strip_json_fences(raw) == '{"a": 1}'
+
+    def test_passthrough_clean_json(self):
+        from app.initiative._json_utils import strip_json_fences
+        raw = '{"decision": "send"}'
+        assert strip_json_fences(raw) == raw
+
+    def test_strips_whitespace(self):
+        from app.initiative._json_utils import strip_json_fences
+        raw = "  ```json\n{\"x\": true}\n```  "
+        assert strip_json_fences(raw) == '{"x": true}'
+
 
 class TestOpenLoopHookDeduplication:
     def _run_save(self, db: Session, session_id: str, intent: str = "buscar trabajo") -> None:

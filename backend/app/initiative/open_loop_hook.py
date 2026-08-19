@@ -25,6 +25,7 @@ from sqlmodel import Session, select
 
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
+from app.initiative._json_utils import strip_json_fences
 from app.memory.db import engine
 from app.memory.models import OpenLoop
 from app.settings.config_loader import load_default_config
@@ -121,7 +122,7 @@ def _call_haiku(user_message: str, trace_id: str) -> dict:
         return {"has_intent": False, "intent": None}
 
     try:
-        parsed = json.loads(response.text.strip())
+        parsed = json.loads(strip_json_fences(response.text))
         has_intent = bool(parsed.get("has_intent", False))
         intent = parsed.get("intent") if has_intent else None
         return {"has_intent": has_intent, "intent": intent}
