@@ -97,7 +97,7 @@ notifications:
   max_external_events_per_day_user: 20   # "external_event" per session per calendar day
   recurrent_task_cooldown_minutes: 60    # min gap between two recurrent_task of same session
   initiative_cooldown_hours: 0           # DEMO TEMPORAL — prod: 24
-  initiative_min_trust: 0.30             # SocialProfile.trust floor for initiative runner
+  initiative_min_trust: 0.0              # DEMO TEMPORAL — prod: 0.30
   initiative_silence_hours: 0            # DEMO TEMPORAL — prod: 4
   notification_log_ttl_days: 30          # NotificationLog row retention (GC)
   dedup_window_hours: 24                 # window for fact_id deduplication

@@ -250,6 +250,15 @@ def _build_user_message(candidate: TriggerCandidate, social: Optional[SocialProf
     return "\n".join(lines)
 
 
+def _strip_json_fences(text: str) -> str:
+    """Strip markdown code fences that some models wrap around JSON responses."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
 def _call_haiku(candidate: TriggerCandidate, social: Optional[SocialProfile]) -> dict:
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
@@ -274,7 +283,7 @@ def _call_haiku(candidate: TriggerCandidate, social: Optional[SocialProfile]) ->
         return {"decision": "skip", "reasoning": "provider_error"}
 
     try:
-        parsed = json.loads(response.text.strip())
+        parsed = json.loads(_strip_json_fences(response.text))
         if not isinstance(parsed.get("decision"), str):
             raise ValueError("missing or invalid 'decision' key")
         return parsed
