@@ -1,8 +1,9 @@
 # Arquitectura del sistema de iniciativa propia de Sity
 
 Fecha: 2026-08-18.
-Estado: **IMPLEMENTADO Y COMPLETO — 2026-08-19**.
-Este documento captura las decisiones de diseño tomadas antes de implementar.
+Estado: **IMPLEMENTADO, VERIFICADO EN PRODUCCIÓN Y COMPLETO — 2026-08-24**.
+Este documento captura las decisiones de diseño + el historial real de verificación
+y los bugs encontrados en producción (2026-08-19 → 2026-08-24).
 
 Módulos implementados:
 - `backend/app/memory/models.py` — `OpenLoop`, `InitiativeEvalLog`
@@ -11,8 +12,9 @@ Módulos implementados:
 - `backend/app/initiative/detector.py` — 3 trigger checks sin Haiku
 - `backend/app/initiative/evaluator.py` — SHOULD_I_TALK? (rate limits + Haiku + EvalLog)
 - `backend/app/initiative/runner.py` — job periódico 6h, pipeline completo
+- `backend/app/initiative/_json_utils.py` — `strip_json_fences()` compartida (añadida en verificación)
 - `backend/app/main.py` — `start_initiative_runner` en `on_startup`
-- Tests: 108 tests en `test_initiative_step1/2/3/4.py`
+- Tests: 128 tests en `test_initiative_step1/2/3/4.py`
 
 ---
 
@@ -689,3 +691,78 @@ LIMIT 10;
   (DB error, etc.), registra ERROR y continúa con la siguiente — el job no se rompe por completo.
 - `open_loop_hook.py` es ignorable en Guest: el hook debe verificar
   `session_id.startswith("user:")` antes de crear `OpenLoop` — Guest nunca acumula open_loops.
+
+---
+
+## 16. Bugs encontrados y resueltos en verificación real (2026-08-19 → 2026-08-24)
+
+Esta sección documenta los bugs descubiertos durante la primera verificación en producción
+real. Si en el futuro aparece comportamiento extraño en el sistema de iniciativa, este
+historial explica exactamente qué se probó y qué se aprendió.
+
+### Bug 1 — JSON con markdown fences en evaluator.py (`c0cc4b3`, 2026-08-19)
+
+**Síntoma:** `json_parse_error` en todos los ciclos del evaluador. El runner llamaba a Haiku
+pero nunca llegaba a una decisión válida — siempre devolvía skip por error de parse.
+
+**Causa:** Haiku (y potencialmente otros modelos) envuelve las respuestas JSON en bloques
+de markdown (` ```json\n{...}\n``` `). `json.loads(response.text.strip())` no puede parsear
+eso — falla en la primera línea del fence.
+
+**Fix:** `_strip_json_fences()` en `evaluator.py` para eliminar los fences antes de parsear.
+
+### Bug 2 — JSON con markdown fences en open_loop_hook.py (CRÍTICO, `1e0f91b`, 2026-08-19)
+
+**Síntoma:** NINGÚN OpenLoop se creaba en producción pese a que los usuarios enviaban mensajes
+con intenciones futuras claras. El hook siempre retornaba `has_intent=False` silenciosamente.
+
+**Causa:** mismo fence bug que el Bug 1, pero en `open_loop_hook._call_haiku()`. La función
+parseaba `json.loads(response.text.strip())` sin strip de fences → excepción silenciada →
+fallback a `{"has_intent": False}`. Resultado: el canal de open_loop estaba completamente
+bloqueado en producción desde el primer día, sin ninguna evidencia externa visible.
+
+**Fix:** `_json_utils.py` como módulo compartido con `strip_json_fences()`. Ambos módulos
+importan desde ahí — no se duplica la función. Misma función, un solo lugar.
+
+**Lección:** el patrón de "swallow exception + return safe default" en fire-and-forget tasks
+es correcto para robustez, pero oculta completamente los fallos a nivel de sistema. Sin logs
+activos monitorizados, un canal entero puede estar muerto indefinidamente. El log de WARN
+`open_loop_detection_parse_error` ya existía pero no se estaba observando.
+
+### Bug 3 — Dead zone por contexto auto-referencial en open_loop (`0680b8c`, 2026-08-24)
+
+**Síntoma:** Una vez que el sistema de iniciativa funcionó (Bug 1 y 2 corregidos), el trigger
+`open_loop` evaluaba correctamente pero Haiku decía "skip" en TODOS los ciclos indefinidamente
+para el mismo loop. Después de 715 evaluaciones (4+ días con el loop `ol_aee77ee2` de la
+guitarra), ninguna decisión de "send".
+
+**Causa:** `recent_messages_after_detection` incluía TODOS los mensajes posteriores a la
+detección del loop — incluyendo los propios mensajes de Sity (iniciativas anteriores sobre
+el mismo tema). Haiku veía "Sity ya preguntó sobre esto" → interpretaba "tema ya abordado"
+→ skip sin `open_loop_resolved=True`. El loop quedaba `pending` permanentemente, ni se enviaba
+ni se cerraba: dead zone.
+
+**Fix estructural:** filtrar `recent_messages_after_detection` a solo `role == "user"` en
+`detector._check_open_loop()`. Haiku solo ve si el USUARIO mencionó/resolvió la intención —
+los mensajes de Sity sobre el loop son ruido que contamina la decisión.
+
+**Fix de seguridad adicional:** `open_loop_max_eval_attempts: 20` en config. Tras N evaluaciones
+acumuladas (todas con cualquier resultado), el detector marca el loop `expired` automáticamente.
+Esto corta el gasto de Haiku en loops que por cualquier razón no progresen — incluso ante bugs
+futuros no previstos. El loop `ol_aee77ee2` (715 evals) se auto-expiró en el primer ciclo
+post-deploy.
+
+**Lección:** el contexto pasado a un LLM para una decisión debe contener ÚNICAMENTE la
+información relevante para esa decisión específica. Los mensajes de Sity sobre el mismo tema
+son información sobre lo que Sity ya hizo, no sobre el estado de la intención del usuario —
+mezclarlo introduce sesgo sistemático.
+
+### Estado del sistema tras la verificación
+
+El pipeline completo fue verificado de principio a fin en producción:
+- `open_loop_detected` → OpenLoop creado en DB ✓
+- Runner detecta el loop tras `open_loop_min_days` ✓
+- Haiku evalúa con contexto limpio (solo mensajes del usuario) ✓
+- Haiku envía o declina con razonamiento verificable en EvalLog ✓
+- Si loop lleva > 20 evaluaciones sin progreso → auto-expirado, gasto cortado ✓
+- Config TEMPORAL revertida a producción (2026-08-24) ✓

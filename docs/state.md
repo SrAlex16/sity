@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-19 (Sistema de iniciativa propia — COMPLETO).
+Última actualización: 2026-08-24 (Sistema de iniciativa — verificación en producción completa).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 1842 tests en verde (pytest)
+- 2041 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -83,6 +83,32 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 Ver .env.example para la lista completa.
 
 ## Completado recientemente
+
+- **Sistema de iniciativa propia — verificación en producción y correcciones
+  (2026-08-19 → 2026-08-24)** — la implementación inicial (2026-08-19) fue correcta
+  estructuralmente, pero la verificación real descubrió 3 bugs que impedían el
+  funcionamiento end-to-end:
+
+  1. **JSON fences en evaluator.py**: Haiku envuelve las respuestas en bloques markdown
+     (` ```json\n...\n``` `). `json.loads()` fallaba en todos los ciclos → `json_parse_error`
+     → skip permanente. Fix: `strip_json_fences()` antes del parse. Commit `c0cc4b3`.
+
+  2. **JSON fences en open_loop_hook.py (crítico)**: mismo bug, misma causa, pero silencioso:
+     el fallback `{"has_intent": False}` hacía que NINGÚN OpenLoop se creara en producción
+     desde el primer día. Fix: módulo compartido `_json_utils.py` con `strip_json_fences()`
+     importado por ambos módulos. Commit `1e0f91b`.
+
+  3. **Dead zone por contexto auto-referencial**: `recent_messages_after_detection` incluía
+     mensajes de Sity → Haiku veía "Sity ya preguntó" → skip indefinido sin cerrar el loop
+     (`ol_aee77ee2` acumuló 715 evaluaciones sin progreso en 4 días). Fix estructural: filtrar
+     a solo `role="user"` en `detector._check_open_loop()`. Red de seguridad añadida:
+     `open_loop_max_eval_attempts: 20` — auto-expira loops estancados tras N evaluaciones.
+     Commit `0680b8c`.
+
+  El pipeline completo fue verificado de principio a fin: `open_loop_detected` en logs →
+  OpenLoop en DB → evaluación por Haiku con contexto limpio → decisión verificable en
+  `InitiativeEvalLog`. Config TEMPORAL revertida a producción. 2041 tests en verde.
+  Ver `docs/proactive-initiative-architecture.md §16` para el historial completo.
 
 - **Web Push API + mecanismo de 3 estados (Pasos A/B/C/4, 2026-08-10)** — sistema
   de notificaciones completo verificado en producción: `sw.js` push+notificationclick,
@@ -323,12 +349,13 @@ Ver .env.example para la lista completa.
     para mensajes genéricos sin keywords de timers. 8 tests nuevos en
     `test_toolset_selector.py`. 1783 tests. Push + deploy confirmados.
 
-- **Sistema de iniciativa propia de Sity** — IMPLEMENTADO 2026-08-19.
-  Sity puede iniciar conversaciones sin que el usuario escriba primero.
-  Tres triggers: `conversation_abandoned`, `long_inactivity`, `open_loop`.
-  Job periódico de 6h + Haiku como juez (SHOULD_I_TALK?). Reutiliza el
-  dispatcher de notificaciones ya existente. 108 tests.
-  Documentación: `docs/proactive-initiative-architecture.md`.
+- **Sistema de iniciativa propia de Sity** — IMPLEMENTADO Y VERIFICADO EN PRODUCCIÓN
+  (2026-08-19 → 2026-08-24). Sity puede iniciar conversaciones sin que el usuario escriba
+  primero. Tres triggers: `conversation_abandoned`, `long_inactivity`, `open_loop`.
+  Job periódico de 6h + Haiku como juez (SHOULD_I_TALK?). Reutiliza el dispatcher de
+  notificaciones ya existente. 128 tests. Config en producción. Auto-expiración de loops
+  estancados (`open_loop_max_eval_attempts: 20`).
+  Documentación completa + historial de bugs: `docs/proactive-initiative-architecture.md`.
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
