@@ -16,7 +16,7 @@ from typing import Optional
 from sqlmodel import Session, col, desc, select
 
 from app.initiative.settings import get_initiative_settings
-from app.memory.models import ChatMessage, OpenLoop
+from app.memory.models import ChatMessage, InitiativeEvalLog, OpenLoop
 from app.settings.config_loader import load_default_config
 from app.trace.logger import write_log
 
@@ -205,6 +205,7 @@ def _check_open_loop(
     """Oldest pending OpenLoop that has been waiting more than open_loop_min_days."""
     cfg = _cfg()
     min_days = int(cfg.get("open_loop_min_days", 3))
+    max_attempts = int(cfg.get("open_loop_max_eval_attempts", 20))
     now = _utc_now()
     cutoff = now - timedelta(days=min_days)
 
@@ -222,14 +223,33 @@ def _check_open_loop(
     if loop is None:
         return None
 
+    eval_count = len(db.exec(
+        select(InitiativeEvalLog).where(InitiativeEvalLog.open_loop_id == loop.id)
+    ).all())
+    if eval_count >= max_attempts:
+        loop.status = "expired"
+        loop.resolved_at = now
+        db.add(loop)
+        db.commit()
+        write_log(
+            level="INFO",
+            module="initiative",
+            event="open_loop_expired_max_attempts",
+            session_id=session_id,
+            payload={"loop_id": loop.id, "eval_count": eval_count},
+        )
+        return None
+
     age_days = (now - (loop.detected_at.replace(tzinfo=timezone.utc) if loop.detected_at.tzinfo is None else loop.detected_at)).total_seconds() / 86400
 
-    # Fetch messages sent AFTER detected_at — evaluator uses them to judge resolution
+    # Only user messages — Sity's own initiative messages about this loop would cause Haiku
+    # to treat "Sity already asked" as "topic addressed", producing permanent model_skip.
     after_msgs = db.exec(
         select(ChatMessage)
         .where(
             ChatMessage.session_id == session_id,
             ChatMessage.created_at > loop.detected_at,
+            ChatMessage.role == "user",
         )
         .order_by(desc(ChatMessage.created_at))
         .limit(5)

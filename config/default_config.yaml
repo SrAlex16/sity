@@ -110,6 +110,7 @@ initiative:
   long_inactivity_min_days: 0.01         # DEMO TEMPORAL — prod: 5 (≈15 min)
   open_loop_min_days: 0.01              # DEMO TEMPORAL — prod: 3 (≈15 min)
   open_loop_ttl_days: 30                 # open_loops expire after this many days without resolution
+  open_loop_max_eval_attempts: 20        # auto-expire a loop after N evaluations with no send
   eval_log_ttl_days: 60                  # InitiativeEvalLog row retention
 
 debug:

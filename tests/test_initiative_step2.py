@@ -84,6 +84,17 @@ def _open_loop(
     return lid
 
 
+def _eval_log(db: Session, session_id: str, open_loop_id: str, decision: str = "skip") -> None:
+    from app.memory.models import InitiativeEvalLog
+    db.add(InitiativeEvalLog(
+        session_id=session_id,
+        trigger_type="open_loop",
+        decision=decision,
+        open_loop_id=open_loop_id,
+    ))
+    db.commit()
+
+
 def _mock_haiku_response(text: str) -> MagicMock:
     r = MagicMock()
     r.ok = True
@@ -493,6 +504,72 @@ class TestDetectorOpenLoop:
         ol = next((c for c in candidates if c.trigger_type == "open_loop"), None)
         assert ol is not None
         assert ol.open_loop_id == older_lid  # oldest wins
+
+    def test_context_excludes_sity_messages_after_detection(self):
+        """Sity's own messages after detection must NOT appear in context."""
+        from app.initiative.detector import get_trigger_candidates
+        db = _make_db()
+        sid = "user:226"
+        lid = _open_loop(db, sid, status="pending", age_hours=5 * 24)
+        # Sity sent a message about the topic after the loop was detected
+        _msg(db, sid, "sity", "¿Cómo vas con lo de buscar trabajo?", age_hours=2 * 24)
+        _msg(db, sid, "user", "Aún no he hecho nada.", age_hours=1 * 24)
+
+        candidates = get_trigger_candidates(sid, db)
+        ol = next((c for c in candidates if c.trigger_type == "open_loop"), None)
+        assert ol is not None
+        msgs = ol.context["recent_messages_after_detection"]
+        roles = [m["role"] for m in msgs]
+        assert "sity" not in roles
+        assert "user" in roles
+
+    def test_context_includes_only_user_messages_when_sity_also_posted(self):
+        """When both user and sity posted after detection, only user messages are in context."""
+        from app.initiative.detector import get_trigger_candidates
+        db = _make_db()
+        sid = "user:227"
+        lid = _open_loop(db, sid, status="pending", age_hours=5 * 24)
+        _msg(db, sid, "sity", "Recuerda que querías buscar trabajo.", age_hours=3 * 24)
+        _msg(db, sid, "sity", "¿Lo has pensado más?", age_hours=2 * 24)
+
+        candidates = get_trigger_candidates(sid, db)
+        ol = next((c for c in candidates if c.trigger_type == "open_loop"), None)
+        assert ol is not None
+        msgs = ol.context["recent_messages_after_detection"]
+        assert msgs == []  # no user messages → empty list
+
+
+class TestDetectorOpenLoopMaxAttempts:
+    def test_loop_auto_expired_when_max_attempts_reached(self):
+        """After open_loop_max_eval_attempts eval logs, the loop is marked expired and not returned."""
+        from app.initiative.detector import get_trigger_candidates
+        from app.memory.models import OpenLoop
+        db = _make_db()
+        sid = "user:230"
+        lid = _open_loop(db, sid, status="pending", age_hours=5 * 24)
+        for _ in range(20):
+            _eval_log(db, sid, lid, decision="skip")
+
+        candidates = get_trigger_candidates(sid, db)
+        assert not any(c.trigger_type == "open_loop" for c in candidates)
+
+        # loop must be marked expired in DB
+        from sqlmodel import select
+        loop = db.exec(select(OpenLoop).where(OpenLoop.id == lid)).first()
+        assert loop is not None
+        assert loop.status == "expired"
+
+    def test_loop_returned_below_max_attempts(self):
+        """Below max_eval_attempts, the loop is still returned as a candidate."""
+        from app.initiative.detector import get_trigger_candidates
+        db = _make_db()
+        sid = "user:231"
+        lid = _open_loop(db, sid, status="pending", age_hours=5 * 24)
+        for _ in range(19):
+            _eval_log(db, sid, lid, decision="skip")
+
+        candidates = get_trigger_candidates(sid, db)
+        assert any(c.trigger_type == "open_loop" for c in candidates)
 
 
 # ---------------------------------------------------------------------------
