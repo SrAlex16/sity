@@ -93,22 +93,22 @@ sharing:
   default_expiry_days: 7        # shared link lifetime
 
 notifications:
-  max_proactive_per_day_user: 10         # DEMO TEMPORAL — prod: 1
+  max_proactive_per_day_user: 1           # max proactive initiative messages per user per day
   max_external_events_per_day_user: 20   # "external_event" per session per calendar day
   recurrent_task_cooldown_minutes: 60    # min gap between two recurrent_task of same session
-  initiative_cooldown_hours: 0           # DEMO TEMPORAL — prod: 24
-  initiative_min_trust: 0.0              # DEMO TEMPORAL — prod: 0.30
-  initiative_silence_hours: 0            # DEMO TEMPORAL — prod: 4
+  initiative_cooldown_hours: 24          # min hours between proactive initiative messages
+  initiative_min_trust: 0.30             # skip if SocialProfile.trust < this
+  initiative_silence_hours: 4            # skip if last message less than this many hours ago
   notification_log_ttl_days: 30          # NotificationLog row retention (GC)
   dedup_window_hours: 24                 # window for fact_id deduplication
   gc_interval_seconds: 600               # how often the GC purges old NotificationLog rows
 
 initiative:
-  job_interval_hours: 0.05              # DEMO TEMPORAL — prod: 6 (≈3 min)
-  conversation_abandoned_min_hours: 0.05 # DEMO TEMPORAL — prod: 24 (≈3 min)
+  job_interval_hours: 6                  # runner cycle interval
+  conversation_abandoned_min_hours: 24   # trigger if last message from Sity is older than this
   conversation_abandoned_max_days: 4     # trigger inactive beyond this (becomes long_inactivity)
-  long_inactivity_min_days: 0.01         # DEMO TEMPORAL — prod: 5 (≈15 min)
-  open_loop_min_days: 0.01              # DEMO TEMPORAL — prod: 3 (≈15 min)
+  long_inactivity_min_days: 5            # trigger if no messages for this many days
+  open_loop_min_days: 3                  # trigger if pending OpenLoop is older than this
   open_loop_ttl_days: 30                 # open_loops expire after this many days without resolution
   open_loop_max_eval_attempts: 20        # auto-expire a loop after N evaluations with no send
   eval_log_ttl_days: 60                  # InitiativeEvalLog row retention
