@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from typing import Any, Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-LOG_DIR = PROJECT_ROOT / "data" / "logs"
+LOG_DIR = Path(os.environ.get("SITY_LOG_DIR", str(PROJECT_ROOT / "data" / "logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 

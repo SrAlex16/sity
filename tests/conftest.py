@@ -52,6 +52,12 @@ os.environ.setdefault("VAPID_CONTACT", "mailto:test@sity-test.invalid")
 _TEST_DB_PATH = ROOT / "tests" / ".pytest_test.db"
 os.environ.setdefault("SITY_DB_URL", f"sqlite:///{_TEST_DB_PATH}")
 
+# Redirect log output so tests NEVER write to data/logs/ production log files.
+# Must be set before app.trace.logger is imported (LOG_DIR is a module-level
+# constant computed from this env var).
+_TEST_LOG_DIR = ROOT / "tests" / ".pytest_logs"
+os.environ.setdefault("SITY_LOG_DIR", str(_TEST_LOG_DIR))
+
 import pytest  # noqa: E402
 
 

@@ -59,3 +59,6 @@ htmlcov/
 tests/.pytest_test.db-shm
 tests/.pytest_test.db-wal
 
+# Logs generados por tests (redirigidos de data/logs/ para no contaminar producción)
+tests/.pytest_logs/
+
