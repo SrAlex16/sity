@@ -338,25 +338,6 @@ Ver .env.example para la lista completa.
 
 ## Mejoras pendientes
 
-- **Inferencia de herramientas por contexto ambiental — Problema B
-  (mitigado con parche, 2026-08-12)** — el modelo llamó a `list_timers` al
-  recibir "¿Cómo estamos ahora?" en una sesión con historial previo de timers,
-  sin que el mensaje lo mencionara. Diagnóstico (trace `trc_33d668065f91`):
-  `list_timers` está en BASE_TOOLSET ("always available"), el toolset_selector
-  no activó ningún dominio especial, pero el modelo infirió el tema desde el
-  contexto ambiental del historial y llamó a la tool.
-  Mitigación aplicada en dos fases:
-  — Fase 1 (2026-08-12, parche B+C, insuficiente): descriptions de las 4 tools
-    de timers reforzadas; guardarraíl genérico en `persona_system.md`
-    §REGLA DE USO DE HERRAMIENTAS. El modelo ignoró el guardarraíl en el segundo
-    intento (confirmado por logs del trace `trc_8c1f888e764f` — backend con el
-    nuevo código, mismo comportamiento).
-  — Fase 2 (2026-08-12, fix estructural — Opción A): timers movidos fuera de
-    BASE_TOOLSET a TIMERS_TOOLSET, activado únicamente por `_TIMER_RE` regex en
-    `toolset_selector.py`. Timer tools ahora literalmente ausentes del toolset
-    para mensajes genéricos sin keywords de timers. 8 tests nuevos en
-    `test_toolset_selector.py`. 1783 tests. Push + deploy confirmados.
-
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
@@ -425,6 +406,19 @@ Ver .env.example para la lista completa.
 ## Bugs conocidos activos
 
 Ninguno activo conocido.
+
+**Resueltos recientemente (2026-08-12):**
+
+- **Inferencia de herramientas por contexto ambiental — Problema B** (2026-08-12):
+  El modelo llamó a `list_timers` ante "¿Cómo estamos ahora?" en una sesión con
+  historial previo de timers, sin que el mensaje lo mencionara. `list_timers` estaba
+  en BASE_TOOLSET ("always available"); el modelo infirió el tema del contexto ambiental.
+  Fase 1 (parche B+C, insuficiente): descriptions reforzadas + guardarraíl en
+  `persona_system.md`. El modelo ignoró el guardarraíl (confirmado en trace
+  `trc_8c1f888e764f`). Fix estructural — Fase 2 (Opción A): timers movidos a
+  `TIMERS_TOOLSET`, activado únicamente por `_TIMER_RE` regex en `toolset_selector.py`.
+  Timer tools literalmente ausentes del toolset para mensajes sin keywords de timers.
+  Fix re-confirmado vigente en código (2026-08-24). 8 tests en `test_toolset_selector.py`.
 
 **Resueltos recientemente (2026-08-10):**
 
