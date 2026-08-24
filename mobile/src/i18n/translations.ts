@@ -115,6 +115,15 @@ export interface T {
     fontTerminal: string;
     fontElegant: string;
     fontCancel: string;
+    // Shared links manager
+    mySharedLinks: string;
+    noSharedLinks: string;
+    linkActive: string;
+    linkRevoked: string;
+    linkExpired: string;
+    revokeLink: string;
+    revoking: string;
+    viewsLabel: string;
   };
   personality: {
     moodTranquil: string;
@@ -309,6 +318,14 @@ const es: T = {
     fontTerminal: 'Terminal',
     fontElegant: 'Elegante',
     fontCancel: 'Cancelar',
+    mySharedLinks: 'Mis enlaces compartidos',
+    noSharedLinks: 'No has creado ningún enlace todavía.',
+    linkActive: 'Activo',
+    linkRevoked: 'Revocado',
+    linkExpired: 'Caducado',
+    revokeLink: 'Revocar',
+    revoking: 'Revocando…',
+    viewsLabel: 'vistas',
   },
   personality: {
     moodTranquil: 'Tranquila',
@@ -503,6 +520,14 @@ const en: T = {
     fontTerminal: 'Terminal',
     fontElegant: 'Elegant',
     fontCancel: 'Cancel',
+    mySharedLinks: 'My shared links',
+    noSharedLinks: 'You have not created any links yet.',
+    linkActive: 'Active',
+    linkRevoked: 'Revoked',
+    linkExpired: 'Expired',
+    revokeLink: 'Revoke',
+    revoking: 'Revoking…',
+    viewsLabel: 'views',
   },
   personality: {
     moodTranquil: 'Calm',
@@ -697,6 +722,14 @@ const ja: T = {
     fontTerminal: 'ターミナル',
     fontElegant: 'エレガント',
     fontCancel: 'キャンセル',
+    mySharedLinks: '共有リンク一覧',
+    noSharedLinks: 'まだリンクを作成していません。',
+    linkActive: '有効',
+    linkRevoked: '無効化',
+    linkExpired: '期限切れ',
+    revokeLink: '無効にする',
+    revoking: '無効化中…',
+    viewsLabel: '回表示',
   },
   personality: {
     moodTranquil: '穏やか',

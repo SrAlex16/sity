@@ -55,6 +55,21 @@ class SharedConversationResponse(BaseModel):
     view_count: int
 
 
+class ShareListItem(BaseModel):
+    share_id: str
+    url: str
+    created_at: str
+    expires_at: str
+    view_count: int
+    is_active: bool
+    revoked_at: str | None
+
+
+class ShareListResponse(BaseModel):
+    ok: bool
+    shares: list[ShareListItem]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -137,6 +152,36 @@ def create_share(
         url=url,
         expires_at=expires_at.isoformat(),
     )
+
+
+@router.get("/chat/share", response_model=ShareListResponse)
+def list_shares(
+    current: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> ShareListResponse:
+    if current.is_guest:
+        raise HTTPException(status_code=401, detail="No autenticado.")
+
+    rows = db.exec(
+        select(SharedConversation)
+        .where(SharedConversation.session_id == current.session_id)
+        .order_by(col(SharedConversation.created_at).desc())
+    ).all()
+
+    base_url = get_public_base_url().rstrip("/")
+    items = [
+        ShareListItem(
+            share_id=sc.id,
+            url=f"{base_url}/shared/{sc.id}",
+            created_at=_ensure_utc(sc.created_at).isoformat(),
+            expires_at=_ensure_utc(sc.expires_at).isoformat(),
+            view_count=sc.view_count,
+            is_active=_is_valid(sc),
+            revoked_at=_ensure_utc(sc.revoked_at).isoformat() if sc.revoked_at else None,
+        )
+        for sc in rows
+    ]
+    return ShareListResponse(ok=True, shares=items)
 
 
 def _fetch_shared(share_id: str, db: Session) -> SharedConversationResponse:

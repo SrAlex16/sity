@@ -83,6 +83,18 @@ function IconStop() {
   );
 }
 
+// ── Shared link item ──────────────────────────────────────────────────────────
+
+interface SharedLinkItem {
+  share_id: string;
+  url: string;
+  created_at: string;
+  expires_at: string;
+  view_count: number;
+  is_active: boolean;
+  revoked_at: string | null;
+}
+
 // ── Recording state ───────────────────────────────────────────────────────────
 
 interface RecordingCtx {
@@ -121,6 +133,10 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [sharedLinksOpen, setSharedLinksOpen] = useState(false);
+  const [sharedLinks, setSharedLinks] = useState<SharedLinkItem[] | null>(null);
+  const [sharedLinksLoading, setSharedLinksLoading] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [activeFont, setActiveFont] = useState<'orbitron' | 'sharetech' | 'rajdhani'>(
     () => (localStorage.getItem('sity_font') ?? 'orbitron') as 'orbitron' | 'sharetech' | 'rajdhani'
   );
@@ -299,6 +315,42 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     });
   };
 
+  // ── Shared links ──────────────────────────────────────────────────────────
+
+  const handleOpenSharedLinks = async () => {
+    setMenuOpen(false);
+    setSharedLinksOpen(true);
+    if (sharedLinks !== null) return;
+    setSharedLinksLoading(true);
+    try {
+      const resp = await fetch('/chat/share', { credentials: 'include' });
+      if (!resp.ok) return;
+      const body = await resp.json() as { ok: boolean; shares: SharedLinkItem[] };
+      setSharedLinks(body.shares);
+    } catch { /* ignore */ } finally {
+      setSharedLinksLoading(false);
+    }
+  };
+
+  const handleRevokeLink = async (shareId: string) => {
+    setRevokingId(shareId);
+    try {
+      const resp = await fetch(`/chat/share/${shareId}`, { method: 'DELETE', credentials: 'include' });
+      if (!resp.ok) return;
+      setSharedLinks((prev) =>
+        prev
+          ? prev.map((s) =>
+              s.share_id === shareId
+                ? { ...s, is_active: false, revoked_at: new Date().toISOString() }
+                : s
+            )
+          : prev
+      );
+    } catch { /* ignore */ } finally {
+      setRevokingId(null);
+    }
+  };
+
   // ── Background ─────────────────────────────────────────────────────────────
 
   const handleBgSelect = (bg: string) => {
@@ -385,6 +437,11 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   {currentUser && currentUser.role !== 'guest' && (
                     <button className={styles.menuItem} onClick={() => void handleShare()}>
                       <IconShare /> {tl.share}
+                    </button>
+                  )}
+                  {currentUser && currentUser.role !== 'guest' && (
+                    <button className={styles.menuItem} onClick={() => void handleOpenSharedLinks()}>
+                      {tl.mySharedLinks}
                     </button>
                   )}
                   <button className={styles.menuItem} onClick={() => { clearMessages(); setMenuOpen(false); }}>
@@ -688,6 +745,145 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   fontFamily: 'var(--font-mono)',
                   fontSize: '0.72rem',
                   cursor: 'pointer',
+                }}
+              >
+                {tl.close}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Shared links modal */}
+      <AnimatePresence>
+        {sharedLinksOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 200,
+              background: 'rgba(0,0,0,0.72)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '1.5rem',
+            }}
+            onClick={() => setSharedLinksOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.92, y: 12 }}
+              transition={{ duration: 0.18 }}
+              style={{
+                background: 'var(--color-surface, #0f1117)',
+                border: '1px solid var(--color-border, #1e2130)',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                width: '100%',
+                maxWidth: '480px',
+                maxHeight: '75vh',
+                display: 'flex',
+                flexDirection: 'column',
+                fontFamily: 'var(--font-mono)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p style={{ margin: '0 0 1rem', fontSize: '0.78rem', color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase', flexShrink: 0 }}>
+                {tl.mySharedLinks}
+              </p>
+
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {sharedLinksLoading && (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>…</p>
+                )}
+                {!sharedLinksLoading && sharedLinks && sharedLinks.length === 0 && (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{tl.noSharedLinks}</p>
+                )}
+                {!sharedLinksLoading && sharedLinks && sharedLinks.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {sharedLinks.map((link) => {
+                      const statusLabel = !link.is_active
+                        ? (link.revoked_at ? tl.linkRevoked : tl.linkExpired)
+                        : tl.linkActive;
+                      const statusColor = link.is_active
+                        ? 'var(--neon-cyan, #00f5ff)'
+                        : 'var(--text-secondary)';
+                      return (
+                        <div
+                          key={link.share_id}
+                          style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid var(--color-border, #1e2130)',
+                            borderRadius: '8px',
+                            padding: '0.7rem 0.85rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                            <span style={{ fontSize: '0.68rem', color: statusColor, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                              {statusLabel}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', opacity: 0.6 }}>
+                              {link.view_count} {tl.viewsLabel}
+                            </span>
+                          </div>
+                          <div style={{
+                            fontSize: '0.7rem',
+                            color: link.is_active ? 'var(--neon-cyan, #00f5ff)' : 'var(--text-secondary)',
+                            wordBreak: 'break-all',
+                            marginBottom: '0.4rem',
+                            opacity: link.is_active ? 1 : 0.45,
+                          }}>
+                            {link.url}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', opacity: 0.55 }}>
+                              {new Date(link.created_at).toLocaleDateString(DATE_LOCALE[uiLang], { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {' → '}
+                              {new Date(link.expires_at).toLocaleDateString(DATE_LOCALE[uiLang], { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                            {link.is_active && (
+                              <button
+                                disabled={revokingId === link.share_id}
+                                onClick={() => void handleRevokeLink(link.share_id)}
+                                style={{
+                                  background: 'none',
+                                  border: '1px solid var(--color-error, #ff4d6d)',
+                                  borderRadius: '4px',
+                                  color: 'var(--color-error, #ff4d6d)',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: '0.65rem',
+                                  padding: '0.2rem 0.5rem',
+                                  cursor: 'pointer',
+                                  opacity: revokingId === link.share_id ? 0.5 : 1,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {revokingId === link.share_id ? tl.revoking : tl.revokeLink}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setSharedLinksOpen(false)}
+                style={{
+                  marginTop: '1rem',
+                  width: '100%',
+                  padding: '0.45rem',
+                  background: 'none',
+                  border: '1px solid var(--color-border, #1e2130)',
+                  borderRadius: '6px',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  flexShrink: 0,
                 }}
               >
                 {tl.close}

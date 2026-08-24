@@ -12,6 +12,10 @@ Coverage:
 - DELETE /chat/share/{id}: owner can revoke; link stops working immediately
 - DELETE /chat/share/{id}: non-owner gets 404
 - DELETE /chat/share/{id}: guest gets 401
+- GET /chat/share: returns own links only (isolation)
+- GET /chat/share: guest gets 401
+- GET /chat/share: includes revoked links with is_active=False
+- GET /chat/share: includes expired links with is_active=False
 """
 from __future__ import annotations
 
@@ -294,3 +298,91 @@ class TestRevokeShare:
         client.delete(f"/chat/share/{share_id}", cookies={"sity_session": cookie})
         resp2 = client.delete(f"/chat/share/{share_id}", cookies={"sity_session": cookie})
         assert resp2.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /chat/share — list all shares for authenticated user
+# ---------------------------------------------------------------------------
+
+class TestListShares:
+    def _create_share(self, client: TestClient, cookie: str) -> str:
+        resp = client.post("/chat/share", cookies={"sity_session": cookie})
+        assert resp.status_code == 201
+        return resp.json()["share_id"]
+
+    def test_returns_own_links_with_correct_fields(self) -> None:
+        client = _client()
+        cookie, user_id = _register_and_login(client)
+        session_id = f"user:{user_id}"
+        _add_messages(session_id, [("user", "Hola"), ("sity", "¿Qué tal?")])
+
+        share_id = self._create_share(client, cookie)
+
+        resp = client.get("/chat/share", cookies={"sity_session": cookie})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert len(body["shares"]) == 1
+        item = body["shares"][0]
+        assert item["share_id"] == share_id
+        assert "url" in item and share_id in item["url"]
+        assert "created_at" in item
+        assert "expires_at" in item
+        assert "view_count" in item
+        assert item["is_active"] is True
+        assert item["revoked_at"] is None
+
+    def test_isolation_other_user_not_visible(self) -> None:
+        client = _client()
+        cookie_a, user_id_a = _register_and_login(client)
+        cookie_b, user_id_b = _register_and_login(client)
+        _add_messages(f"user:{user_id_a}", [("user", "A")])
+        _add_messages(f"user:{user_id_b}", [("user", "B")])
+
+        self._create_share(client, cookie_a)
+        self._create_share(client, cookie_b)
+
+        resp_a = client.get("/chat/share", cookies={"sity_session": cookie_a})
+        shares_a = resp_a.json()["shares"]
+        resp_b = client.get("/chat/share", cookies={"sity_session": cookie_b})
+        shares_b = resp_b.json()["shares"]
+
+        ids_a = {s["share_id"] for s in shares_a}
+        ids_b = {s["share_id"] for s in shares_b}
+        assert ids_a.isdisjoint(ids_b), "Users must never see each other's links"
+
+    def test_guest_gets_401(self) -> None:
+        client = _client()
+        resp = client.get("/chat/share")
+        assert resp.status_code == 401
+
+    def test_revoked_link_listed_as_inactive(self) -> None:
+        client = _client()
+        cookie, user_id = _register_and_login(client)
+        _add_messages(f"user:{user_id}", [("user", "Hola")])
+
+        share_id = self._create_share(client, cookie)
+        client.delete(f"/chat/share/{share_id}", cookies={"sity_session": cookie})
+
+        resp = client.get("/chat/share", cookies={"sity_session": cookie})
+        item = next(s for s in resp.json()["shares"] if s["share_id"] == share_id)
+        assert item["is_active"] is False
+        assert item["revoked_at"] is not None
+
+    def test_expired_link_listed_as_inactive(self) -> None:
+        client = _client()
+        cookie, user_id = _register_and_login(client)
+        _add_messages(f"user:{user_id}", [("user", "Hola")])
+
+        share_id = self._create_share(client, cookie)
+
+        # Back-date expires_at in DB to simulate expiry.
+        with Session(engine) as db:
+            sc = db.get(SharedConversation, share_id)
+            sc.expires_at = utc_now() - timedelta(seconds=1)
+            db.add(sc)
+            db.commit()
+
+        resp = client.get("/chat/share", cookies={"sity_session": cookie})
+        item = next(s for s in resp.json()["shares"] if s["share_id"] == share_id)
+        assert item["is_active"] is False
