@@ -357,14 +357,6 @@ Ver .env.example para la lista completa.
     para mensajes genéricos sin keywords de timers. 8 tests nuevos en
     `test_toolset_selector.py`. 1783 tests. Push + deploy confirmados.
 
-- **Sistema de iniciativa propia de Sity** — IMPLEMENTADO Y VERIFICADO EN PRODUCCIÓN
-  (2026-08-19 → 2026-08-24). Sity puede iniciar conversaciones sin que el usuario escriba
-  primero. Tres triggers: `conversation_abandoned`, `long_inactivity`, `open_loop`.
-  Job periódico de 6h + Haiku como juez (SHOULD_I_TALK?). Reutiliza el dispatcher de
-  notificaciones existente. Entrega multi-canal: push notification + SSE + TTS (ElevenLabs
-  o Piper según preferencia del usuario). Auto-expiración de loops estancados
-  (`open_loop_max_eval_attempts: 20`). 131 tests. Config en producción.
-  Historial completo de 4 bugs resueltos en 2 rondas: `docs/proactive-initiative-architecture.md §16`.
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
@@ -378,11 +370,6 @@ Ver .env.example para la lista completa.
   datos genérico (`NotificationRule` con tipo, parámetros, condición de
   disparo). El sistema de Web Push que lo entregará sigue adelante
   independientemente (ver entrada de Web Push API).
-- **Ampliar i18n a ChatScreen** — ChatScreen aún tiene todos sus textos hardcodeados
-  en español (botones, labels, mensajes de error). La capa de traducciones
-  (`mobile/src/i18n/translations.ts`) ya existe; solo falta añadir el namespace
-  `chat` y aplicarlo. Menor urgencia porque ChatScreen es mayoritariamente
-  contenido del usuario, no UI funcional.
 - **Google Analytics / GTM** — integrar métricas de uso de la PWA (sesiones,
   pantallas visitadas, acciones de voz, errores de red). Tensión no resuelta
   con privacidad/RGPD: la PWA es un asistente personal con datos sensibles
@@ -410,10 +397,6 @@ Ver .env.example para la lista completa.
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
   soportaría con la latencia necesaria.
-- **Marca de agua reCAPTCHA** — el badge de reCAPTCHA v3 aparece
-  permanentemente en la esquina inferior derecha de la PWA. Ocultarlo
-  con CSS requiere incluir un aviso legal en la UI (según los ToS de
-  Google). Evaluar si ocultarlo y añadir el aviso, o dejarlo visible.
 - **Limpieza de código continua** — a medida que crece el proyecto
   se acumulan TODOs, dead code y abstracciones a medias. Revisión
   periódica: eliminar lo que no se usa, consolidar patrones duplicados,
