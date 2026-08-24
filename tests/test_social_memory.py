@@ -667,14 +667,24 @@ class TestRunSocialUpdate:
 # ---------------------------------------------------------------------------
 
 def _make_mock_session(opinion: float, trust: float) -> Any:
-    """Return a minimal SQLAlchemy session stub whose execute() returns (opinion, trust)."""
+    """Return a minimal SQLAlchemy session stub for _build_social_context_block.
+
+    First execute() → profile row (id, opinion, trust).
+    Second execute() → None (no active reflection), preventing IndexError.
+    """
     from unittest.mock import MagicMock
-    row = MagicMock()
-    row.__getitem__ = lambda self, i: [opinion, trust][i]
-    result = MagicMock()
-    result.fetchone.return_value = row
+
+    profile_row = MagicMock()
+    # Row now returns (id=1, opinion, trust)
+    profile_row.__getitem__ = lambda self, i: [1, opinion, trust][i]
+    profile_result = MagicMock()
+    profile_result.fetchone.return_value = profile_row
+
+    no_ref_result = MagicMock()
+    no_ref_result.fetchone.return_value = None
+
     session = MagicMock()
-    session.execute.return_value = result
+    session.execute.side_effect = [profile_result, no_ref_result]
     return session
 
 

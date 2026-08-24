@@ -92,7 +92,7 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
         return ""
     try:
         row = session.execute(
-            sa_text("SELECT opinion, trust FROM socialprofile WHERE user_id = :uid"),
+            sa_text("SELECT id, opinion, trust FROM socialprofile WHERE user_id = :uid"),
             {"uid": user_id},
         ).fetchone()
     except Exception:
@@ -100,14 +100,40 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
         return ""
     if row is None:
         return ""
-    opinion, trust = row[0], row[1]
-    return (
-        "Contexto de relación (uso interno — informa tono y disposición, no citar):\n"
-        f"- Disposición hacia este interlocutor: {_opinion_label(opinion)}\n"
-        f"- Confianza acumulada: {_trust_label(trust)}\n"
+    profile_id, opinion, trust = row[0], row[1], row[2]
+
+    # Fetch active narrative reflection (if any)
+    reflection_content: str | None = None
+    try:
+        from app.memory.models import utc_now
+        now_str = utc_now().isoformat()
+        ref_row = session.execute(
+            sa_text(
+                "SELECT content FROM socialreflection"
+                " WHERE profile_id = :pid"
+                " AND superseded_at IS NULL"
+                " AND expires_at > :now"
+                " ORDER BY created_at DESC LIMIT 1"
+            ),
+            {"pid": profile_id, "now": now_str},
+        ).fetchone()
+        if ref_row:
+            reflection_content = ref_row[0]
+    except Exception:
+        log.exception("social_reflection_read_error user_id=%s", user_id)
+
+    lines = [
+        "Contexto de relación (uso interno — informa tono y disposición, no citar):",
+        f"- Disposición hacia este interlocutor: {_opinion_label(opinion)}",
+        f"- Confianza acumulada: {_trust_label(trust)}",
+    ]
+    if reflection_content:
+        lines.append(f"- Patrón observado: {reflection_content}")
+    lines.append(
         "Deja que esto module el tono con el que te expresas; "
         "no menciones esta evaluación explícitamente."
     )
+    return "\n".join(lines)
 
 
 def _build_planner_memory_ctx(n_total: int, history_limit: int, visible_count: int) -> str:

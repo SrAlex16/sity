@@ -15,12 +15,14 @@ while the update runs is queued (not lost): it will append to the cleared
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import threading
-from datetime import datetime, timezone
-from typing import Callable
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Optional
 
-from sqlmodel import Session
+from sqlalchemy import text as sa_text
+from sqlmodel import Session, select
 
 from app.memory.db import engine
 from app.trace.logger import write_log
@@ -92,6 +94,195 @@ def compute_trust(
         stability_factor = max(0.0, 1.0 - std_dev)
 
     return time_factor * (0.5 + 0.5 * stability_factor)
+
+
+_REFLECTION_MIN_NEW_MESSAGES = 20
+_REFLECTION_MIN_OPINION_DELTA = 0.15
+_REFLECTION_MAX_AGE_DAYS = 30
+_REFLECTION_MAX_EVIDENCE_MESSAGES = 15
+
+_REFLECTION_SYSTEM = (
+    "Eres un observador que lee un extracto de conversación y escribe una reflexión breve "
+    "sobre el patrón de interacción observado.\n\n"
+    "REGLAS:\n"
+    "- Escribe 2-4 frases en español.\n"
+    "- Describe solo lo que observas: temas frecuentes, estilo comunicativo, tipo de preguntas, actitud general.\n"
+    "- NO menciones valores numéricos de ningún tipo.\n"
+    "- NO uses las palabras «opinión», «trust», «confianza» como concepto abstracto.\n"
+    "- NO hagas predicciones ni recomendaciones.\n"
+    "- NO superes 100 palabras."
+)
+
+
+def _get_reflection_config() -> dict:
+    try:
+        from app.settings.config_loader import load_default_config
+        cfg = load_default_config().get("social", {})
+        return {
+            "reflection_min_new_messages": int(cfg.get("reflection_min_new_messages", _REFLECTION_MIN_NEW_MESSAGES)),
+            "reflection_min_opinion_delta": float(cfg.get("reflection_min_opinion_delta", _REFLECTION_MIN_OPINION_DELTA)),
+            "reflection_max_age_days": int(cfg.get("reflection_max_age_days", _REFLECTION_MAX_AGE_DAYS)),
+            "reflection_max_evidence_messages": int(cfg.get("reflection_max_evidence_messages", _REFLECTION_MAX_EVIDENCE_MESSAGES)),
+        }
+    except Exception:
+        return {
+            "reflection_min_new_messages": _REFLECTION_MIN_NEW_MESSAGES,
+            "reflection_min_opinion_delta": _REFLECTION_MIN_OPINION_DELTA,
+            "reflection_max_age_days": _REFLECTION_MAX_AGE_DAYS,
+            "reflection_max_evidence_messages": _REFLECTION_MAX_EVIDENCE_MESSAGES,
+        }
+
+
+def _get_latest_active_reflection(profile_id: int, db: Session) -> Optional[object]:
+    from app.memory.models import SocialReflection, utc_now
+    now = utc_now()
+    return db.exec(
+        select(SocialReflection)
+        .where(SocialReflection.profile_id == profile_id)
+        .where(SocialReflection.superseded_at == None)  # noqa: E711
+        .where(SocialReflection.expires_at > now)
+        .order_by(SocialReflection.created_at.desc())
+        .limit(1)
+    ).first()
+
+
+def _has_sufficient_signal(
+    *,
+    user_id: int,
+    latest_reflection: Optional[object],
+    new_opinion: float,
+    cfg: dict,
+    db: Session,
+) -> bool:
+    session_id = f"user:{user_id}"
+    min_new = cfg["reflection_min_new_messages"]
+    min_delta = cfg["reflection_min_opinion_delta"]
+
+    if latest_reflection is None:
+        count = db.execute(
+            sa_text("SELECT COUNT(*) FROM chatmessage WHERE session_id = :sid"),
+            {"sid": session_id},
+        ).scalar() or 0
+        return count >= min_new
+
+    count = db.execute(
+        sa_text(
+            "SELECT COUNT(*) FROM chatmessage"
+            " WHERE session_id = :sid AND created_at > :since"
+        ),
+        {"sid": session_id, "since": latest_reflection.created_at.isoformat()},
+    ).scalar() or 0
+
+    opinion_delta = abs(new_opinion - latest_reflection.opinion_at_gen)
+    return count >= min_new or opinion_delta >= min_delta
+
+
+def _generate_reflection_content(messages: list[dict]) -> Optional[str]:
+    """Call the LLM to produce a brief narrative reflection from recent messages.
+
+    Returns the generated text, or None if the provider returned empty.
+    Raises on provider/network error — caller handles via outer try/except.
+    """
+    if not messages:
+        return None
+
+    from app.cortex.providers.factory import build_ai_provider
+    from app.cortex.schemas import AIRequest
+
+    formatted = "\n".join(f"{m['role']}: {m['text'][:300]}" for m in messages)
+    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    provider = build_ai_provider(provider_name, model="claude-haiku-4-5-20251001")
+    request = AIRequest(
+        trace_id="social_reflection",
+        task_type="social_reflection",
+        system_prompt=_REFLECTION_SYSTEM,
+        user_message=f"Mensajes recientes:\n{formatted}",
+        max_tokens=150,
+        tools_enabled=False,
+    )
+    response = provider.generate(request)
+    if not response.ok or not response.text:
+        return None
+    return response.text.strip() or None
+
+
+def _maybe_generate_reflection(
+    *,
+    user_id: int,
+    profile_id: int,
+    new_opinion: float,
+    new_trust: float,
+) -> None:
+    """Steps 7-10: check signal → gather evidence → call LLM → persist.
+
+    Opens its own Session (never touches the raw_conn write lock).
+    Raises on unrecoverable error; _run_social_update catches and logs.
+    """
+    from app.memory.models import SocialReflection, utc_now
+
+    cfg = _get_reflection_config()
+    evidence_ids: list[int] = []
+    latest_ref = None
+
+    with Session(engine) as db:
+        # Step 7: sufficient signal?
+        latest_ref = _get_latest_active_reflection(profile_id, db)
+        if not _has_sufficient_signal(
+            user_id=user_id,
+            latest_reflection=latest_ref,
+            new_opinion=new_opinion,
+            cfg=cfg,
+            db=db,
+        ):
+            return
+
+        # Step 8: gather evidence — most recent N messages, chronological
+        session_id = f"user:{user_id}"
+        rows = db.execute(
+            sa_text(
+                "SELECT id, role, text FROM chatmessage"
+                " WHERE session_id = :sid"
+                " ORDER BY created_at DESC LIMIT :n"
+            ),
+            {"sid": session_id, "n": cfg["reflection_max_evidence_messages"]},
+        ).fetchall()
+        rows = list(reversed(rows))
+        evidence_ids = [r[0] for r in rows]
+        messages_for_llm = [{"role": r[1], "text": r[2]} for r in rows]
+
+        # Step 9: generate content (may raise — propagates to caller)
+        content = _generate_reflection_content(messages_for_llm)
+        if not content:
+            return
+
+        # Step 10: supersede active reflection, insert new
+        now = utc_now()
+        if latest_ref is not None:
+            latest_ref.superseded_at = now
+            db.add(latest_ref)
+
+        db.add(SocialReflection(
+            profile_id=profile_id,
+            category="general",
+            content=content,
+            evidence_json=json.dumps(evidence_ids),
+            opinion_at_gen=new_opinion,
+            trust_at_gen=new_trust,
+            expires_at=now + timedelta(days=cfg["reflection_max_age_days"]),
+        ))
+        db.commit()
+
+    write_log(
+        level="INFO",
+        module="social",
+        event="social_reflection_created",
+        payload={
+            "user_id": user_id,
+            "profile_id": profile_id,
+            "evidence_count": len(evidence_ids),
+            "superseded_previous": latest_ref is not None,
+        },
+    )
 
 
 def _run_social_update(
@@ -194,6 +385,23 @@ def _run_social_update(
                 "new_trust": new_trust,
             },
         )
+
+        # Steps 7-10: narrative reflection (own Session, own try/except — never
+        # blocks the write lock; BEGIN IMMEDIATE was released at commit above).
+        try:
+            _maybe_generate_reflection(
+                user_id=user_id,
+                profile_id=profile_id,
+                new_opinion=new_opinion,
+                new_trust=new_trust,
+            )
+        except Exception as refl_exc:
+            write_log(
+                level="WARN",
+                module="social",
+                event="social_reflection_generation_failed",
+                payload={"user_id": user_id, "error": str(refl_exc)[:200]},
+            )
 
     except Exception as exc:
         if not committed:

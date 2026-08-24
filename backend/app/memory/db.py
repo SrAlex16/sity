@@ -123,6 +123,21 @@ def _migrate_setting() -> None:
                        "constraint_change": "key_unique → (key, session_id)_composite"})
 
 
+def _migrate_social_reflection() -> None:
+    """Ensure socialreflection table and its profile_id index exist.
+
+    create_all handles the table itself for new deployments. This function
+    is a no-op if the table was already created; it only logs on first creation.
+    No column-level migration needed — this is an entirely new table.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(socialreflection)"))
+        cols = {row[1] for row in result.fetchall()}
+        if not cols:
+            return  # table not yet created; create_all handles the full schema
+    # Table exists — nothing to migrate
+
+
 def _verify_encryption_key(session: Session) -> None:
     """Fail fast at startup if SITY_ENCRYPTION_KEY cannot decrypt existing UserIntegration rows.
 
@@ -154,6 +169,7 @@ def init_db() -> None:
         _migrate_chatmessage()
         _migrate_user()
         _migrate_setting()
+        _migrate_social_reflection()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()

@@ -82,7 +82,11 @@ auth:
   registration_open: true             # set false to disable new registrations
 
 social:
-  update_threshold_turns: 10    # fire background update when pending_loads_json reaches this count
+  update_threshold_turns: 10           # fire background update when pending_loads_json reaches this count
+  reflection_min_new_messages: 20      # min new messages since last reflection to consider generating
+  reflection_min_opinion_delta: 0.15   # |Δopinion| threshold to bypass message count requirement
+  reflection_max_age_days: 30          # reflection expires this many days after creation
+  reflection_max_evidence_messages: 15 # recent messages passed to LLM as evidence
 
 timers:
   poll_interval_seconds: 5      # ScheduledTaskRunner wake-up cadence
