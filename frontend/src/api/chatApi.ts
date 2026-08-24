@@ -34,6 +34,7 @@ export type ChatHistoryItem = {
   role: "user" | "sity";
   text: string;
   created_at?: string;
+  audio_filename?: string | null;
 };
 
 export const API_BASE = import.meta.env.VITE_SITY_API_BASE ?? "http://localhost:8000";

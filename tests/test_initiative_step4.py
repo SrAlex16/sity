@@ -584,3 +584,96 @@ class TestRunnerIntegration:
             select(NotificationLog).where(NotificationLog.session_id == sid)
         ).all()
         assert len(notif_logs) == 0
+
+
+# ---------------------------------------------------------------------------
+# _dispatch_initiative — TTS synthesis
+# ---------------------------------------------------------------------------
+
+def _add_voice_setting(db, session_id: str, key: str, value) -> None:
+    """Insert a per-session voice Setting row."""
+    import json as _json
+    from app.memory.models import Setting
+    db.add(Setting(key=f"voice.{key}", value_json=_json.dumps(value), session_id=session_id))
+    db.commit()
+
+
+class TestDispatchInitiativeTTS:
+    def test_voice_enabled_synthesizes_and_saves_audio_filename(self):
+        """User with voice enabled (default 'symmetric') gets audio_filename on ChatMessage."""
+        from app.initiative.runner import _dispatch_initiative
+        from app.memory.models import ChatMessage
+
+        db = _make_db()
+        cand = _candidate("conversation_abandoned", session_id="user:1")
+        result = _eval_result("send", message="¿Sigues pensando en eso?")
+
+        fake_url = "/audio/stored/tts_test.mp3"
+        fake_filename = "tts_test.mp3"
+
+        with patch("app.initiative.runner.dispatch") as mock_dispatch, \
+             patch("app.audio.tts_dispatcher.synthesize_fragment",
+                   return_value=(fake_url, fake_filename)):
+            mock_dispatch.return_value = MagicMock(discarded=False)
+            _dispatch_initiative(cand, result, db)
+
+        msg = db.exec(
+            select(ChatMessage).where(
+                ChatMessage.session_id == "user:1",
+                ChatMessage.role == "sity",
+            )
+        ).first()
+        assert msg is not None
+        assert msg.audio_filename == fake_filename
+        assert msg.tts_fragments == 1
+
+    def test_voice_never_skips_tts(self):
+        """User with voice_response_mode='never' → no TTS, audio_filename stays None."""
+        from app.initiative.runner import _dispatch_initiative
+        from app.memory.models import ChatMessage
+
+        db = _make_db()
+        _add_voice_setting(db, "user:1", "voice_response_mode", "never")
+        cand = _candidate("conversation_abandoned", session_id="user:1")
+        result = _eval_result("send", message="Hola, ¿todo bien?")
+
+        with patch("app.initiative.runner.dispatch") as mock_dispatch, \
+             patch("app.audio.tts_dispatcher.synthesize_fragment") as mock_synth:
+            mock_dispatch.return_value = MagicMock(discarded=False)
+            _dispatch_initiative(cand, result, db)
+
+        mock_synth.assert_not_called()
+        msg = db.exec(
+            select(ChatMessage).where(
+                ChatMessage.session_id == "user:1",
+                ChatMessage.role == "sity",
+            )
+        ).first()
+        assert msg is not None
+        assert msg.audio_filename is None
+
+    def test_tts_error_does_not_block_dispatch(self):
+        """If TTS synthesis raises, dispatch still completes and message is saved."""
+        from app.initiative.runner import _dispatch_initiative
+        from app.memory.models import ChatMessage
+
+        db = _make_db()
+        cand = _candidate("long_inactivity", session_id="user:1")
+        result = _eval_result("send", message="¿Qué tal vas?")
+
+        with patch("app.initiative.runner.dispatch") as mock_dispatch, \
+             patch("app.audio.tts_dispatcher.synthesize_fragment",
+                   side_effect=RuntimeError("piper not found")):
+            mock_dispatch.return_value = MagicMock(discarded=False)
+            _dispatch_initiative(cand, result, db)
+
+        assert mock_dispatch.call_count == 1
+        msg = db.exec(
+            select(ChatMessage).where(
+                ChatMessage.session_id == "user:1",
+                ChatMessage.role == "sity",
+            )
+        ).first()
+        assert msg is not None
+        assert msg.text == "¿Qué tal vas?"
+        assert msg.audio_filename is None

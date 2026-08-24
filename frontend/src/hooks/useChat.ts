@@ -5,6 +5,7 @@ import {
   type ChatArtifact,
   type ChatMessageResponse,
   API_BASE,
+  type ChatHistoryItem,
 } from "../api/chatApi";
 
 /** Logs only in development builds; compiled out in production. */
@@ -60,17 +61,30 @@ export function useChat(options?: UseChatOptions) {
     }, 0);
   }
 
+  function _historyItemToEntry(message: ChatHistoryItem): ChatEntry {
+    const artifacts: ChatArtifact[] = [];
+    if (message.audio_filename) {
+      const ext = message.audio_filename.split(".").pop() ?? "wav";
+      artifacts.push({
+        type: "audio",
+        url: `/audio/stored/${message.audio_filename}`,
+        filename: message.audio_filename,
+        mime_type: ext === "mp3" ? "audio/mpeg" : "audio/wav",
+      });
+    }
+    return {
+      role: message.role as "user" | "sity",
+      text: message.text,
+      created_at: message.created_at,
+      ...(artifacts.length > 0 ? { artifacts } : {}),
+    };
+  }
+
   async function loadCurrentChat() {
     try {
       const response = await getCurrentChat();
       if (response.messages.length > 0) {
-        setChatEntries(
-          response.messages.map((message) => ({
-            role: message.role as "user" | "sity",
-            text: message.text,
-            created_at: message.created_at,
-          })),
-        );
+        setChatEntries(response.messages.map(_historyItemToEntry));
         window.setTimeout(() => scrollChatToBottom("auto"), 50);
       }
     } catch {

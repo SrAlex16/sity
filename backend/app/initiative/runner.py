@@ -20,6 +20,7 @@ Errores globales del ciclo se registran como ERROR.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -146,6 +147,65 @@ def _pick_candidate(candidates: list[TriggerCandidate]) -> TriggerCandidate:
 
 
 # ---------------------------------------------------------------------------
+# TTS synthesis for initiative messages
+# ---------------------------------------------------------------------------
+
+def _maybe_synthesize_tts(
+    message: str,
+    session_id: str,
+    trace_id: str,
+    db: Session,
+) -> Optional[tuple[str, str]]:
+    """Synthesize TTS for an initiative message using the user's voice preference.
+
+    Returns (url, filename) if audio was generated and persisted, or None if
+    the user has voice disabled or synthesis fails for any reason.
+    Errors are logged as WARN and never propagate — TTS failure must not block dispatch.
+    """
+    try:
+        from app.audio.tts_dispatcher import synthesize_fragment
+        from app.settings.config_loader import load_default_config
+        from app.settings.settings_service import SettingsService
+
+        svc = SettingsService(db)
+        voice_settings = svc.get_voice_settings(session_id=session_id)
+
+        if voice_settings.voice_response_mode == "never":
+            return None
+
+        raw_cfg = load_default_config().get("audio", {})
+        voice_id = str(raw_cfg.get("elevenlabs_voice_id", "EXAVITQu4vr4xnSDxMaL"))
+        daily_limit = int(raw_cfg.get("elevenlabs_daily_char_limit", 0))
+
+        tts_text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', message)
+        tts_text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', tts_text)
+        tts_text = re.sub(r'`([^`]+)`', r'\1', tts_text)
+        tts_text = re.sub(r'^#{1,6}\s+', '', tts_text, flags=re.MULTILINE).strip()
+
+        url, filename = synthesize_fragment(
+            tts_text,
+            session=db,
+            session_id=session_id,
+            tts_engine=voice_settings.tts_engine,
+            persist=True,
+            trace_id=trace_id,
+            voice_id=voice_id,
+            daily_limit=daily_limit,
+        )
+        return url, filename
+
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="initiative",
+            event="initiative_tts_error",
+            session_id=session_id,
+            payload={"error": str(exc)[:200]},
+        )
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Dispatch — persist ChatMessage + send notification + mark open_loop
 # ---------------------------------------------------------------------------
 
@@ -156,14 +216,25 @@ def _dispatch_initiative(
 ) -> None:
     message = result.message or ""
     now = _utc_now()
+    trace_id = f"init:{candidate.session_id}:{now.date().isoformat()}"
 
-    db.add(ChatMessage(
+    chat_msg = ChatMessage(
         session_id=candidate.session_id,
         role="sity",
         text=message,
-        trace_id=f"init:{candidate.session_id}:{now.date().isoformat()}",
-    ))
+        trace_id=trace_id,
+    )
+    db.add(chat_msg)
     db.commit()
+    db.refresh(chat_msg)
+
+    tts_result = _maybe_synthesize_tts(message, candidate.session_id, trace_id, db)
+    if tts_result is not None:
+        _url, filename = tts_result
+        chat_msg.audio_filename = filename
+        chat_msg.tts_fragments = 1
+        db.add(chat_msg)
+        db.commit()
 
     fact = NotificationFact(
         session_id=candidate.session_id,
