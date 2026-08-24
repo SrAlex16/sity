@@ -696,9 +696,9 @@ LIMIT 10;
 
 ## 16. Bugs encontrados y resueltos en verificación real (2026-08-19 → 2026-08-24)
 
-Esta sección documenta los bugs descubiertos durante la primera verificación en producción
-real. Si en el futuro aparece comportamiento extraño en el sistema de iniciativa, este
-historial explica exactamente qué se probó y qué se aprendió.
+Esta sección documenta los bugs descubiertos durante las dos rondas de verificación en
+producción real. Si en el futuro aparece comportamiento extraño en el sistema de iniciativa,
+este historial explica exactamente qué se probó y qué se aprendió.
 
 ### Bug 1 — JSON con markdown fences en evaluator.py (`c0cc4b3`, 2026-08-19)
 
@@ -757,7 +757,34 @@ información relevante para esa decisión específica. Los mensajes de Sity sobr
 son información sobre lo que Sity ya hizo, no sobre el estado de la intención del usuario —
 mezclarlo introduce sesgo sistemático.
 
-### Estado del sistema tras la verificación
+### Bug 4 — Mensajes de iniciativa sin TTS (`e597072`, 2026-08-24)
+
+**Síntoma:** Segunda ronda de verificación con config demo. El mensaje proactivo llegaba
+correctamente al chat (texto visible), pero sin audio — pese a que el usuario tiene ElevenLabs
+configurado y las respuestas normales de chat sí sintetizan audio.
+
+**Causa:** `runner._dispatch_initiative()` persistía el `ChatMessage` con solo `text=message`
+y nunca llamaba a `_attach_tts_artifacts` ni a ningún equivalente. El flujo normal de chat
+sintetiza TTS en `ai_orchestrator.py` justo después de `build_final_ai_response()`, pero el
+runner construye el mensaje directamente y ese paso siempre se omitió.
+
+**Fix:** Nueva función `_maybe_synthesize_tts()` en `runner.py` que carga `VoiceSettings`
+del usuario vía `SettingsService` y llama a `synthesize_fragment()` del `tts_dispatcher.py`
+existente (con sus 4 capas de fallback: Guest → Piper, sin clave API → Piper, límite diario
+→ Piper, error HTTP → Piper). Si `voice_response_mode == "never"`, no sintetiza. Cualquier
+error se loguea como WARN y nunca bloquea el dispatch. El `ChatMessage` se actualiza con
+`audio_filename` y `tts_fragments = 1`.
+
+**Fix adicional en frontend:** `loadCurrentChat()` en `useChat.ts` no mapeaba `audio_filename`
+a `artifacts` al cargar el historial, así que el audio de mensajes persistidos (tanto de
+iniciativa como de chat normal) se perdía al recargar la página. Corregido mapeando
+`audio_filename → [{ type: "audio", url: /audio/stored/... }]` en la carga de historial.
+
+**Lección:** cada canal de entrega que crea `ChatMessage` directamente (iniciativa, timers,
+futuros canales) debe sintetizar TTS si el usuario lo tiene activado — no hereda el flujo
+del `ai_orchestrator` automáticamente.
+
+### Estado del sistema tras las dos rondas de verificación
 
 El pipeline completo fue verificado de principio a fin en producción:
 - `open_loop_detected` → OpenLoop creado en DB ✓
@@ -765,4 +792,6 @@ El pipeline completo fue verificado de principio a fin en producción:
 - Haiku evalúa con contexto limpio (solo mensajes del usuario) ✓
 - Haiku envía o declina con razonamiento verificable en EvalLog ✓
 - Si loop lleva > 20 evaluaciones sin progreso → auto-expirado, gasto cortado ✓
+- Mensaje proactivo entregado como push notification + SSE ✓
+- Mensaje proactivo sintetizado con TTS según preferencia del usuario ✓
 - Config TEMPORAL revertida a producción (2026-08-24) ✓

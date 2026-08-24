@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-24 (Sistema de iniciativa — verificación en producción completa).
+Última actualización: 2026-08-24 (Sistema de iniciativa — segunda verificación y TTS en mensajes proactivos).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2041 tests en verde (pytest)
+- 2050 tests en verde (pytest, 1 fallo pre-existente conocido en test_chat_message_metadata)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -84,30 +84,38 @@ Ver .env.example para la lista completa.
 
 ## Completado recientemente
 
-- **Sistema de iniciativa propia — verificación en producción y correcciones
-  (2026-08-19 → 2026-08-24)** — la implementación inicial (2026-08-19) fue correcta
-  estructuralmente, pero la verificación real descubrió 3 bugs que impedían el
-  funcionamiento end-to-end:
+- **Sistema de iniciativa propia — dos rondas de verificación en producción
+  (2026-08-19 → 2026-08-24, commits `c0cc4b3`→`e597072`)** — la implementación inicial
+  (4 pasos, 2026-08-19) fue correcta estructuralmente, pero la verificación real descubrió
+  4 bugs en dos rondas:
 
-  1. **JSON fences en evaluator.py**: Haiku envuelve las respuestas en bloques markdown
-     (` ```json\n...\n``` `). `json.loads()` fallaba en todos los ciclos → `json_parse_error`
-     → skip permanente. Fix: `strip_json_fences()` antes del parse. Commit `c0cc4b3`.
+  **Ronda 1 (2026-08-19 → 2026-08-24) — 3 bugs bloqueantes:**
 
-  2. **JSON fences en open_loop_hook.py (crítico)**: mismo bug, misma causa, pero silencioso:
-     el fallback `{"has_intent": False}` hacía que NINGÚN OpenLoop se creara en producción
-     desde el primer día. Fix: módulo compartido `_json_utils.py` con `strip_json_fences()`
-     importado por ambos módulos. Commit `1e0f91b`.
+  1. **JSON fences en evaluator.py** (`c0cc4b3`): Haiku envuelve las respuestas JSON en
+     bloques markdown (` ```json\n...\n``` `). `json.loads()` fallaba en todos los ciclos →
+     skip permanente. Fix: `strip_json_fences()` antes del parse.
 
-  3. **Dead zone por contexto auto-referencial**: `recent_messages_after_detection` incluía
-     mensajes de Sity → Haiku veía "Sity ya preguntó" → skip indefinido sin cerrar el loop
-     (`ol_aee77ee2` acumuló 715 evaluaciones sin progreso en 4 días). Fix estructural: filtrar
-     a solo `role="user"` en `detector._check_open_loop()`. Red de seguridad añadida:
-     `open_loop_max_eval_attempts: 20` — auto-expira loops estancados tras N evaluaciones.
-     Commit `0680b8c`.
+  2. **JSON fences en open_loop_hook.py** (`1e0f91b`, crítico): mismo bug pero silencioso
+     — el fallback `{"has_intent": False}` hacía que NINGÚN OpenLoop se creara en producción
+     desde el primer día. Fix: módulo compartido `_json_utils.py` con `strip_json_fences()`.
 
-  El pipeline completo fue verificado de principio a fin: `open_loop_detected` en logs →
-  OpenLoop en DB → evaluación por Haiku con contexto limpio → decisión verificable en
-  `InitiativeEvalLog`. Config TEMPORAL revertida a producción. 2041 tests en verde.
+  3. **Dead zone por contexto auto-referencial** (`0680b8c`): `recent_messages_after_detection`
+     incluía mensajes de Sity → Haiku veía "Sity ya preguntó" → skip indefinido sin cerrar el
+     loop (`ol_aee77ee2` acumuló 715 evaluaciones en 4 días). Fix: filtrar a `role="user"` en
+     `detector._check_open_loop()`. Red de seguridad: `open_loop_max_eval_attempts: 20`.
+
+  **Ronda 2 (2026-08-24) — 1 bug de canal:**
+
+  4. **Mensajes de iniciativa sin TTS** (`e597072`): `_dispatch_initiative()` guardaba el
+     `ChatMessage` con solo texto, nunca sintetizaba audio. El flujo del `ai_orchestrator`
+     no se hereda automáticamente en canales directos. Fix: `_maybe_synthesize_tts()` en
+     `runner.py` que carga `VoiceSettings` del usuario y llama al `tts_dispatcher.py`
+     existente. Fix adicional: `loadCurrentChat()` en el frontend ahora mapea `audio_filename`
+     a artifacts para reproducir audio al recargar el historial.
+
+  El pipeline completo verificado de principio a fin: detección de intención → OpenLoop en
+  DB → evaluación con contexto limpio → envío con push notification + SSE + TTS según
+  preferencia del usuario. Config TEMPORAL revertida. 2050 tests en verde.
   Ver `docs/proactive-initiative-architecture.md §16` para el historial completo.
 
 - **Web Push API + mecanismo de 3 estados (Pasos A/B/C/4, 2026-08-10)** — sistema
@@ -353,9 +361,10 @@ Ver .env.example para la lista completa.
   (2026-08-19 → 2026-08-24). Sity puede iniciar conversaciones sin que el usuario escriba
   primero. Tres triggers: `conversation_abandoned`, `long_inactivity`, `open_loop`.
   Job periódico de 6h + Haiku como juez (SHOULD_I_TALK?). Reutiliza el dispatcher de
-  notificaciones ya existente. 128 tests. Config en producción. Auto-expiración de loops
-  estancados (`open_loop_max_eval_attempts: 20`).
-  Documentación completa + historial de bugs: `docs/proactive-initiative-architecture.md`.
+  notificaciones existente. Entrega multi-canal: push notification + SSE + TTS (ElevenLabs
+  o Piper según preferencia del usuario). Auto-expiración de loops estancados
+  (`open_loop_max_eval_attempts: 20`). 131 tests. Config en producción.
+  Historial completo de 4 bugs resueltos en 2 rondas: `docs/proactive-initiative-architecture.md §16`.
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
