@@ -1,12 +1,24 @@
 """Ejecución de acciones de Google Calendar confirmadas por el usuario."""
 from __future__ import annotations
 
+import concurrent.futures as _cf
 import json
 import subprocess
 from dataclasses import dataclass
 from typing import Any
 
 from sqlmodel import Session
+
+_GOOGLE_CALL_TIMEOUT = 25  # seconds — matches google_tools._GOOGLE_CALL_TIMEOUT
+
+
+def _exec(fn, *, label: str = "google_action"):
+    """Run fn() in a thread with a hard timeout. Prevents indefinite hangs on slow API calls."""
+    future = _cf.ThreadPoolExecutor(max_workers=1).submit(fn)
+    try:
+        return future.result(timeout=_GOOGLE_CALL_TIMEOUT)
+    except _cf.TimeoutError:
+        raise TimeoutError(f"{label} no respondió en {_GOOGLE_CALL_TIMEOUT}s")
 
 
 def _get_system_timezone() -> str:
@@ -92,7 +104,10 @@ def _create_calendar_event(
         "end": {"dateTime": end_iso, "timeZone": tz},
     }
 
-    event = service.events().insert(calendarId="primary", body=event_body).execute()
+    event = _exec(
+        lambda: service.events().insert(calendarId="primary", body=event_body).execute(),
+        label="calendar.events.insert",
+    )
     link = event.get("htmlLink", "")
     return GoogleActionResult(
         ok=True,
@@ -105,6 +120,7 @@ def _edit_calendar_event(
     user_id: int | None,
     session: Session | None,
 ) -> GoogleActionResult:
+    import httplib2
     from googleapiclient.discovery import build
 
     creds = _resolve_creds(user_id, session)
@@ -115,7 +131,10 @@ def _edit_calendar_event(
     service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     try:
-        event = service.events().get(calendarId="primary", eventId=event_id).execute()
+        event = _exec(
+            lambda: service.events().get(calendarId="primary", eventId=event_id).execute(),
+            label="calendar.events.get",
+        )
     except Exception as exc:
         return GoogleActionResult(ok=False, text=f"No se encontró el evento: {exc}")
 
@@ -131,9 +150,10 @@ def _edit_calendar_event(
     if payload.get("end_iso"):
         event["end"] = {"dateTime": payload["end_iso"], "timeZone": tz}
 
-    updated = service.events().update(
-        calendarId="primary", eventId=event_id, body=event,
-    ).execute()
+    updated = _exec(
+        lambda: service.events().update(calendarId="primary", eventId=event_id, body=event).execute(),
+        label="calendar.events.update",
+    )
     return GoogleActionResult(
         ok=True,
         text=f"Evento actualizado: {updated.get('summary')}\n{updated.get('htmlLink', '')}",
@@ -145,6 +165,7 @@ def _delete_calendar_event(
     user_id: int | None,
     session: Session | None,
 ) -> GoogleActionResult:
+    import httplib2
     from googleapiclient.discovery import build
 
     creds = _resolve_creds(user_id, session)
@@ -155,7 +176,10 @@ def _delete_calendar_event(
     service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     try:
-        service.events().delete(calendarId="primary", eventId=event_id).execute()
+        _exec(
+            lambda: service.events().delete(calendarId="primary", eventId=event_id).execute(),
+            label="calendar.events.delete",
+        )
         return GoogleActionResult(ok=True, text=f"Evento {event_id} eliminado.")
     except Exception as exc:
         return GoogleActionResult(ok=False, text=f"Error al borrar el evento: {exc}")

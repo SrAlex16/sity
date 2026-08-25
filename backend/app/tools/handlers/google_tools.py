@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures as _cf
 import datetime
 from typing import Any, Callable, TypeVar
 
@@ -13,6 +14,9 @@ from app.tools.types import ToolExecutionResult
 from app.trace.logger import write_log
 
 _T = TypeVar("_T")
+
+_API_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=4, thread_name_prefix="google-api")
+_GOOGLE_CALL_TIMEOUT = 25  # hard wall-clock timeout for every Google API .execute() call
 
 
 def _user_id_from_ctx(ctx: ToolContext) -> int | None:
@@ -36,12 +40,28 @@ def _resolve_google_creds(ctx: ToolContext):
 
 
 def _google_call(service: str, operation: str, fn: Callable[[], _T], *, trace_id: str | None = None) -> _T:
-    """Execute a Google API call, logging outcome. Re-raises on error."""
+    """Execute a Google API call with a hard thread-level timeout, logging each step.
+
+    httplib2 socket timeouts are unreliable on some network stacks (e.g. ARM/Pi with
+    TCP keepalive); a concurrent.futures timeout is guaranteed at the Python level.
+    The stuck thread (if fn() never returns) will linger until the OS closes the
+    connection, which is acceptable for an error path.
+    """
+    write_log(level="DEBUG", module="google", event="google_api_call_start", trace_id=trace_id,
+              payload={"service": service, "operation": operation})
+    future = _API_EXECUTOR.submit(fn)
     try:
-        result = fn()
+        result = future.result(timeout=_GOOGLE_CALL_TIMEOUT)
         write_log(level="INFO", module="google", event="google_api_call", trace_id=trace_id,
                   payload={"service": service, "operation": operation, "ok": True})
         return result
+    except _cf.TimeoutError:
+        write_log(level="WARN", module="google", event="google_api_call", trace_id=trace_id,
+                  payload={"service": service, "operation": operation, "ok": False,
+                           "error": f"timeout after {_GOOGLE_CALL_TIMEOUT}s"})
+        raise TimeoutError(
+            f"Google {service}.{operation} no respondió en {_GOOGLE_CALL_TIMEOUT}s"
+        )
     except Exception as exc:
         write_log(level="WARN", module="google", event="google_api_call", trace_id=trace_id,
                   payload={"service": service, "operation": operation, "ok": False, "error": str(exc)})
@@ -335,7 +355,11 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
 
     if not event_id and event_title:
         service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
-        event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
+        try:
+            event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
+        except TimeoutError as _te:
+            err = str(_te)
+            event_id = ""
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
@@ -400,9 +424,15 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_delete_event")
 def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
+    _step = lambda s, **kw: write_log(
+        level="DEBUG", module="google", event="calendar_delete_step",
+        trace_id=ctx.trace_id, payload={"step": s, **kw},
+    )
+    _step("resolve_creds_start")
     creds = _resolve_google_creds(ctx)
     if creds is None:
         return _not_connected(ctx.tool_name)
+    _step("creds_ok")
 
     event_id    = str(ctx.tool_input.get("event_id", "")).strip()
     event_title = str(ctx.tool_input.get("event_title", "")).strip()
@@ -418,8 +448,16 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
+        _step("build_service_start")
         service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
-        event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
+        _step("build_service_done")
+        _step("resolve_event_id_start")
+        try:
+            event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
+        except TimeoutError as _te:
+            err = str(_te)
+            event_id = ""
+        # events_list_call_start / events_list_call_done logged inside _google_call
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
@@ -428,6 +466,7 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
                     "local_final": True, "text": err, "local_model": "tool-policy",
                 },
             )
+        _step("event_id_resolved", event_id=event_id)
 
     label = event_title or event_id
     payload: dict = {"action": "calendar_delete_event", "event_id": event_id}
