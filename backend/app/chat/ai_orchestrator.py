@@ -714,18 +714,41 @@ class ChatAIOrchestrator:
                 role="sity", text=_loop.local_text, trace_id=ctx.trace_id,
                 tone_meta=json.dumps(persona_decision.tone_snapshot),
             )
-            return _ToolBranchOutcome(
-                early_return=local_tool_response(
-                    trace_id=ctx.trace_id,
+            _early_response = local_tool_response(
+                trace_id=ctx.trace_id,
+                text=_loop.local_text,
+                model=_loop.local_model,
+                planner_input_tokens=planner_response.usage.input_tokens,
+                planner_output_tokens=planner_response.usage.output_tokens,
+                daily_used=_snap.daily_used,
+                daily_budget=_snap.daily_budget,
+                daily_ratio=_snap.daily_ratio,
+                warnings=_snap.warnings,
+            )
+            if prep.should_synth and _loop.local_text:
+                _tts_result = maybe_attach_tts(
                     text=_loop.local_text,
-                    model=_loop.local_model,
-                    planner_input_tokens=planner_response.usage.input_tokens,
-                    planner_output_tokens=planner_response.usage.output_tokens,
-                    daily_used=_snap.daily_used,
-                    daily_budget=_snap.daily_budget,
-                    daily_ratio=_snap.daily_ratio,
-                    warnings=_snap.warnings,
-                ),
+                    session=self.session,
+                    session_id=ctx.session_id,
+                    trace_id=ctx.trace_id,
+                    result=_early_response,
+                    voice_settings=ctx.voice_settings,
+                )
+                if _tts_result is not None:
+                    _n_frags, _audio_fn = _tts_result
+                    _tts_row = self.session.exec(
+                        select(ChatMessage).where(
+                            ChatMessage.trace_id == ctx.trace_id,
+                            ChatMessage.role == "sity",
+                        )
+                    ).first()
+                    if _tts_row is not None:
+                        _tts_row.tts_fragments = _n_frags
+                        _tts_row.audio_filename = _audio_fn
+                        self.session.add(_tts_row)
+                        self.session.commit()
+            return _ToolBranchOutcome(
+                early_return=_early_response,
                 tool_results=[],
                 updated_parameters=[],
                 artifacts=[],

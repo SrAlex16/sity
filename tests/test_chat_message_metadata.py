@@ -322,18 +322,14 @@ def test_attach_tts_returns_fragment_count() -> None:
                        voice_long_response_action="text_only")
 
     fake_cfg = TtsConfig(piper_bin="p", model_path="/m.onnx", speaker_id=None, long_response_chars=500)
-    with patch("app.api.routes_chat.load_tts_config" if False else "app.audio.synthesizer.load_tts_config",
-               return_value=fake_cfg):
-        with patch("app.api.routes_audio.load_tts_config", return_value=fake_cfg):
-            with patch("app.api.routes_audio.synthesize_text", return_value=b"RIFF"):
-                with patch("app.api.routes_audio._TTS_TMP_DIR") as mock_dir:
-                    mock_path = MagicMock()
-                    mock_dir.__truediv__ = lambda s, n: mock_path
-                    mock_dir.mkdir = MagicMock()
-                    with patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg):
-                        tts_result = _attach_tts_artifacts(
-                            result=result, text="hola", voice_settings=vs, trace_id="t"
-                        )
+    with (
+        patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg),
+        patch("app.audio.tts_dispatcher.synthesize_fragment",
+              return_value=("/tmp/tts_test.wav", None)),
+    ):
+        tts_result = _attach_tts_artifacts(
+            result=result, text="hola", voice_settings=vs, trace_id="t"
+        )
 
     assert tts_result is not None
     fragments, _filename = tts_result
@@ -341,7 +337,7 @@ def test_attach_tts_returns_fragment_count() -> None:
 
 
 def test_attach_tts_returns_none_on_exception() -> None:
-    """If synthesis raises (both persist and tmp paths), returns None."""
+    """If synthesis raises, _attach_tts_artifacts returns None."""
     from unittest.mock import MagicMock, patch
     from app.api.routes_chat import _attach_tts_artifacts
     from app.settings.schemas import VoiceSettings
@@ -353,10 +349,11 @@ def test_attach_tts_returns_none_on_exception() -> None:
                        voice_long_response_action="text_only")
 
     fake_cfg = TtsConfig(piper_bin="p", model_path="/m.onnx", speaker_id=None, long_response_chars=500)
-    with patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg):
-        with patch("app.api.routes_audio.synthesize_to_tmp", side_effect=RuntimeError("boom")):
-            with patch("app.api.routes_audio.synthesize_to_persistent", side_effect=RuntimeError("boom")):
-                n = _attach_tts_artifacts(result=result, text="hola", voice_settings=vs, trace_id="t")
+    with (
+        patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg),
+        patch("app.audio.tts_dispatcher.synthesize_fragment", side_effect=RuntimeError("boom")),
+    ):
+        n = _attach_tts_artifacts(result=result, text="hola", voice_settings=vs, trace_id="t")
 
     assert n is None
 

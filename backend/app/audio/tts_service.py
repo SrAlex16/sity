@@ -16,6 +16,15 @@ from app.trace.logger import write_log
 
 
 def _clean_text_for_tts(text: str) -> str:
+    # Strip confirmation command (unpronounceable action ID + literal phrase in backticks)
+    text = re.sub(
+        r'Confirma con:\s*`confirmo ejecutar act_[a-fA-F0-9]{8}`',
+        'Cuando quieras, dime que lo confirme.',
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Replace URLs with a short spoken cue (trailing punctuation excluded from match)
+    text = re.sub(r'https?://[^\s.,;:!?)<>\[\]]+', '(enlace)', text)
     text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
     text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', text)
     text = re.sub(r'`([^`]+)`', r'\1', text)
