@@ -20,6 +20,22 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from sqlmodel import Session, select
 
+_REFRESH_TIMEOUT_SECONDS = 10
+
+
+class _TimedRequest(Request):
+    """Request wrapper that enforces a short timeout on token refresh calls.
+
+    google.auth.transport.requests.Request defaults to 120 s, which blocks
+    the background task thread for 2 minutes when the OAuth endpoint is slow.
+    10 s is more than enough for a healthy token refresh.
+    """
+    def __call__(self, url, method="GET", body=None, headers=None, timeout=None, **kwargs):
+        return super().__call__(
+            url, method=method, body=body, headers=headers,
+            timeout=_REFRESH_TIMEOUT_SECONDS, **kwargs
+        )
+
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/calendar.readonly",
@@ -40,7 +56,7 @@ def load_credentials() -> Credentials | None:
 
     if creds and creds.expired and creds.refresh_token:
         try:
-            creds.refresh(Request())
+            creds.refresh(_TimedRequest())
             _save_credentials(creds)
         except Exception:
             return None
@@ -132,7 +148,7 @@ def load_user_credentials(user_id: int, session: Session) -> Credentials | None:
 
     if creds and creds.expired and creds.refresh_token:
         try:
-            creds.refresh(Request())
+            creds.refresh(_TimedRequest())
             row.encrypted_credentials = encrypt_str(creds.to_json())
             row.last_refreshed_at = datetime.now(timezone.utc)
             session.add(row)
