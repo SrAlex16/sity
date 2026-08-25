@@ -70,6 +70,7 @@ def _create_calendar_event(
     user_id: int | None,
     session: Session | None,
 ) -> GoogleActionResult:
+    import httplib2
     from googleapiclient.discovery import build
 
     creds = _resolve_creds(user_id, session)
@@ -81,7 +82,7 @@ def _create_calendar_event(
     end_iso = payload.get("end_iso", "")
     description = payload.get("description", "")
 
-    service = build("calendar", "v3", credentials=creds)
+    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     tz = _get_system_timezone()
     event_body: dict[str, Any] = {
@@ -111,7 +112,7 @@ def _edit_calendar_event(
         return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     event_id = payload.get("event_id", "")
-    service = build("calendar", "v3", credentials=creds)
+    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     try:
         event = service.events().get(calendarId="primary", eventId=event_id).execute()
@@ -151,7 +152,7 @@ def _delete_calendar_event(
         return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     event_id = payload.get("event_id", "")
-    service = build("calendar", "v3", credentials=creds)
+    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     try:
         service.events().delete(calendarId="primary", eventId=event_id).execute()

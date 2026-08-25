@@ -79,7 +79,7 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
         base = "category:primary"
         query = f"{base} {query}".strip() if query else base
 
-    service = build("gmail", "v1", credentials=creds, http=httplib2.Http(timeout=30))
+    service = build("gmail", "v1", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     results = _google_call("gmail", "messages.list",
         lambda: service.users().messages().list(userId="me", q=query, maxResults=max_results).execute(),
@@ -127,7 +127,7 @@ def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
     now = datetime.datetime.utcnow().isoformat() + "Z"
     end = (datetime.datetime.utcnow() + datetime.timedelta(days=days_ahead)).isoformat() + "Z"
 
-    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
+    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     events_result = _google_call("calendar", "events.list",
         lambda: service.events().list(
@@ -239,7 +239,7 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     max_results = min(int(ctx.tool_input.get("max_results", 5)), 10)
     include_shared = bool(ctx.tool_input.get("include_shared", False))
 
-    service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30))
+    service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     if query:
         safe_query = query.replace("'", "\\'")
@@ -334,7 +334,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
-        service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
+        service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
         event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         if err:
             return ToolExecutionResult(
@@ -400,15 +400,10 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_delete_event")
 def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
-    write_log(level="INFO", module="google", event="calendar_delete_step",
-              trace_id=ctx.trace_id, payload={"step": "resolve_creds_start"})
     creds = _resolve_google_creds(ctx)
     if creds is None:
         return _not_connected(ctx.tool_name)
 
-    write_log(level="INFO", module="google", event="calendar_delete_step",
-              trace_id=ctx.trace_id, payload={"step": "creds_ok",
-                  "expired": creds.expired, "valid": creds.valid})
     event_id    = str(ctx.tool_input.get("event_id", "")).strip()
     event_title = str(ctx.tool_input.get("event_title", "")).strip()
 
@@ -423,16 +418,8 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
-        write_log(level="INFO", module="google", event="calendar_delete_step",
-                  trace_id=ctx.trace_id, payload={"step": "build_service_start"})
-        service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
-        write_log(level="INFO", module="google", event="calendar_delete_step",
-                  trace_id=ctx.trace_id, payload={"step": "resolve_event_id_start",
-                      "event_title": event_title})
+        service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
         event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
-        write_log(level="INFO", module="google", event="calendar_delete_step",
-                  trace_id=ctx.trace_id, payload={"step": "resolve_event_id_done",
-                      "found": bool(event_id), "error": err[:80] if err else ""})
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
@@ -500,7 +487,7 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
     folder_id   = str(ctx.tool_input.get("folder_id", "")).strip()
     max_results = min(int(ctx.tool_input.get("max_results", 20)), 50)
 
-    service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30))
+    service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
 
     _ROOT_ALIASES = {"root", "raiz", "raíz", "inicio", "principal", "mi drive", ""}
 
