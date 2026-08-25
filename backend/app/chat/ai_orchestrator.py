@@ -4,15 +4,18 @@ Receives pre-built context (TurnContext + AITurnPrep) and runs the full
 AI pipeline: routing decision, planner, tool loop, early returns
 (local_final, sensor_*), model_upgrade_proposed, and final response with
 optional TTS synthesis.
-
-Also hosts _clean_text_for_tts and _attach_tts_artifacts (re-exported from
-routes_chat for backwards-compatible test imports).
 """
 from __future__ import annotations
 
 import json
 import re
 from typing import Any, NamedTuple, Optional
+
+from app.audio.tts_service import (  # noqa: F401  (re-exported for test imports)
+    _attach_tts_artifacts,
+    _clean_text_for_tts,
+    maybe_attach_tts,
+)
 
 from sqlmodel import Session, select
 
@@ -271,89 +274,6 @@ def _tool_use_blocks(response: "Any") -> "list[dict[str, Any]]":
     ]
 
 
-def _clean_text_for_tts(text: str) -> str:
-    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
-    text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', text)
-    text = re.sub(r'`([^`]+)`', r'\1', text)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    return text.strip()
-
-
-def _attach_tts_artifacts(
-    *, result, text: str, voice_settings, trace_id: str,
-    session=None, session_id: str = "",
-) -> Optional[tuple[int, Optional[str]]]:
-    """Synthesize TTS audio and attach as artifacts to result. Modifies result.artifacts in place.
-
-    Returns (n_fragments, audio_filename) where audio_filename is the persistent file written to
-    data/audio/ (or None if persistence is disabled). Returns None if synthesis was skipped/failed.
-    """
-    from app.audio.synthesizer import load_tts_config
-    from app.audio.tts_dispatcher import synthesize_fragment
-    from app.audio.tts_splitter import split_by_sentences
-    from app.settings.config_loader import load_default_config
-
-    cfg = load_tts_config()
-    raw_audio_cfg = load_default_config().get("audio", {})
-    persist_tts: bool = bool(raw_audio_cfg.get("persist_tts", False))
-    voice_id: str = str(raw_audio_cfg.get("elevenlabs_voice_id", "EXAVITQu4vr4xnSDxMaL"))
-    daily_limit: int = int(raw_audio_cfg.get("elevenlabs_daily_char_limit", 0))
-    tts_engine: str = getattr(voice_settings, "tts_engine", "piper")
-
-    try:
-        tts_text = _clean_text_for_tts(text)
-        if len(tts_text) <= cfg.long_response_chars:
-            fragments = [tts_text]
-        elif voice_settings.voice_long_response_action == "split":
-            fragments = split_by_sentences(tts_text, cfg.long_response_chars)
-        else:
-            write_log(level="INFO", module="audio", event="tts_skipped_long_response",
-                      trace_id=trace_id, payload={"chars": len(text)})
-            return None
-
-        first_persistent_filename: Optional[str] = None
-        artifact_index = 0
-        for i, fragment in enumerate(fragments):
-            if not fragment.strip():
-                write_log(level="INFO", module="audio", event="tts_fragment_skipped",
-                          trace_id=trace_id, payload={"fragment_index": i, "reason": "empty"})
-                continue
-            url, filename = synthesize_fragment(
-                fragment,
-                session=session,
-                session_id=session_id,
-                tts_engine=tts_engine,
-                persist=persist_tts,
-                trace_id=trace_id,
-                voice_id=voice_id,
-                daily_limit=daily_limit,
-            )
-            from pathlib import Path as _Path
-            ext = _Path(url).suffix.lstrip(".") or "wav"
-            mime = "audio/mpeg" if ext == "mp3" else "audio/wav"
-            if persist_tts and filename:
-                write_log(level="INFO", module="audio", event="tts_fragment_persisted",
-                          trace_id=trace_id,
-                          payload={"fragment_index": i, "filename": filename})
-                if first_persistent_filename is None:
-                    first_persistent_filename = filename
-            result.artifacts.append(ChatArtifact(
-                type="audio",
-                url=url,
-                filename=f"sity_response_{artifact_index + 1}.{ext}",
-                mime_type=mime,
-            ))
-            artifact_index += 1
-
-        write_log(level="INFO", module="audio", event="tts_attached",
-                  trace_id=trace_id,
-                  payload={"fragments": len(fragments), "total_chars": len(text),
-                           "first_persistent_filename": first_persistent_filename})
-        return len(fragments), first_persistent_filename
-    except Exception as exc:
-        write_log(level="WARN", module="audio", event="tts_failed",
-                  trace_id=trace_id, payload={"error": str(exc), "error_type": type(exc).__name__})
-        return None
 
 
 class _ToolBranchOutcome(NamedTuple):
@@ -462,13 +382,13 @@ class ChatAIOrchestrator:
         )
 
         if prep.should_synth and chat_result.ok and chat_result.text:
-            tts_result = _attach_tts_artifacts(
-                result=chat_result,
+            tts_result = maybe_attach_tts(
                 text=chat_result.text,
-                voice_settings=ctx.voice_settings,
-                trace_id=ctx.trace_id,
                 session=session,
                 session_id=ctx.session_id,
+                trace_id=ctx.trace_id,
+                result=chat_result,
+                voice_settings=ctx.voice_settings,
             )
             if tts_result is not None:
                 n_fragments, audio_filename = tts_result

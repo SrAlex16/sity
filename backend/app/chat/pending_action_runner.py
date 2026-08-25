@@ -20,9 +20,11 @@ from app.actions.system_config_actions import (
     parse_payload as parse_system_config_payload,
 )
 from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
+from app.audio.tts_service import maybe_attach_tts
 from app.chat.artifacts import capture_artifact_from_path
 from app.chat.local_flow import LocalFlowContext
-from app.memory.models import PendingAction
+from app.memory.models import ChatMessage, PendingAction
+from sqlmodel import select
 
 
 @dataclass
@@ -44,7 +46,7 @@ class PendingActionRunner:
         daily_used = ctx.get_usage(ctx.session)
         daily_ratio = daily_used / ctx.daily_budget if ctx.daily_budget > 0 else 0.0
 
-        return ChatMessageResponse(
+        response = ChatMessageResponse(
             ok=True,
             trace_id=ctx.trace_id,
             text=result.text,
@@ -66,6 +68,29 @@ class PendingActionRunner:
             updated_parameters=[],
             artifacts=[result.artifact] if result.artifact else [],
         )
+
+        tts_result = maybe_attach_tts(
+            text=result.text,
+            session=ctx.session,
+            session_id=self.cm._session_id,
+            trace_id=ctx.trace_id,
+            result=response,
+        )
+        if tts_result is not None:
+            n_fragments, audio_filename = tts_result
+            tts_row = ctx.session.exec(
+                select(ChatMessage).where(
+                    ChatMessage.trace_id == ctx.trace_id,
+                    ChatMessage.role == "sity",
+                )
+            ).first()
+            if tts_row is not None:
+                tts_row.tts_fragments = n_fragments
+                tts_row.audio_filename = audio_filename
+                ctx.session.add(tts_row)
+                ctx.session.commit()
+
+        return response
 
     def _execute(self, action: PendingAction, trace_id: str) -> _ActionResult:
         if action.action_type == "git":
