@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlmodel import Session
 
-from app.auth.dependencies import CurrentUser, get_current_user, require_admin
+from app.auth.dependencies import CurrentUser, get_current_user
 
 def _require_non_guest(current: CurrentUser) -> CurrentUser:
     if current.is_guest:

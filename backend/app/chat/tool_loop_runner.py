@@ -10,7 +10,7 @@ side-effects and response construction.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from app.api.schemas import ChatArtifact

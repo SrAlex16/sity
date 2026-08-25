@@ -74,7 +74,7 @@ def test_split_exclamation_and_question():
 # _should_synthesize (routes_chat helper)
 # ---------------------------------------------------------------------------
 
-from app.api.routes_chat import _should_synthesize
+from app.chat.ai_turn_prep import _should_synthesize
 
 
 @pytest.mark.parametrize("mode,input_mode,expected", [
@@ -231,7 +231,7 @@ def _make_dummy_session():
 ])
 def test_output_mode_injected_in_prompt_context(mode, input_mode, expected_output_mode):
     """output_mode: voice must appear in user_message_with_history exactly when should_synth is True."""
-    from app.api.routes_chat import _should_synthesize
+    from app.chat.ai_turn_prep import _should_synthesize
     should_synth = _should_synthesize(mode, input_mode)
     assert should_synth == (expected_output_mode == "voice")
 

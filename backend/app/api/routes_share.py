@@ -75,7 +75,6 @@ class ShareListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _ensure_utc(dt) -> "datetime":
-    from datetime import datetime
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt

@@ -114,7 +114,7 @@ def load_user_credentials(user_id: int, session: Session) -> dict[str, Any] | No
     Persists any refreshed token back to the DB row. Returns None if the user
     has no active integration or the token cannot be refreshed.
     """
-    from app.auth.encryption import decrypt_str, encrypt_str
+    from app.auth.encryption import decrypt_str
     from app.memory.models import UserIntegration
 
     row = session.exec(

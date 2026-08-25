@@ -441,15 +441,9 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_delete_event")
 def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
-    _step = lambda s, **kw: write_log(
-        level="DEBUG", module="google", event="calendar_delete_step",
-        trace_id=ctx.trace_id, payload={"step": s, **kw},
-    )
-    _step("resolve_creds_start")
     creds = _resolve_google_creds(ctx)
     if creds is None:
         return _not_connected(ctx.tool_name)
-    _step("creds_ok")
 
     event_id    = str(ctx.tool_input.get("event_id", "")).strip()
     event_title = str(ctx.tool_input.get("event_title", "")).strip()
@@ -465,16 +459,12 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
-        _step("build_service_start")
         service = _build_service("calendar", "v3", creds)
-        _step("build_service_done")
-        _step("resolve_event_id_start")
         try:
             event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         except TimeoutError as _te:
             err = str(_te)
             event_id = ""
-        # events_list_call_start / events_list_call_done logged inside _google_call
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
@@ -483,7 +473,6 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
                     "local_final": True, "text": err, "local_model": "tool-policy",
                 },
             )
-        _step("event_id_resolved", event_id=event_id)
 
     label = event_title or event_id
     payload: dict = {"action": "calendar_delete_event", "event_id": event_id}

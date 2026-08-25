@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Callable
 
 from sqlalchemy import text
 from sqlmodel import Session

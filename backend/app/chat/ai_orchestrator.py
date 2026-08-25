@@ -8,14 +8,9 @@ optional TTS synthesis.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, NamedTuple, Optional
 
-from app.audio.tts_service import (  # noqa: F401  (re-exported for test imports)
-    _attach_tts_artifacts,
-    _clean_text_for_tts,
-    maybe_attach_tts,
-)
+from app.audio.tts_service import maybe_attach_tts
 
 from sqlmodel import Session, select
 

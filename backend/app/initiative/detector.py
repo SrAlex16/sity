@@ -8,12 +8,11 @@ the IS_NOW_A_GOOD_TIME? gate and Haiku evaluation.
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlmodel import Session, col, desc, select
+from sqlmodel import Session, desc, select
 
 from app.initiative.settings import get_initiative_settings
 from app.memory.models import ChatMessage, InitiativeEvalLog, OpenLoop

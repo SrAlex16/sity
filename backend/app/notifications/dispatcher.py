@@ -272,8 +272,6 @@ def _deliver_push(fact: NotificationFact, db: Session) -> DispatchResult:
                     "subscription_expired": result.subscription_expired,
                 },
             )
-            last_error = result.error
-
     db.commit()
 
     if any_success:

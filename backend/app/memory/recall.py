@@ -15,7 +15,6 @@ from typing import Optional
 
 from app.memory.search import (
     MessageContext,
-    SearchResult,
     read_conversation_window,
     search_conversation_history,
 )

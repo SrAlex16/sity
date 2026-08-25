@@ -23,7 +23,6 @@ from app.chat.chat_persistence import (
     get_or_create_chat_session,
 )
 from app.chat.model_router import LocalFlowSignal, clear_proposal
-from app.chat.ai_turn_prep import _should_synthesize  # noqa: F401
 from app.audio.tts_service import (  # noqa: F401  (re-exported for test backward compat)
     _attach_tts_artifacts,
     _clean_text_for_tts,

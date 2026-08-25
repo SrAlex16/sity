@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.memory.db import get_session
-from app.memory.models import PushSubscription, utc_now
+from app.memory.models import PushSubscription
 from app.trace.logger import write_log
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
