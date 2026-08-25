@@ -374,6 +374,22 @@ Ver .env.example para la lista completa.
   revocar todos los enlaces activos del usuario. El backend ya tiene
   `DELETE /chat/share/{id}` pero no hay un listado de los propios enlaces
   en la UI. `max_views` también podría configurarse desde `POST /chat/share`.
+- **ElevenLabs: mapeo voice_id por idioma** — si Sity responde en inglés
+  pero la voz ElevenLabs configurada es en español, el acento/pronunciación
+  serán incorrectos. La API de ElevenLabs no selecciona voz por idioma
+  automáticamente. Solución: sustituir el único `elevenlabs_voice_id` en
+  config por un mapa `{es: ..., en: ..., ja: ...}`, detectar el idioma del
+  turno desde `language_override` del TurnContext y seleccionar el voice_id
+  correcto en `maybe_attach_tts`. Requiere que Alex consiga/configure una
+  voz ElevenLabs en inglés antes de implementar. No bloquea el uso normal
+  con un único idioma.
+- **Idioma en caminos alternativos (pending actions, model-router, guards)** —
+  `pending_action_runner` y los guards (`local_flow`, `budget_guard`,
+  `user_message_guard`) usan strings hardcodeados en español sin pasar por
+  `language_override`. Fix requiere threadear `language_override` desde
+  `TurnContext` → `LocalFlowContext` + plantillas por idioma en cada handler.
+  Impacto real solo si Alex configura `language_override=en`; hoy el sistema
+  opera en español exclusivamente.
 - **Modo de voz en tiempo real (estilo "Live" de ChatGPT)** —
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
