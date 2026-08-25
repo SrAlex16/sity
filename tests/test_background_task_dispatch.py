@@ -26,7 +26,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.chat.ai_orchestrator import _dispatch_background_task_result
+from app.chat.background_dispatch import _dispatch_background_task_result
 from app.notifications.fact import DispatchResult
 
 

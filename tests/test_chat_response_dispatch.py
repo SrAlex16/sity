@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from app.api.routes_chat import _maybe_dispatch_chat_response, _snippet
+from app.chat.turn_runner import _maybe_dispatch_chat_response, _snippet
 from app.api.schemas import ChatMessageResponse, UsageSummary
 from app.notifications.fact import DispatchResult
 
@@ -25,7 +25,7 @@ from app.notifications.fact import DispatchResult
 # Helpers
 # ---------------------------------------------------------------------------
 
-_PATCH_STATE = "app.api.routes_chat.get_subscriber_state"   # module-level import in routes_chat
+_PATCH_STATE = "app.chat.turn_runner.get_subscriber_state"   # module-level import in turn_runner
 _PATCH_DISPATCH = "app.notifications.dispatcher.dispatch"   # lazy import inside function → patch at source
 
 
