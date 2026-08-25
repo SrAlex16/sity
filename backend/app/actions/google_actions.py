@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from sqlmodel import Session
+
 
 def _get_system_timezone() -> str:
     try:
@@ -27,37 +29,58 @@ class GoogleActionResult:
     text: str
 
 
-def execute_google_action(payload: dict[str, Any]) -> GoogleActionResult:
+_NOT_CONNECTED_MSG = (
+    "Google no está conectado. Conéctalo en Ajustes → Integraciones "
+    "o a través de /auth/integrations/google/connect."
+)
+
+
+def _resolve_creds(user_id: int | None, session: Session | None):
+    """User-first credential resolution, same logic as google_tools._resolve_google_creds."""
+    from app.integrations.google_auth import load_credentials, load_user_credentials
+
+    if user_id is not None and session is not None:
+        creds = load_user_credentials(user_id, session)
+        if creds is not None:
+            return creds
+    return load_credentials()
+
+
+def execute_google_action(
+    payload: dict[str, Any],
+    user_id: int | None = None,
+    session: Session | None = None,
+) -> GoogleActionResult:
     action = payload.get("action", "")
 
     if action == "calendar_create_event":
-        return _create_calendar_event(payload)
+        return _create_calendar_event(payload, user_id, session)
 
     if action == "calendar_edit_event":
-        return _edit_calendar_event(payload)
+        return _edit_calendar_event(payload, user_id, session)
 
     if action == "calendar_delete_event":
-        return _delete_calendar_event(payload)
+        return _delete_calendar_event(payload, user_id, session)
 
     return GoogleActionResult(ok=False, text=f"Acción de Google desconocida: {action}")
 
 
-def _create_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
-    from app.integrations.google_auth import is_google_connected, load_credentials
+def _create_calendar_event(
+    payload: dict[str, Any],
+    user_id: int | None,
+    session: Session | None,
+) -> GoogleActionResult:
     from googleapiclient.discovery import build
 
-    if not is_google_connected():
-        return GoogleActionResult(
-            ok=False,
-            text="Google no está conectado. Ejecuta scripts/google_auth_setup.py para autorizar el acceso.",
-        )
+    creds = _resolve_creds(user_id, session)
+    if creds is None:
+        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     title = payload.get("title", "")
     start_iso = payload.get("start_iso", "")
     end_iso = payload.get("end_iso", "")
     description = payload.get("description", "")
 
-    creds = load_credentials()
     service = build("calendar", "v3", credentials=creds)
 
     tz = _get_system_timezone()
@@ -76,15 +99,18 @@ def _create_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
     )
 
 
-def _edit_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
-    from app.integrations.google_auth import is_google_connected, load_credentials
+def _edit_calendar_event(
+    payload: dict[str, Any],
+    user_id: int | None,
+    session: Session | None,
+) -> GoogleActionResult:
     from googleapiclient.discovery import build
 
-    if not is_google_connected():
-        return GoogleActionResult(ok=False, text="Google no está conectado.")
+    creds = _resolve_creds(user_id, session)
+    if creds is None:
+        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     event_id = payload.get("event_id", "")
-    creds = load_credentials()
     service = build("calendar", "v3", credentials=creds)
 
     try:
@@ -113,15 +139,18 @@ def _edit_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
     )
 
 
-def _delete_calendar_event(payload: dict[str, Any]) -> GoogleActionResult:
-    from app.integrations.google_auth import is_google_connected, load_credentials
+def _delete_calendar_event(
+    payload: dict[str, Any],
+    user_id: int | None,
+    session: Session | None,
+) -> GoogleActionResult:
     from googleapiclient.discovery import build
 
-    if not is_google_connected():
-        return GoogleActionResult(ok=False, text="Google no está conectado.")
+    creds = _resolve_creds(user_id, session)
+    if creds is None:
+        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     event_id = payload.get("event_id", "")
-    creds = load_credentials()
     service = build("calendar", "v3", credentials=creds)
 
     try:

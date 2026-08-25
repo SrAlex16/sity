@@ -235,7 +235,14 @@ class PendingActionRunner:
     def _run_google(self, action: PendingAction, trace_id: str) -> _ActionResult:
         try:
             payload = parse_google_payload(action.payload_json)
-            result = execute_google_action(payload)
+            sid: str = self.cm._session_id
+            user_id: int | None = None
+            if sid.startswith("user:"):
+                try:
+                    user_id = int(sid.split(":", 1)[1])
+                except (ValueError, IndexError):
+                    pass
+            result = execute_google_action(payload, user_id=user_id, session=self.cm.session)
             if result.ok:
                 self.cm.mark_executed(action, trace_id)
                 return _ActionResult(text=result.text)
