@@ -110,6 +110,7 @@ def load_user_credentials(user_id: int, session: Session) -> Credentials | None:
     """
     from app.auth.encryption import decrypt_str, encrypt_str
     from app.memory.models import UserIntegration
+    from app.trace.logger import write_log
 
     row = session.exec(
         select(UserIntegration)
@@ -124,22 +125,30 @@ def load_user_credentials(user_id: int, session: Session) -> Credentials | None:
         creds = Credentials.from_authorized_user_info(
             json.loads(decrypt_str(row.encrypted_credentials)), SCOPES
         )
-    except Exception:
+    except Exception as exc:
+        write_log(level="ERROR", module="google", event="google_credentials_decrypt_failed",
+                  payload={"user_id": user_id, "error": str(exc)[:300]})
         return None
 
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
             row.encrypted_credentials = encrypt_str(creds.to_json())
-            row.connected_at = datetime.now(timezone.utc)
+            row.last_refreshed_at = datetime.now(timezone.utc)
             session.add(row)
             session.commit()
-        except Exception:
+        except Exception as exc:
+            write_log(level="ERROR", module="google", event="google_token_refresh_failed",
+                      payload={"user_id": user_id, "error": str(exc)[:300],
+                               "has_refresh_token": bool(creds.refresh_token)})
             return None
 
     if creds and creds.valid:
         return creds
 
+    write_log(level="WARN", module="google", event="google_credentials_invalid",
+              payload={"user_id": user_id, "expired": creds.expired if creds else None,
+                       "has_refresh_token": bool(creds.refresh_token) if creds else None})
     return None
 
 
