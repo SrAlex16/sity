@@ -5,6 +5,7 @@ import datetime
 from typing import Any, Callable, TypeVar
 
 import httplib2
+from google_auth_httplib2 import AuthorizedHttp
 from googleapiclient.discovery import build
 
 from app.actions.confirmation_manager import ConfirmationManager
@@ -16,7 +17,23 @@ from app.trace.logger import write_log
 _T = TypeVar("_T")
 
 _API_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=4, thread_name_prefix="google-api")
-_GOOGLE_CALL_TIMEOUT = 25  # hard wall-clock timeout for every Google API .execute() call
+_GOOGLE_CALL_TIMEOUT = 25  # hard wall-clock timeout for every Google API call
+
+
+def _build_service(api: str, version: str, creds) -> Any:
+    """Build a Google API service with proper credential wrapping and a thread-level timeout.
+
+    Passing credentials= and http= simultaneously to build() is mutually exclusive
+    in google-api-python-client — build_from_document raises ValueError. The correct
+    approach is AuthorizedHttp(creds, http=httplib2.Http(...)) so credentials are
+    baked into the transport before build() is called.
+    """
+    authed_http = AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
+    future = _API_EXECUTOR.submit(build, api, version, http=authed_http, static_discovery=True)
+    try:
+        return future.result(timeout=_GOOGLE_CALL_TIMEOUT)
+    except _cf.TimeoutError:
+        raise TimeoutError(f"Google {api}.{version} service build tardó más de {_GOOGLE_CALL_TIMEOUT}s")
 
 
 def _user_id_from_ctx(ctx: ToolContext) -> int | None:
@@ -99,7 +116,7 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
         base = "category:primary"
         query = f"{base} {query}".strip() if query else base
 
-    service = build("gmail", "v1", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("gmail", "v1", creds)
 
     results = _google_call("gmail", "messages.list",
         lambda: service.users().messages().list(userId="me", q=query, maxResults=max_results).execute(),
@@ -147,7 +164,7 @@ def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
     now = datetime.datetime.utcnow().isoformat() + "Z"
     end = (datetime.datetime.utcnow() + datetime.timedelta(days=days_ahead)).isoformat() + "Z"
 
-    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("calendar", "v3", creds)
 
     events_result = _google_call("calendar", "events.list",
         lambda: service.events().list(
@@ -259,7 +276,7 @@ def handle_drive_search(ctx: ToolContext) -> ToolExecutionResult:
     max_results = min(int(ctx.tool_input.get("max_results", 5)), 10)
     include_shared = bool(ctx.tool_input.get("include_shared", False))
 
-    service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("drive", "v3", creds)
 
     if query:
         safe_query = query.replace("'", "\\'")
@@ -354,7 +371,7 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
-        service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+        service = _build_service("calendar", "v3", creds)
         try:
             event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
         except TimeoutError as _te:
@@ -449,7 +466,7 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
 
     if not event_id and event_title:
         _step("build_service_start")
-        service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+        service = _build_service("calendar", "v3", creds)
         _step("build_service_done")
         _step("resolve_event_id_start")
         try:
@@ -526,7 +543,7 @@ def handle_drive_list_folder(ctx: ToolContext) -> ToolExecutionResult:
     folder_id   = str(ctx.tool_input.get("folder_id", "")).strip()
     max_results = min(int(ctx.tool_input.get("max_results", 20)), 50)
 
-    service = build("drive", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("drive", "v3", creds)
 
     _ROOT_ALIASES = {"root", "raiz", "raíz", "inicio", "principal", "mi drive", ""}
 

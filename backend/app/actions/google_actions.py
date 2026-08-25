@@ -21,6 +21,24 @@ def _exec(fn, *, label: str = "google_action"):
         raise TimeoutError(f"{label} no respondió en {_GOOGLE_CALL_TIMEOUT}s")
 
 
+def _build_service(api: str, version: str, creds):
+    """Build a Google API service with AuthorizedHttp + thread timeout.
+    credentials= and http= are mutually exclusive in build_from_document; wrap creds
+    into AuthorizedHttp so only http= is passed.
+    """
+    import httplib2
+    from google_auth_httplib2 import AuthorizedHttp
+    from googleapiclient.discovery import build
+    authed_http = AuthorizedHttp(creds, http=httplib2.Http(timeout=30))
+    future = _cf.ThreadPoolExecutor(max_workers=1).submit(
+        build, api, version, http=authed_http, static_discovery=True
+    )
+    try:
+        return future.result(timeout=_GOOGLE_CALL_TIMEOUT)
+    except _cf.TimeoutError:
+        raise TimeoutError(f"Google {api}.{version} build tardó más de {_GOOGLE_CALL_TIMEOUT}s")
+
+
 def _get_system_timezone() -> str:
     try:
         result = subprocess.run(
@@ -82,9 +100,6 @@ def _create_calendar_event(
     user_id: int | None,
     session: Session | None,
 ) -> GoogleActionResult:
-    import httplib2
-    from googleapiclient.discovery import build
-
     creds = _resolve_creds(user_id, session)
     if creds is None:
         return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
@@ -94,7 +109,7 @@ def _create_calendar_event(
     end_iso = payload.get("end_iso", "")
     description = payload.get("description", "")
 
-    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("calendar", "v3", creds)
 
     tz = _get_system_timezone()
     event_body: dict[str, Any] = {
@@ -120,15 +135,12 @@ def _edit_calendar_event(
     user_id: int | None,
     session: Session | None,
 ) -> GoogleActionResult:
-    import httplib2
-    from googleapiclient.discovery import build
-
     creds = _resolve_creds(user_id, session)
     if creds is None:
         return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     event_id = payload.get("event_id", "")
-    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("calendar", "v3", creds)
 
     try:
         event = _exec(
@@ -165,15 +177,12 @@ def _delete_calendar_event(
     user_id: int | None,
     session: Session | None,
 ) -> GoogleActionResult:
-    import httplib2
-    from googleapiclient.discovery import build
-
     creds = _resolve_creds(user_id, session)
     if creds is None:
         return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
 
     event_id = payload.get("event_id", "")
-    service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30), static_discovery=True)
+    service = _build_service("calendar", "v3", creds)
 
     try:
         _exec(
