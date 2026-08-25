@@ -400,10 +400,15 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("calendar_delete_event")
 def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
+    write_log(level="INFO", module="google", event="calendar_delete_step",
+              trace_id=ctx.trace_id, payload={"step": "resolve_creds_start"})
     creds = _resolve_google_creds(ctx)
     if creds is None:
         return _not_connected(ctx.tool_name)
 
+    write_log(level="INFO", module="google", event="calendar_delete_step",
+              trace_id=ctx.trace_id, payload={"step": "creds_ok",
+                  "expired": creds.expired, "valid": creds.valid})
     event_id    = str(ctx.tool_input.get("event_id", "")).strip()
     event_title = str(ctx.tool_input.get("event_title", "")).strip()
 
@@ -418,8 +423,16 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     if not event_id and event_title:
+        write_log(level="INFO", module="google", event="calendar_delete_step",
+                  trace_id=ctx.trace_id, payload={"step": "build_service_start"})
         service = build("calendar", "v3", credentials=creds, http=httplib2.Http(timeout=30))
+        write_log(level="INFO", module="google", event="calendar_delete_step",
+                  trace_id=ctx.trace_id, payload={"step": "resolve_event_id_start",
+                      "event_title": event_title})
         event_id, err = _resolve_event_id_by_title(service, event_title, trace_id=ctx.trace_id)
+        write_log(level="INFO", module="google", event="calendar_delete_step",
+                  trace_id=ctx.trace_id, payload={"step": "resolve_event_id_done",
+                      "found": bool(event_id), "error": err[:80] if err else ""})
         if err:
             return ToolExecutionResult(
                 tool_name=ctx.tool_name, ok=False, message=err,
