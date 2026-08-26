@@ -267,7 +267,7 @@ tokens:
 
 ### Módulos `backend/app/chat/`
 
-El paquete `chat/` contiene lógica de orquestación extraída de `routes_chat.py`. `routes_chat.py` es una capa HTTP fina (164 líneas); toda la lógica de negocio vive en módulos pequeños y testeables.
+El paquete `chat/` contiene lógica de orquestación extraída de `routes_chat.py`. `routes_chat.py` es una capa HTTP fina (192 líneas); toda la lógica de negocio vive en módulos pequeños y testeables.
 
 ```text
 budget_guard.py           — guards locales (SITY_LOCAL_ONLY, hard cap)
@@ -296,11 +296,22 @@ ai_turn_prep.py           — AITurnPrep dataclass + build_ai_turn_prep() (outpu
                             toolset, routing, ProviderCallRunner, PersonaDecision)
 ai_orchestrator.py        — ChatAIOrchestrator.run(): flujo AI completo (planner, tool loop,
                             early returns, after_tools, TTS)
+background_dispatch.py    — extraído de ai_orchestrator.py (commit 125e74a): _detach_tool() y
+                            _dispatch_background_task_result(). Encapsula el envío de tool calls
+                            a APScheduler y el despacho SSE/Web Push de los resultados en background.
+                            Separado de ai_orchestrator para que el módulo de orquestación principal
+                            no dependa de la infraestructura de despacho asíncrono.
+turn_runner.py            — extraído de routes_chat.py (commit 125e74a): _snippet(), _maybe_dispatch_
+                            chat_response(), _run_turn_in_background(), _chat_message_inner().
+                            Es el worker de hilo que ejecuta el turno completo (incluyendo la lógica
+                            de refusal gate, upgrade de modelo y llamada al orquestador) y publica
+                            el resultado como evento SSE. Separado de routes_chat para que el
+                            entrypoint HTTP sea una capa fina sin lógica de negocio.
 ```
 
 ## Arquitectura del flujo de chat
 
-El flujo de un mensaje entrante pasa por cinco módulos en `backend/app/chat/`:
+El flujo de un mensaje entrante pasa por seis módulos en `backend/app/chat/`:
 
 1. **`turn_context.py`** — `build_turn_context()`: agrupa el estado inicial
    del turno (trace_id, config, personalidad, presupuesto, persistence).
@@ -313,11 +324,17 @@ El flujo de un mensaje entrante pasa por cinco módulos en `backend/app/chat/`:
 
 4. **`ai_orchestrator.py`** — `ChatAIOrchestrator.run()`: ejecuta el flujo AI
    completo (planner, tool loop, early returns, after_tools, TTS).
+   `background_dispatch.py` contiene las funciones de despacho a APScheduler
+   que antes vivían aquí.
 
-5. **`routes_chat.py`** — entrypoint HTTP (164 líneas). Construye los cuatro
-   objetos anteriores y los encadena. Maneja el model_upgrade_accepted rerun.
+5. **`turn_runner.py`** — worker de hilo: aplica la lógica de refusal gate,
+   gestiona el rerun de upgrade de modelo, llama a los cuatro módulos anteriores
+   y publica el resultado como evento SSE. Extraído de `routes_chat.py`
+   (commit `125e74a`) para que el entrypoint HTTP no contenga lógica de negocio.
 
-Reducción total: 862 → 164 líneas en `routes_chat.py` (−81%).
+6. **`routes_chat.py`** — entrypoint HTTP (192 líneas). Despacha el hilo via
+   `_run_turn_in_background`, gestiona el SSE de seguimiento, sirve la petición
+   HTTP. Sin lógica de negocio.
 
 ## Arquitectura objetivo ampliada
 
@@ -413,11 +430,14 @@ Búsqueda de memoria implementada:
 
 La búsqueda de memoria es on-demand. El modelo llama a `search_conversation_history` cuando detecta que falta contexto. No hay inyección proactiva automática ni listas de triggers.
 
-**Memoria social** (ver `docs/social-memory.md`):
-- `backend/app/memory/models.py` — tablas `SocialProfile` y `OpinionSnapshot`
-- `backend/app/social/update.py` — job de background: EMA de opinion + trust
-- `backend/app/chat/prompt_context.py` — `_build_social_context_block`: inyección en prompt para sesiones `user:` con perfil existente
-- El modelo emite `<R:N>` (carga conversacional -2..+2) al final de cada respuesta; el sistema lo extrae, lo almacena, y lo procesa cuando `pending_loads_json` alcanza el umbral
+**Memoria social** (ver `docs/social-memory.md` y `docs/social-memory-narrative.md`):
+- `backend/app/memory/models.py` — tablas `SocialProfile`, `OpinionSnapshot`, `SocialReflection`
+- `backend/app/social/update.py` — job de background: EMA de opinion + trust (Pasos 1–6), más
+  generación de reflexión narrativa (Pasos 7–10 post-commit, commit `386e476`)
+- `backend/app/chat/prompt_context.py` — `_build_social_context_block`: inyección en prompt para
+  sesiones `user:` con perfil existente; incluye "Patrón observado: ..." si hay reflexión activa
+- El modelo emite `<R:N>` (carga conversacional -2..+2) al final de cada respuesta; el sistema lo
+  extrae, lo almacena, y lo procesa cuando `pending_loads_json` alcanza el umbral
 
 ### Historial estructurado
 

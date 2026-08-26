@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-24 (Sistema de iniciativa — segunda verificación y TTS en mensajes proactivos).
+Última actualización: 2026-08-26 (Memoria social narrativa, cadena de 5 bugs Google/TTS, refactor background_dispatch.py y turn_runner.py, auditoría de logs).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2050 tests en verde (pytest, 1 fallo pre-existente conocido en test_chat_message_metadata)
+- 2087 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -81,6 +81,90 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-08-25/26)
+
+- **Memoria social narrativa — Capa 2 y Capa 3 (2026-08-25, commit `386e476`)** —
+  implementado y desplegado el sistema de reflexión narrativa diseñado en
+  `docs/social-memory-narrative.md`. El job `_run_social_update` en `social/update.py`
+  genera ahora reflexiones de 2–4 frases (Pasos 7–10 post-commit principal) y las
+  almacena en la tabla nueva `SocialReflection` junto con los IDs de evidencia de
+  hasta 15 mensajes recientes. `_build_social_context_block` en `prompt_context.py`
+  inyecta la reflexión activa en el prompt cuando existe: "Patrón observado: ...".
+  Criterios de generación: ≥20 mensajes nuevos desde la última reflexión OR delta
+  |opinion| ≥ 0.15. Caducidad automática a 30 días. 8 tests en
+  `tests/test_social_memory_narrative.py`, todos en verde.
+  Ver `docs/social-memory-narrative.md` para diseño completo.
+
+- **Cadena de 5 bugs Google/TTS — mismo síntoma, causas distintas (2026-08-25)** —
+  cinco bugs consecutivos con síntoma idéntico ("Sin respuesta del servidor" /
+  respuesta sin audio), resueltos en cadena:
+
+  **Bug 1 — Logging ciego en fallo de refresh** (`8cba21e`): `load_user_credentials()`
+  en `google_auth.py` capturaba silenciosamente la excepción del refresh sin loguear
+  cuál era el error real. Además, `last_refreshed_at` se actualizaba aunque el refresh
+  hubiera fallado, haciendo imposible diagnosticar cuándo había ocurrido el error. Fix:
+  logging detallado + campo `last_refreshed_at` corregido para no actualizarse en fallo.
+
+  **Bug 2 — Segundo camino de credenciales obsoleto en pending actions** (`8189226`):
+  `google_actions.py` (ejecutor de acciones confirmadas vía `pending_action_runner`)
+  usaba un camino de resolución de credenciales diferente al de las tools. Este segundo
+  camino no incorporó los cambios de la Fase 6 (integraciones self-service), dejando
+  las acciones de usuario con tokens estancados. Fix: unificar ambos caminos en
+  `get_user_credentials()`.
+
+  **Bug 3 — TTS ausente en 3 caminos alternativos** (`2015263`): `pending_action_runner`,
+  los background tasks (`_on_done` en ai_orchestrator) y el sistema de iniciativa propia
+  construían sus respuestas sin llamar nunca al pipeline de síntesis. El flujo principal
+  de chat tenía TTS; los caminos alternativos, no. Fix: centralizar en `maybe_attach_tts()`
+  en el nuevo `app/audio/tts_service.py`. Los caminos de `local_final` también recibieron
+  síntesis en este mismo commit (`b0ab039`), además de limpieza de URLs e IDs técnicos
+  que el TTS no debería pronunciar.
+
+  **Bug 4 — Hang de red sin timeout en 3 capas de la librería Google** (`69085ef` →
+  `7bfa824` → `3c86d00` → `8b2cfa6`): el timeout de 10 s añadido en `creds.refresh` no
+  era suficiente — `googleapiclient.discovery.build()` lanzaba una segunda petición de
+  red para descargar el discovery doc, fuera del contexto del refresh. El transporte HTTP
+  subyacente (`httplib2`) no aplica timeout por defecto en ninguna capa. Fix en 4 commits
+  hasta llegar a la causa raíz real: (1) timeout en `creds.refresh` vía thread con
+  `signal.alarm`; (2) `static_discovery=True` para eliminar la petición de discovery;
+  (3) timeout por thread en `_google_call`; (4) `AuthorizedHttp` como adaptador que
+  intercepta todas las peticiones con timeout explícito. La solución final (`8b2cfa6`)
+  combina `static_discovery=True` + `AuthorizedHttp` como red de seguridad.
+
+  **Bug 5 — Trigger de memoria social narrativa sin manejo de excepciones** (`269ea58`):
+  `maybe_trigger_social_update()` en el paso 6.5 de `build_final_ai_response` lanzaba
+  excepción (tabla `SocialReflection` aún no migrada en un deploy incompleto, o error en
+  consulta). La excepción propagaba sin captura → la tarea de background moría → no se
+  emitía el evento SSE `done` → el frontend mostraba "Sin respuesta del servidor". El
+  texto y el audio ya habían sido generados y se perdían. Fix: try/except que loguea
+  `social_update_trigger_failed` (WARN) y deja continuar el pipeline.
+
+  **Falsa pista 1 — "bug de mensajes triviales":** en una sesión de depuración, un
+  mensaje aparentemente trivial sobre el tiempo devolvió respuesta vacía. Se sospechó
+  un bug del clasificador de `refusal_mode`. Resultado: era el mismo bug de Google auth
+  (Bug 1), manifestándose porque el modelo infería por contexto que debería revisar el
+  calendario del usuario, ejecutaba la tool de Google, el refresh fallaba silenciosamente,
+  la tool devolvía nada, y la respuesta quedaba vacía o incompleta. El bug no estaba en
+  el mensaje ni en el clasificador.
+
+  **Falsa pista 2 — "turn_runner.py perdió logging":** al revisar la auditoría de logs,
+  `chat_response_dispatch_failed` no incluía `error_type`. Se interpretó como pérdida de
+  contexto en la extracción a `turn_runner.py`. Resultado: el campo nunca había existido
+  en el código original — la extracción fue fiel. El audit (`14cf274`) lo añadió como
+  mejora nueva, no como corrección de una regresión.
+
+- **Refactor estructural: `background_dispatch.py` y `turn_runner.py` (commit `125e74a`)** —
+  extraídos de `ai_orchestrator.py` (930→710 líneas) y `routes_chat.py` (467→192 líneas)
+  respectivamente. Ver módulos chat en `docs/architecture.md` para responsabilidades.
+  Los tests existentes se actualizaron para importar desde las rutas nuevas; suite completa
+  pasó sin regresiones.
+
+- **Limpieza de código y auditoría de logs (commits `1ab5bdf`, `14cf274`)** — 15 archivos
+  con imports muertos eliminados, logging temporal de diagnóstico de Google eliminado tras
+  confirmar el fix. Tres mejoras de trazas: `error_type` en `chat_response_dispatch_failed`,
+  `module="social"` normalizado en `social_update_trigger_failed`, `engine` añadido en
+  `tts_attached`. 2087 tests en verde.
 
 ## Completado recientemente
 

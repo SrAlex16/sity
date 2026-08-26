@@ -1,7 +1,7 @@
 # Memoria Social Narrativa
 
-Fecha: 2026-08-24.
-Estado: **Diseño cerrado — pendiente de implementar.**
+Fecha diseño: 2026-08-24. Implementado y desplegado: 2026-08-25 — commit `386e476`.
+Estado: **Implementado y en producción.** 8 tests en `tests/test_social_memory_narrative.py` — todos en verde.
 
 Este documento amplía el sistema de memoria social numérico ya existente
 (`docs/social-memory.md`) con dos capas nuevas: reflexión narrativa y trazabilidad
@@ -380,16 +380,17 @@ Los siguientes temas NO se diseñan en esta fase:
 
 ---
 
-## 11. Resumen de archivos a tocar en implementación
+## 11. Archivos modificados en implementación
 
 | Archivo | Cambio |
 |---|---|
-| `backend/app/memory/models.py` | Nueva clase `SocialReflection` (SQLModel, table=True) |
+| `backend/app/memory/models.py` | Clase `SocialReflection` (SQLModel, table=True) |
 | `backend/app/memory/db.py` | `_migrate_social_reflection()` en el mismo patrón que las otras migraciones |
-| `backend/app/social/update.py` | Pasos 7–10 después del commit principal |
-| `backend/app/chat/prompt_context.py` | Extensión de `_build_social_context_block` |
+| `backend/app/social/update.py` | Pasos 7–10 después del commit principal (+214 líneas) |
+| `backend/app/chat/prompt_context.py` | Extensión de `_build_social_context_block` (+38 líneas) |
 | `config/default_config.yaml` | 4 claves nuevas bajo `social:` |
-| `tests/test_social_memory_narrative.py` | Tests nuevos (ver §12) |
+| `tests/test_social_memory_narrative.py` | 8 tests (ver §12) — todos en verde |
+| `tests/test_social_memory.py` | 22 tests existentes ampliados (+22 líneas) |
 
 ---
 
