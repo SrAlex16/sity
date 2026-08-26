@@ -268,9 +268,9 @@ def build_final_ai_response(
             maybe_trigger_social_update(session, session_id, trace_id)
         except Exception as _social_exc:
             write_log(
-                level="WARN", module="final_response_builder",
+                level="WARN", module="social",
                 event="social_update_trigger_failed", trace_id=trace_id,
-                payload={"error": str(_social_exc)[:300]},
+                payload={"error": str(_social_exc)[:300], "error_type": type(_social_exc).__name__},
             )
 
     # 7. Return response

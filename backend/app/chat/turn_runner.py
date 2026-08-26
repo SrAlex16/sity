@@ -69,7 +69,7 @@ def _maybe_dispatch_chat_response(
             module="chat",
             event="chat_response_dispatch_failed",
             trace_id=trace_id,
-            payload={"error": str(exc), "session_id": session_id},
+            payload={"error": str(exc), "error_type": type(exc).__name__, "session_id": session_id},
         )
 
 

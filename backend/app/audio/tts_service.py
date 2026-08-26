@@ -103,7 +103,8 @@ def _attach_tts_artifacts(
 
         write_log(level="INFO", module="audio", event="tts_attached",
                   trace_id=trace_id,
-                  payload={"fragments": len(fragments), "total_chars": len(text),
+                  payload={"engine": tts_engine, "fragments": len(fragments),
+                           "total_chars": len(text),
                            "first_persistent_filename": first_persistent_filename})
         return len(fragments), first_persistent_filename
     except Exception as exc:
