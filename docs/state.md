@@ -503,6 +503,94 @@ Ver .env.example para la lista completa.
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
 
+- **Pantalla "Logros" — catálogo de 30+ logros en 6 categorías** — pantalla de
+  gamificación pendiente de diseño e implementación. El catálogo de logros fue
+  diseñado antes de julio 2026 y debe preservarse aquí como referencia canónica.
+
+  **Fórmula del "encabronamiento"** (confirmada en `mobile/src/screens/PersonalityScreen.tsx:13-19`):
+  ```
+  computeMoodLevel = round(
+    rudeness_level  × 0.4 +
+    sarcasm_level   × 0.3 +
+    contrarian_level × 0.2 +
+    dry_humor_level × 0.1
+  ) × 100
+  ```
+  Colores por rango: ≤25 → cian `#00f5ff`, ≤50 → verde `#00ff80`,
+  ≤75 → naranja `#ff8000`, >75 → magenta `#ff00ff`.
+
+  **6 pestañas/categorías del catálogo:**
+
+  1. **Personalidad** — logros relacionados con configuración de sliders: alcanzar
+     valores extremos, combinaciones específicas de parámetros, mantener el nivel
+     de encabronamiento en zonas concretas durante N sesiones, etc.
+
+  2. **Tools** — logros por uso de herramientas: primera búsqueda web, primera
+     acción de domótica, primer timer creado, primer mensaje de voz enviado,
+     uso acumulado de N herramientas distintas, etc.
+
+  3. **Memoria** — logros relacionados con la memoria de conversación y el sistema
+     social: primera búsqueda en historial (`search_conversation_history`), primera
+     reflexión narrativa generada (SocialReflection), milestones de mensajes totales
+     (100, 500, 1000, 5000), etc.
+
+  4. **Secretos** — logros ocultos que se desbloquean por comportamientos específicos
+     no documentados en la UI: frases especiales, combinaciones de personalidad,
+     patrones de interacción inusuales. La lista exacta es opaca por diseño.
+
+  5. **Domótica + Integraciones** — logros por uso de Home Assistant (primera bombilla
+     encendida, primera escena activada), Google Calendar (primer evento creado),
+     Gmail (primera búsqueda), Spotify (primera canción puesta, primer skip), etc.
+
+  6. **Tareas en background** — logros por uso del sistema de iniciativa y timers:
+     primer mensaje proactivo recibido, primer timer de larga duración, primer
+     background task completado, etc.
+
+  **Regla de arquitectura confirmada:** no encadenamiento automático de logros —
+  un logro desbloqueado no dispara automáticamente la comprobación de otros.
+  Cada logro tiene su propio trigger/evento; el sistema no evalúa el catálogo
+  completo en cada turno.
+
+  **Piezas técnicas pendientes de diseño:**
+  - Mecanismo genérico de detección de comportamiento (¿eventos en log? ¿señales
+    en DB? ¿hook en save_chat_message?). No hardcodear detección por logro.
+  - Modelo de datos `Achievement` / `UserAchievement` — tabla con estado
+    `locked`/`unlocked`, fecha de desbloqueo, notificación.
+  - Presentación en UI: cómo mostrar un logro recién desbloqueado sin interrumpir
+    la conversación (toast no intrusivo, badge en pestaña, o al abrir la pantalla).
+
+- **Sistema de perfiles personales por hablante** *(muy a futuro)* — idea de
+  roadmap que existía antes de julio 2026 y que conviene preservar documentada
+  para no redescubrirla desde cero. No está en el plan activo; se registra aquí
+  como contexto de diseño para cuando el momento sea el correcto.
+
+  Sity actualmente trata todas las interacciones como si vinieran del mismo
+  interlocutor por sesión. El sistema de perfiles personales añadiría:
+
+  - **Reconocimiento de personas** — identificar quién está hablando dentro de
+    una sesión compartida (familia, compañeros de trabajo). El mecanismo concreto
+    (voz, perfil activo seleccionado manualmente, señal contextual) queda sin
+    decidir hasta que el caso de uso se defina con más concreción.
+
+  - **Pseudo-opiniones por hablante** — el sistema de `opinion`/`trust` de
+    `SocialProfile` existe a nivel de `user_id`. Con perfiles por hablante, cada
+    persona reconocida tendría su propia trayectoria de `opinion`/`trust` y su
+    propia reflexión narrativa de `SocialReflection`.
+
+  - **Confianza diferenciada** — Sity podría mantener un registro de confianza
+    distinto para cada hablante: compartir información de la agenda con el dueño
+    de la cuenta pero no con un invitado reconocido como tal.
+
+  - **Privacidad por perfil** — decisión de diseño no resuelta: ¿quién puede
+    ver qué datos de qué perfil? ¿El dueño de la cuenta puede ver los datos de
+    otros perfiles? ¿Hay datos marcados como privados por hablante?
+
+  **Por qué es "muy a futuro":** requiere resolver el mecanismo de identificación
+  (voz → problema técnico no trivial en Pi; selección manual → fricción de UX),
+  el modelo de privacidad, y el aislamiento de datos entre perfiles en un sistema
+  que hoy asume un único propietario. No desbloquea ningún caso de uso bloqueante
+  en el estado actual del proyecto.
+
 ## Bugs conocidos activos
 
 Ninguno activo conocido.
