@@ -106,6 +106,10 @@ def adjust_personality(
         f"a {round(new_value * 100)}%. Una calibración cuestionable, pero aceptada."
     )
 
+    from app.achievements.triggers.inline import fire as _fire_ach
+    if current.user_id is not None:
+        _fire_ach(session, current.session_id, "persona")
+
     return PersonalityAdjustResponse(
         ok=True,
         parameter=request.parameter,

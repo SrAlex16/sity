@@ -148,6 +148,8 @@ def handle_gmail_search(ctx: ToolContext) -> ToolExecutionResult:
         )
 
     output = "\n\n---\n\n".join(summaries)
+    from app.achievements.triggers.inline import fire as _fire_ach
+    _fire_ach(ctx.executor.session, ctx.executor.session_id, "youve_got_mail")
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=output,
         updated_parameters=[], raw_result={"output": output},
@@ -260,6 +262,8 @@ def handle_calendar_create_event(ctx: ToolContext) -> ToolExecutionResult:
         "summary": created.summary,
         "local_final": True, "text": local_text, "local_model": "pending-action-manager",
     }
+    from app.achievements.triggers.inline import fire as _fire_ach
+    _fire_ach(ctx.executor.session, ctx.executor.session_id, "time_is_running_out")
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=local_text,
         updated_parameters=[], raw_result=result,

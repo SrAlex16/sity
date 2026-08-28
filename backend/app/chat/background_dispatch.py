@@ -136,6 +136,8 @@ def _detach_tool(
                     trace_id=bg_trace_id,
                 ))
                 db_sess.commit()
+                from app.achievements.triggers.inline import fire as _fire_ach
+                _fire_ach(db_sess, ctx.session_id, "ill_be_back")
         except Exception as _db_exc:
             write_log(level="ERROR", module="chat", event="bg_persist_failed",
                       payload={"job_id": job.job_id, "tool_name": tool_name,

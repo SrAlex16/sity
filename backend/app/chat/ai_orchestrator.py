@@ -183,6 +183,9 @@ class ChatAIOrchestrator:
                               trace_id=ctx.trace_id,
                               payload={"audio_filename": _tts_row.audio_filename,
                                        "tts_fragments": _tts_row.tts_fragments})
+                if request.input_mode == "voice":
+                    from app.achievements.triggers.inline import fire as _fire_ach
+                    _fire_ach(session, ctx.session_id, "codec")
 
         return chat_result
 

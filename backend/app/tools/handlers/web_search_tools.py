@@ -130,6 +130,8 @@ def handle_web_search(ctx: ToolContext) -> ToolExecutionResult:
 
     cached = _cache_get(query_hash)
     if cached is not None:
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(ctx.executor.session, ctx.executor.session_id, "wired")
         return ToolExecutionResult(
             tool_name=ctx.tool_name,
             ok=True,
@@ -186,6 +188,9 @@ def handle_web_search(ctx: ToolContext) -> ToolExecutionResult:
             )
 
         _cache_set(query_hash, query, text, ttl)
+
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(ctx.executor.session, ctx.executor.session_id, "wired")
 
         return ToolExecutionResult(
             tool_name=ctx.tool_name,

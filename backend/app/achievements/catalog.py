@@ -76,15 +76,78 @@ CATALOG: list[AchievementDef] = [
             "Rudeza, sarcasmo y contrariedad, todos al 80 % o más. Esto es caos controlado."
         ),
     ),
+    AchievementDef(
+        slug="persona",
+        category="personalidad",
+        name="Ajuste fino",
+        description_hint="Modifica algún parámetro de personalidad de Sity.",
+        description_full="Ajustaste la personalidad de Sity desde la interfaz. Ya nada es por defecto.",
+    ),
+    AchievementDef(
+        slug="tars",
+        category="personalidad",
+        name="Tars al mando",
+        description_hint="Deja que Sity se recalibre a sí misma.",
+        description_full="Sity modificó su propia personalidad por iniciativa propia. Control total.",
+    ),
+    AchievementDef(
+        slug="objection",
+        category="personalidad",
+        name="Objeción",
+        description_hint="Descubre qué pasa cuando Sity dice que no.",
+        description_full="Sity rechazó estructuralmente una petición tuya. El rechazo también es una respuesta.",
+    ),
+    AchievementDef(
+        slug="pacto",
+        category="personalidad",
+        name="El pacto",
+        description_hint="A veces el 'no' tiene un precio.",
+        description_full="Saltaste un rechazo previo con una orden directa. Pacto establecido.",
+    ),
     # ------------------------------------------------------------------
     # Tools
     # ------------------------------------------------------------------
     AchievementDef(
-        slug="first_web_search",
+        slug="diy",
         category="tools",
-        name="Primera búsqueda",
+        name="DIY",
+        description_hint="Pídele a Sity que use alguna de sus herramientas.",
+        description_full="Primera herramienta usada. Sity tiene más recursos de los que parecía.",
+    ),
+    AchievementDef(
+        slug="wired",
+        category="tools",
+        name="Wired",
         description_hint="Pídele a Sity que busque algo en internet.",
         description_full="Primera búsqueda web realizada. El conocimiento es poder.",
+    ),
+    AchievementDef(
+        slug="law_of_cycles",
+        category="tools",
+        name="Ley de ciclos",
+        description_hint="Pon a Sity a trabajar con más de una herramienta a la vez.",
+        description_full="Dos herramientas en el mismo turno. La eficiencia tiene su encanto.",
+    ),
+    AchievementDef(
+        slug="pause_menu",
+        category="tools",
+        name="Pause menu",
+        description_hint="Interrumpe a Sity mientras responde.",
+        description_full="Detuviste una respuesta a mitad. El botón de parar existe por algo.",
+    ),
+    AchievementDef(
+        slug="say_cheese",
+        category="tools",
+        name="Say cheese",
+        description_hint="Pídele a Sity que use la cámara.",
+        description_full="Primera captura de cámara. Sity tiene ojos ahora.",
+    ),
+    AchievementDef(
+        slug="codec",
+        category="tools",
+        name="Codec",
+        description_hint="Habla con Sity y escucha su respuesta.",
+        description_full="Enviaste un mensaje de voz y Sity respondió con audio. La conversación es total.",
     ),
     AchievementDef(
         slug="first_timer",
@@ -92,13 +155,6 @@ CATALOG: list[AchievementDef] = [
         name="El tiempo vuela",
         description_hint="Crea un recordatorio o temporizador.",
         description_full="Primer temporizador creado. Sity lo tendrá en cuenta.",
-    ),
-    AchievementDef(
-        slug="first_voice",
-        category="tools",
-        name="Voz propia",
-        description_hint="Usa el micrófono para hablarle a Sity.",
-        description_full="Primer mensaje de voz enviado. Ahora te escucha literalmente.",
     ),
     AchievementDef(
         slug="first_shared",
@@ -121,9 +177,23 @@ CATALOG: list[AchievementDef] = [
         description_hint="Cambia el idioma de conversación de Sity.",
         description_full="Cambiaste el idioma de conversación. El mundo habla muchas lenguas.",
     ),
+    AchievementDef(
+        slug="would_you_kindly",
+        category="tools",
+        name="Would you kindly",
+        description_hint="Confirma una acción pendiente que Sity propuso.",
+        description_full="Acción pendiente confirmada y ejecutada. La confianza funciona en ambas direcciones.",
+    ),
     # ------------------------------------------------------------------
     # Memoria
     # ------------------------------------------------------------------
+    AchievementDef(
+        slug="hello_world",
+        category="memoria",
+        name="Hello, World!",
+        description_hint="Envía tu primer mensaje a Sity.",
+        description_full="El principio de todo. Enviaste tu primer mensaje. Aquí empieza algo.",
+    ),
     AchievementDef(
         slug="remember_me",
         category="memoria",
@@ -227,32 +297,53 @@ CATALOG: list[AchievementDef] = [
     # Domótica + Integraciones
     # ------------------------------------------------------------------
     AchievementDef(
-        slug="first_light",
+        slug="glados",
         category="domotica",
-        name="Iluminada",
-        description_hint="Controla una bombilla o luz con Sity.",
+        name="GLaDOS",
+        description_hint="Controla un dispositivo de domótica con Sity.",
+        description_full="Primer dispositivo controlado via Home Assistant. GLaDOS aprueba.",
+    ),
+    AchievementDef(
+        slug="here_comes_the_sun",
+        category="domotica",
+        name="Here comes the sun",
+        description_hint="Enciende o apaga una bombilla con Sity.",
         description_full="Primera luz controlada por Sity. Hay magia en encender una bombilla con la voz.",
     ),
     AchievementDef(
-        slug="first_calendar_event",
+        slug="welcome_to_the_family",
         category="domotica",
-        name="Agenda personal",
+        name="Welcome to the family",
+        description_hint="Controla varios dispositivos de domótica a la vez.",
+        description_full="Dos dispositivos controlados en el mismo turno. Esto ya es un hogar inteligente.",
+    ),
+    AchievementDef(
+        slug="radio_video",
+        category="domotica",
+        name="Video killed the radio star",
+        description_hint="Pon música con Sity.",
+        description_full="Primera canción reproducida con Sity. El soundtrack importa.",
+    ),
+    AchievementDef(
+        slug="keep_on_rollin",
+        category="domotica",
+        name="Keep on rollin'",
+        description_hint="Pídele a Sity que retome la música donde la dejaste.",
+        description_full="Reanudaste la música sin especificar qué poner. Sity recuerda.",
+    ),
+    AchievementDef(
+        slug="time_is_running_out",
+        category="domotica",
+        name="Time is running out",
         description_hint="Crea un evento en tu calendario con Sity.",
         description_full="Primer evento de calendario creado. La organización es una virtud.",
     ),
     AchievementDef(
-        slug="first_gmail_search",
+        slug="youve_got_mail",
         category="domotica",
-        name="Buceadora",
+        name="You've got mail",
         description_hint="Pídele a Sity que busque en tu correo.",
         description_full="Primera búsqueda en Gmail. El correo tiene memoria.",
-    ),
-    AchievementDef(
-        slug="first_spotify",
-        category="domotica",
-        name="En modo DJ",
-        description_hint="Pon música con Sity.",
-        description_full="Primera canción reproducida con Sity. El soundtrack importa.",
     ),
     AchievementDef(
         slug="smart_home",
@@ -272,18 +363,18 @@ CATALOG: list[AchievementDef] = [
     # Tareas en background
     # ------------------------------------------------------------------
     AchievementDef(
-        slug="first_proactive",
+        slug="voices",
         category="background",
-        name="Iniciativa propia",
+        name="Voices",
         description_hint="Espera a que Sity tome la iniciativa por su cuenta.",
         description_full="Sity te escribió sin que se lo pidieras. La iniciativa es mutua.",
     ),
     AchievementDef(
-        slug="first_timer_fired",
+        slug="ill_be_back",
         category="background",
-        name="¡Ding!",
-        description_hint="Crea un temporizador y espera a que suene.",
-        description_full="Primer temporizador que llegó a su hora. La espera tiene recompensa.",
+        name="I'll be back",
+        description_hint="Lanza una tarea en segundo plano y espera el resultado.",
+        description_full="Primera tarea de fondo completada. Sity trabaja aunque no la veas.",
     ),
     AchievementDef(
         slug="open_loop_closed",

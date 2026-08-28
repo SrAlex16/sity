@@ -198,6 +198,9 @@ def _dispatch_initiative(
     )
     dispatch(fact, db)
 
+    from app.achievements.triggers.inline import fire as _fire_ach
+    _fire_ach(db, candidate.session_id, "voices")
+
     if candidate.trigger_type == "open_loop" and candidate.open_loop_id:
         loop = db.exec(select(OpenLoop).where(OpenLoop.id == candidate.open_loop_id)).first()
         if loop and loop.status == "pending":

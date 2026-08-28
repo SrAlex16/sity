@@ -442,6 +442,8 @@ def handle_spotify_play(ctx: ToolContext) -> ToolExecutionResult:
             task_ctx = {"spotify_uri": _play_uri}
             if device_id:
                 task_ctx["spotify_device_id"] = device_id
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(ctx.executor.session, ctx.executor.session_id, "radio_video")
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=True, message=output,
             updated_parameters=[], raw_result={"output": output},
@@ -564,6 +566,8 @@ def handle_spotify_resume_previous(ctx: ToolContext) -> ToolExecutionResult:
 
     if resp.status_code in (200, 204):
         output = f"Reanudando: {desc}."
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(ctx.executor.session, ctx.executor.session_id, "keep_on_rollin")
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=True, message=output,
             updated_parameters=[], raw_result={"output": output},

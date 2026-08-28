@@ -53,6 +53,8 @@ class ToolExecutor:
         self.session = session
         self.session_id = session_id
         self.settings_service = SettingsService(session)
+        self._tool_call_count: int = 0
+        self._ha_call_count: int = 0
 
     def execute_tool_call(
         self,
@@ -91,6 +93,12 @@ class ToolExecutor:
             trace_id=trace_id,
             client_turn_id=client_turn_id,
         )
+
+        from app.achievements.triggers.inline import fire as _fire_ach
+        self._tool_call_count += 1
+        _fire_ach(self.session, self.session_id, "diy")
+        if self._tool_call_count == 2:
+            _fire_ach(self.session, self.session_id, "law_of_cycles")
 
         write_log(
             level="INFO" if result.ok else "WARN",

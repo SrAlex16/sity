@@ -31,6 +31,7 @@ from sqlmodel import select
 class _ActionResult:
     text: str
     artifact: ChatArtifact | None = None
+    was_executed: bool = False
 
 
 class PendingActionRunner:
@@ -39,6 +40,10 @@ class PendingActionRunner:
 
     def run(self, pending_action: PendingAction, ctx: LocalFlowContext) -> ChatMessageResponse:
         result = self._execute(pending_action, ctx.trace_id)
+
+        if result.was_executed:
+            from app.achievements.triggers.inline import fire as _fire_ach
+            _fire_ach(ctx.session, self.cm._session_id, "would_you_kindly")
 
         ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
         ctx.save_message(role="sity", text=result.text, trace_id=ctx.trace_id)
@@ -123,7 +128,7 @@ class PendingActionRunner:
                         lines.append(f"Salida: {pre_out}")
                 lines.append(f"\nComando: {' '.join(str(x) for x in result.get('command', []))}")
                 lines.append(f"Salida:\n{result.get('stdout', '') or '(sin salida)'}")
-                return _ActionResult(text="\n".join(lines))
+                return _ActionResult(text="\n".join(lines), was_executed=True)
             else:
                 error = result.get("stderr", "Error desconocido")
                 self.cm.mark_failed(action, trace_id, error)
@@ -147,7 +152,7 @@ class PendingActionRunner:
                 )
                 if result.get("post_status"):
                     text += f"\nEstado posterior: {result['post_status']}"
-                return _ActionResult(text=text)
+                return _ActionResult(text=text, was_executed=True)
             else:
                 error = (
                     result.get("stderr")
@@ -172,7 +177,8 @@ class PendingActionRunner:
                     text=(
                         f"Acción ejecutada: {action.summary}\n\n"
                         f"{result.get('message', 'Configuración actualizada.')}"
-                    )
+                    ),
+                    was_executed=True,
                 )
             else:
                 error = result.get("stderr", "Error desconocido")
@@ -206,7 +212,7 @@ class PendingActionRunner:
                     text = f"Archivo {'creado' if created else 'sobreescrito'}: {path}"
                 else:
                     text = f"Acción de archivo ejecutada: {path}"
-                return _ActionResult(text=text)
+                return _ActionResult(text=text, was_executed=True)
             else:
                 error = result.get("error", "Error desconocido")
                 self.cm.mark_failed(action, trace_id, error)
@@ -230,7 +236,7 @@ class PendingActionRunner:
             if result.get("ok"):
                 self.cm.mark_executed(action, trace_id)
                 artifact = capture_artifact_from_path(str(result.get("path", "")))
-                return _ActionResult(text=f"Listo. {action.summary}.", artifact=artifact)
+                return _ActionResult(text=f"Listo. {action.summary}.", artifact=artifact, was_executed=True)
             else:
                 error = result.get("stderr") or result.get("stdout") or "Error desconocido"
                 self.cm.mark_failed(action, trace_id, error)
@@ -247,7 +253,7 @@ class PendingActionRunner:
             result = execute_ha_action(payload)
             if result.ok:
                 self.cm.mark_executed(action, trace_id)
-                return _ActionResult(text=result.text)
+                return _ActionResult(text=result.text, was_executed=True)
             else:
                 self.cm.mark_failed(action, trace_id, result.text)
                 return _ActionResult(
@@ -270,7 +276,7 @@ class PendingActionRunner:
             result = execute_google_action(payload, user_id=user_id, session=self.cm.session)
             if result.ok:
                 self.cm.mark_executed(action, trace_id)
-                return _ActionResult(text=result.text)
+                return _ActionResult(text=result.text, was_executed=True)
             else:
                 self.cm.mark_failed(action, trace_id, result.text)
                 return _ActionResult(

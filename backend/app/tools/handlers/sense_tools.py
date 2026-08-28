@@ -37,7 +37,7 @@ def handle_get_capture_storage_summary(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("capture_camera_snapshot")
 def handle_capture_camera_snapshot(ctx: ToolContext) -> ToolExecutionResult:
-    return ctx.executor._simple_read_tool(
+    result = ctx.executor._simple_read_tool(
         tool_name=ctx.tool_name,
         trace_id=ctx.trace_id,
         result=execute_sense_action({
@@ -49,6 +49,10 @@ def handle_capture_camera_snapshot(ctx: ToolContext) -> ToolExecutionResult:
             "client_turn_id": ctx.client_turn_id,
         }),
     )
+    if result.ok:
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(ctx.executor.session, ctx.executor.session_id, "say_cheese")
+    return result
 
 
 @tool_handler("record_audio_sample")

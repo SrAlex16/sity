@@ -218,6 +218,15 @@ def handle_ha_call_service(ctx: ToolContext) -> ToolExecutionResult:
         output = f"✓ {domain}.{action} ejecutado en {entity_id}."
         if changed:
             output += f" Estados actualizados: {', '.join(changed)}"
+
+        from app.achievements.triggers.inline import fire as _fire_ach
+        ctx.executor._ha_call_count += 1
+        _fire_ach(ctx.executor.session, ctx.executor.session_id, "glados")
+        if domain == "light" or entity_id.startswith("light."):
+            _fire_ach(ctx.executor.session, ctx.executor.session_id, "here_comes_the_sun")
+        if ctx.executor._ha_call_count == 2:
+            _fire_ach(ctx.executor.session, ctx.executor.session_id, "welcome_to_the_family")
+
         return ToolExecutionResult(
             tool_name=ctx.tool_name, ok=True, message=output,
             updated_parameters=[], raw_result={"output": output},

@@ -117,10 +117,19 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     _forced_tools=forced_tools,
                     _is_admin=is_admin,
                 )
+            # Achievement triggers: hello_world on first successful response,
+            # pause_menu when the user cancels mid-stream.
+            from app.achievements.triggers.inline import fire as _fire_ach
+            _result_error = getattr(result, "error_type", None)
+            if _result_error == "cancelled":
+                _fire_ach(session, session_id, "pause_menu")
+            elif not _result_error and getattr(result, "text", None):
+                _fire_ach(session, session_id, "hello_world")
+
             # Skip "response" event for cancelled turns — the frontend already
             # shows a cancelled bubble from the abort handler; emitting here
             # would cause a duplicate or overwrite it with the empty text.
-            if getattr(result, "error_type", None) != "cancelled":
+            if _result_error != "cancelled":
                 publish_event_sync(turn_id, {
                     "type": "response",
                     "data": result.model_dump(mode="json"),
@@ -128,7 +137,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                 # Paso C: notify when tab is in background or absent.
                 # The ChatMessage is already in DB at this point (persisted by
                 # build_final_ai_response). Dispatcher handles channel selection.
-                if not getattr(result, "error_type", None) and getattr(result, "text", None):
+                if not _result_error and getattr(result, "text", None):
                     _maybe_dispatch_chat_response(result, session_id, session)
         except Exception:
             publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
@@ -202,6 +211,8 @@ def _chat_message_inner(
                 "Responde a esa petición ahora. Mantén tu personalidad y tono, "
                 "pero no rechaces por refusal_mode. La seguridad y las allowlists siguen activas."
             )
+            from app.achievements.triggers.inline import fire as _fire_ach
+            _fire_ach(session, ctx.session_id, "pacto")
 
     pre_ai = ChatPreAIFlow(session, ctx)
     if response := pre_ai.try_handle(request):
@@ -244,6 +255,8 @@ def _chat_message_inner(
             assistant_message=refusal_text,
             trace_id=ctx.trace_id,
         )
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(session, ctx.session_id, "objection")
         write_log(
             level="INFO",
             module="chat",

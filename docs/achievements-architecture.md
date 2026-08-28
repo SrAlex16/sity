@@ -1,8 +1,9 @@
 # Sistema de Logros — Arquitectura
 
 Fecha: 2026-08-28.
-Estado: **Paso 1 implementado** — modelo de datos, catálogo, motor de desbloqueo y
-endpoint `GET /achievements`. Paso 2 (triggers individuales) y Paso 3 (frontend) pendientes.
+Estado: **Paso 1 + Fase 2a implementados** — modelo de datos, catálogo (46 logros), motor de
+desbloqueo, endpoint `GET /achievements`, y 21 triggers inline de Fase 2a. Fases 2b/2c
+(post-turno y comportamiento sutil) y Paso 3 (frontend) pendientes.
 
 Diseño cerrado: ver `docs/state.md` §"Catálogo de logros" para las decisiones de
 producto confirmadas con Alex (umbrales, clasificador genérico, arquitectura opaca).
@@ -87,64 +88,77 @@ class UserAchievement(SQLModel, table=True):
 | `"domotica"` | Home Assistant, Google, Spotify |
 | `"background"` | Timers, iniciativa propia, open loops |
 
-### Catálogo actual — 33 logros
+### Catálogo actual — 46 logros
 
-**Personalidad (5)**
-| Slug | Nombre | Trigger (Paso 2) |
+**Personalidad (9)**
+| Slug | Nombre | Estado trigger |
 |---|---|---|
-| `who_am_i` | ¿Quién soy? | Distancia euclídea normalizada ≥ 0.5 vs. config por defecto |
-| `maximum_overdrive` | Maximum Overdrive | Cualquier slider == 1.0 |
-| `ice_queen` | Reina de hielo | frialdad_afectiva ≥ 0.9 AND warmth ≤ 0.1 |
-| `saint` | Santa paciencia | patience ≥ 0.9 AND rudeness ≤ 0.1 |
-| `chaos_agent` | Agente del caos | rudeness ≥ 0.8 AND sarcasm ≥ 0.8 AND contrarian ≥ 0.8 |
+| `who_am_i` | ¿Quién soy? | Paso 2b — distancia euclídea ≥ 0.5 |
+| `maximum_overdrive` | Maximum Overdrive | Paso 2b — slider == 1.0 |
+| `ice_queen` | Reina de hielo | Paso 2b — frialdad ≥ 0.9 AND warmth ≤ 0.1 |
+| `saint` | Santa paciencia | Paso 2b — patience ≥ 0.9 AND rudeness ≤ 0.1 |
+| `chaos_agent` | Agente del caos | Paso 2b — rudeness/sarcasm/contrarian ≥ 0.8 |
+| `persona` | Ajuste fino | ✅ Fase 2a — `routes_settings.py` `adjust_personality` |
+| `tars` | Tars al mando | ✅ Fase 2a — `personality_tools.py` (tool ok) |
+| `objection` | Objeción | ✅ Fase 2a — `turn_runner.py` structural refusal |
+| `pacto` | El pacto | ✅ Fase 2a — `turn_runner.py` has_direct_order_override + last refusal |
 
-**Tools (6)**
-| Slug | Nombre | Trigger (Paso 2) |
+**Tools (10)**
+| Slug | Nombre | Estado trigger |
 |---|---|---|
-| `first_web_search` | Primera búsqueda | Primera llamada a tool `web_search` |
-| `first_timer` | El tiempo vuela | Primera llamada a `create_timer` |
-| `first_voice` | Voz propia | Primer ChatMessage con input_mode="voice" |
-| `first_shared` | Para compartir | Primera llamada a `POST /chat/share` |
-| `read_webpage` | Leedme la mente | Primera llamada a tool `read_webpage` |
-| `polyglot` | Políglota | Primera vez que se cambia `language_override` a no-"auto" |
+| `diy` | DIY | ✅ Fase 2a — `tool_executor.py` primera tool dispatched |
+| `wired` | Wired | ✅ Fase 2a — `web_search_tools.py` búsqueda exitosa |
+| `law_of_cycles` | Ley de ciclos | ✅ Fase 2a — `tool_executor.py` _tool_call_count == 2 en turno |
+| `pause_menu` | Pause menu | ✅ Fase 2a — `turn_runner.py` error_type == "cancelled" |
+| `say_cheese` | Say cheese | ✅ Fase 2a — `sense_tools.py` capture_camera_snapshot ok |
+| `codec` | Codec | ✅ Fase 2a — `ai_orchestrator.py` TTS + input_mode="voice" |
+| `would_you_kindly` | Would you kindly | ✅ Fase 2a — `pending_action_runner.py` was_executed=True |
+| `first_timer` | El tiempo vuela | Pendiente — primera llamada a `create_timer` |
+| `first_shared` | Para compartir | Pendiente — `POST /chat/share` |
+| `read_webpage` | Leedme la mente | Pendiente — tool `read_webpage` |
+| `polyglot` | Políglota | Pendiente — cambio `language_override` |
 
-**Memoria (6)**
-| Slug | Nombre | Trigger (Paso 2) |
+**Memoria (7)**
+| Slug | Nombre | Estado trigger |
 |---|---|---|
-| `remember_me` | ¿Te acuerdas de mí? | SocialProfile.trust ≥ 0.30 (= initiative_min_trust) |
-| `the_memory_remains` | El recuerdo persiste | Resultado de search_conversation_history con created_at ≥ 7 días |
-| `hundred` | Centenaria | 100 mensajes del usuario en ChatMessage |
-| `five_hundred` | Veterana | 500 mensajes |
-| `one_thousand` | Leyenda | 1000 mensajes |
-| `social_narrator` | Historia en palabras | Primera SocialReflection generada para el usuario |
+| `hello_world` | Hello, World! | ✅ Fase 2a — `turn_runner.py` primer turno exitoso |
+| `remember_me` | ¿Te acuerdas de mí? | Paso 2b — SocialProfile.trust ≥ 0.30 |
+| `the_memory_remains` | El recuerdo persiste | Paso 2b — search_conversation_history ≥ 7 días |
+| `hundred` | Centenaria | Paso 2b — 100 mensajes |
+| `five_hundred` | Veterana | Paso 2b — 500 mensajes |
+| `one_thousand` | Leyenda | Paso 2b — 1000 mensajes |
+| `social_narrator` | Historia en palabras | Paso 2b — primera SocialReflection |
 
 **Secretos (6)** — ocultos hasta desbloquear el primero
-| Slug | Nombre | Trigger (Paso 2) |
+| Slug | Nombre | Estado trigger |
 |---|---|---|
-| `no_gods_no_masters` | No gods, no masters | classify_behavior_pattern: contradicción sistemática |
-| `tsundere` | Tsundere | classify_behavior_pattern: patrón tsundere |
-| `you_win` | Ganaste | classify_behavior_pattern: rendición ante Sity |
-| `curiosity_killed_the_cat` | La curiosidad mató al gato | detect_achievement_hunting (llamada separada, opaca) |
-| `easter_egg_1` | Secreto de fábrica | Trigger a definir en Paso 2 |
-| `easter_egg_2` | Anomalía detectada | Trigger a definir en Paso 2 |
+| `no_gods_no_masters` | No gods, no masters | Paso 2c — classify_behavior_pattern |
+| `tsundere` | Tsundere | Paso 2c — classify_behavior_pattern |
+| `you_win` | Ganaste | Paso 2c — classify_behavior_pattern |
+| `curiosity_killed_the_cat` | La curiosidad mató al gato | Paso 2c — detect_achievement_hunting |
+| `easter_egg_1` | Secreto de fábrica | Trigger a definir |
+| `easter_egg_2` | Anomalía detectada | Trigger a definir |
 
-**Domótica + Integraciones (6)**
-| Slug | Nombre | Trigger (Paso 2) |
+**Domótica + Integraciones (9)**
+| Slug | Nombre | Estado trigger |
 |---|---|---|
-| `first_light` | Iluminada | Primera llamada a tool de HA sobre entidad tipo "light" |
-| `first_calendar_event` | Agenda personal | Primera llamada a `create_calendar_event` |
-| `first_gmail_search` | Buceadora | Primera llamada a `gmail_search` |
-| `first_spotify` | En modo DJ | Primera llamada a `spotify_play` o `spotify_resume_previous` |
-| `smart_home` | Casa inteligente | Google + HA en la misma sesión (en el mismo turno o turno siguiente) |
-| `fully_integrated` | Todo conectado | Google, Spotify y HA han sido usados al menos una vez por el usuario |
+| `glados` | GLaDOS | ✅ Fase 2a — `ha_tools.py` ha_call_service directo ok |
+| `here_comes_the_sun` | Here comes the sun | ✅ Fase 2a — `ha_tools.py` entidad type="light" |
+| `welcome_to_the_family` | Welcome to the family | ✅ Fase 2a — `ha_tools.py` _ha_call_count == 2 en turno |
+| `radio_video` | Video killed the radio star | ✅ Fase 2a — `spotify_tools.py` spotify_play ok |
+| `keep_on_rollin` | Keep on rollin' | ✅ Fase 2a — `spotify_tools.py` spotify_resume_previous ok |
+| `time_is_running_out` | Time is running out | ✅ Fase 2a — `google_tools.py` calendar_create_event (pending action) |
+| `youve_got_mail` | You've got mail | ✅ Fase 2a — `google_tools.py` gmail_search ok |
+| `smart_home` | Casa inteligente | Pendiente — Google + HA en misma sesión |
+| `fully_integrated` | Todo conectado | Pendiente — Google + Spotify + HA activos |
 
 **Background (4)**
-| Slug | Nombre | Trigger (Paso 2) |
+| Slug | Nombre | Estado trigger |
 |---|---|---|
-| `first_proactive` | Iniciativa propia | Primera notificación de tipo `proactive_initiative` entregada |
-| `first_timer_fired` | ¡Ding! | Primer timer disparado (ScheduledTaskRunner) |
-| `open_loop_closed` | Círculo completo | Primer OpenLoop resuelto por una iniciativa enviada |
-| `night_watch` | Guardia nocturna | Timer disparado entre las 23:00 y las 06:00 hora local |
+| `voices` | Voices | ✅ Fase 2a — `initiative/runner.py` _dispatch_initiative |
+| `ill_be_back` | I'll be back | ✅ Fase 2a — `background_dispatch.py` job done → DB persisted |
+| `open_loop_closed` | Círculo completo | Pendiente — OpenLoop resuelto |
+| `night_watch` | Guardia nocturna | Pendiente — timer 23:00–06:00 |
 
 ---
 
