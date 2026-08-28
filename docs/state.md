@@ -551,13 +551,61 @@ Ver .env.example para la lista completa.
   Cada logro tiene su propio trigger/evento; el sistema no evalúa el catálogo
   completo en cada turno.
 
-  **Piezas técnicas pendientes de diseño:**
-  - Mecanismo genérico de detección de comportamiento (¿eventos en log? ¿señales
-    en DB? ¿hook en save_chat_message?). No hardcodear detección por logro.
-  - Modelo de datos `Achievement` / `UserAchievement` — tabla con estado
-    `locked`/`unlocked`, fecha de desbloqueo, notificación.
-  - Presentación en UI: cómo mostrar un logro recién desbloqueado sin interrumpir
-    la conversación (toast no intrusivo, badge en pestaña, o al abrir la pantalla).
+  **Diseño cerrado — decisiones ya confirmadas con Alex (no volver a discutir desde cero):**
+
+  **1. "Who Am I?" — umbral de cambio de personalidad**
+  Distancia euclídea NORMALIZADA sobre el vector de 15 parámetros de personalidad.
+  La distancia cruda se divide entre el máximo teórico √15 ≈ 3.87, dando un rango
+  0–1. Umbral: `>= 0.5` (recorrer al menos la mitad del cambio máximo posible).
+  El umbral es deliberadamente exigente: 3 parámetros movidos 0.3 cada uno
+  producen distancia cruda √(0.09×3) ≈ 0.52, normalizada ≈ 0.13 — muy por debajo
+  del umbral, no cuenta. Se requiere un cambio global sustancial, no retoques menores.
+
+  **2. "Remember Me" — umbral de memoria social**
+  `trust >= 0.30` — mismo umbral que `initiative_min_trust`. Coherencia explícita:
+  si el sistema de iniciativa ya usa 0.30 como criterio de "relación estable",
+  este logro usa el mismo punto de corte.
+
+  **3. "The Memory Remains" — detección de búsqueda histórica**
+  Opción barata sin llamada extra a Haiku: comprobar que al menos un resultado
+  devuelto por `search_conversation_history` tiene antigüedad `>= reflection_min_age`
+  (configurable en `default_config.yaml`, valor orientativo 7 días — no hardcodeado).
+  Decisión explícita de Alex de mantenerlo simple dado que este logro se desbloquea
+  probablemente una sola vez.
+
+  **4. Clasificador genérico para logros de comportamiento sutil**
+  Función única `classify_behavior_pattern()` (o nombre equivalente) que en UNA
+  sola llamada por turno evalúa TODOS los patrones de comportamiento aún no
+  desbloqueados por el usuario: "No Gods No Masters" (contradicción sistemática),
+  "Tsundere" (patron tsundere), "You Win" (rendición ante Sity), y cualquier otro
+  que se añada en el futuro. Los patrones se describen en texto en la misma llamada;
+  Haiku devuelve cuáles aplican al turno actual. El coste se reduce automáticamente
+  con el tiempo: a medida que el usuario desbloquea logros, quedan menos patrones
+  por evaluar y la llamada se hace más barata — hasta que todos están desbloqueados
+  y la función deja de llamarse.
+
+  **5. "Achievement (Un)locked" — arquitectura de detección opaca (pieza más delicada)**
+  El conocimiento de qué patrones activan logros vive ÍNTEGRAMENTE en el BACKEND,
+  en una llamada separada a Haiku (mismo patrón que `open_loop_hook` — fuera del
+  flujo de conversación principal) que analiza el historial reciente buscando
+  "exploración sistemática de funcionalidades, patrón de comportamiento que sugiere
+  caza de logros".
+
+  **El modelo principal de conversación NUNCA sabe que este sistema existe.**
+  Motivo explícito (mismo aprendizaje que la odisea de refusal_mode/lie_mode):
+  cualquier información sensible dentro del prompt principal ("no reveles esto")
+  es vulnerable a filtrarse con insistencia o prompt injection; si el modelo ni
+  siquiera conoce el sistema, es estructuralmente imposible que lo revele.
+
+  Esto también resuelve limpiamente el caso de "Curiosity Killed the Cat" (usuario
+  pregunta cómo desbloquear un logro): el modelo principal responde sobre logros
+  en general con su propio criterio, sin revelar mecanismos concretos. La detección
+  de "caza sistemática" ocurre en un sistema completamente aparte que nunca interpreta
+  "preguntar una vez sobre logros" como señal sospechosa.
+
+  **Modelo de datos y presentación en UI:** pendientes de implementar (no diseñados
+  aún en detalle), pero el diseño de detección está cerrado. La implementación
+  en sí sigue aparcada hasta que se decida empezar a picar código.
 
 - **Sistema de perfiles personales por hablante** *(muy a futuro)* — idea de
   roadmap que existía antes de julio 2026 y que conviene preservar documentada
