@@ -18,7 +18,13 @@ from app.core.cancellation import clear_operation
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
 from app.core.realtime_events import get_subscriber_state, publish_event_sync
-from app.core.refusal_tracker import clear_last_refusal, get_last_refusal, set_last_refusal
+from app.core.refusal_tracker import (
+    clear_last_refusal,
+    get_last_refusal,
+    increment_consecutive_refusals,
+    reset_consecutive_refusals,
+    set_last_refusal,
+)
 from app.trace.logger import write_log
 
 
@@ -125,6 +131,13 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                 _fire_ach(session, session_id, "pause_menu")
             elif not _result_error and getattr(result, "text", None):
                 _fire_ach(session, session_id, "hello_world")
+                if session_id.startswith("user:"):
+                    try:
+                        _uid = int(session_id.split(":", 1)[1])
+                        from app.achievements.triggers.post_turn import check_post_turn_achievements
+                        check_post_turn_achievements(session, _uid, session_id)
+                    except Exception:
+                        pass
 
             # Skip "response" event for cancelled turns — the frontend already
             # shows a cancelled bubble from the abort handler; emitting here
@@ -257,6 +270,9 @@ def _chat_message_inner(
         )
         from app.achievements.triggers.inline import fire as _fire_ach
         _fire_ach(session, ctx.session_id, "objection")
+        _consec = increment_consecutive_refusals(ctx.session_id)
+        if _consec >= 3:
+            _fire_ach(session, ctx.session_id, "get_in_the_robot")
         write_log(
             level="INFO",
             module="chat",
@@ -277,6 +293,7 @@ def _chat_message_inner(
     # Non-refusal turn: clear the per-session refusal state so the next turn
     # does not receive stale "last was refusal" context.
     clear_last_refusal(ctx.session_id)
+    reset_consecutive_refusals(ctx.session_id)
 
     prep = build_ai_turn_prep(
         session=session,

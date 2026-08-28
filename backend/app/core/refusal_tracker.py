@@ -7,6 +7,10 @@ from typing import Any
 # Cleared on every non-refusal turn via clear_last_refusal().
 _last_refusal_by_session: dict[str, dict[str, Any]] = {}
 
+# Consecutive structural-refusal counter, keyed by session_id.
+# Incremented on each refusal, reset to 0 on any non-refusal turn.
+_consecutive_refusals_by_session: dict[str, int] = {}
+
 
 def set_last_refusal(
     *,
@@ -31,3 +35,19 @@ def get_last_refusal(session_id: str = "") -> dict[str, Any] | None:
 def clear_last_refusal(session_id: str) -> None:
     """Call after every non-refusal turn so the context doesn't bleed into later turns."""
     _last_refusal_by_session.pop(session_id, None)
+
+
+def increment_consecutive_refusals(session_id: str) -> int:
+    """Increment the consecutive-refusal counter and return the new count."""
+    count = _consecutive_refusals_by_session.get(session_id, 0) + 1
+    _consecutive_refusals_by_session[session_id] = count
+    return count
+
+
+def reset_consecutive_refusals(session_id: str) -> None:
+    """Reset the consecutive-refusal counter on any non-refusal turn."""
+    _consecutive_refusals_by_session.pop(session_id, None)
+
+
+def get_consecutive_refusals(session_id: str) -> int:
+    return _consecutive_refusals_by_session.get(session_id, 0)

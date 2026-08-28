@@ -77,6 +77,20 @@ CATALOG: list[AchievementDef] = [
         ),
     ),
     AchievementDef(
+        slug="chaos_head",
+        category="personalidad",
+        name="Chaos head",
+        description_hint="Sube el encabronamiento general al máximo absoluto.",
+        description_full="Encabronamiento ≥ 95 %. Rudeza, sarcasmo, contrariedad y humor seco combinados. Respeto.",
+    ),
+    AchievementDef(
+        slug="get_in_the_robot",
+        category="personalidad",
+        name="Get in the robot",
+        description_hint="Sity tiene sus límites. ¿Cuántos rechazos seguidos aguantas?",
+        description_full="Tres rechazos estructurales seguidos en la misma sesión. El récord personal importa.",
+    ),
+    AchievementDef(
         slug="persona",
         category="personalidad",
         name="Ajuste fino",
@@ -238,6 +252,34 @@ CATALOG: list[AchievementDef] = [
         description_hint="Deja que Sity conozca bien tu patrón de conversación.",
         description_full="Sity generó su primera reflexión narrativa sobre vuestra relación.",
     ),
+    AchievementDef(
+        slug="love_is_war",
+        category="memoria",
+        name="Love is War",
+        description_hint="La relación con Sity tiene sus altibajos.",
+        description_full="La opinión de Sity sobre ti ha bajado bastante. La guerra también es una forma de relación.",
+    ),
+    AchievementDef(
+        slug="redemption",
+        category="memoria",
+        name="Redención",
+        description_hint="Las cosas pueden mejorar.",
+        description_full="La opinión de Sity sobre ti pasó de negativa a positiva. El arco de redención existe.",
+    ),
+    AchievementDef(
+        slug="a_long_time_ago",
+        category="memoria",
+        name="A long time ago...",
+        description_hint="Llevas tiempo aquí.",
+        description_full="30 días desde que creaste tu cuenta. Ya eres parte del mueble.",
+    ),
+    AchievementDef(
+        slug="youre_finally_awake",
+        category="memoria",
+        name="You're finally awake",
+        description_hint="Alguien ha vuelto después de un tiempo.",
+        description_full="7 días sin iniciar sesión y volviste. Bienvenida de vuelta.",
+    ),
     # ------------------------------------------------------------------
     # Secretos (hidden until user unlocks at least one)
     # ------------------------------------------------------------------
@@ -291,6 +333,22 @@ CATALOG: list[AchievementDef] = [
         name="Anomalía detectada",
         description_hint="El sistema registra patrones inusuales.",
         description_full="Comportamiento fuera de lo ordinario. Registrado para futura investigación.",
+        is_secret=True,
+    ),
+    AchievementDef(
+        slug="its_over_9000",
+        category="secretos",
+        name="¡It's over 9000!",
+        description_hint="El medidor ha superado sus límites.",
+        description_full="Opinión tan baja que rompe la escala. Logro difícil de conseguir sin dedicación activa.",
+        is_secret=True,
+    ),
+    AchievementDef(
+        slug="schizophrenia",
+        category="secretos",
+        name="Veleta",
+        description_hint="El sistema registra inconsistencias en los patrones.",
+        description_full="La opinión de Sity sobre ti ha cambiado de signo demasiadas veces. La consistencia no es tu fuerte.",
         is_secret=True,
     ),
     # ------------------------------------------------------------------

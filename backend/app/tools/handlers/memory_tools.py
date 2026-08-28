@@ -84,6 +84,23 @@ def handle_search_conversation_history(ctx: ToolContext) -> ToolExecutionResult:
     result = MemoryRecallRunner().recall(query=query, trace_id=trace_id, session_id=ctx.executor.session_id)
     text = _fmt_recall_result(result)
 
+    # the_memory_remains: fire if any recalled fragment is older than configured threshold
+    if result.fragments:
+        try:
+            from datetime import datetime, timezone
+            from app.achievements.triggers.inline import fire as _fire_ach
+            from app.settings.config_loader import load_default_config
+            _min_days = int(load_default_config().get("achievements", {}).get("memory_remains_min_age_days", 7))
+            _now = datetime.now(timezone.utc)
+            for _f in result.fragments:
+                if _f.timestamp is not None:
+                    _ts = _f.timestamp if _f.timestamp.tzinfo else _f.timestamp.replace(tzinfo=timezone.utc)
+                    if (_now - _ts).days >= _min_days:
+                        _fire_ach(ctx.executor.session, ctx.executor.session_id, "the_memory_remains")
+                        break
+        except Exception:
+            pass
+
     return ToolExecutionResult(
         tool_name=ctx.tool_name,
         ok=True,

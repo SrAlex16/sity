@@ -121,6 +121,12 @@ achievements:
   who_am_i_distance_threshold: 0.5     # normalized euclidean distance from default personality vector
   remember_me_trust_threshold: 0.30    # SocialProfile.trust threshold (= initiative_min_trust)
   memory_remains_min_age_days: 7       # minimum age (days) of a recalled ChatMessage to qualify
+  chaos_head_threshold: 0.95           # rudeness×0.4 + sarcasm×0.3 + contrarian×0.2 + dry_humor×0.1
+  opinion_negative_threshold: -0.5     # SocialProfile.opinion for love_is_war
+  opinion_extreme_threshold: -1.5      # SocialProfile.opinion for its_over_9000
+  schizophrenia_min_flips: 3           # sign-change count in OpinionSnapshot history
+  account_age_days: 30                 # account age in days for a_long_time_ago
+  youre_finally_awake_days: 7          # days without login to trigger youre_finally_awake
 
 debug:
   enabled: true

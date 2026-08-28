@@ -192,6 +192,7 @@ def login(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Cuenta desactivada")
 
+    _prev_login = user.last_login_at
     user.last_login_at = _naive_utc_now()
     session.add(user)
     session.commit()
@@ -200,6 +201,17 @@ def login(
         level="AUDIT", module="auth", event="user_login",
         trace_id=trace_id, payload={"user_id": user.id}, audit=True,
     )
+    try:
+        if _prev_login is not None:
+            from app.settings.config_loader import load_default_config
+            _gap_days = int(load_default_config().get("achievements", {}).get("youre_finally_awake_days", 7))
+            _now_utc = datetime.utcnow()
+            _delta = (_now_utc - _prev_login).days
+            if _delta >= _gap_days:
+                from app.achievements.triggers.inline import fire as _fire_ach
+                _fire_ach(session, f"user:{user.id}", "youre_finally_awake")
+    except Exception:
+        pass
 
     assert user.id is not None  # user was fetched from DB so id is always set
     _set_cookie(response, create_token(user.id, user.role))
