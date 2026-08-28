@@ -123,6 +123,18 @@ def _migrate_setting() -> None:
                        "constraint_change": "key_unique → (key, session_id)_composite"})
 
 
+def _migrate_userachievement() -> None:
+    """Ensure userachievement table exists. create_all handles new deployments.
+
+    No column-level migration needed — entirely new table added in v0.9.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(userachievement)"))
+        if not result.fetchall():
+            return  # not yet created; create_all handles full schema
+    # Table exists — nothing to migrate
+
+
 def _migrate_social_reflection() -> None:
     """Ensure socialreflection table and its profile_id index exist.
 
@@ -170,6 +182,7 @@ def init_db() -> None:
         _migrate_user()
         _migrate_setting()
         _migrate_social_reflection()
+        _migrate_userachievement()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()

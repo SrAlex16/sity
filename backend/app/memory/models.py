@@ -348,6 +348,21 @@ class OpenLoop(SQLModel, table=True):
     expires_at: datetime                                       # detected_at + open_loop_ttl_days
 
 
+class UserAchievement(SQLModel, table=True):
+    """Per-user achievement unlock record.
+
+    Each row represents a single unlocked achievement for an authenticated user.
+    Guest sessions never have rows here. Uniqueness on (user_id, slug) is enforced
+    by the DB constraint — try_unlock_achievement() is the only write path.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)   # FK to User.id
+    slug: str = Field(index=True)      # matches AchievementDef.slug in catalog
+    unlocked_at: datetime = Field(default_factory=utc_now)
+
+    __table_args__ = (UniqueConstraint("user_id", "slug", name="uq_userachievement_user_slug"),)
+
+
 class InitiativeEvalLog(SQLModel, table=True):
     """Audit record for every initiative evaluation — both send and skip decisions.
 

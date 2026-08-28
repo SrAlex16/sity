@@ -117,6 +117,11 @@ initiative:
   open_loop_max_eval_attempts: 20        # auto-expire a loop after N evaluations with no send
   eval_log_ttl_days: 60                  # InitiativeEvalLog row retention
 
+achievements:
+  who_am_i_distance_threshold: 0.5     # normalized euclidean distance from default personality vector
+  remember_me_trust_threshold: 0.30    # SocialProfile.trust threshold (= initiative_min_trust)
+  memory_remains_min_age_days: 7       # minimum age (days) of a recalled ChatMessage to qualify
+
 debug:
   enabled: true
   log_level: INFO
