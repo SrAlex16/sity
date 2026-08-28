@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-26 (Memoria social narrativa, cadena de 5 bugs Google/TTS, refactor background_dispatch.py y turn_runner.py, auditoría de logs).
+Última actualización: 2026-08-28 (Logros Fase 2a: 21 triggers inline, catálogo expandido a 46 logros).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2087 tests en verde (pytest)
+- 2227 tests en verde (pytest)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -503,9 +503,11 @@ Ver .env.example para la lista completa.
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
 
-- **Pantalla "Logros" — catálogo de 30+ logros en 6 categorías** — pantalla de
-  gamificación pendiente de diseño e implementación. El catálogo de logros fue
-  diseñado antes de julio 2026 y debe preservarse aquí como referencia canónica.
+- **Pantalla "Logros" — Paso 1 + Fase 2a implementados** (commit `2cd013d`, 2026-08-28).
+  Catálogo: 46 logros en 6 categorías. Motor de desbloqueo + endpoint `GET /achievements`
+  + 21 triggers inline activos. Ver `docs/achievements-architecture.md` para catálogo
+  completo y estado de cada trigger. Pendiente: Fases 2b (post-turno: distancia
+  personalidad, trust, rachas, antigüedad), 2c (clasificador Haiku), Paso 3 (frontend).
 
   **Fórmula del "encabronamiento"** (confirmada en `mobile/src/screens/PersonalityScreen.tsx:13-19`):
   ```
