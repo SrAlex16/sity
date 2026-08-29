@@ -91,6 +91,8 @@ export function useChat(userKey: string | null) {
   const [backgroundJustFinished, setBackgroundJustFinished] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentTurnIdRef = useRef<string | null>(null);
+  // Messages queued while a turn is in flight — drained and merged on relaunch.
+  const pendingQueueRef = useRef<string[]>([]);
   const bgFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Always reflects the latest userKey so _listenTurn can validate events mid-flight.
   const userKeyRef = useRef<string | null>(userKey);
@@ -218,8 +220,26 @@ export function useChat(userKey: string | null) {
     text: string,
     images?: Array<{ mediaType: string; data: string; previewUrl: string }>,
   ) {
+    const trimmed = text.trim() || ' ';
+
+    // If there is an active turn in flight, queue this message and cancel the active
+    // turn. The finally block will pick up the queue and relaunch automatically.
+    if (abortControllerRef.current) {
+      pendingQueueRef.current.push(trimmed);
+      const tid = currentTurnIdRef.current;
+      abortControllerRef.current.abort();
+      if (tid) fetch(`/chat/stream/${tid}/cancel`, { method: 'POST', credentials: 'include' }).catch(() => {});
+      return;
+    }
+
+    // Combine any messages that accumulated during the previous turn's cancellation
+    // with the current message into a single user turn.
+    const allParts = [...pendingQueueRef.current, trimmed];
+    pendingQueueRef.current = [];
+    const combinedText = allParts.join('\n');
+
     const userMsg: TextChatMessage = {
-      id: uid(), type: 'text', role: 'user', text, timestamp: new Date(),
+      id: uid(), type: 'text', role: 'user', text: combinedText, timestamp: new Date(),
       imagePreviewUrl: images?.[0]?.previewUrl,
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -235,7 +255,7 @@ export function useChat(userKey: string | null) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text,
+          message: combinedText,
           source_channel: 'mobile',
           images: images?.map((img) => ({ media_type: img.mediaType, data: img.data })) ?? [],
         }),
@@ -259,6 +279,12 @@ export function useChat(userKey: string | null) {
       currentTurnIdRef.current = null;
       setCanCancel(false);
       abortControllerRef.current = null;
+      // Relaunch with any messages that were queued while this turn ran.
+      if (pendingQueueRef.current.length > 0) {
+        const pending = pendingQueueRef.current.join('\n');
+        pendingQueueRef.current = [];
+        void sendMessage(pending);
+      }
     }
   }
 
