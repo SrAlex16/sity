@@ -200,7 +200,7 @@ export function ChatTab({
           value={chatInput}
           onChange={(event) => setChatInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (event.key === "Enter" && !event.shiftKey && navigator.maxTouchPoints === 0) {
               event.preventDefault();
               submitChat();
             }
