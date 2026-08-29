@@ -1,7 +1,7 @@
 """Tests for Achievements Paso 2 Fase 2b — post-turn and secondary inline triggers.
 
 Coverage:
-  - Personality post-turn: who_am_i, chaos_head, maximum_overdrive, ice_queen, saint, chaos_agent
+  - Personality post-turn: who_am_i, chaos_head
   - Social post-turn: remember_me, love_is_war, its_over_9000, redemption, schizophrenia
   - Account-age post-turn: a_long_time_ago
   - Consecutive-refusal counter: get_in_the_robot
@@ -94,7 +94,7 @@ def _create_user(db: Session, days_old: int) -> int:
 # ---------------------------------------------------------------------------
 
 FASE2B_SLUGS = [
-    "who_am_i", "chaos_head", "maximum_overdrive", "ice_queen", "saint", "chaos_agent",
+    "who_am_i", "chaos_head",
     "remember_me", "love_is_war", "its_over_9000", "redemption", "schizophrenia",
     "a_long_time_ago", "youre_finally_awake", "get_in_the_robot", "the_memory_remains",
 ]
@@ -149,93 +149,6 @@ def test_chaos_head_no_unlock_below_threshold() -> None:
         with patch("app.settings.settings_service.SettingsService.get_personality", return_value=dict(CANONICAL_PERSONALITY)):
             _check_personality(db, uid, _cfg(), _unlock)
         assert "chaos_head" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Personality — maximum_overdrive
-# ---------------------------------------------------------------------------
-
-def test_maximum_overdrive_unlocks_when_slider_at_one() -> None:
-    uid = _uid()
-    p = _personality({"sarcasm_level": 1.0})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "maximum_overdrive" in _unlocked(db, uid)
-
-
-def test_maximum_overdrive_no_unlock_below_one() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=dict(CANONICAL_PERSONALITY)):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "maximum_overdrive" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Personality — ice_queen
-# ---------------------------------------------------------------------------
-
-def test_ice_queen_unlocks_when_both_conditions_met() -> None:
-    uid = _uid()
-    p = _personality({"frialdad_afectiva_level": 0.95, "warmth_level": 0.05})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "ice_queen" in _unlocked(db, uid)
-
-
-def test_ice_queen_no_unlock_when_warmth_too_high() -> None:
-    uid = _uid()
-    p = _personality({"frialdad_afectiva_level": 0.95, "warmth_level": 0.5})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "ice_queen" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Personality — saint
-# ---------------------------------------------------------------------------
-
-def test_saint_unlocks_when_both_conditions_met() -> None:
-    uid = _uid()
-    p = _personality({"patience_level": 0.95, "rudeness_level": 0.05})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "saint" in _unlocked(db, uid)
-
-
-def test_saint_no_unlock_when_rudeness_too_high() -> None:
-    uid = _uid()
-    p = _personality({"patience_level": 0.95, "rudeness_level": 0.5})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "saint" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Personality — chaos_agent
-# ---------------------------------------------------------------------------
-
-def test_chaos_agent_unlocks_when_all_three_high() -> None:
-    uid = _uid()
-    p = _personality({"rudeness_level": 0.85, "sarcasm_level": 0.85, "contrarian_level": 0.85})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "chaos_agent" in _unlocked(db, uid)
-
-
-def test_chaos_agent_no_unlock_when_one_below() -> None:
-    uid = _uid()
-    p = _personality({"rudeness_level": 0.85, "sarcasm_level": 0.85, "contrarian_level": 0.5})
-    with Session(engine) as db:
-        with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
-            _check_personality(db, uid, _cfg(), _unlock)
-        assert "chaos_agent" not in _unlocked(db, uid)
 
 
 # ---------------------------------------------------------------------------

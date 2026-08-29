@@ -1,7 +1,7 @@
 # Sistema de Logros — Arquitectura
 
 Fecha: 2026-08-28.
-Estado: **Paso 1 + Fase 2a implementados** — modelo de datos, catálogo (46 logros), motor de
+Estado: **Paso 1 + Fases 2a/2b implementados** — modelo de datos, catálogo (50 logros), motor de
 desbloqueo, endpoint `GET /achievements`, y 21 triggers inline de Fase 2a. Fases 2b/2c
 (post-turno y comportamiento sutil) y Paso 3 (frontend) pendientes.
 
@@ -88,16 +88,14 @@ class UserAchievement(SQLModel, table=True):
 | `"domotica"` | Home Assistant, Google, Spotify |
 | `"background"` | Timers, iniciativa propia, open loops |
 
-### Catálogo actual — 46 logros
+### Catálogo actual — 50 logros
 
-**Personalidad (9)**
+**Personalidad (7)**
 | Slug | Nombre | Estado trigger |
 |---|---|---|
-| `who_am_i` | ¿Quién soy? | Paso 2b — distancia euclídea ≥ 0.5 |
-| `maximum_overdrive` | Maximum Overdrive | Paso 2b — slider == 1.0 |
-| `ice_queen` | Reina de hielo | Paso 2b — frialdad ≥ 0.9 AND warmth ≤ 0.1 |
-| `saint` | Santa paciencia | Paso 2b — patience ≥ 0.9 AND rudeness ≤ 0.1 |
-| `chaos_agent` | Agente del caos | Paso 2b — rudeness/sarcasm/contrarian ≥ 0.8 |
+| `who_am_i` | ¿Quién soy? | ✅ Fase 2b — distancia euclídea normalizada ≥ 0.5 |
+| `chaos_head` | Chaos head | ✅ Fase 2b — encabronamiento formula ≥ 0.95 |
+| `get_in_the_robot` | Get in the robot | ✅ Fase 2b — 3 rechazos consecutivos (refusal_tracker) |
 | `persona` | Ajuste fino | ✅ Fase 2a — `routes_settings.py` `adjust_personality` |
 | `tars` | Tars al mando | ✅ Fase 2a — `personality_tools.py` (tool ok) |
 | `objection` | Objeción | ✅ Fase 2a — `turn_runner.py` structural refusal |

@@ -45,38 +45,6 @@ CATALOG: list[AchievementDef] = [
         ),
     ),
     AchievementDef(
-        slug="maximum_overdrive",
-        category="personalidad",
-        name="Maximum Overdrive",
-        description_hint="Lleva un parámetro de personalidad al extremo absoluto.",
-        description_full="Subiste un slider de personalidad al máximo absoluto (1.0). Sin medias tintas.",
-    ),
-    AchievementDef(
-        slug="ice_queen",
-        category="personalidad",
-        name="Reina de hielo",
-        description_hint="¿Qué pasa cuando la frialdad y la calidez se contradicen del todo?",
-        description_full=(
-            "Frialdad afectiva al máximo, calidez al mínimo. Bienvenido al ártico emocional."
-        ),
-    ),
-    AchievementDef(
-        slug="saint",
-        category="personalidad",
-        name="Santa paciencia",
-        description_hint="Máxima paciencia, rudeza cero.",
-        description_full="Paciencia al máximo y rudeza a cero simultáneamente. La perfección existe.",
-    ),
-    AchievementDef(
-        slug="chaos_agent",
-        category="personalidad",
-        name="Agente del caos",
-        description_hint="Combina las actitudes más intensas de Sity en una sola configuración.",
-        description_full=(
-            "Rudeza, sarcasmo y contrariedad, todos al 80 % o más. Esto es caos controlado."
-        ),
-    ),
-    AchievementDef(
         slug="chaos_head",
         category="personalidad",
         name="Chaos head",

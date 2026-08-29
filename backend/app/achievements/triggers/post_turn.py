@@ -53,32 +53,6 @@ def _check_personality(db: Any, user_id: int, cfg: dict, unlock) -> None:
         )
         if chaos >= float(cfg.get("chaos_head_threshold", 0.95)):
             unlock(db, user_id, "chaos_head")
-
-        # maximum_overdrive: any slider at 1.0
-        if any(v >= 1.0 for v in personality.values()):
-            unlock(db, user_id, "maximum_overdrive")
-
-        # ice_queen: frialdad ≥ 0.9 AND warmth ≤ 0.1
-        if (
-            personality.get("frialdad_afectiva_level", 0.0) >= 0.9
-            and personality.get("warmth_level", 1.0) <= 0.1
-        ):
-            unlock(db, user_id, "ice_queen")
-
-        # saint: patience ≥ 0.9 AND rudeness ≤ 0.1
-        if (
-            personality.get("patience_level", 0.0) >= 0.9
-            and personality.get("rudeness_level", 1.0) <= 0.1
-        ):
-            unlock(db, user_id, "saint")
-
-        # chaos_agent: rudeness + sarcasm + contrarian all ≥ 0.8
-        if (
-            personality.get("rudeness_level", 0.0) >= 0.8
-            and personality.get("sarcasm_level", 0.0) >= 0.8
-            and personality.get("contrarian_level", 0.0) >= 0.8
-        ):
-            unlock(db, user_id, "chaos_agent")
     except Exception as exc:
         write_log(
             level="WARN", module="achievements",
