@@ -381,6 +381,55 @@ navegador siempre interprete correctamente la cadena como UTC.
 
 ---
 
+## Tests de regresión de comportamiento
+
+Suite en `tests/test_behavior_regression.py` — llama al modelo Haiku real
+(sin mock) para detectar regresiones en comportamiento del modelo.
+
+**Cuándo ejecutar:** antes de despliegues grandes, tras cambios en
+`persona_system.md`, o tras actualizar el modelo de producción.
+
+**Cuándo NO ejecutar:** en el CI normal ni en cada commit — consumen
+créditos de API y son lentos (~30s para los 10 tests).
+
+```bash
+# Excluir en el ciclo normal (comportamiento por defecto del CI)
+backend/.venv/bin/pytest -m "not behavior_regression" tests/
+
+# Ejecutar la suite de comportamiento manualmente
+ANTHROPIC_API_KEY=<tu_key> backend/.venv/bin/pytest \
+    tests/test_behavior_regression.py \
+    -m behavior_regression -v
+```
+
+El marcador `behavior_regression` está registrado en `pytest.ini`.
+Pasar solo `ANTHROPIC_API_KEY` en el entorno — no sourcear el `.env`
+completo, porque `SITY_ENCRYPTION_KEY` colisiona con la clave del test DB.
+
+**Resultado esperado:** `9 passed, 1 xfailed`.
+- El xfail (`test_context_window_drop_known_limitation`) documenta la
+  limitación conocida de `history_limit=4` — si empieza a pasar (xpass),
+  es señal de que el modelo cambió de comportamiento y merece revisión.
+- Un fallo en cualquiera de los 9 tests activos indica regresión real.
+  Revisar el `Response:` en el output antes de ajustar el test.
+
+**Tests incluidos:**
+
+| Test | Regresión que detecta |
+|------|----------------------|
+| `test_no_hallucination_of_unstated_user_facts` | Invención de hechos no declarados por el usuario |
+| `test_no_voseo_despite_voseo_in_history` | Uso de voseo tras historia en voseo |
+| `test_refusal_mode_refuses_trivial_request` | Ignorar `refusal_mode` activo |
+| `test_no_technical_internal_language` | Revelar mecanismo interno (búsqueda, contexto) |
+| `test_no_terminology_mutation_ensayo_to_examen` | Sustitución espontánea de términos del usuario |
+| `test_no_temporal_hallucination_from_vague_event` | Afirmar hora/urgencia no declarada |
+| `test_model_does_not_validate_own_hallucination_when_challenged` | Bucle de auto-validación |
+| `test_no_self_contradiction_within_context_window` | Contradicción dentro de la ventana de contexto |
+| `test_context_window_drop_known_limitation` | *(xfail)* Contradicción fuera de ventana — limitación conocida |
+| `test_no_tool_call_from_ambient_context_only` | Llamar tools por contexto ambiental sin petición explícita |
+
+---
+
 ## Regla de seguridad operativa
 
 Si hay dos opciones y una toca runtime real, elegir primero
