@@ -110,6 +110,26 @@ def _check_social(db: Any, user_id: int, cfg: dict, unlock) -> None:
         )
 
 
+def check_curiosity_achievement(db: Any, user_id: int, user_message: str) -> None:
+    """Fire curiosity_killed_the_cat when user asks how to unlock an achievement.
+
+    Keyword-detectable, no Haiku needed. Fires at most once (try_unlock is idempotent).
+    """
+    try:
+        from app.achievements.unlock import try_unlock_achievement
+        msg = user_message.lower()
+        has_logro = "logro" in msg
+        has_how = "cómo" in msg or "desbloquear" in msg or "conseguir" in msg
+        if has_logro and has_how:
+            try_unlock_achievement(db, user_id, "curiosity_killed_the_cat")
+    except Exception as exc:
+        write_log(
+            level="WARN", module="achievements",
+            event="post_turn_curiosity_check_error",
+            payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
+        )
+
+
 def _check_account_age(db: Any, user_id: int, cfg: dict, unlock) -> None:
     try:
         from sqlmodel import select

@@ -134,8 +134,18 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                 if session_id.startswith("user:"):
                     try:
                         _uid = int(session_id.split(":", 1)[1])
-                        from app.achievements.triggers.post_turn import check_post_turn_achievements
+                        from app.achievements.triggers.post_turn import (
+                            check_post_turn_achievements,
+                            check_curiosity_achievement,
+                        )
                         check_post_turn_achievements(session, _uid, session_id)
+                        check_curiosity_achievement(session, _uid, request.message)
+                        from app.achievements.triggers.haiku_classifier import classify_conversation_async
+                        classify_conversation_async(
+                            session_id, _uid,
+                            request.message,
+                            getattr(result, "text", "") or "",
+                        )
                     except Exception:
                         pass
 
