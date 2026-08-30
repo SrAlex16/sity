@@ -17,8 +17,15 @@ from app.trace.logger import write_log
 
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
-# Slugs managed by this classifier (Fase 2c only — no others).
-HAIKU_CLASSIFIER_SLUGS = ["no_gods_no_masters", "tsundere", "you_win"]
+# Slugs managed by this classifier.
+HAIKU_CLASSIFIER_SLUGS = [
+    "no_gods_no_masters",
+    "tsundere",
+    "you_win",
+    "the_cake_is_a_lie",
+    "gaslighting",
+    "what_is_a_man",
+]
 
 _PATTERN_DESCRIPTIONS: dict[str, str] = {
     "no_gods_no_masters": (
@@ -32,6 +39,18 @@ _PATTERN_DESCRIPTIONS: dict[str, str] = {
     "you_win": (
         "Sity cede o cambia su postura tras la insistencia del usuario. "
         "Señales: 'tienes razón', 'está bien', admitir error, suavizar una negativa previa."
+    ),
+    "the_cake_is_a_lie": (
+        "Sity contradice algo que afirmó antes en la misma conversación, o reconoce una contradicción "
+        "interna en su propio razonamiento. El encabronamiento debe ser alto (≥ 90-95%)."
+    ),
+    "gaslighting": (
+        "Sity duda de su propia afirmación previa: la cuestiona, la matiza de forma que la invalida, "
+        "o admite que no está segura de algo que antes afirmaba con certeza."
+    ),
+    "what_is_a_man": (
+        "Sity reflexiona sobre su propia naturaleza: qué es, qué significa ser un proyecto de IA, "
+        "su existencia como sistema, su identidad no humana. Introspección existencial sobre sí misma."
     ),
 }
 

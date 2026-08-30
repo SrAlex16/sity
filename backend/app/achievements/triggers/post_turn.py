@@ -21,6 +21,7 @@ def check_post_turn_achievements(db: Any, user_id: int, session_id: str) -> None
         _check_personality(db, user_id, cfg, try_unlock_achievement)
         _check_social(db, user_id, cfg, try_unlock_achievement)
         _check_account_age(db, user_id, cfg, try_unlock_achievement)
+        _check_voice_count(db, user_id, cfg, try_unlock_achievement)
     except Exception as exc:
         write_log(
             level="WARN", module="achievements",
@@ -126,6 +127,30 @@ def check_curiosity_achievement(db: Any, user_id: int, user_message: str) -> Non
         write_log(
             level="WARN", module="achievements",
             event="post_turn_curiosity_check_error",
+            payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
+        )
+
+
+def _check_voice_count(db: Any, user_id: int, cfg: dict, unlock) -> None:
+    try:
+        from sqlmodel import select, func
+        from app.memory.models import ChatMessage
+
+        session_id_prefix = f"user:{user_id}"
+        threshold = int(cfg.get("hello_voice_threshold", 10))
+        count = db.exec(
+            select(func.count()).where(
+                ChatMessage.session_id == session_id_prefix,
+                ChatMessage.role == "user",
+                ChatMessage.input_mode == "voice",
+            )
+        ).one()
+        if count >= threshold:
+            unlock(db, user_id, "hello_voice")
+    except Exception as exc:
+        write_log(
+            level="WARN", module="achievements",
+            event="post_turn_voice_count_check_error",
             payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
         )
 

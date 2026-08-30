@@ -127,6 +127,7 @@ achievements:
   schizophrenia_min_flips: 3           # sign-change count in OpinionSnapshot history
   account_age_days: 30                 # account age in days for a_long_time_ago
   youre_finally_awake_days: 7          # days without login to trigger youre_finally_awake
+  hello_voice_threshold: 10            # voice messages sent to trigger hello_voice
 
 debug:
   enabled: true

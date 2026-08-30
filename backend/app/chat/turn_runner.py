@@ -283,6 +283,8 @@ def _chat_message_inner(
         _consec = increment_consecutive_refusals(ctx.session_id)
         if _consec >= 3:
             _fire_ach(session, ctx.session_id, "get_in_the_robot")
+        if _consec >= 5:
+            _fire_ach(session, ctx.session_id, "determination")
         write_log(
             level="INFO",
             module="chat",
