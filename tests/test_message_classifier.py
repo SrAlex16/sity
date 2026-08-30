@@ -433,3 +433,103 @@ def test_classify_system_never_restricts_config_query_to_generic_system_params()
     assert "personality or system configuration parameter" not in _CLASSIFY_SYSTEM, (
         "Broad phrase must be replaced by explicit parameter list"
     )
+
+
+# ------------------------------------------------------------------ #
+# 10. generate_refusal_response — language_override regression        #
+# Bug: refusal generator lacked language instruction → Haiku          #
+# defaulted to English even when language_override="es-ES".           #
+# ------------------------------------------------------------------ #
+
+from app.core.message_classifier import _REFUSAL_GENERATOR_SYSTEM  # noqa: E402
+from app.core.language import LANGUAGE_BLOCK  # noqa: E402
+
+
+def test_refusal_system_prompt_has_no_weak_language_heuristic() -> None:
+    """The old 'Reply in the same language as the user's message' must be gone."""
+    assert "Reply in the same language as the user's message" not in _REFUSAL_GENERATOR_SYSTEM, (
+        "Heuristic language instruction removed — replaced by deterministic language_block"
+    )
+
+
+def test_refusal_system_prompt_has_language_block_placeholder() -> None:
+    """Template must contain {language_block} so the deterministic block is injected."""
+    assert "{language_block}" in _REFUSAL_GENERATOR_SYSTEM
+
+
+def test_generate_refusal_es_ES_injects_spanish_language_block() -> None:
+    """With language_override='es-ES', the Haiku prompt must contain the Spanish instruction."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "baja el sarcasmo a la mitad", language_override="es-ES")
+
+    assert captured, "Provider must be called"
+    system = captured[0].system_prompt
+    assert "castellano" in system, (
+        "es-ES language block must appear in the refusal prompt — Haiku needs the deterministic instruction"
+    )
+    assert "Reply in the same language" not in system, (
+        "Weak heuristic must not appear in the system prompt"
+    )
+
+
+def test_generate_refusal_auto_injects_auto_language_block() -> None:
+    """With language_override='auto', the prompt contains the auto-detect instruction."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "hello", language_override="auto")
+
+    assert captured
+    system = captured[0].system_prompt
+    assert LANGUAGE_BLOCK["auto"] in system
+
+
+def test_generate_refusal_default_language_is_auto() -> None:
+    """language_override defaults to 'auto' when not supplied."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "algo")
+
+    assert captured
+    assert LANGUAGE_BLOCK["auto"] in captured[0].system_prompt
+
+
+def test_generate_refusal_unknown_override_falls_back_to_auto() -> None:
+    """An unrecognised language_override falls back to 'auto' block (LANGUAGE_BLOCK.get default)."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "algo", language_override="xx-XX")
+
+    assert captured
+    assert LANGUAGE_BLOCK["auto"] in captured[0].system_prompt
+
+
+def test_language_block_single_source_of_truth() -> None:
+    """LANGUAGE_BLOCK in language.py must be the only definition — not duplicated."""
+    from app.core import persona_engine
+    import inspect
+    source = inspect.getsource(persona_engine)
+    # The dict literal must not appear verbatim in persona_engine — it imports from language.py
+    assert '"es-ES":' not in source or "LANGUAGE_BLOCK" in source, (
+        "persona_engine must import LANGUAGE_BLOCK rather than define it inline"
+    )

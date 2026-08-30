@@ -256,7 +256,9 @@ def _chat_message_inner(
         from app.chat.response_factory import refusal_response
 
         refusal_text = generate_refusal_response(
-            ctx.personality, request.message, trace_id=ctx.trace_id,
+            ctx.personality, request.message,
+            language_override=ctx.language_override,
+            trace_id=ctx.trace_id,
         )
         ctx.persistence.save(
             role="user",
