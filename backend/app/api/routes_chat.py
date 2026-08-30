@@ -32,7 +32,6 @@ from app.core.realtime_events import (
 )
 from app.memory.db import get_session
 from app.memory.models import ChatMessage
-from app.trace.logger import write_log
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -148,18 +147,6 @@ async def chat_message(
     turn_id = request.client_turn_id or new_client_turn_id()
     ensure_queue(turn_id)
     register_operation(turn_id)
-
-    write_log(
-        level="INFO",
-        module="routes_chat",
-        event="chat_message_received",
-        turn_id=turn_id,
-        payload={
-            "client_turn_id": request.client_turn_id,
-            "text_prefix": request.message[:120] if request.message else "",
-            "text_len": len(request.message) if request.message else 0,
-        },
-    )
 
     session_id = current.session_id
     is_admin = bool(current.user and current.user.role == "admin")

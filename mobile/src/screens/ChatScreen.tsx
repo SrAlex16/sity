@@ -196,6 +196,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   };
 
   const handleSend = useCallback(() => {
+    if (canCancel) return; // turn active — keep text in field, user must press Stop first
     const text = inputText.trim();
     if (!text && !pendingImage) return;
     if (draftSaveTimeout.current) {
@@ -208,7 +209,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
     localStorage.removeItem('sity_draft_message');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     void sendMessage(text || ' ', imageToSend ? [imageToSend] : undefined);
-  }, [inputText, pendingImage, sendMessage]);
+  }, [canCancel, inputText, pendingImage, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -593,7 +594,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <IconMic />
                 </button>
 
-                {canCancel && !inputText.trim() && !pendingImage ? (
+                {canCancel ? (
                   <motion.button
                     className={styles.cancelBtn}
                     onClick={cancel}
