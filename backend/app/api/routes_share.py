@@ -135,12 +135,6 @@ def create_share(
     db.add(sc)
     db.commit()
 
-    try:
-        from app.achievements.triggers.inline import fire as _fire_ach
-        _fire_ach(db, current.session_id, "first_shared")
-    except Exception:
-        pass
-
     base_url = get_public_base_url().rstrip("/")
     url = f"{base_url}/shared/{share_id}"
 

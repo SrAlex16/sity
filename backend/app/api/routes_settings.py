@@ -181,12 +181,6 @@ def update_language_settings(
         value=body.language_override,
         session_id=current.session_id,
     )
-    if body.language_override != "auto" and current.user_id is not None:
-        try:
-            from app.achievements.triggers.inline import fire as _fire_ach
-            _fire_ach(session, current.session_id, "polyglot")
-        except Exception:
-            pass
     return LanguageSettings(language_override=body.language_override)
 
 

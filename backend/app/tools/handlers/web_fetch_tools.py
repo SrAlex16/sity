@@ -189,12 +189,6 @@ def handle_read_webpage(ctx: ToolContext) -> ToolExecutionResult:
         payload={"url": url, "domain": domain, "chars": len(text), "truncated": truncated},
     )
 
-    try:
-        from app.achievements.triggers.inline import fire as _fire_ach
-        _fire_ach(ctx.executor.session, ctx.executor.session_id, "read_webpage")
-    except Exception:
-        pass
-
     return ToolExecutionResult(
         tool_name=ctx.tool_name,
         ok=True,

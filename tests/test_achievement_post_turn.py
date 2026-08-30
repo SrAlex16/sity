@@ -1,4 +1,4 @@
-"""Tests for Achievements Paso 2 Fase 2b/2d — post-turn and secondary inline triggers.
+"""Tests for Achievements Paso 2 Fase 2b — post-turn and secondary inline triggers.
 
 Coverage:
   - Personality post-turn: who_am_i, chaos_head
@@ -6,8 +6,6 @@ Coverage:
   - Account-age post-turn: a_long_time_ago
   - Consecutive-refusal counter: get_in_the_robot
   - Catalog entries: the_memory_remains, youre_finally_awake
-  - Fase 2d: message milestones (hundred, five_hundred, one_thousand)
-  - Fase 2d: integration combos (smart_home, fully_integrated)
 """
 from __future__ import annotations
 
@@ -21,8 +19,6 @@ from sqlmodel import Session
 from app.achievements.catalog import VALID_SLUGS
 from app.achievements.triggers.post_turn import (
     _check_account_age,
-    _check_integration_combos,
-    _check_message_milestones,
     _check_personality,
     _check_social,
 )
@@ -33,7 +29,7 @@ from app.core.refusal_tracker import (
     reset_consecutive_refusals,
 )
 from app.memory.db import engine
-from app.memory.models import ChatMessage, OpinionSnapshot, SocialProfile, User
+from app.memory.models import OpinionSnapshot, SocialProfile, User
 from app.settings.settings_service import CANONICAL_PERSONALITY
 
 
@@ -443,115 +439,3 @@ def test_youre_finally_awake_fire_idempotent() -> None:
     with Session(engine) as db:
         fire(db, f"user:{uid}", "youre_finally_awake")
         assert fire(db, f"user:{uid}", "youre_finally_awake") is False
-
-
-# ---------------------------------------------------------------------------
-# Fase 2d — message milestones
-# ---------------------------------------------------------------------------
-
-def _insert_messages(db: Session, user_id: int, count: int) -> None:
-    session_id = f"user:{user_id}"
-    for i in range(count):
-        db.add(ChatMessage(session_id=session_id, role="user", text=f"msg {i}"))
-    db.commit()
-
-
-def test_message_milestones_below_hundred_no_unlock() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _insert_messages(db, uid, 50)
-        _check_message_milestones(db, uid, _unlock)
-        assert _unlocked(db, uid) == set()
-
-
-def test_message_milestones_hundred_unlocked() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _insert_messages(db, uid, 100)
-        _check_message_milestones(db, uid, _unlock)
-        assert "hundred" in _unlocked(db, uid)
-        assert "five_hundred" not in _unlocked(db, uid)
-        assert "one_thousand" not in _unlocked(db, uid)
-
-
-def test_message_milestones_five_hundred_unlocked() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _insert_messages(db, uid, 500)
-        _check_message_milestones(db, uid, _unlock)
-        unlocked = _unlocked(db, uid)
-        assert "hundred" in unlocked
-        assert "five_hundred" in unlocked
-        assert "one_thousand" not in unlocked
-
-
-def test_message_milestones_one_thousand_unlocked() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _insert_messages(db, uid, 1000)
-        _check_message_milestones(db, uid, _unlock)
-        unlocked = _unlocked(db, uid)
-        assert "hundred" in unlocked
-        assert "five_hundred" in unlocked
-        assert "one_thousand" in unlocked
-
-
-def test_message_milestones_idempotent() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _insert_messages(db, uid, 100)
-        _check_message_milestones(db, uid, _unlock)
-        _check_message_milestones(db, uid, _unlock)
-        assert _unlocked(db, uid) == {"hundred"}
-
-
-# ---------------------------------------------------------------------------
-# Fase 2d — integration combos (smart_home, fully_integrated)
-# ---------------------------------------------------------------------------
-
-def test_integration_combos_ha_only_no_smart_home() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _unlock(db, uid, "glados")
-        _check_integration_combos(db, uid, _unlock)
-        assert "smart_home" not in _unlocked(db, uid)
-
-
-def test_integration_combos_google_only_no_smart_home() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _unlock(db, uid, "youve_got_mail")
-        _check_integration_combos(db, uid, _unlock)
-        assert "smart_home" not in _unlocked(db, uid)
-
-
-def test_integration_combos_ha_plus_google_unlocks_smart_home() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _unlock(db, uid, "here_comes_the_sun")
-        _unlock(db, uid, "time_is_running_out")
-        _check_integration_combos(db, uid, _unlock)
-        assert "smart_home" in _unlocked(db, uid)
-        assert "fully_integrated" not in _unlocked(db, uid)
-
-
-def test_integration_combos_all_three_unlocks_fully_integrated() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _unlock(db, uid, "welcome_to_the_family")
-        _unlock(db, uid, "youve_got_mail")
-        _unlock(db, uid, "radio_video")
-        _check_integration_combos(db, uid, _unlock)
-        unlocked = _unlocked(db, uid)
-        assert "smart_home" in unlocked
-        assert "fully_integrated" in unlocked
-
-
-def test_integration_combos_idempotent() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _unlock(db, uid, "glados")
-        _unlock(db, uid, "youve_got_mail")
-        _check_integration_combos(db, uid, _unlock)
-        _check_integration_combos(db, uid, _unlock)
-        assert "smart_home" in _unlocked(db, uid)
