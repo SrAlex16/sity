@@ -139,7 +139,7 @@ export function useChat(userKey: string | null) {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     es.onmessage = (e: MessageEvent) => {
-      let ev: { type: string; job_id?: string; tool_name?: string; error?: string; text?: string };
+      let ev: { type: string; subtype?: string; job_id?: string; tool_name?: string; error?: string; text?: string };
       try { ev = JSON.parse(e.data as string); } catch { return; }
 
       if (ev.type === 'job_start') {
@@ -149,6 +149,8 @@ export function useChat(userKey: string | null) {
         setBackgroundJustFinished(true);
         if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
         bgFlashTimerRef.current = setTimeout(() => setBackgroundJustFinished(false), BG_FLASH_MS);
+      } else if (ev.type === 'proactive_message' && ev.subtype === 'achievement_unlocked') {
+        window.dispatchEvent(new CustomEvent('sity:achievement-unlocked'));
       } else if (ev.type === 'proactive_message' && ev.text) {
         setMessages((prev) => [...prev, {
           id: uid(), type: 'text' as const, role: 'assistant' as const,

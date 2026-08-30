@@ -26,8 +26,12 @@ def try_unlock_achievement(db: Session, user_id: int, slug: str) -> bool:
 
     Idempotent: a second call with the same (user_id, slug) returns False and
     writes no new row. Unknown slugs are logged as WARN and return False.
+
+    On a NEW unlock, dispatches an achievement_unlocked notification (SSE + push
+    if available). Dispatch errors are logged but never block the unlock.
     """
-    if get_by_slug(slug) is None:
+    achievement_def = get_by_slug(slug)
+    if achievement_def is None:
         write_log(
             level="WARN", module="achievements", event="achievement_slug_unknown",
             payload={"slug": slug, "user_id": user_id},
@@ -55,7 +59,41 @@ def try_unlock_achievement(db: Session, user_id: int, slug: str) -> bool:
         level="INFO", module="achievements", event="achievement_unlocked",
         payload={"slug": slug, "user_id": user_id},
     )
+
+    _dispatch_unlock_notification(db, user_id, slug, achievement_def.name)
     return True
+
+
+def _dispatch_unlock_notification(db: Session, user_id: int, slug: str, name: str) -> None:
+    """Fire-and-forget notification for a newly unlocked achievement.
+
+    Reuses the existing notification infrastructure (SSE + push + pending).
+    No rate limit applied — achievements are discrete, infrequent events and
+    the (user_id, slug) pair is inherently unique (unlock is idempotent).
+    Errors are logged and swallowed so the unlock itself is never blocked.
+    """
+    try:
+        from app.notifications.fact import NotificationFact
+        from app.notifications.dispatcher import dispatch
+        fact = NotificationFact(
+            session_id=f"user:{user_id}",
+            notification_type="achievement_unlocked",
+            fact_id=f"achievement:{slug}:{user_id}",
+            payload={
+                "title": "Sity",
+                "body": f"Logro desbloqueado: {name}",
+                "slug": slug,
+                "achievement_name": name,
+            },
+            urgency="medium",
+        )
+        dispatch(fact, db)
+    except Exception as exc:
+        write_log(
+            level="WARN", module="achievements",
+            event="achievement_notification_dispatch_error",
+            payload={"slug": slug, "user_id": user_id, "error": str(exc)[:200]},
+        )
 
 
 def get_user_achievements(

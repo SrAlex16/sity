@@ -337,3 +337,103 @@ def test_endpoint_user_secrets_hidden_then_revealed() -> None:
             assert "secretos" in cats2
         finally:
             _clean_achievements(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Notification dispatch on unlock
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch, MagicMock  # noqa: E402
+
+
+def test_new_unlock_dispatches_achievement_notification() -> None:
+    """A new unlock must trigger a NotificationFact with type=achievement_unlocked."""
+    uid = _next_user_id()
+    captured: list = []
+
+    def _capture(fact, db):
+        captured.append(fact)
+        return MagicMock(discarded=False)
+
+    with patch("app.notifications.dispatcher.dispatch", side_effect=_capture):
+        with Session(engine) as db:
+            result = try_unlock_achievement(db, uid, FIRST_NON_SECRET.slug)
+
+    assert result is True
+    assert len(captured) == 1
+    fact = captured[0]
+    assert fact.notification_type == "achievement_unlocked"
+    assert fact.session_id == f"user:{uid}"
+    assert fact.payload["slug"] == FIRST_NON_SECRET.slug
+    assert fact.payload["achievement_name"] == FIRST_NON_SECRET.name
+    assert "Logro desbloqueado" in fact.payload["body"]
+
+
+def test_duplicate_unlock_does_not_dispatch_notification() -> None:
+    """A duplicate unlock (returns False) must not dispatch any notification."""
+    uid = _next_user_id()
+    captured: list = []
+
+    def _capture(fact, db):
+        captured.append(fact)
+        return MagicMock(discarded=False)
+
+    with patch("app.notifications.dispatcher.dispatch", side_effect=_capture):
+        with Session(engine) as db:
+            try_unlock_achievement(db, uid, FIRST_NON_SECRET.slug)
+            captured.clear()
+            try_unlock_achievement(db, uid, FIRST_NON_SECRET.slug)
+
+    assert captured == [], "Duplicate unlock must not trigger a second notification"
+
+
+def test_unlock_notification_fact_id_is_stable() -> None:
+    """fact_id must be deterministic so the dispatcher can deduplicate it."""
+    uid = _next_user_id()
+    slug = FIRST_NON_SECRET.slug
+    captured: list = []
+
+    def _capture(fact, db):
+        captured.append(fact)
+        return MagicMock(discarded=False)
+
+    with patch("app.notifications.dispatcher.dispatch", side_effect=_capture):
+        with Session(engine) as db:
+            try_unlock_achievement(db, uid, slug)
+
+    assert captured[0].fact_id == f"achievement:{slug}:{uid}"
+
+
+def test_dispatch_error_does_not_block_unlock() -> None:
+    """If dispatch raises, try_unlock_achievement still returns True."""
+    uid = _next_user_id()
+
+    def _raise(fact, db):
+        raise RuntimeError("push service down")
+
+    with patch("app.notifications.dispatcher.dispatch", side_effect=_raise):
+        with Session(engine) as db:
+            result = try_unlock_achievement(db, uid, FIRST_NON_SECRET.slug)
+
+    assert result is True
+
+
+def test_guest_session_achievement_fact_gets_guest_drop() -> None:
+    """A fact with a guest session_id is dropped by the dispatcher (structural guarantee).
+
+    Achievements are only unlocked for integer user_ids — this test documents the
+    dispatcher-level safety net for guest sessions.
+    """
+    from app.notifications.fact import NotificationFact
+    from app.notifications.dispatcher import dispatch
+
+    fact = NotificationFact(
+        session_id="guest:test123",
+        notification_type="achievement_unlocked",
+        fact_id="achievement:diy:guest",
+        payload={"title": "Sity", "body": "Logro desbloqueado: DIY", "slug": "diy", "achievement_name": "DIY"},
+    )
+    with Session(engine) as db:
+        result = dispatch(fact, db)
+    assert result.discarded is True
+    assert result.reason == "guest_no_sse"

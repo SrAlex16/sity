@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useChat } from './hooks/useChat';
 import { useAuth } from './hooks/useAuth';
 import { useUiLanguage } from './hooks/useUiLanguage';
+import { useAchievements } from './hooks/useAchievements';
 import { TRANSLATIONS } from './i18n/translations';
 import type { UiLang } from './i18n/translations';
 import { BottomNav } from './components/BottomNav';
@@ -10,7 +11,7 @@ import { ChatScreen } from './screens/ChatScreen';
 import { PersonalityScreen } from './screens/PersonalityScreen';
 import { VoiceScreen } from './screens/VoiceScreen';
 import { DatasetScreen } from './screens/DatasetScreen';
-import { AchievementsScreen } from './screens/AchievementsScreen';
+import { AchievementsScreen, UnlockNotification } from './screens/AchievementsScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
 import { SharedConversationView } from './screens/SharedConversationView';
@@ -100,6 +101,7 @@ export default function App() {
   const { uiLang, setUiLang } = useUiLanguage();
   const tl = TRANSLATIONS[uiLang];
   const auth = useAuth();
+  const { data: achievData, isLoading: achievLoading, notification: achievNotif, dismissNotification: dismissAchievNotif } = useAchievements();
 
   // Detect /reset-password?token=XXX on first load. Clean the URL immediately so
   // the token never lingers in the address bar, history, or clipboard.
@@ -212,7 +214,7 @@ export default function App() {
     switch (screen) {
       case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} uiLang={uiLang} />;
       case 'personality':   return <PersonalityScreen role={role} uiLang={uiLang} />;
-      case 'achievements':  return <AchievementsScreen role={role} uiLang={uiLang} />;
+      case 'achievements':  return <AchievementsScreen role={role} uiLang={uiLang} data={achievData} isLoading={achievLoading} />;
       case 'voice':         return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
       case 'dataset':     return <DatasetScreen uiLang={uiLang} />;
     }
@@ -236,6 +238,16 @@ export default function App() {
         </AnimatePresence>
       </main>
       <BottomNav active={effectiveScreen} onNavigate={setActiveScreen} role={role} uiLang={uiLang} />
+      <AnimatePresence>
+        {achievNotif && (
+          <UnlockNotification
+            key={achievNotif.slug}
+            achievement={achievNotif}
+            uiLang={uiLang}
+            onDismiss={dismissAchievNotif}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

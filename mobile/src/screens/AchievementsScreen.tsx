@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useAchievements } from '../hooks/useAchievements';
-import type { Achievement } from '../hooks/useAchievements';
+import { motion } from 'framer-motion';
+import type { Achievement, AchievementsData } from '../hooks/useAchievements';
 import { TRANSLATIONS } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
 import styles from './AchievementsScreen.module.css';
@@ -13,6 +12,8 @@ const REDACT_DESC = '████████';
 interface AchievementsScreenProps {
   role: string;
   uiLang?: UiLang;
+  data: AchievementsData | null;
+  isLoading: boolean;
 }
 
 function formatDate(iso: string, uiLang: UiLang): string {
@@ -116,7 +117,7 @@ function playUnlockSound() {
   }
 }
 
-function UnlockNotification({ achievement, uiLang, onDismiss }: {
+export function UnlockNotification({ achievement, uiLang, onDismiss }: {
   achievement: Achievement;
   uiLang: UiLang;
   onDismiss: () => void;
@@ -141,10 +142,9 @@ function UnlockNotification({ achievement, uiLang, onDismiss }: {
   );
 }
 
-export function AchievementsScreen({ role, uiLang = 'es' }: AchievementsScreenProps) {
+export function AchievementsScreen({ role, uiLang = 'es', data, isLoading }: AchievementsScreenProps) {
   const tl = TRANSLATIONS[uiLang].achievements;
   const isGuest = role === 'guest';
-  const { data, isLoading, notification, dismissNotification } = useAchievements();
 
   const categories = data
     ? CATEGORY_ORDER.filter(cat => data.achievements.some(a => a.category === cat))
@@ -212,18 +212,6 @@ export function AchievementsScreen({ role, uiLang = 'es' }: AchievementsScreenPr
           ))}
         </div>
       </div>
-
-      {/* Unlock notification */}
-      <AnimatePresence>
-        {notification && (
-          <UnlockNotification
-            key={notification.slug}
-            achievement={notification}
-            uiLang={uiLang}
-            onDismiss={dismissNotification}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
