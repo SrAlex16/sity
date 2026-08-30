@@ -107,15 +107,46 @@ def test_affirmative_clears_proposal():
 
 
 # ---------------------------------------------------------------------------
-# Negative response → local response, proposal cleared
+# Negative response → model_upgrade_rejected signal, re-run with current model
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("msg", ["no", "no gracias", "usa haiku", "quédate en haiku", "no hace falta"])
-def test_negative_returns_local_response(msg: str):
+def test_negative_returns_rejected_signal(msg: str):
     set_proposal(_active_proposal())
     result = _flow().try_handle(_ctx(msg))
-    assert isinstance(result, ChatMessageResponse)
-    assert "modelo actual" in result.text
+    assert isinstance(result, LocalFlowSignal)
+    assert result.kind == "model_upgrade_rejected"
+    assert result.original_message == "analiza este sistema complejo"
+
+
+def test_negative_rejected_signal_carries_original_message():
+    set_proposal(_active_proposal())
+    result = _flow().try_handle(_ctx("no"))
+    assert isinstance(result, LocalFlowSignal)
+    assert result.original_message == "analiza este sistema complejo"
+    assert result.strong_model == "claude-sonnet-4-6"
+
+
+def test_negative_persists_rejection_message():
+    """The 'no' message is saved to DB so chat history is coherent."""
+    ctx = _ctx("no gracias")
+    set_proposal(_active_proposal())
+    _flow().try_handle(ctx)
+    ctx.save_message.assert_called_once_with(
+        role="user", text="no gracias", trace_id="trc_test"
+    )
+
+
+def test_negative_does_not_save_canned_sity_response():
+    """No canned 'Vale, lo intento con el modelo actual.' is persisted — the
+    real re-run will produce the actual response."""
+    ctx = _ctx("no")
+    set_proposal(_active_proposal())
+    _flow().try_handle(ctx)
+    calls = ctx.save_message.call_args_list
+    sity_saves = [c for c in calls if c.kwargs.get("role") == "sity" or
+                  (c.args and c.args[0] == "sity")]
+    assert sity_saves == [], "No sity message should be saved on rejection — re-run produces the real one"
 
 
 def test_negative_clears_proposal():
@@ -241,3 +272,88 @@ def test_tag_sity_with_model_idempotent():
 
     tags = json.loads(persistence._sity_metadata.dataset_tags_json or "[]")
     assert tags.count("sonnet_response") == 1
+
+
+# ---------------------------------------------------------------------------
+# propose_model_upgrade tool description guardrails (static, no API)
+# ---------------------------------------------------------------------------
+
+def test_propose_model_upgrade_description_forbids_personality_adjustments():
+    """Tool description must explicitly prohibit personality-parameter changes."""
+    from app.cortex.tool_schemas.actions import PROPOSE_MODEL_UPGRADE_TOOL
+    desc = PROPOSE_MODEL_UPGRADE_TOOL["description"]
+    assert "update_personality_settings" in desc, (
+        "Tool description must name update_personality_settings as the correct tool "
+        "for personality adjustments, so the planner knows not to propose an upgrade."
+    )
+    assert "personalidad" in desc.lower() or "sarcasmo" in desc.lower(), (
+        "Tool description must mention personality parameters explicitly."
+    )
+
+
+def test_propose_model_upgrade_description_forbids_conversational_messages():
+    """Tool description must explicitly prohibit purely conversational messages."""
+    from app.cortex.tool_schemas.actions import PROPOSE_MODEL_UPGRADE_TOOL
+    desc = PROPOSE_MODEL_UPGRADE_TOOL["description"].lower()
+    conversational_guard = (
+        "conversacional" in desc
+        or "confirmaciones" in desc
+        or "comentarios informales" in desc
+    )
+    assert conversational_guard, (
+        "Tool description must explicitly ban purely conversational messages "
+        "(confirmations of something already done, casual comments, etc.)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# turn_runner: model_upgrade_rejected triggers a real re-run
+# ---------------------------------------------------------------------------
+
+def test_rejected_signal_triggers_rerun_with_original_message():
+    """When local_flow returns model_upgrade_rejected, turn_runner must call
+    _chat_message_inner with the original_message — not hang."""
+    from unittest.mock import patch, MagicMock
+    from app.chat.model_router import LocalFlowSignal, ModelUpgradeProposal
+    from app.api.schemas import ChatMessageResponse, UsageSummary
+
+    rejected_signal = LocalFlowSignal(
+        kind="model_upgrade_rejected",
+        original_message="sube el sarcasmo al máximo",
+        strong_model="claude-sonnet-4-6",
+    )
+    real_response = ChatMessageResponse(
+        ok=True, trace_id="trc_rerun", text="Hecho.",
+        provider="anthropic", model="claude-haiku-4-5-20251001",
+        fallback_used=False, error_type=None,
+        usage=UsageSummary(input_tokens=10, output_tokens=5, total_tokens=15,
+                           daily_used_tokens=0, daily_budget_tokens=100_000, daily_ratio=0.0),
+        warnings=[], personality_updated=False,
+        updated_parameter=None, updated_parameters=[], artifacts=[],
+    )
+
+    call_log: list[str] = []
+
+    def _fake_inner(request, session, **kwargs):
+        call_log.append(request.message)
+        if kwargs.get("_skip_history_turns", 0) == 3:
+            return real_response
+        return rejected_signal
+
+    with patch("app.chat.turn_runner._chat_message_inner", side_effect=_fake_inner), \
+         patch("app.chat.turn_runner.publish_event_sync"), \
+         patch("app.chat.turn_runner.write_log"), \
+         patch("app.chat.turn_runner.Session"):
+        from app.chat.turn_runner import _run_turn_in_background
+        from app.api.schemas import ChatMessageRequest
+        req = ChatMessageRequest(
+            message="no",
+            client_turn_id="turn_test",
+            session_id="user:1",
+        )
+        _run_turn_in_background(req, "turn_test", "user:1")
+
+    assert "sube el sarcasmo al máximo" in call_log, (
+        "turn_runner must re-run the original message after upgrade rejection; "
+        f"actual calls: {call_log}"
+    )

@@ -123,6 +123,21 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     _forced_tools=forced_tools,
                     _is_admin=is_admin,
                 )
+            elif isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_rejected":
+                original_message = result.original_message
+                write_log(
+                    level="INFO", module="chat", event="model_upgrade_rejected",
+                    trace_id=turn_id,
+                    payload={"original_message": original_message[:80]},
+                )
+                rejected = request.model_copy(update={"message": original_message})
+                result = _chat_message_inner(
+                    request=rejected,
+                    session=session,
+                    _skip_history_turns=3,
+                    _session_id=session_id,
+                    _is_admin=is_admin,
+                )
             # Achievement triggers: hello_world on first successful response,
             # pause_menu when the user cancels mid-stream.
             from app.achievements.triggers.inline import fire as _fire_ach

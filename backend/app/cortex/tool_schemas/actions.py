@@ -55,7 +55,14 @@ PROPOSE_MODEL_UPGRADE_TOOL = {
         "que requiere más capacidad de la que tienes disponible. Úsala solo cuando "
         "la tarea sea claramente compleja: debugging con trazas largas, refactors "
         "de arquitectura, análisis de múltiples archivos, o diseño con muchas "
-        "restricciones. NO la uses para conversación normal, preguntas cortas, "
+        "restricciones. "
+        "NUNCA la uses para ajustes de parámetros de personalidad (sarcasmo, "
+        "verbosidad, calidez u otros sliders) — update_personality_settings cubre "
+        "esa categoría completa y está siempre disponible. "
+        "NUNCA la uses para mensajes puramente conversacionales que no contienen "
+        "ninguna petición de acción real: confirmaciones de algo ya hecho, "
+        "comentarios informales, charla casual, reacciones al turno anterior. "
+        "NO la uses para conversación normal, preguntas cortas, "
         "tools simples o cualquier tarea que puedas resolver bien."
     ),
     "input_schema": {

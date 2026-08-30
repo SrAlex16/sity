@@ -56,8 +56,14 @@ class ChatLocalFlow:
                     selected_tools=proposal.selected_tools,
                 )
             elif is_negative:
+                ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
                 clear_proposal()
-                return self._response(ctx=ctx, text="Vale, lo intento con el modelo actual.")
+                return LocalFlowSignal(
+                    kind="model_upgrade_rejected",
+                    original_message=proposal.original_message,
+                    strong_model=proposal.strong_model,
+                    selected_tools=proposal.selected_tools,
+                )
             else:
                 clear_proposal()
 
