@@ -15,6 +15,10 @@ export default defineConfig({
       '/debug': { target: 'http://localhost:8000', changeOrigin: true },
       '/health': { target: 'http://localhost:8000', changeOrigin: true },
       '/events': { target: 'http://localhost:8000', changeOrigin: true },
+      '/achievements': { target: 'http://localhost:8000', changeOrigin: true },
+      '/auth': { target: 'http://localhost:8000', changeOrigin: true },
+      '/captures': { target: 'http://localhost:8000', changeOrigin: true },
+      '/notifications': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 });

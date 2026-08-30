@@ -28,6 +28,8 @@ sity.tudominio.com:443 {
     handle /settings/* { reverse_proxy localhost:8000 }
     handle /debug/* { reverse_proxy localhost:8000 }
     handle /notifications/* { reverse_proxy localhost:8000 }
+    handle /achievements/* { reverse_proxy localhost:8000 }
+    handle /captures/* { reverse_proxy localhost:8000 }
     handle /health { reverse_proxy localhost:8000 }
     handle {
         root * /home/TU_USUARIO/projects/sity/mobile/dist
@@ -53,6 +55,8 @@ sity.tudominio.com:80 {
     handle /settings/* { reverse_proxy localhost:8000 }
     handle /debug/* { reverse_proxy localhost:8000 }
     handle /notifications/* { reverse_proxy localhost:8000 }
+    handle /achievements/* { reverse_proxy localhost:8000 }
+    handle /captures/* { reverse_proxy localhost:8000 }
     handle /health { reverse_proxy localhost:8000 }
     handle {
         root * /home/TU_USUARIO/projects/sity/mobile/dist
