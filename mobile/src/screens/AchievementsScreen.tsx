@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAchievements } from '../hooks/useAchievements';
 import type { Achievement } from '../hooks/useAchievements';
@@ -95,11 +95,33 @@ function AchievementCard({ achievement, uiLang }: { achievement: Achievement; ui
   );
 }
 
+function playUnlockSound() {
+  try {
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+    // Two-note ascending chime: A5 → D6
+    [880, 1174.66].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.connect(gain);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.18);
+      osc.start(ctx.currentTime + i * 0.18);
+      osc.stop(ctx.currentTime + i * 0.18 + 0.4);
+    });
+  } catch {
+    // AudioContext unavailable — silent fail
+  }
+}
+
 function UnlockNotification({ achievement, uiLang, onDismiss }: {
   achievement: Achievement;
   uiLang: UiLang;
   onDismiss: () => void;
 }) {
+  useEffect(() => { playUnlockSound(); }, []);
   const tl = TRANSLATIONS[uiLang].achievements;
   return (
     <motion.button
