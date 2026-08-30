@@ -150,7 +150,7 @@ CATALOG: list[AchievementDef] = [
     # ------------------------------------------------------------------
     AchievementDef(
         slug="hello_world",
-        category="memoria",
+        category="personalidad",
         name="Hello, Wordl!",
         description_hint="Envía tu primer mensaje a Sity.",
         description_full="El principio de todo. Enviaste tu primer mensaje. Aquí empieza algo.",
