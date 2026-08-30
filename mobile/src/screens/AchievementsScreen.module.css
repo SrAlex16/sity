@@ -1,0 +1,288 @@
+.screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.titleEs {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.titleJp {
+  font-family: var(--font-japanese);
+  font-size: 9px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--neon-cyan);
+  letter-spacing: 0.06em;
+}
+
+/* ── Guest banner ── */
+.guestBanner {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--neon-cyan) 6%, transparent);
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-align: center;
+  letter-spacing: 0.06em;
+}
+
+/* ── Category tabs ── */
+.tabs {
+  flex-shrink: 0;
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex-shrink: 0;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+}
+
+/* ── Achievement grid ── */
+.gridWrapper {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+
+.gridWrapper::-webkit-scrollbar { width: 3px; }
+.gridWrapper::-webkit-scrollbar-track { background: transparent; }
+.gridWrapper::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.loading {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 32px 0;
+  letter-spacing: 0.08em;
+}
+
+/* ── Achievement card ── */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: none;
+  text-align: left;
+  transition: border-color 0.18s;
+  min-height: 90px;
+}
+
+.cardTappable {
+  cursor: pointer;
+  width: 100%;
+}
+
+.cardTappable:hover {
+  border-color: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+}
+
+.cardLocked {
+  opacity: 0.55;
+}
+
+.cardUnlocked {
+  border-color: color-mix(in srgb, var(--neon-cyan) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--neon-cyan) 4%, transparent);
+  opacity: 1;
+}
+
+.cardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.trophyIcon {
+  width: 22px;
+  height: 22px;
+  color: var(--neon-cyan);
+}
+
+.lockIcon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-secondary);
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.cardName {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  line-height: 1.3;
+  display: block;
+}
+
+.cardDesc {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: block;
+}
+
+.cardHint {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: block;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.cardDate {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--neon-cyan);
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  display: block;
+  margin-top: 2px;
+}
+
+.redacted {
+  letter-spacing: 0.02em;
+  opacity: 0.4;
+  user-select: none;
+}
+
+/* ── Unlock notification (Steam-style) ── */
+.notification {
+  position: fixed;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--neon-cyan) 30%, transparent),
+              0 4px 16px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  z-index: 200;
+  min-width: 240px;
+  max-width: calc(100vw - 32px);
+  text-align: left;
+}
+
+.notifIcon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.notifIcon .trophyIcon {
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 0 6px var(--neon-cyan));
+}
+
+.notifBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notifHeader {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--neon-cyan);
+  display: block;
+}
+
+.notifName {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

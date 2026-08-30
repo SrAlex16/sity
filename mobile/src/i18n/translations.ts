@@ -4,6 +4,7 @@ export interface T {
   nav: {
     chat: string;
     personality: string;
+    achievements: string;
     settings: string;
     dataset: string;
   };
@@ -168,6 +169,18 @@ export interface T {
     reload: string;
     restorePersonality: string;
   };
+  achievements: {
+    title: string;
+    loading: string;
+    unlocked: string;
+    guestBanner: string;
+    catPersonalidad: string;
+    catTools: string;
+    catMemoria: string;
+    catDomotica: string;
+    catBackground: string;
+    catSecrets: string;
+  };
   auth: {
     signInTitle: string;
     signIn: string;
@@ -221,6 +234,7 @@ const es: T = {
   nav: {
     chat: 'Chat',
     personality: 'Rasgos',
+    achievements: 'Logros',
     settings: 'Ajustes',
     dataset: 'Datos',
   },
@@ -370,6 +384,18 @@ const es: T = {
     reload: 'Recargar',
     restorePersonality: 'Restaurar valores de personalidad',
   },
+  achievements: {
+    title: 'Logros',
+    loading: 'Cargando…',
+    unlocked: 'LOGRO DESBLOQUEADO',
+    guestBanner: 'Regístrate para desbloquear logros y guardar tu progreso.',
+    catPersonalidad: 'Personalidad',
+    catTools: 'Herramientas',
+    catMemoria: 'Memoria',
+    catDomotica: 'Domótica',
+    catBackground: 'Background',
+    catSecrets: 'Secretos',
+  },
   auth: {
     signInTitle: 'Iniciar sesión',
     signIn: 'Iniciar sesión',
@@ -423,6 +449,7 @@ const en: T = {
   nav: {
     chat: 'Chat',
     personality: 'Traits',
+    achievements: 'Awards',
     settings: 'Settings',
     dataset: 'Data',
   },
@@ -572,6 +599,18 @@ const en: T = {
     reload: 'Reload',
     restorePersonality: 'Restore personality defaults',
   },
+  achievements: {
+    title: 'Achievements',
+    loading: 'Loading…',
+    unlocked: 'ACHIEVEMENT UNLOCKED',
+    guestBanner: 'Sign up to unlock achievements and save your progress.',
+    catPersonalidad: 'Personality',
+    catTools: 'Tools',
+    catMemoria: 'Memory',
+    catDomotica: 'Smart home',
+    catBackground: 'Background',
+    catSecrets: 'Secrets',
+  },
   auth: {
     signInTitle: 'Sign in',
     signIn: 'Sign in',
@@ -625,6 +664,7 @@ const ja: T = {
   nav: {
     chat: 'チャット',
     personality: '性格',
+    achievements: '実績',
     settings: '設定',
     dataset: 'データ',
   },
@@ -773,6 +813,18 @@ const ja: T = {
     disable: '無効化',
     reload: '再読込',
     restorePersonality: '性格をデフォルトに戻す',
+  },
+  achievements: {
+    title: '実績',
+    loading: '読込中…',
+    unlocked: '実績解除',
+    guestBanner: '実績をアンロックして進捗を保存するには登録してください。',
+    catPersonalidad: '性格',
+    catTools: 'ツール',
+    catMemoria: '記憶',
+    catDomotica: 'スマートホーム',
+    catBackground: 'バックグラウンド',
+    catSecrets: '秘密',
   },
   auth: {
     signInTitle: 'ログイン',

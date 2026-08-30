@@ -67,6 +67,18 @@ function IconSettings() {
   );
 }
 
+function IconAchievements() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9H3V5h3" />
+      <path d="M18 9h3V5h-3" />
+      <path d="M6 5h12v7a6 6 0 0 1-12 0V5Z" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+    </svg>
+  );
+}
+
 function IconDataset() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -89,10 +101,11 @@ interface BottomNavProps {
 export function BottomNav({ active, onNavigate, role, uiLang }: BottomNavProps) {
   const tl = TRANSLATIONS[uiLang].nav;
   const tabs = [
-    { id: 'chat' as Screen,        label: tl.chat,        icon: IconChat },
-    { id: 'personality' as Screen, label: tl.personality, icon: IconPersonality },
-    { id: 'voice' as Screen,       label: tl.settings,    icon: IconSettings },
-    { id: 'dataset' as Screen,     label: tl.dataset,     icon: IconDataset },
+    { id: 'chat' as Screen,         label: tl.chat,         icon: IconChat },
+    { id: 'personality' as Screen,  label: tl.personality,  icon: IconPersonality },
+    { id: 'achievements' as Screen, label: tl.achievements, icon: IconAchievements },
+    { id: 'voice' as Screen,        label: tl.settings,     icon: IconSettings },
+    { id: 'dataset' as Screen,      label: tl.dataset,      icon: IconDataset },
   ];
   const visibleTabs = tabs.filter(
     (tab) => !ADMIN_ONLY_TABS.has(tab.id) || role === 'admin',

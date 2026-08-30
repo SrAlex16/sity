@@ -10,6 +10,7 @@ import { ChatScreen } from './screens/ChatScreen';
 import { PersonalityScreen } from './screens/PersonalityScreen';
 import { VoiceScreen } from './screens/VoiceScreen';
 import { DatasetScreen } from './screens/DatasetScreen';
+import { AchievementsScreen } from './screens/AchievementsScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
 import { SharedConversationView } from './screens/SharedConversationView';
@@ -33,7 +34,7 @@ const _screenStyle: React.CSSProperties = {
   padding: '2rem',
 };
 
-export type Screen = 'chat' | 'personality' | 'voice' | 'dataset';
+export type Screen = 'chat' | 'personality' | 'achievements' | 'voice' | 'dataset';
 type AuthView = 'login' | 'register';
 
 const _ADMIN_SCREENS = new Set<Screen>(['dataset']);
@@ -210,8 +211,9 @@ export default function App() {
     if (_ADMIN_SCREENS.has(screen) && !isAdmin) return <AccessDenied tl={tl} />;
     switch (screen) {
       case 'chat':        return <ChatScreen {...chat} onLogout={auth.logout} currentUser={auth.currentUser} uiLang={uiLang} />;
-      case 'personality': return <PersonalityScreen role={role} uiLang={uiLang} />;
-      case 'voice':       return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
+      case 'personality':   return <PersonalityScreen role={role} uiLang={uiLang} />;
+      case 'achievements':  return <AchievementsScreen role={role} uiLang={uiLang} />;
+      case 'voice':         return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
       case 'dataset':     return <DatasetScreen uiLang={uiLang} />;
     }
   }
