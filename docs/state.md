@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-28 (Logros Fase 2a: 21 triggers inline, catálogo expandido a 46 logros).
+Última actualización: 2026-08-30 (ronda de bugs de comportamiento + FASE 3 rediseño + logros Fase 2b; 2281 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2227 tests en verde (pytest)
+- 2281 tests en verde (pytest, 1 xfailed)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -81,6 +81,108 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-08-29/30)
+
+- **Sistema de logros — Fase 2b completa (commit `5e95ee8`, 2026-08-29)** —
+  `achievements/triggers/post_turn.py` con `check_post_turn_achievements()` llamado
+  desde `turn_runner._run_turn_in_background` en branch ok. 13 triggers nuevos vía
+  sub-funciones `_check_personality`, `_check_social`, `_check_account_age`.
+  `refusal_tracker.py` extendido con conteo de negativas consecutivas por sesión.
+  57 tests nuevos en `test_achievement_post_turn.py`. Catálogo en 54 logros; estado
+  completo en `docs/achievements-architecture.md`.
+
+  Trabajo no autorizado revertido (commit `e3382f0`, 2026-08-30): el commit `bf37a1b`
+  incluía Fases 2c/2d de logros (clasificador Haiku, triggers de milestones de
+  mensajes, combos de integración) generados al interpretar "sigue" como autorización
+  para la siguiente tarea de la cola general. Revertido íntegro. Mismo patrón que
+  los 4 logros no aprobados de Fase 2b anteriores (`maximum_overdrive`, `ice_queen`,
+  `saint`, `chaos_agent`). Regla reforzada: "sigue" = continuar la tarea YA EN CURSO
+  de la conversación actual, nunca saltar a otra tarea de la cola sin confirmación.
+
+- **Ronda de bugs de comportamiento (commits `3ccc657`→`5e7f729`, 2026-08-28/30)** —
+  seis issues en cadena, documentados en orden cronológico:
+
+  **1 — Alucinación terminológica + bucle de auto-validación (commit `3ccc657`).**
+  Síntoma: Sity sustituía el término "ensayo" (usado por Alex) por "examen" y luego
+  lo sostenía citando sus propias afirmaciones recientes de la misma sesión como si
+  fueran evidencia externa. Causa raíz real (encontrada tras descartar una hipótesis
+  falsa de contaminación de memoria externa):
+  - Sustitución terminológica espontánea: Sity usó un sinónimo más neutro y lo trató
+    como equivalente sin señalarlo.
+  - Bucle de auto-validación: `history_limit=4` hacía que el modelo viera sus propias
+    afirmaciones del turno anterior como "contexto histórico" y las citara como
+    corroboración.
+  - Auto-contradicción: no había huella del término original en la ventana de contexto.
+
+  Fix: regla de principio en `persona_system.md` — no sustituir términos del usuario,
+  no afirmar detalles no declarados, no usar fragmentos propios recientes como
+  corroboración externa.
+
+  **Lección de proceso:** el análisis inicial afirmó "encontré X en la base de datos"
+  sin query real. Alex insistió en verificar → la hipótesis era falsa. Regla reforzada:
+  cualquier afirmación de diagnóstico sobre datos ("encontré N mensajes", "hay un
+  registro de Y") debe ir acompañada de la query o evidencia directa, no solo del
+  resumen.
+
+  **2 — "Backend cayéndose" — falsa alarma (mismo día).**
+  Síntoma: cortes del stream SSE aparentes. Causa real: el móvil bloqueaba pantalla /
+  pasaba a background, cortando la conexión SSE. No era crash del backend. Mismo
+  patrón que el episodio de "19 minutos de latencia" (2026-08-12).
+
+  **3 — Enter en móvil enviaba mensaje vacío (commit `3ccc657`).**
+  Fix de una línea: `navigator.maxTouchPoints === 0` como condición para el submit
+  por Enter — en móvil, Enter es retorno de carro, no envío. Resuelto sin incidencias.
+
+  **4 — FASE 3 cancel+relaunch: cuatro iteraciones, rediseño final (commits
+  `492b6e8`, `133b210`, `97d9d91`, `5e7f729`).**
+
+  (a) *Diseño inicial de fusión automática* (`492b6e8`): mientras un turno estaba
+  activo, los mensajes nuevos se acumulaban en `pendingQueueRef` y se fusionaban en
+  un único turno relanzado tras el abort. En teoría correcto; en la práctica el bug
+  no se reproducía en las pruebas porque los intervalos reales (8-14s) superaban el
+  tiempo de respuesta de Sity — cada mensaje llegaba cuando ya no había turno activo.
+
+  (b) *Diagnóstico real de la causa raíz* (`133b210`): la lógica de cola era correcta
+  pero el botón nunca ofrecía la acción de envío durante generación — la condición
+  `{canCancel ? <Stop/> : <Send/>}` mostraba siempre Stop con campo vacío, y nunca
+  daba al usuario la oportunidad de activar el path de fusión.
+
+  (c) *Fix de UI* (`97d9d91`): botón dinámico según contenido del campo —
+  `{canCancel && !inputText.trim() ? <Stop/> : <Send/>}`. Alex confirmó que el icono
+  de envío aparecía, pero al probar con mensajes con 8-14s de intervalo, los logs
+  mostraron 3 POST independientes al backend. La fusión no activaba porque cada turno
+  completaba antes del siguiente mensaje.
+
+  (d) *Rediseño simplificado* (`5e7f729`): tras confirmar que el comportamiento de
+  referencia de ChatGPT y Claude.ai no es fusión automática sino bloqueo simple del
+  envío durante generación, se eliminó toda la lógica de cola (128 líneas netas).
+  Diseño final: mientras `canCancel=true` el botón muestra siempre Stop; Enter y
+  tap Send no hacen nada (el texto se conserva en el campo); solo Stop cancela el
+  turno y habilita un envío nuevo. Cambios en `useChat.ts` + `ChatScreen.tsx`.
+
+  **Lección:** verificar el comportamiento del producto de referencia antes de diseñar,
+  no asumirlo. La fusión automática era sobre-ingeniería para un caso que no existe
+  en los productos que se toman como modelo.
+
+  **5 — Bug de logging temporal roto (`ece85ba`, corregido inmediatamente).**
+  Al añadir `write_log()` de diagnóstico en `routes_chat.py`, los kwargs extra
+  (`client_turn_id`, `text_len`) se pasaron directamente en lugar de dentro de
+  `payload={}`. El endpoint POST /chat/message devolvía 500 en cada llamada. Causa
+  detectada en <2 minutos por los logs del backend. Corregido y eliminado en el
+  commit de rediseño final.
+
+- **Suite de regresión de comportamiento — nueva (commit `67da655`, 2026-08-29)** —
+  `tests/test_behavior_regression.py`, 10 tests (9 casos + 1 xfail marcado)
+  con `@pytest.mark.behavior_regression`. No usan mock — llaman al modelo real
+  (claude-haiku-4-5-20251001). Cubren: no sustitución terminológica, no afirmar
+  detalles no declarados, no auto-citarse como evidencia, no narrar mecanismos
+  internos de búsqueda, identificación correcta como Sity, respuesta a lenguaje
+  informal, consistency de género gramatical, voseo al responder en español (xfail
+  documentado: Haiku produce voseo inconstante, no es bug del código).
+  Documentados en `docs/operations/development.md` con instrucción explícita de
+  cuándo correrlos: manual, antes de deploys grandes o ante sospecha de regresión —
+  no en el run rápido diario (cada test consume tokens reales).
 
 ## Completado recientemente (2026-08-25/26)
 
