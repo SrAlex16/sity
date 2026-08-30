@@ -110,12 +110,14 @@ export function useChat(userKey: string | null) {
   // (once the abort completes) and from the queue path whenever a new message arrives
   // while already in the draining window.
   function _scheduleRelaunch() {
+    console.log('[useChat:_scheduleRelaunch] programando relanzamiento, queue:', [...pendingQueueRef.current]);
     if (relaunchTimerRef.current) clearTimeout(relaunchTimerRef.current);
     relaunchTimerRef.current = setTimeout(() => {
       relaunchTimerRef.current = null;
       isCancellingRef.current = false;
       const pending = pendingQueueRef.current.join('\n');
       pendingQueueRef.current = [];
+      console.log('[useChat:_scheduleRelaunch] TIMER disparado. pending:', pending.slice(0, 80));
       if (pending.trim()) void sendMessage(pending);
     }, 50);
   }
@@ -248,6 +250,14 @@ export function useChat(userKey: string | null) {
   ) {
     const trimmed = text.trim() || ' ';
 
+    console.log('[useChat:sendMessage] llamada', {
+      text: trimmed.slice(0, 40),
+      hasAbortCtrl: !!abortControllerRef.current,
+      isCancelling: isCancellingRef.current,
+      queue: [...pendingQueueRef.current],
+      activeTurnText: activeTurnTextRef.current?.slice(0, 40) ?? null,
+    });
+
     // ── Cancel+relaunch path ─────────────────────────────────────────────────
     // If a turn is active OR we are in the draining window between abort and relaunch,
     // accumulate this message in the queue instead of starting a new independent turn.
@@ -261,10 +271,12 @@ export function useChat(userKey: string | null) {
         activeTurnTextRef.current = null;
       }
       pendingQueueRef.current.push(trimmed);
+      console.log('[useChat:sendMessage] → ENCOLADO. queue ahora:', [...pendingQueueRef.current]);
 
       // First message in this cancel sequence: fire the abort.
       if (abortControllerRef.current && !isCancellingRef.current) {
         isCancellingRef.current = true;
+        console.log('[useChat:sendMessage] → ABORT disparado, isCancelling=true');
         const tid = currentTurnIdRef.current;
         abortControllerRef.current.abort();
         if (tid) fetch(`/chat/stream/${tid}/cancel`, { method: 'POST', credentials: 'include' }).catch(() => {});
@@ -272,7 +284,10 @@ export function useChat(userKey: string | null) {
 
       // If we are already in the draining window (abortControllerRef cleared but timer not
       // yet fired), extend the debounce so this message is also included.
-      if (!abortControllerRef.current) _scheduleRelaunch();
+      if (!abortControllerRef.current) {
+        console.log('[useChat:sendMessage] → en ventana de drenaje, extendiendo debounce');
+        _scheduleRelaunch();
+      }
       return;
     }
 
@@ -283,6 +298,7 @@ export function useChat(userKey: string | null) {
     pendingQueueRef.current = [];
     const combinedText = allParts.join('\n');
     activeTurnTextRef.current = combinedText;
+    console.log('[useChat:sendMessage] → TURNO NORMAL. combinedText:', combinedText.slice(0, 80));
 
     const userMsg: TextChatMessage = {
       id: uid(), type: 'text', role: 'user', text: combinedText, timestamp: new Date(),
@@ -332,6 +348,7 @@ export function useChat(userKey: string | null) {
       activeTurnTextRef.current = null;
       setCanCancel(false);
       abortControllerRef.current = null;
+      console.log('[useChat:finally] abortCtrl=null. queue:', [...pendingQueueRef.current], 'isCancelling:', isCancellingRef.current);
       // Schedule the merged relaunch if messages arrived while this turn ran.
       if (pendingQueueRef.current.length > 0) {
         _scheduleRelaunch();
@@ -420,6 +437,7 @@ export function useChat(userKey: string | null) {
   const cancel = useCallback(() => {
     // User pressed the stop button: discard all pending relaunch state so the
     // stop is definitive (no surprise relaunch after the abort completes).
+    console.log('[useChat:cancel] BOTÓN STOP pulsado. Limpiando cola y estado.');
     if (relaunchTimerRef.current) { clearTimeout(relaunchTimerRef.current); relaunchTimerRef.current = null; }
     pendingQueueRef.current = [];
     isCancellingRef.current = false;
@@ -511,10 +529,12 @@ function _listenTurn(
 
     signal.addEventListener('abort', () => {
       es.close();
+      const suppressed = suppressCancelBubble();
+      console.log('[useChat:_listenTurn:abort]', { responseSeen, suppressed, showMarker: !responseSeen && !suppressed });
       // Show "[ respuesta interrumpida ]" only when the session is still valid AND
       // this abort was not triggered by a pending relaunch (in which case the merged
       // turn's user bubble already provides the visual continuity).
-      if (!responseSeen && currentUserKeyRef.current === expectedUserKey && !suppressCancelBubble()) {
+      if (!responseSeen && currentUserKeyRef.current === expectedUserKey && !suppressed) {
         setMessages((prev) => [...prev, cancelledMsg()]);
       }
       setStatus('conectado');

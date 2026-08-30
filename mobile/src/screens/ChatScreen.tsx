@@ -593,7 +593,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <IconMic />
                 </button>
 
-                {canCancel ? (
+                {canCancel && !inputText.trim() && !pendingImage ? (
                   <motion.button
                     className={styles.cancelBtn}
                     onClick={cancel}
@@ -606,7 +606,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <motion.button
                     className={styles.sendBtn}
                     onClick={handleSend}
-                    disabled={(!inputText.trim() && !pendingImage) || status === 'procesando'}
+                    disabled={!inputText.trim() && !pendingImage}
                     whileTap={{ scale: 0.88 }}
                     aria-label="Enviar"
                   >
