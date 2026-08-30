@@ -103,6 +103,20 @@ FASE2A_SLUGS = [
     "youve_got_mail",
     "ill_be_back",
     "voices",
+    # Fase 2c/2d/2e inline slugs
+    "first_timer",
+    "first_shared",
+    "read_webpage",
+    "polyglot",
+    "smart_home",
+    "fully_integrated",
+    "hundred",
+    "five_hundred",
+    "one_thousand",
+    "no_gods_no_masters",
+    "tsundere",
+    "you_win",
+    "curiosity_killed_the_cat",
 ]
 
 

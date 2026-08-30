@@ -138,6 +138,11 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                         check_post_turn_achievements(session, _uid, session_id)
                     except Exception:
                         pass
+                    try:
+                        from app.achievements.triggers.haiku_classifier import classify_conversation_async
+                        classify_conversation_async(session_id)
+                    except Exception:
+                        pass
 
             # Skip "response" event for cancelled turns — the frontend already
             # shows a cancelled bubble from the abort handler; emitting here

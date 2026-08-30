@@ -66,6 +66,11 @@ def handle_set_timer(ctx: ToolContext) -> ToolExecutionResult:
         f"ID: {task.id}. "
         f"Te avisare a las {fires_at.strftime('%H:%M:%S')} UTC."
     )
+    try:
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(db_session, session_id, "first_timer")
+    except Exception:
+        pass
     return _ok("set_timer", text)
 
 
@@ -102,6 +107,11 @@ def handle_set_alarm(ctx: ToolContext) -> ToolExecutionResult:
         f"Alarma configurada para las {fires_at.strftime('%H:%M:%S')} UTC "
         f"({fires_at_str}). ID: {task.id}."
     )
+    try:
+        from app.achievements.triggers.inline import fire as _fire_ach
+        _fire_ach(db_session, session_id, "first_timer")
+    except Exception:
+        pass
     return _ok("set_alarm", text)
 
 

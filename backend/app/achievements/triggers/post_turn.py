@@ -21,6 +21,8 @@ def check_post_turn_achievements(db: Any, user_id: int, session_id: str) -> None
         _check_personality(db, user_id, cfg, try_unlock_achievement)
         _check_social(db, user_id, cfg, try_unlock_achievement)
         _check_account_age(db, user_id, cfg, try_unlock_achievement)
+        _check_message_milestones(db, user_id, try_unlock_achievement)
+        _check_integration_combos(db, user_id, try_unlock_achievement)
     except Exception as exc:
         write_log(
             level="WARN", module="achievements",
@@ -130,5 +132,56 @@ def _check_account_age(db: Any, user_id: int, cfg: dict, unlock) -> None:
         write_log(
             level="WARN", module="achievements",
             event="post_turn_account_age_check_error",
+            payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
+        )
+
+
+def _check_message_milestones(db: Any, user_id: int, unlock) -> None:
+    try:
+        from sqlmodel import select, func
+        from app.memory.models import ChatMessage
+
+        session_id = f"user:{user_id}"
+        count = db.exec(
+            select(func.count(ChatMessage.id)).where(ChatMessage.session_id == session_id)
+        ).one()
+        if count >= 100:
+            unlock(db, user_id, "hundred")
+        if count >= 500:
+            unlock(db, user_id, "five_hundred")
+        if count >= 1000:
+            unlock(db, user_id, "one_thousand")
+    except Exception as exc:
+        write_log(
+            level="WARN", module="achievements",
+            event="post_turn_message_milestones_check_error",
+            payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
+        )
+
+
+def _check_integration_combos(db: Any, user_id: int, unlock) -> None:
+    """smart_home = HA + Google; fully_integrated = HA + Google + Spotify."""
+    try:
+        from sqlmodel import select
+        from app.memory.models import UserAchievement
+
+        unlocked = {
+            row.slug
+            for row in db.exec(
+                select(UserAchievement).where(UserAchievement.user_id == user_id)
+            ).all()
+        }
+        ha = bool(unlocked & {"glados", "here_comes_the_sun", "welcome_to_the_family"})
+        google = bool(unlocked & {"youve_got_mail", "time_is_running_out"})
+        spotify = bool(unlocked & {"radio_video", "keep_on_rollin"})
+
+        if ha and google:
+            unlock(db, user_id, "smart_home")
+        if ha and google and spotify:
+            unlock(db, user_id, "fully_integrated")
+    except Exception as exc:
+        write_log(
+            level="WARN", module="achievements",
+            event="post_turn_integration_combos_check_error",
             payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
         )
