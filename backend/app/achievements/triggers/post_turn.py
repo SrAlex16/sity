@@ -33,7 +33,7 @@ def check_post_turn_achievements(db: Any, user_id: int, session_id: str) -> None
 def _check_personality(db: Any, user_id: int, cfg: dict, unlock) -> None:
     try:
         from app.settings.settings_service import SettingsService, CANONICAL_PERSONALITY
-        personality = SettingsService(db).get_personality(session_id=None)
+        personality = SettingsService(db).get_personality(session_id=f"user:{user_id}")
 
         # who_am_i: normalized euclidean distance from canonical ≥ threshold
         keys = list(CANONICAL_PERSONALITY.keys())

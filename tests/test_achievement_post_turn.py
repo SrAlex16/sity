@@ -439,3 +439,61 @@ def test_youre_finally_awake_fire_idempotent() -> None:
     with Session(engine) as db:
         fire(db, f"user:{uid}", "youre_finally_awake")
         assert fire(db, f"user:{uid}", "youre_finally_awake") is False
+
+
+# ---------------------------------------------------------------------------
+# chaos_head — session_id scope regression
+# Ensures _check_personality reads session-scoped settings, not global defaults.
+# Reproduces the bug where session_id=None was passed instead of f"user:{uid}",
+# causing chaos_head to never unlock even when the user had max encabronamiento.
+# ---------------------------------------------------------------------------
+
+def test_chaos_head_uses_session_settings_not_global_defaults() -> None:
+    """Global settings below threshold, session settings above — chaos_head must fire."""
+    from app.settings.settings_service import SettingsService, CANONICAL_PERSONALITY
+
+    uid = _uid()
+    session_id = f"user:{uid}"
+    chaos_params = ["rudeness_level", "sarcasm_level", "contrarian_level", "dry_humor_level"]
+
+    with Session(engine) as db:
+        svc = SettingsService(db)
+
+        # Snapshot current global values so we can restore them after the test
+        orig_globals = {p: CANONICAL_PERSONALITY[p] for p in chaos_params}
+
+        try:
+            # Global settings: low values that do NOT cross the 0.95 chaos threshold
+            # chaos = 0.2*0.4 + 0.2*0.3 + 0.1*0.2 + 0.1*0.1 = 0.17
+            for param, val in [
+                ("rudeness_level", 0.2),
+                ("sarcasm_level", 0.2),
+                ("contrarian_level", 0.1),
+                ("dry_humor_level", 0.1),
+            ]:
+                svc.set_setting(f"personality.{param}", val, source="test", session_id=None)
+            db.commit()
+
+            # Session settings: max values that DO cross the 0.95 chaos threshold
+            # chaos = 1.0*0.4 + 1.0*0.3 + 1.0*0.2 + 1.0*0.1 = 1.0
+            for param, val in [
+                ("rudeness_level", 1.0),
+                ("sarcasm_level", 1.0),
+                ("contrarian_level", 1.0),
+                ("dry_humor_level", 1.0),
+            ]:
+                svc.set_setting(f"personality.{param}", val, source="test", session_id=session_id)
+            db.commit()
+
+            # Call without mocking — must read real DB and use session scope
+            _check_personality(db, uid, _cfg(), _unlock)
+
+            assert "chaos_head" in _unlocked(db, uid), (
+                "chaos_head must unlock when session-scoped personality exceeds threshold; "
+                "if it doesn't, _check_personality is reading the wrong session_id scope."
+            )
+        finally:
+            # Restore global settings to canonical values so other tests are not affected
+            for param, val in orig_globals.items():
+                svc.set_setting(f"personality.{param}", val, source="test", session_id=None)
+            db.commit()
