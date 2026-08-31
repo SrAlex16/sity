@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2281 tests en verde (pytest, 1 xfailed)
+- 2310+ tests en verde (pytest, 1 xfailed; 1 flaky conocido — ver Bugs conocidos activos)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -745,7 +745,16 @@ Ver .env.example para la lista completa.
 
 ## Bugs conocidos activos
 
-Ninguno activo conocido.
+**Tests flaky conocidos (baja prioridad, no bloquean nada):**
+
+- **`test_initiative_step3.py::TestEvaluatorRateLimits::test_daily_max_hit_returns_rate_limited`**
+  (introducido en commit `cbca465`, 2026-08-24):
+  Falla con `skip_reason == 'cooldown_active'` en lugar de `'rate_limited'` cuando se ejecuta
+  en la suite completa. Pasa siempre en aislamiento (`pytest tests/test_initiative_step3.py`).
+  Causa: contaminación de orden — un test anterior deja estado `cooldown_active` en la DB de
+  test compartida; el evaluador lo detecta antes del check de `rate_limited` (cooldown se evalúa
+  primero en el código). No afecta producción. Fix: añadir teardown/cleanup de `cooldown_active`
+  en los tests anteriores de `TestEvaluatorRateLimits`. Pendiente de sesión de mantenimiento.
 
 **Resueltos recientemente (2026-08-12):**
 

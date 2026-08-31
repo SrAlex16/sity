@@ -232,7 +232,6 @@ def _deliver_push(fact: NotificationFact, db: Session) -> DispatchResult:
     ).all())
 
     any_success = False
-    last_error: Optional[str] = None
 
     for sub in subs:
         result = send_push(sub, fact.payload)

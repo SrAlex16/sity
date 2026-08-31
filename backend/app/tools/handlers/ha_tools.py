@@ -60,7 +60,6 @@ def _format_entity(e: dict) -> str:
 @tool_handler("ha_list_entities")
 def handle_ha_list_entities(ctx: ToolContext) -> ToolExecutionResult:
     domain  = str(ctx.tool_input.get("domain", "")).strip().lower()
-    area    = str(ctx.tool_input.get("area", "")).strip().lower()
     keyword = str(ctx.tool_input.get("keyword", "")).strip().lower()
 
     try:

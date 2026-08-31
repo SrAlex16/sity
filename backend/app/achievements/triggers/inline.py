@@ -6,10 +6,7 @@ and exceptions never propagate to callers.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
-
-if TYPE_CHECKING:
-    from sqlmodel import Session
+from typing import Any, Optional
 
 
 def _user_id_from_session(session_id: str) -> Optional[int]:

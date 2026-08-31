@@ -9,7 +9,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from app.achievements.catalog import CATALOG
 from app.achievements.unlock import get_user_achievements
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.memory.db import get_session

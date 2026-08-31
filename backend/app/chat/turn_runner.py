@@ -7,8 +7,6 @@ _chat_message_inner: builds turn context, applies refusal gate, invokes orchestr
 """
 from __future__ import annotations
 
-import json
-
 from sqlmodel import Session
 
 from app.api.schemas import ChatMessageRequest, ChatMessageResponse

@@ -22,9 +22,6 @@ from app.cortex.tool_schemas import PERSONALITY_PARAMETERS
 from app.settings.settings_service import SettingsService
 from app.actions.confirmation_manager import ConfirmationManager
 from app.system.allowed_services import get_allowed_systemd_services
-from app.actions.capture_retention_actions import execute_capture_retention_action
-from app.actions.file_actions import execute_file_action
-from app.actions.sense_actions import execute_sense_action
 from app.core.realtime_events import publish_event_sync
 from app.core.task_context import clear_task_context, save_task_context
 from app.trace.logger import write_log
