@@ -42,3 +42,4 @@ class AIResponse(BaseModel):
     error_type: Optional[str] = None
     error_message: Optional[str] = None
     tool_calls: list[AIToolCall] = []
+    stop_reason: Optional[str] = None

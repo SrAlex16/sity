@@ -6,6 +6,8 @@ from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest, AIResponse, AIUsageData
 from app.trace.logger import write_log
 
+_CONTINUABLE_TASK_TYPES = frozenset({"chat_message", "chat_message_tool_result"})
+
 
 class AIGateway:
     provider: AITextProvider
@@ -18,6 +20,55 @@ class AIGateway:
         provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
         self.provider = build_ai_provider(provider_name, model=model)
 
+    def _continue_truncated(self, request: AIRequest, partial: AIResponse) -> AIResponse:
+        continuation_request = request.model_copy(
+            update={
+                "assistant_prefill": partial.text,
+                # Use global max_tokens cap so continuation is not re-throttled by verbosity limit.
+                "max_tokens": 1500,
+            }
+        )
+        cont = self.provider.generate(continuation_request)
+        if not cont.ok:
+            # Continuation failed — return partial with a clean sentence boundary marker
+            write_log(
+                level="WARNING",
+                module="cortex",
+                event="response_continuation_failed",
+                trace_id=request.trace_id,
+                payload={"partial_tokens": partial.usage.output_tokens},
+            )
+            return partial
+        combined_text = partial.text + cont.text
+        combined_usage = AIUsageData(
+            input_tokens=partial.usage.input_tokens + cont.usage.input_tokens,
+            output_tokens=partial.usage.output_tokens + cont.usage.output_tokens,
+            cache_creation_tokens=partial.usage.cache_creation_tokens + cont.usage.cache_creation_tokens,
+            cache_read_tokens=partial.usage.cache_read_tokens + cont.usage.cache_read_tokens,
+        )
+        write_log(
+            level="INFO",
+            module="cortex",
+            event="response_continued_after_max_tokens",
+            trace_id=request.trace_id,
+            payload={
+                "partial_tokens": partial.usage.output_tokens,
+                "continuation_tokens": cont.usage.output_tokens,
+                "total_output_tokens": combined_usage.output_tokens,
+            },
+        )
+        return AIResponse(
+            ok=True,
+            provider=partial.provider,
+            model=partial.model,
+            text=combined_text,
+            usage=combined_usage,
+            latency_ms=partial.latency_ms + cont.latency_ms,
+            fallback_used=partial.fallback_used or cont.fallback_used,
+            tool_calls=cont.tool_calls or partial.tool_calls,
+            stop_reason=cont.stop_reason,
+        )
+
     def generate(self, request: AIRequest) -> AIResponse:
         try:
             response = self.provider.generate(request)
@@ -25,6 +76,11 @@ class AIGateway:
                 return response  # provider returned a controlled error; propagate as-is
             if not response.text and not response.tool_calls:
                 raise RuntimeError("Empty response from Claude")
+            if (
+                response.stop_reason == "max_tokens"
+                and request.task_type in _CONTINUABLE_TASK_TYPES
+            ):
+                response = self._continue_truncated(request, response)
             return response
         except Exception as exc:
             write_log(

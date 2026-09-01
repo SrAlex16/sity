@@ -280,4 +280,5 @@ class ClaudeProvider:
             latency_ms=latency_ms,
             fallback_used=False,
             tool_calls=tool_calls,
+            stop_reason=getattr(message, "stop_reason", None),
         )
