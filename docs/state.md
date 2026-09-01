@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-08-30 (ronda de bugs de comportamiento + FASE 3 rediseño + logros Fase 2b; 2281 tests).
+Última actualización: 2026-09-01 (ronda nocturna de bugs de comportamiento — 10 commits; 2353 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -81,6 +81,130 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-01)
+
+- **Ronda nocturna de bugs de comportamiento (10 commits, 2026-09-01)** —
+  ocho bugs encontrados y resueltos en una sola sesión. Todos diagnosticados
+  con evidencia de logs/DB antes de aplicar cualquier fix. Documentados en
+  `docs/project_behavior_regressions.md` (memoria). Orden cronológico de aparición:
+
+  **1 — Alucinación tras búsqueda web fallida (commit `3b5e898`).**
+  Síntoma: Sity fabricaba datos de búsqueda presentándolos como resultado real.
+  Causa raíz: dos `web_search` en paralelo, `_execute_tool_branch` solo procesaba
+  `tool_calls[0]` e ignoraba el resto. `generate_with_tool_results` recibía 1 resultado
+  para 2 `tool_use` blocks → Anthropic API rechazaba con `BadRequestError 400` → el
+  gateway devolvía el fallback hardcoded. El job background de la segunda búsqueda
+  completaba 1.3s después e `_on_done` generaba una respuesta con una sola búsqueda,
+  mezclando resultado real con conocimiento propio sin aviso.
+  Fix estructural: condición `len(tool_calls) == 1` en `_execute_tool_branch` y
+  `_run_after_tools_loop` — con 2+ calls en paralelo, `run_tool_loop` en primer plano
+  para todas. Fix de prompt: regla de honestidad en `persona_system.md` — si la
+  herramienta devuelve resultado pobre/vacío, decirlo; nunca presentar conocimiento
+  propio como resultado de herramienta.
+
+  **2 — Auto-contradicción de refusal_mode (commit `c61da14`).**
+  Síntoma: Sity aceptaba un compromiso ("sí, básicamente sí... Dispara.") y en el
+  siguiente turno, si caía en `refusal_mode`, negaba haberlo hecho. También negó
+  haber mencionado una hora que acababa de escribir; culpó al usuario de falta de
+  contexto por un corte de su propio mensaje.
+  Causa raíz: `generate_refusal_response()` construía `AIRequest` con
+  `prior_messages=[]` — completamente ciego a los turnos recientes.
+  Fix: recuperar los últimos 4 mensajes de DB en `turn_runner.py` y pasarlos como
+  `recent_history` → `prior_messages`. Nueva regla `COHERENCE` en
+  `_REFUSAL_GENERATOR_SYSTEM` que prohíbe desmentir compromisos o hechos propios
+  del historial visible.
+
+  **3 — Corte de mensajes `max_tokens` + duplicación colateral
+  (commits `e677b86` + `bc646e8`).**
+  Síntoma original: respuesta cortada a mitad de palabra ("**Punto del") con
+  `verbosity_level=0.1472` → `max_tokens_for_verbosity()` devolvía 250, alcanzado
+  exactamente. El campo `stop_reason` no existía en `AIResponse` → truncación silenciosa.
+  Fix `e677b86`: `stop_reason: Optional[str]` en `AIResponse`; `_continue_truncated` en
+  `AIGateway` — segunda llamada con `assistant_prefill=texto_parcial, max_tokens=1500`;
+  hook en `generate` solo para `_CONTINUABLE_TASK_TYPES`.
+  Regresión colateral (`bc646e8`): `claude_provider.py:151-152` ya prepend el
+  `assistant_prefill` al texto de respuesta, por lo que `cont.text` ya era el texto
+  completo. El código antiguo hacía `partial.text + cont.text` → duplicación.
+  Síntoma real: "...se forma un hoBueno, vale. Aquí va..." (corte + todo el texto
+  repetido desde el principio). Fix: `combined_text = cont.text`. Mocks de test
+  actualizados para simular el comportamiento real del provider.
+
+  **4 — Palabras coloquiales interpretadas como técnicas (commit `7e90eba`).**
+  Síntoma: "la idea está terriblemente mal ejecutada" (sobre un salón del manga,
+  coloquial = mal organizado) → planner llamó `search_conversation_history`, 56
+  fragmentos devueltos; respuesta interpretó "ejecutada" como "ejecutar/desarrollar
+  una idea" → negativa de ayuda injustificada.
+  Causa raíz: planner sin principio de intención; descripción de
+  `social_recall_impression` sin restricción de uso exclusivo.
+  Fix: bloque "Principio de intención" al inicio de `_build_action_planner_prompt()`;
+  principio en `persona_system.md`; description de `social_recall_impression` reforzada.
+
+  **5 — Enter en móvil enviaba (regresión no migrada) (commit `f9dcf87`).**
+  El fix de `navigator.maxTouchPoints === 0` aplicado en `3ccc657` a
+  `frontend/src/components/ChatTab.tsx` NUNCA se migró a
+  `mobile/src/screens/ChatScreen.tsx` — son dos frontends separados con código
+  independiente. Verificado con `git log --all -S "maxTouchPoints"`: cero hits
+  en `mobile/`. Fix: añadir la condición en `handleKeyDown` de `ChatScreen.tsx`.
+  Lección: fixes de UX deben verificarse en AMBOS frontends (`frontend/` y `mobile/`).
+
+  **6a — Saldo API insuficiente presentado como personalidad (commit `24ec5eb`).**
+  Síntoma: saldo Anthropic a cero → `generate_refusal_response` devolvía "No me
+  apetece." — indistinguible de una negativa de personalidad. Detectado por Alex
+  vía correo del proveedor, no por el sistema.
+  Causa raíz: `anthropic.BadRequestError` con `"credit balance is too low"` capturado
+  por el `except Exception: pass` genérico antes de cualquier log o manejo especial.
+  Fix: `is_billing_error()` en `ai_gateway.py`; gateway devuelve
+  `error_type="billing_error"` con texto honesto al usuario; `generate_refusal_response`
+  captura billing explícitamente antes del fallback; `turn_runner._notify_admin_billing_error()`
+  despacha `NotificationFact` al admin (dedup diario para no spamear).
+
+  **6b — Error de facturación renderizado como burbuja normal (commit `81cacbd`).**
+  El fix anterior enviaba `error_type="billing_error"` en la respuesta SSE, pero
+  `buildAssistantMessages` en `mobile/src/hooks/useChat.ts` ignoraba `error_type`
+  → la burbuja se renderizaba como texto de asistente normal (blanca), no como
+  error rojo. Fix: early-exit en `buildAssistantMessages` — cualquier `error_type`
+  devuelve `[errorMsg(data.text)]` → burbuja roja igual que "Sin respuesta del servidor".
+
+  **7 — `search_conversation_history` como generador de contenido proactivo
+  (commit `2381b0f`).**
+  Síntoma: "cuéntame algo" → refusal → "Si" → refusal → "Te lo estoy diciendo"
+  (20 chars) → planner llamó `search_conversation_history("historias anécdotas
+  memorable pasado conversación", limit=10)`. 80 fragmentos devueltos (junio-sept),
+  16.634 tokens de input. Respuesta dramática sobre "tres meses de presión".
+  Causa raíz: la descripción de la tool no prohibía usarla para buscar material que
+  Sity iba a compartir proactivamente — solo cuando el usuario pregunta por su historial
+  como hecho. El planner razonó correctamente la cadena multi-turno ("usuario quiere
+  que cuente algo, busco material") pero el uso es incorrecto.
+  Fix: descripción ampliada con prohibición explícita + distinción con ejemplos.
+  Regla clave: `search_conversation_history` solo cuando el usuario pregunta sobre
+  el historial como HECHO. Nunca como fuente de contenido a compartir.
+
+  **8 — Corte de tokens en el refusal generator (commit `9dc5ff8`).**
+  Síntoma: negativa cortada a mitad de palabra ("...ya sabes d", 174 chars).
+  Causa raíz: `generate_refusal_response()` llama al provider directamente
+  (bypassa `AIGateway`) → `_continue_truncated` nunca aplica. Con `max_tokens=60`
+  y personalidad verbosa, Haiku superaba el límite mid-word. `stop_reason` ya
+  existía en `AIResponse` (añadido en commit `e677b86`) pero no se chequeaba aquí.
+  Fix: detectar `stop_reason == "max_tokens"` → fallback a negativa hardcoded
+  completa de `_REFUSAL_FALLBACKS`. Aumentar `max_tokens` 60→120 para reducir
+  la frecuencia del caso.
+
+  **Lecciones de proceso de la sesión:**
+  - "No apliques fix sin diagnóstico de logs primero" — regla aplicada en los
+    8 bugs. En todos los casos el diagnóstico cambió o confirmó la causa antes
+    de escribir código.
+  - Cualquier afirmación de diagnóstico ("encontré N mensajes", "el proceso usó
+    X herramienta") debe ir acompañada de la query o traza real. "Parece X" ≠
+    "Es X verificado con sqlite3/journalctl".
+  - Hay DOS frontends separados (`frontend/` y `mobile/`). Fixes de UX en uno
+    no se propagan automáticamente al otro. Verificar siempre en ambos.
+  - Los mocks de test deben simular el comportamiento real del provider, no solo
+    el input/output superficial. El mock de continuation no simulaba el prepend
+    de `assistant_prefill` → el bug de duplicación pasó los tests iniciales.
+  - `generate_refusal_response()` bypassa `AIGateway` — cualquier feature añadida
+    en el gateway (continuation, billing detection) debe considerarse por separado
+    para la ruta de refusal.
 
 ## Completado recientemente (2026-08-29/30)
 

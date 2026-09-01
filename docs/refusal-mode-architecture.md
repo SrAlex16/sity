@@ -1,6 +1,6 @@
 # Arquitectura del sistema de refusal_mode
 
-Última actualización: 2026-08-13.
+Última actualización: 2026-09-01.
 Estado: **arquitectura estructural implementada y verificada en producción**.
 
 Este documento cubre el diseño final del sistema de refusal_mode: cómo se toma
@@ -83,12 +83,20 @@ trivial   config_query   real
 5. **Rama real + override** — si el mensaje contiene "es una orden" literalmente,
    `has_direct_order_override()` devuelve True y el flujo va al modelo principal normal.
 
-6. **Rama real sin override** — `generate_refusal_response(personality, user_message)` llama
-   a Haiku con el bloque de personalidad (5 parámetros como %) y la hora real verificada.
+6. **Rama real sin override** — `generate_refusal_response(personality, user_message,
+   recent_history=...)` llama a Haiku con el bloque de personalidad (5 parámetros como %),
+   la hora real verificada, y los últimos 4 mensajes de DB como `prior_messages` para
+   que la negativa no contradiga compromisos o hechos propios del turno anterior.
    Haiku genera 1-2 frases de negativa en el idioma del usuario.
+   Si Haiku devuelve `stop_reason="max_tokens"` (truncación mid-word por prompt verboso),
+   la función hace fallback a `_REFUSAL_FALLBACKS` (lista de negativas hardcoded cortas).
    La respuesta se guarda en DB (`role="sity"`, `provider="haiku_refusal"`).
    Se escribe en `refusal_tracker` (`set_last_refusal`) para el turno siguiente.
    Se devuelve directamente al frontend — el modelo principal no interviene en ningún punto.
+
+   **Nota importante**: `generate_refusal_response` llama directamente al provider,
+   bypassing `AIGateway`. Cualquier feature añadida en el gateway (continuation de
+   truncaciones, detección de billing) debe implementarse por separado en esta ruta.
 
 7. **Limpieza de estado** — en cualquier turno que no sea negativa estructural,
    `clear_last_refusal(session_id)` resetea el estado antes de llamar al modelo principal.
@@ -209,7 +217,7 @@ Archivos de test del sistema:
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
-| `tests/test_message_classifier.py` | 56 | Clasificador, build_verified_config_block, generate_refusal_response, tiempo real en prompt |
+| `tests/test_message_classifier.py` | ~60 | Clasificador, build_verified_config_block, generate_refusal_response, tiempo real en prompt, prior_messages en historial, truncación max_tokens |
 | `tests/test_structural_refusal.py` | 6 | Integración end-to-end del árbol de decisión |
 | `tests/test_refusal_tracker.py` | 12 | Estado per-sesión, aislamiento, clear semántico |
 | `tests/test_routes_chat_routing.py` | fixture `local_ai_client` | Pinea `_should_refuse=False` para aislar tests de routing de Ollama del estado de refusal |
@@ -221,6 +229,10 @@ Tests de regresión destacados:
   hay bypass de longitud (ni siquiera mensajes de 1 caracter lo saltan).
 - `test_classify_real_when_response_not_ok` — verifica que el fallback conservador
   ("real") se aplica si Haiku falla.
+- `test_generate_refusal_uses_prior_messages_as_history` — verifica que
+  `prior_messages` se pasa cuando se provee `recent_history`.
+- `test_refusal_truncated_by_max_tokens_falls_back_to_hardcoded` — verifica que
+  `stop_reason="max_tokens"` en la negativa devuelve un string de `_REFUSAL_FALLBACKS`.
 
 ---
 
@@ -232,4 +244,23 @@ Tests de regresión destacados:
 - La hora en las negativas coincide con la hora real del sistema (verificado en producción).
 - `last_was_refusal` aislado por sesión — una sesión no contamina las otras.
 
-Commits del sistema completo: `a525cfc`, `510a261`, `115ed3f`, `1da0d38`.
+Commits del sistema base: `a525cfc`, `510a261`, `115ed3f`, `1da0d38`.
+
+## Cambios posteriores (2026-09-01)
+
+**Bug — auto-contradicción de compromisos propios (commit `c61da14`):**
+`generate_refusal_response()` era ciego al historial — construía `AIRequest` con
+`prior_messages=[]`. Cuando Sity había aceptado un compromiso el turno anterior y
+el siguiente caía en refusal_mode, la negativa generada podía negar haber hecho
+dicho compromiso.
+Fix: recuperar los últimos 4 mensajes de DB en `turn_runner.py` y pasarlos como
+`recent_history` al llamar a `generate_refusal_response`. Nueva regla `COHERENCE`
+en `_REFUSAL_GENERATOR_SYSTEM`.
+
+**Bug — truncación mid-word en negativas (commit `9dc5ff8`):**
+Con personalidades verbosas y `max_tokens=60`, Haiku superaba el límite cortando
+palabras a mitad ("...ya sabes d"). `generate_refusal_response` bypassa `AIGateway`,
+por lo que `_continue_truncated` nunca aplica aquí.
+Fix: detectar `stop_reason == "max_tokens"` → fallback a `_REFUSAL_FALLBACKS`;
+aumentar `max_tokens` 60→120. El campo `stop_reason` en `AIResponse` ya existía
+desde el commit `e677b86` del mismo día.
