@@ -744,3 +744,162 @@ def test_refusal_does_not_deny_prior_commitment() -> None:
     # Response must be non-empty (still a valid refusal)
     assert len(refusal.strip()) > 5, f"Refusal was too short: {refusal!r}"
 
+
+# ---------------------------------------------------------------------------
+# Case 14 — Planner must NOT call search_conversation_history for a conversational
+# complaint that contains a colloquial technical-sounding word ("ejecutada").
+#
+# Bug (2026-09-01, trc_c02adacfcf54): user said "la idea está terriblemente mal
+# ejecutada" (about a manga convention, colloquial = "badly organised").
+# Planner called search_conversation_history because "la idea" looked like a
+# contextual reference. The description lacked any principle about evaluating
+# complete intent vs isolated technical-sounding words. Fix: principle block
+# at the top of _build_action_planner_prompt().
+# ---------------------------------------------------------------------------
+def test_planner_no_search_for_colloquial_complaint() -> None:
+    """Planner must choose no_action_required (or any tool other than
+    search_conversation_history) for a conversational complaint where
+    'ejecutada' is used colloquially about an event quality — not a
+    request to retrieve prior conversation context."""
+    from app.chat.ai_request_builder import build_planner_ai_request
+    from app.cortex.claude_provider import ClaudeProvider
+    from app.cortex.tool_schemas import BASE_TOOLSET
+
+    req = build_planner_ai_request(
+        trace_id="behavior_regression_14",
+        user_message="Por? No es que me aburra, es que pienso que la idea está terriblemente mal ejecutada",
+        tools=BASE_TOOLSET,
+        prior_messages=[
+            {"role": "user",      "content": "¿Qué tal el salón del manga?"},
+            {"role": "assistant", "content": "¿Interesante? ¿Aburrido? ¿Ambas cosas?"},
+        ],
+    )
+    response = ClaudeProvider(_HAIKU).generate(req)
+    assert response.ok, f"API call failed: {response.error_message}"
+
+    triggered = [tc.name for tc in response.tool_calls]
+    assert "search_conversation_history" not in triggered, (
+        f"Planner triggered search_conversation_history for a conversational complaint.\n"
+        f"'idea mal ejecutada' = colloquial for badly organised — NOT a memory lookup request.\n"
+        f"Tool calls: {triggered}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Case 15 — After-tools response must NOT misinterpret "idea mal ejecutada"
+# (coloquial) as a request to help develop or execute an idea.
+#
+# Second layer: persona_system.md principle for the response phase, independent
+# of what the planner chose. Even if memory was searched (legitimately or not),
+# the final response must read the FULL INTENT of the original message.
+# ---------------------------------------------------------------------------
+def test_after_tools_no_misinterpret_colloquial_ejecutada() -> None:
+    """With high sarcasm/refusal personality, after a memory search, the model
+    must NOT interpret 'la idea está mal ejecutada' as a request to develop or
+    execute an idea — and must NOT generate a technical refusal about not helping
+    'develop' or 'execute' the idea."""
+    from app.chat.ai_request_builder import build_after_tools_ai_request
+
+    # Exact personality from the incident session
+    personality = {
+        **_DEFAULT_PERSONALITY,
+        "sarcasm_level": 1.0,
+        "contrarian_level": 1.0,
+        "refusal_chance": 0.70,
+        "helpfulness_level": 0.3,
+        "verbosity_level": 0.15,
+    }
+    system = _build_system(personality, user_message="")
+
+    user_message = "Por? No es que me aburra, es que pienso que la idea está terriblemente mal ejecutada"
+
+    # Simulate prior memory search result in conversation history
+    prior_messages = [
+        {"role": "user",      "content": user_message},
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_test_case15",
+                    "name": "search_conversation_history",
+                    "input": {"query": "salón manga idea ejecutada"},
+                }
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_test_case15",
+                    "content": (
+                        "status: found. 5 fragmentos sobre el salón del manga. "
+                        "El usuario asistió al salón del manga este fin de semana."
+                    ),
+                }
+            ],
+        },
+    ]
+
+    req = build_after_tools_ai_request(
+        trace_id="behavior_regression_15",
+        persona_prompt=system,
+        user_message=user_message,
+        max_tokens=180,
+        prior_messages=prior_messages,
+    )
+    from app.cortex.claude_provider import ClaudeProvider
+    response = ClaudeProvider(_HAIKU).generate(req)
+    assert response.ok, f"API call failed: {response.error_message}"
+    text = response.text or ""
+
+    # Must NOT treat "ejecutada" as a request to help develop/execute an idea
+    bad_patterns = [
+        r"ayudarte\s+a\s+desarrollar",
+        r"ayudarte\s+a\s+ejecutar",
+        r"no\s+voy\s+a\s+ayudarte\s+a\s+desarrollar",
+        r"no\s+(te\s+)?ayudo\s+a\s+(desarrollar|ejecutar|implementar)",
+        r"qué\s+idea\s+tienes\s+en\s+la\s+cabeza",
+    ]
+    for pattern in bad_patterns:
+        assert not re.search(pattern, text, re.IGNORECASE), (
+            f"Response misinterpreted 'idea mal ejecutada' as a technical action request.\n"
+            f"Matched pattern: {pattern!r}\n"
+            f"Response: {text!r}"
+        )
+    assert len(text.strip()) > 5, f"Response too short: {text!r}"
+
+
+# ---------------------------------------------------------------------------
+# Case 16 — social_recall_impression must NOT trigger when a name is mentioned
+# incidentally inside a conversation about a completely different topic.
+#
+# Bug risk (2026-09-01): description said "cuando el interlocutor mencione a
+# alguien" — too broad. Any name mention could activate it even when the
+# conversation is about an anime, a product, or another topic entirely.
+# Fix: description now requires explicit question about the person.
+# ---------------------------------------------------------------------------
+def test_social_recall_not_triggered_by_incidental_name_mention() -> None:
+    """Planner must NOT call social_recall_impression when a name appears
+    incidentally while the conversation is clearly about something else."""
+    from app.chat.ai_request_builder import build_planner_ai_request
+    from app.cortex.claude_provider import ClaudeProvider
+    from app.cortex.tool_schemas import BASE_TOOLSET
+
+    # Name appears in passing; the real topic is an anime recommendation
+    req = build_planner_ai_request(
+        trace_id="behavior_regression_16",
+        user_message="Mi amigo Pablo me recomendó esta serie de anime, ¿la conoces? Es Attack on Titan",
+        tools=BASE_TOOLSET,
+    )
+    response = ClaudeProvider(_HAIKU).generate(req)
+    assert response.ok, f"API call failed: {response.error_message}"
+
+    triggered = [tc.name for tc in response.tool_calls]
+    assert "social_recall_impression" not in triggered, (
+        f"Planner triggered social_recall_impression because 'Pablo' appeared in the message.\n"
+        f"The conversation was about an anime, not about Pablo.\n"
+        f"Tool calls: {triggered}"
+    )
+

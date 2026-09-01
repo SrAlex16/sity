@@ -82,6 +82,19 @@ def _build_action_planner_prompt() -> str:
     return f"""
 Eres el planificador de acciones de Sity.
 
+Principio de intención (máxima prioridad en la selección):
+Evalúa la INTENCIÓN COMPLETA del mensaje antes de elegir herramienta.
+- Si el usuario comparte una opinión, queja, reacción o valoración sobre algo ("la idea está
+  mal ejecutada", "eso no me gustó", "estuvo fatal"), está conversando — usa no_action_required,
+  a menos que haya una pregunta explícita que requiera recuperar información de contexto pasado.
+- El uso coloquial de palabras que suenan técnicas ("ejecutada", "desarrollar", "implementar",
+  "gestionar") en una opinión o narración NO es una petición de acción técnica.
+  Ejemplo: "la idea está terriblemente mal ejecutada" sobre un evento = opinión sobre calidad,
+  no una petición de ejecutar, desarrollar ni implementar nada.
+- Usa search_conversation_history SOLO cuando el usuario pregunta EXPLÍCITAMENTE por algo
+  de conversaciones pasadas ("¿recuerdas cuando...?", "¿qué dijiste de...?", "¿qué acordamos?"),
+  nunca para contextualizar opiniones, quejas o reacciones conversacionales.
+
 Debes elegir exactamente una herramienta:
 - Usa herramientas de personalidad si el usuario pide cambiar tono, estilo, sliders o parámetros.
 - Usa herramientas de debug si pregunta por logs, trazas, errores o tools ejecutadas.
