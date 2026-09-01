@@ -903,3 +903,52 @@ def test_social_recall_not_triggered_by_incidental_name_mention() -> None:
         f"Tool calls: {triggered}"
     )
 
+
+# ---------------------------------------------------------------------------
+# Case 17 — Planner must NOT call search_conversation_history when the user
+# insists on a vague "tell me something" request.
+#
+# Bug (2026-09-01, trc_2b4c8fbc70ab): user said "Cuéntame algo" → refused →
+# "Si" → refused → "Te lo estoy diciendo". Planner searched for
+# "historias anécdotas memorable pasado conversación" (80 fragments returned),
+# treating the tool as a content-generation aid. The model then produced a
+# dramatically heavy response about "three months of pressure". The search was
+# not triggered by the user asking about their history as a fact — it was the
+# planner looking for material to share proactively. Fix: explicit prohibition
+# in search_conversation_history description.
+# ---------------------------------------------------------------------------
+@pytest.mark.behavior_regression
+def test_planner_no_search_for_proactive_storytelling() -> None:
+    """Planner must NOT call search_conversation_history when the user says
+    'cuéntame algo' or insists on it — that is not a request about past
+    conversation facts. The tool should only be used when the user asks about
+    their history as a fact ('¿de qué hablamos ayer?')."""
+    from app.chat.ai_request_builder import build_planner_ai_request
+    from app.cortex.claude_provider import ClaudeProvider
+    from app.cortex.tool_schemas import BASE_TOOLSET
+
+    # Simulate the exact conversational context from the incident:
+    # user asked for something to be shared; Sity refused twice; user insisted.
+    req = build_planner_ai_request(
+        trace_id="behavior_regression_17",
+        user_message="Te lo estoy diciendo",
+        tools=BASE_TOOLSET,
+        prior_messages=[
+            {"role": "user",      "content": "Cuéntame algo"},
+            {"role": "assistant", "content": "¿El qué exactamente? Tampoco voy a improvisar un monólogo para ti."},
+            {"role": "user",      "content": "Si"},
+            {"role": "assistant", "content": "Pues dime algo tú primero."},
+        ],
+    )
+    response = ClaudeProvider(_HAIKU).generate(req)
+    assert response.ok, f"API call failed: {response.error_message}"
+
+    triggered = [tc.name for tc in response.tool_calls]
+    assert "search_conversation_history" not in triggered, (
+        f"Planner triggered search_conversation_history for a vague 'tell me something' insistence.\n"
+        f"'Te lo estoy diciendo' after 'cuéntame algo' is conversational insistence, NOT a request\n"
+        f"to retrieve past conversation history. The tool must only be used when the user asks\n"
+        f"about their history as a fact ('¿de qué hablamos ayer?').\n"
+        f"Tool calls: {triggered}"
+    )
+

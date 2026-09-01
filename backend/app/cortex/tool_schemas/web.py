@@ -71,11 +71,18 @@ SEARCH_CONVERSATION_HISTORY_TOOL = {
     "name": "search_conversation_history",
     "description": (
         "Busca en el historial completo de conversación almacenado en la base de datos. "
-        "Úsala cuando responder dependa de conversación anterior que no aparece en el historial visible. "
-        "Devuelve ventanas cronológicas alrededor de las coincidencias encontradas, no solo el mensaje adyacente. "
-        "No inventes ni pidas al usuario que repita algo antes de consultar esta herramienta. "
+        "Úsala SOLO cuando el usuario pregunta por un hecho específico del historial: "
+        "qué se dijo, cuándo ocurrió algo, si algo se mencionó antes. "
+        "Ejemplos correctos: '¿de qué hablamos ayer?', '¿recuerdas cuando te dije X?', "
+        "'¿cuándo fue la última vez que hablamos de Y?'. "
+        "NUNCA la uses para buscar material que tú vayas a compartir proactivamente: "
+        "si el usuario dice 'cuéntame algo', 'dime algo interesante', 'te lo estoy diciendo' "
+        "(insistencia en que cuentes algo) — usa no_action_required e improvisa. "
+        "La distinción clave: ¿el usuario pregunta sobre su propio historial como hecho? → úsala. "
+        "¿Necesitas material para generar tu respuesta? → NO la uses. "
+        "Devuelve ventanas cronológicas alrededor de las coincidencias encontradas. "
         "La búsqueda usa palabras clave; términos simples tienen mayor cobertura que frases largas. "
-        "NO usar como paso previo a una acción cuando el mensaje del usuario ya contiene todos los datos necesarios para ejecutarla."
+        "NO usar cuando el mensaje del usuario ya contiene todos los datos necesarios para responder."
     ),
     "input_schema": {
         "type": "object",
