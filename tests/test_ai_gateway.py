@@ -276,8 +276,8 @@ def test_billing_error_in_generate_with_tool_results() -> None:
     assert "Error del servidor" in result.text
 
 
-def test_non_billing_bad_request_still_uses_generic_fallback() -> None:
-    """A non-billing BadRequestError must NOT be treated as billing_error."""
+def test_non_billing_error_returns_honest_message() -> None:
+    """A non-billing API error must return an honest message — not sarcastic personality text."""
 
     class _OtherError(Exception):
         pass
@@ -288,9 +288,12 @@ def test_non_billing_bad_request_still_uses_generic_fallback() -> None:
     result = gw.generate(_request(task_type="chat_message"))
 
     assert not result.ok
-    assert result.error_type != "billing_error", (
-        "Non-billing errors must not be classified as billing_error"
-    )
+    assert result.error_type != "billing_error"
+    assert result.error_type in ("api_error", "rate_limit_error", "timeout_error", "connection_error")
+    sarcastic = ["Qué maravilla depender de una nube", "Muy elegante todo", "No me apetece", "Paso."]
+    for phrase in sarcastic:
+        assert phrase not in result.text, f"Non-billing error must not produce sarcastic text: {phrase!r}"
+    assert "Error del servidor" in result.text or "Inténtalo" in result.text
 
 
 def test_is_billing_error_detects_credit_balance_message() -> None:
@@ -300,3 +303,97 @@ def test_is_billing_error_detects_credit_balance_message() -> None:
     assert is_billing_error(Exception(_BILLING_MSG))
     assert not is_billing_error(Exception("tool_use ids were found without tool_result blocks"))
     assert not is_billing_error(Exception("rate_limit_error"))
+
+
+# ---------------------------------------------------------------------------
+# classify_api_error — error type classification
+# ---------------------------------------------------------------------------
+
+def test_classify_api_error_billing() -> None:
+    from app.cortex.ai_gateway import classify_api_error
+    assert classify_api_error(Exception("Your credit balance is too low")) == "billing_error"
+    assert classify_api_error(Exception(_BILLING_MSG)) == "billing_error"
+
+
+def test_classify_api_error_rate_limit() -> None:
+    from app.cortex.ai_gateway import classify_api_error
+
+    class RateLimitError(Exception):
+        pass
+
+    assert classify_api_error(RateLimitError("rate limit exceeded")) == "rate_limit_error"
+    assert classify_api_error(Exception("too many requests, slow down")) == "rate_limit_error"
+
+
+def test_classify_api_error_timeout() -> None:
+    from app.cortex.ai_gateway import classify_api_error
+
+    class APITimeoutError(Exception):
+        pass
+
+    assert classify_api_error(APITimeoutError("request timed out")) == "timeout_error"
+    assert classify_api_error(Exception("operation timeout exceeded")) == "timeout_error"
+
+
+def test_classify_api_error_connection() -> None:
+    from app.cortex.ai_gateway import classify_api_error
+
+    class APIConnectionError(Exception):
+        pass
+
+    assert classify_api_error(APIConnectionError("connection refused")) == "connection_error"
+    assert classify_api_error(Exception("failed to connect to host")) == "connection_error"
+
+
+def test_classify_api_error_generic_fallback() -> None:
+    from app.cortex.ai_gateway import classify_api_error
+    assert classify_api_error(Exception("some unknown internal server error")) == "api_error"
+    assert classify_api_error(RuntimeError("unexpected")) == "api_error"
+
+
+def test_api_error_types_contains_all_classify_outputs() -> None:
+    """API_ERROR_TYPES must contain every value classify_api_error can return."""
+    from app.cortex.ai_gateway import API_ERROR_TYPES, classify_api_error
+    cases = [
+        Exception("credit balance is too low"),
+        Exception("too many requests"),
+        Exception("operation timeout"),
+        Exception("connection refused"),
+        Exception("unexpected server error"),
+    ]
+    for exc in cases:
+        result = classify_api_error(exc)
+        assert result in API_ERROR_TYPES, f"{result!r} not in API_ERROR_TYPES"
+
+
+def test_rate_limit_error_from_gateway_returns_specific_message() -> None:
+    """rate_limit_error must return the rate-limit-specific user message, not billing text."""
+    from app.cortex.ai_gateway import _API_ERROR_MESSAGES
+
+    class RateLimitError(Exception):
+        pass
+
+    gw = _gateway_with_mock_provider([])
+    gw.provider.generate.side_effect = RateLimitError("rate limit exceeded")
+
+    result = gw.generate(_request(task_type="chat_message"))
+
+    assert not result.ok
+    assert result.error_type == "rate_limit_error"
+    assert result.text == _API_ERROR_MESSAGES["rate_limit_error"]
+
+
+def test_timeout_error_from_gateway_returns_specific_message() -> None:
+    from app.cortex.ai_gateway import _API_ERROR_MESSAGES
+
+    class APITimeoutError(Exception):
+        pass
+
+    gw = _gateway_with_mock_provider([])
+    gw.provider.generate.side_effect = APITimeoutError("request timed out")
+
+    result = gw.generate(_request(task_type="chat_message"))
+
+    assert not result.ok
+    assert result.error_type == "timeout_error"
+    assert result.text == _API_ERROR_MESSAGES["timeout_error"]

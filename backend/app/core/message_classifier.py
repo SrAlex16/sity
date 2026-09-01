@@ -225,19 +225,16 @@ def generate_refusal_response(
                 return random.choice(_REFUSAL_FALLBACKS)
             return response.text.strip()
     except Exception as exc:
-        from app.cortex.ai_gateway import is_billing_error
-        if is_billing_error(exc):
-            write_log(
-                level="CRITICAL",
-                module="classifier",
-                event="billing_error_in_refusal_generator",
-                trace_id=trace_id,
-                payload={"exc_msg": str(exc)[:300]},
-            )
-            return (
-                "Error del servidor: no se pudo procesar tu mensaje. "
-                "Inténtalo de nuevo en unos minutos."
-            )
+        from app.cortex.ai_gateway import classify_api_error, _API_ERROR_MESSAGES
+        error_type = classify_api_error(exc)
+        write_log(
+            level="CRITICAL" if error_type == "billing_error" else "ERROR",
+            module="classifier",
+            event=f"{error_type}_in_refusal_generator",
+            trace_id=trace_id,
+            payload={"exc_msg": str(exc)[:300]},
+        )
+        return _API_ERROR_MESSAGES[error_type]
     return random.choice(_REFUSAL_FALLBACKS)
 
 

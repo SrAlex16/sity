@@ -291,10 +291,14 @@ def test_generate_refusal_mock_provider_returns_text() -> None:
     assert isinstance(result, str)
 
 
-def test_generate_refusal_falls_back_on_failure() -> None:
+def test_generate_refusal_api_exception_returns_honest_message() -> None:
+    """Any API exception (not just billing) returns an honest server error.
+    _REFUSAL_FALLBACKS are reserved for content issues (ok=True but bad content).
+    """
     with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=RuntimeError("fail")):
         result = generate_refusal_response({}, "dime algo")
-    assert result in _REFUSAL_FALLBACKS
+    assert result not in _REFUSAL_FALLBACKS
+    assert "Error del servidor" in result or "Inténtalo" in result
 
 
 def test_generate_refusal_falls_back_on_bad_response() -> None:
@@ -609,6 +613,49 @@ def test_billing_error_in_refusal_returns_server_error_not_personality() -> None
     assert "Error del servidor" in result, (
         f"Expected honest server error message, got: {result!r}"
     )
+
+
+def test_rate_limit_in_refusal_returns_honest_message() -> None:
+    """rate_limit_error in refusal generator returns honest message, not personality fallback."""
+    class RateLimitError(Exception):
+        pass
+
+    with patch(
+        "app.cortex.mock_provider.MockProvider.generate",
+        side_effect=RateLimitError("rate limit exceeded"),
+    ):
+        result = generate_refusal_response({}, "hola")
+
+    assert result not in _REFUSAL_FALLBACKS
+    assert "Inténtalo" in result or "Error del servidor" in result or "peticiones" in result
+
+
+def test_timeout_in_refusal_returns_honest_message() -> None:
+    """timeout_error in refusal generator returns honest message, not personality fallback."""
+    class APITimeoutError(Exception):
+        pass
+
+    with patch(
+        "app.cortex.mock_provider.MockProvider.generate",
+        side_effect=APITimeoutError("request timed out"),
+    ):
+        result = generate_refusal_response({}, "hola")
+
+    assert result not in _REFUSAL_FALLBACKS
+    assert "Inténtalo" in result or "tardó" in result
+
+
+def test_ok_false_response_in_refusal_still_uses_hardcoded_fallback() -> None:
+    """ok=False (controlled provider error, not an exception) still uses _REFUSAL_FALLBACKS.
+    The fallback is reserved for content issues — not API exceptions.
+    """
+    bad = AIResponse(
+        ok=False, provider="mock", model="mock", text="",
+        usage=AIUsageData(input_tokens=0, output_tokens=0), latency_ms=0,
+    )
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=bad):
+        result = generate_refusal_response({}, "dime algo")
+    assert result in _REFUSAL_FALLBACKS
 
 
 def test_refusal_truncated_by_max_tokens_falls_back_to_hardcoded() -> None:

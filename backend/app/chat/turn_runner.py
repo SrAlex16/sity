@@ -26,8 +26,29 @@ from app.core.refusal_tracker import (
 from app.trace.logger import write_log
 
 
-def _notify_admin_billing_error(db: "Session", exc_msg: str) -> None:
-    """Dispatch a one-per-day admin notification when the API billing quota is hit."""
+_API_ERROR_NOTIFICATION_TITLES: dict[str, str] = {
+    "billing_error": "Sity — Error de saldo",
+    "rate_limit_error": "Sity — Rate limit de API",
+    "timeout_error": "Sity — Timeout de API",
+    "connection_error": "Sity — Error de conexión de API",
+    "api_error": "Sity — Error de API",
+}
+
+_API_ERROR_NOTIFICATION_BODIES: dict[str, str] = {
+    "billing_error": "La API de Anthropic rechazó llamadas por saldo insuficiente.",
+    "rate_limit_error": "La API de Anthropic devolvió rate limit. El backend está recibiendo demasiadas peticiones.",
+    "timeout_error": "La API de Anthropic agotó el tiempo de espera en una llamada al modelo.",
+    "connection_error": "Error de conexión con la API de Anthropic. Verificar conectividad de red.",
+    "api_error": "Error inesperado de la API de Anthropic.",
+}
+
+
+def _notify_admin_api_error(db: "Session", error_type: str, exc_msg: str) -> None:
+    """Dispatch a one-per-day-per-type admin notification for any API error.
+
+    Deduplication key: api_error:{error_type}:{date} — each error type sends at
+    most one notification per day, independently of other types.
+    """
     from datetime import datetime, timezone
     from sqlmodel import select as _select
     from app.memory.models import User
@@ -42,21 +63,21 @@ def _notify_admin_billing_error(db: "Session", exc_msg: str) -> None:
         fact = NotificationFact(
             session_id=f"user:{admin.id}",
             notification_type="external_event",
-            fact_id=f"billing_error:{today}",
+            fact_id=f"api_error:{error_type}:{today}",
             payload={
-                "title": "Sity — Error de saldo",
-                "body": "La API de Anthropic rechazó llamadas por saldo insuficiente.",
-                "urgent": True,
+                "title": _API_ERROR_NOTIFICATION_TITLES.get(error_type, "Sity — Error de API"),
+                "body": _API_ERROR_NOTIFICATION_BODIES.get(error_type, "Error inesperado de la API de Anthropic."),
+                "urgent": error_type == "billing_error",
             },
-            urgency="high",
-            subtype="billing_error",
+            urgency="high" if error_type == "billing_error" else "medium",
+            subtype=error_type,
         )
         dispatch(fact, db)
     except Exception as exc:
         write_log(
             level="ERROR", module="chat",
-            event="billing_error_admin_notification_failed",
-            payload={"error": str(exc)[:200]},
+            event="api_error_admin_notification_failed",
+            payload={"error_type": error_type, "error": str(exc)[:200]},
         )
 
 
@@ -173,9 +194,10 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
             # Achievement triggers: hello_world on first successful response,
             # pause_menu when the user cancels mid-stream.
             from app.achievements.triggers.inline import fire as _fire_ach
+            from app.cortex.ai_gateway import API_ERROR_TYPES
             _result_error = getattr(result, "error_type", None)
-            if _result_error == "billing_error":
-                _notify_admin_billing_error(session, getattr(result, "error_message", ""))
+            if _result_error in API_ERROR_TYPES:
+                _notify_admin_api_error(session, _result_error, getattr(result, "error_message", ""))
             if _result_error == "cancelled":
                 _fire_ach(session, session_id, "pause_menu")
             elif not _result_error and getattr(result, "text", None):
