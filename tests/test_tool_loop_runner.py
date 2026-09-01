@@ -169,6 +169,43 @@ def test_loop_executes_all_when_within_limit() -> None:
     assert len(outcome.tool_results_for_claude) == n
 
 
+def test_two_parallel_web_searches_both_produce_results() -> None:
+    """Regression: when the model calls 2 web_search tools in parallel,
+    run_tool_loop must return 2 tool_results (not 1).
+
+    Bug (2026-09-01): the orchestrator only detached the first web_search and
+    ignored the second, so generate_with_tool_results received 1 result for 2
+    tool_use blocks → Anthropic API returned 400 BadRequestError.
+
+    Fix: _execute_tool_branch now falls through to run_tool_loop (which runs
+    both tools synchronously) whenever len(tool_calls) > 1, regardless of
+    the blocking policy of the first tool. run_tool_loop itself has always
+    handled this correctly — this test ensures it stays correct.
+    """
+    planner = _make_planner_response("web_search", "web_search")
+    executor = _make_executor(
+        ({"text": "resultado búsqueda 1"}, True, []),
+        ({"text": "resultado búsqueda 2"}, True, []),
+    )
+    outcome = run_tool_loop(
+        planner_response=planner, executor=executor,
+        trace_id="trc_parallel_search_test", client_turn_id=None,
+    )
+
+    assert outcome.early_kind is None
+    assert executor.execute_tool_call.call_count == 2, (
+        "Both web_search calls must be executed; one must not be silently dropped."
+    )
+    assert len(outcome.tool_results_for_claude) == 2, (
+        "Must return 2 tool_results — one per tool_use block — or the Anthropic "
+        "API will reject with 400 'tool_use ids without tool_result blocks'."
+    )
+    ids = {r["tool_use_id"] for r in outcome.tool_results_for_claude}
+    assert ids == {"tc_0", "tc_1"}, (
+        f"Both tool_use ids must appear in the results. Got: {ids}"
+    )
+
+
 def test_loop_handles_executor_error() -> None:
     """If executor raises, the exception propagates from run_tool_loop."""
     import pytest

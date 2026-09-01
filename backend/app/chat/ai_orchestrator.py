@@ -436,7 +436,7 @@ class ChatAIOrchestrator:
         executor = ToolExecutor(self.session, ctx.session_id)
         _first_tool = planner_response.tool_calls[0]
 
-        if get_blocking_policy(_first_tool.name) == "detachable":
+        if get_blocking_policy(_first_tool.name) == "detachable" and len(planner_response.tool_calls) == 1:
             _loop = _detach_tool(
                 tool_call=_first_tool,
                 executor=executor,
@@ -669,7 +669,7 @@ class ChatAIOrchestrator:
             ]
 
             _first_tc = response_after_tools.tool_calls[0]
-            if get_blocking_policy(_first_tc.name) == "detachable":
+            if get_blocking_policy(_first_tc.name) == "detachable" and len(response_after_tools.tool_calls) == 1:
                 _det_loop = _detach_tool(
                     tool_call=_first_tc,
                     executor=executor,
