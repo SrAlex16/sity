@@ -62,6 +62,7 @@ interface ApiChatResponse {
   trace_id?: string;
   artifacts?: ApiArtifact[];
   personality_updated?: boolean;
+  error_type?: string;
 }
 
 interface ApiChatAccepted {
@@ -436,6 +437,12 @@ function _listenTurn(
 }
 
 function buildAssistantMessages(data: ApiChatResponse): ChatMessage[] {
+  // System-level errors (billing, gateway failures) must render as error bubbles,
+  // not normal assistant messages — same style as "Sin respuesta del servidor."
+  if (data.error_type) {
+    return [errorMsg(data.text || 'Error del servidor.')];
+  }
+
   const msgs: ChatMessage[] = [];
   const hasAudio = (data.artifacts ?? []).some((a) => a.type === 'audio');
   const traceId = data.trace_id;
