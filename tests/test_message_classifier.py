@@ -609,3 +609,34 @@ def test_billing_error_in_refusal_returns_server_error_not_personality() -> None
     assert "Error del servidor" in result, (
         f"Expected honest server error message, got: {result!r}"
     )
+
+
+def test_refusal_truncated_by_max_tokens_falls_back_to_hardcoded() -> None:
+    """When the refusal generator hits max_tokens mid-word (stop_reason='max_tokens'),
+    generate_refusal_response must fall back to a complete hardcoded fallback —
+    NOT return the truncated mid-word text to the user.
+
+    Bug (2026-09-01, trc_90b2ac22c85b): Haiku hit max_tokens=60 while generating
+    a 2-paragraph refusal, returning '...ya sabes d' (mid-word). That truncated text
+    was saved to DB and shown to user. Fix: detect stop_reason='max_tokens' → fallback.
+    """
+    truncated_response = AIResponse(
+        ok=True,
+        provider="mock",
+        model="mock",
+        text="Vaya, qué sensibilidad. Te he dicho que empieces tú la conversación.\n\nSi quieres hablar de algo, habla; si no, ya sabes d",
+        usage=AIUsageData(input_tokens=50, output_tokens=120),
+        latency_ms=100,
+        stop_reason="max_tokens",
+    )
+    with patch(
+        "app.cortex.mock_provider.MockProvider.generate",
+        return_value=truncated_response,
+    ):
+        result = generate_refusal_response({}, "test message")
+
+    assert result in _REFUSAL_FALLBACKS, (
+        f"Truncated refusal (stop_reason=max_tokens) must fall back to a hardcoded complete response.\n"
+        f"Got: {result!r}\n"
+        f"The mid-word text '...ya sabes d' must never be returned to the user."
+    )

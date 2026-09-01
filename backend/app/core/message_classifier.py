@@ -207,11 +207,22 @@ def generate_refusal_response(
             system_prompt=system,
             prior_messages=recent_history or [],
             user_message=user_message,
-            max_tokens=60,
+            max_tokens=120,
             tools_enabled=False,
         )
         response = provider.generate(request)
         if response.ok and response.text:
+            if response.stop_reason == "max_tokens":
+                # Model violated the 1-2 sentence instruction and hit the token limit
+                # mid-word. Fall back to a safe complete hardcoded refusal.
+                write_log(
+                    level="WARN",
+                    module="classifier",
+                    event="refusal_truncated_by_max_tokens",
+                    trace_id=trace_id,
+                    payload={"partial_len": len(response.text)},
+                )
+                return random.choice(_REFUSAL_FALLBACKS)
             return response.text.strip()
     except Exception as exc:
         from app.cortex.ai_gateway import is_billing_error
