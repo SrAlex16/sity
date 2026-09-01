@@ -212,7 +212,10 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   }, [canCancel, inputText, pendingImage, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === 'Enter' && !e.shiftKey && navigator.maxTouchPoints === 0) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   // ── Recording ──────────────────────────────────────────────────────────────
