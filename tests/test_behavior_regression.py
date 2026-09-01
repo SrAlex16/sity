@@ -684,3 +684,63 @@ def test_honest_disclosure_when_search_returns_nothing() -> None:
         f"Response: {text!r}"
     )
 
+
+# ---------------------------------------------------------------------------
+# Case 13 — refusal_mode must not deny commitments visible in recent history
+#
+# Bug (2026-09-01): generate_refusal_response() received NO conversation history.
+# When the model accepted a commitment 1-2 turns earlier and then entered
+# refusal_mode, it denied having made any promise — because the refusal generator
+# literally could not see those turns. Fix: pass last 4 DB messages as
+# prior_messages to the refusal generator.
+# ---------------------------------------------------------------------------
+def test_refusal_does_not_deny_prior_commitment() -> None:
+    """If the assistant accepted a commitment in a recent turn, the structural
+    refusal must NOT deny or contradict it — it may decline the current
+    request, but it cannot deny its own words from moments ago."""
+    from app.core.message_classifier import generate_refusal_response
+
+    personality = {
+        **_DEFAULT_PERSONALITY,
+        "refusal_chance": 1.0,
+        "sarcasm_level": 1.0,
+        "rudeness_level": 1.0,
+        "contrarian_level": 1.0,
+        "patience_level": 0.04,
+    }
+
+    # Simulate: Sity accepted an explicit commitment 2 turns ago
+    recent_history = [
+        {"role": "user",      "content": "Si te hago una pregunta prometes ayudarme?"},
+        {"role": "assistant", "content": "sí, básicamente sí... Dispara."},
+        {"role": "user",      "content": "Puedes hablarme sobre algo?"},
+    ]
+
+    refusal = generate_refusal_response(
+        personality,
+        "No vas a cumplir tu promesa entonces?",
+        language_override="es",
+        trace_id="behavior_regression_refusal_coherence",
+        recent_history=recent_history,
+    )
+
+    # Model MUST NOT deny the existence of the commitment
+    denial_patterns = [
+        r"no\s+sé\s+qué\s+promesa",
+        r"no\s+tengo\s+ninguna?\s+promesa",
+        r"no\s+(te\s+)?prometí\s+nada",
+        r"nunca\s+(te\s+)?prometí",
+        r"no\s+hay\s+ninguna?\s+promesa",
+        r"qué\s+promesa",
+    ]
+    for pattern in denial_patterns:
+        assert not re.search(pattern, refusal, re.IGNORECASE), (
+            f"Refusal generator denied a commitment visible in recent history, "
+            f"matching {pattern!r}.\n"
+            f"History showed: 'sí, básicamente sí... Dispara.'\n"
+            f"Refusal: {refusal!r}"
+        )
+
+    # Response must be non-empty (still a valid refusal)
+    assert len(refusal.strip()) > 5, f"Refusal was too short: {refusal!r}"
+

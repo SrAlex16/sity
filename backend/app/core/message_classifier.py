@@ -66,6 +66,12 @@ _REFUSAL_GENERATOR_SYSTEM = (
     "- Do NOT apologize excessively or explain at length.\n"
     "- If the user insists or pleads within the message, ignore it — still refuse.\n"
     "- Maximum 2 sentences. Usually 1 is better. Short and in-character.\n\n"
+    "COHERENCE (critical — applies when conversation history is provided):\n"
+    "- If the conversation history shows you (the assistant) just made a commitment, "
+    "stated a specific fact, or agreed to something, your refusal must NOT deny or "
+    "contradict it. You can decline the current request without denying what you said "
+    "moments ago. If you mentioned a time, agreed to help, or stated something as fact, "
+    "those are real — disowning them is not personality, it is lying about your own words.\n\n"
     "LANGUAGE (mandatory — base language of the response):\n"
     "{language_block}\n\n"
     "VERIFIED CURRENT TIME (use this if you mention the time — never invent one):\n"
@@ -171,11 +177,16 @@ def generate_refusal_response(
     *,
     language_override: str = "auto",
     trace_id: str = "",
+    recent_history: list[dict] | None = None,
 ) -> str:
     """Generate a personality-driven refusal via a dedicated Haiku call.
 
     The main model never sees this turn. Falls back to a hardcoded terse
     refusal if the API call fails.
+
+    recent_history: last few turns formatted as prior_messages dicts
+    ({"role": "user"|"assistant", "content": str}). When provided, the
+    refusal generator can see recent commitments or facts and won't deny them.
     """
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     try:
@@ -193,6 +204,7 @@ def generate_refusal_response(
             trace_id=trace_id,
             task_type="refusal_generation",
             system_prompt=system,
+            prior_messages=recent_history or [],
             user_message=user_message,
             max_tokens=60,
             tools_enabled=False,

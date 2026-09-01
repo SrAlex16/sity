@@ -265,13 +265,20 @@ def _chat_message_inner(
         and not _has_override
     ):
         from app.core.message_classifier import generate_refusal_response
-        from app.chat.chat_persistence import get_today_token_usage
+        from app.chat.chat_persistence import get_today_token_usage, get_recent_db_messages
         from app.chat.response_factory import refusal_response
 
+        _recent_raw = get_recent_db_messages(session, ctx.session_id, limit=4)
+        _recent_history = [
+            {"role": "assistant" if m.role == "sity" else "user", "content": m.text}
+            for m in _recent_raw
+            if m.text
+        ]
         refusal_text = generate_refusal_response(
             ctx.personality, request.message,
             language_override=ctx.language_override,
             trace_id=ctx.trace_id,
+            recent_history=_recent_history or None,
         )
         ctx.persistence.save(
             role="user",

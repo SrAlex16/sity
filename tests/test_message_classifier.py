@@ -533,3 +533,46 @@ def test_language_block_single_source_of_truth() -> None:
     assert '"es-ES":' not in source or "LANGUAGE_BLOCK" in source, (
         "persona_engine must import LANGUAGE_BLOCK rather than define it inline"
     )
+
+
+def test_generate_refusal_passes_recent_history_as_prior_messages() -> None:
+    """Regression: generate_refusal_response must pass recent_history as prior_messages
+    to the AIRequest so the refusal generator can see recent commitments/facts.
+
+    Bug (2026-09-01): prior_messages was always [] — refusal generator was blind to
+    recent conversation context and denied commitments it had just made."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    history = [
+        {"role": "user",      "content": "Prometes ayudarme?"},
+        {"role": "assistant", "content": "sí, básicamente sí... Dispara."},
+    ]
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "No vas a cumplir tu promesa?", recent_history=history)
+
+    assert captured
+    req = captured[0]
+    assert req.prior_messages == history, (
+        "prior_messages must equal the recent_history passed in; "
+        "the refusal generator must see prior turns to avoid self-contradictions."
+    )
+
+
+def test_generate_refusal_without_history_sends_empty_prior_messages() -> None:
+    """When recent_history is None (backward compat), prior_messages defaults to []."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "algo")
+
+    assert captured
+    assert captured[0].prior_messages == []
