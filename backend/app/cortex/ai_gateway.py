@@ -49,7 +49,10 @@ class AIGateway:
                 payload={"partial_tokens": partial.usage.output_tokens},
             )
             return partial
-        combined_text = partial.text + cont.text
+        # cont.text already contains partial.text prepended by the provider
+        # (claude_provider prepends assistant_prefill to the API response so the
+        # returned text is always "complete"). Adding partial.text again would duplicate it.
+        combined_text = cont.text
         combined_usage = AIUsageData(
             input_tokens=partial.usage.input_tokens + cont.usage.input_tokens,
             output_tokens=partial.usage.output_tokens + cont.usage.output_tokens,

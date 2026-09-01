@@ -48,8 +48,10 @@ def _gateway_with_mock_provider(responses: list[AIResponse]) -> AIGateway:
 # ---------------------------------------------------------------------------
 
 def test_max_tokens_chat_message_triggers_continuation() -> None:
+    # The mock simulates real provider behavior: cont.text = prefill + new_generation.
+    # (claude_provider prepends assistant_prefill to the API response.)
     partial = _ok_response(text="Primer fragmento", stop_reason="max_tokens", output_tokens=250)
-    continuation = _ok_response(text=" y el resto.", stop_reason="end_turn", output_tokens=30)
+    continuation = _ok_response(text="Primer fragmento y el resto.", stop_reason="end_turn", output_tokens=30)
 
     gw = _gateway_with_mock_provider([partial, continuation])
     result = gw.generate(_request(task_type="chat_message"))
@@ -61,7 +63,7 @@ def test_max_tokens_chat_message_triggers_continuation() -> None:
 
 def test_max_tokens_tool_result_task_triggers_continuation() -> None:
     partial = _ok_response(text="Parte 1", stop_reason="max_tokens")
-    continuation = _ok_response(text=" parte 2.", stop_reason="end_turn")
+    continuation = _ok_response(text="Parte 1 parte 2.", stop_reason="end_turn")
 
     gw = _gateway_with_mock_provider([partial, continuation])
     result = gw.generate(_request(task_type="chat_message_tool_result"))
@@ -72,7 +74,7 @@ def test_max_tokens_tool_result_task_triggers_continuation() -> None:
 
 def test_continuation_request_uses_partial_as_prefill() -> None:
     partial = _ok_response(text="Hola,", stop_reason="max_tokens")
-    continuation = _ok_response(text=" mundo.", stop_reason="end_turn")
+    continuation = _ok_response(text="Hola, mundo.", stop_reason="end_turn")
 
     gw = _gateway_with_mock_provider([partial, continuation])
     gw.generate(_request(task_type="chat_message"))
@@ -85,7 +87,7 @@ def test_continuation_request_uses_partial_as_prefill() -> None:
 def test_continuation_max_tokens_overrides_verbosity_limit() -> None:
     """Continuation call must use 1500, not the original throttled limit."""
     partial = _ok_response(text="Truncado", stop_reason="max_tokens")
-    continuation = _ok_response(text=" completo.", stop_reason="end_turn")
+    continuation = _ok_response(text="Truncado completo.", stop_reason="end_turn")
 
     gw = _gateway_with_mock_provider([partial, continuation])
     gw.generate(_request(task_type="chat_message"))
@@ -97,7 +99,7 @@ def test_continuation_max_tokens_overrides_verbosity_limit() -> None:
 
 def test_usage_is_combined() -> None:
     partial = _ok_response(text="A", stop_reason="max_tokens", output_tokens=250)
-    continuation = _ok_response(text="B", stop_reason="end_turn", output_tokens=80)
+    continuation = _ok_response(text="AB", stop_reason="end_turn", output_tokens=80)
 
     gw = _gateway_with_mock_provider([partial, continuation])
     result = gw.generate(_request(task_type="chat_message"))
@@ -170,7 +172,7 @@ def test_continuation_does_not_recurse_on_second_max_tokens() -> None:
     _continue_truncated calls self.provider.generate directly, not self.generate,
     so recursion is structurally impossible regardless of stop_reason."""
     partial = _ok_response(text="Parte 1", stop_reason="max_tokens")
-    cont_also_truncated = _ok_response(text=" parte 2", stop_reason="max_tokens")
+    cont_also_truncated = _ok_response(text="Parte 1 parte 2", stop_reason="max_tokens")
 
     gw = _gateway_with_mock_provider([partial, cont_also_truncated])
     result = gw.generate(_request(task_type="chat_message"))
@@ -178,6 +180,21 @@ def test_continuation_does_not_recurse_on_second_max_tokens() -> None:
     # provider.generate called exactly twice — no third call
     assert gw.provider.generate.call_count == 2
     assert result.text == "Parte 1 parte 2"
+
+
+def test_continuation_does_not_duplicate_partial_text() -> None:
+    """Regression: provider prepends assistant_prefill to cont.text. Gateway must NOT
+    add partial.text again or the result will contain the partial text twice."""
+    partial = _ok_response(text="...se forma un ho", stop_reason="max_tokens", output_tokens=250)
+    # Real provider returns prefill + new generation:
+    continuation = _ok_response(text="...se forma un hoyo negro en el espacio.", stop_reason="end_turn", output_tokens=84)
+
+    gw = _gateway_with_mock_provider([partial, continuation])
+    result = gw.generate(_request(task_type="chat_message"))
+
+    # Must NOT be partial.text + cont.text (which would duplicate the prefix)
+    assert result.text == "...se forma un hoyo negro en el espacio."
+    assert result.text.count("...se forma un ho") == 1, "partial text must appear only once"
 
 
 # ---------------------------------------------------------------------------
