@@ -26,6 +26,40 @@ from app.core.refusal_tracker import (
 from app.trace.logger import write_log
 
 
+def _notify_admin_billing_error(db: "Session", exc_msg: str) -> None:
+    """Dispatch a one-per-day admin notification when the API billing quota is hit."""
+    from datetime import datetime, timezone
+    from sqlmodel import select as _select
+    from app.memory.models import User
+    from app.notifications.dispatcher import dispatch
+    from app.notifications.fact import NotificationFact
+
+    try:
+        admin = db.exec(_select(User).where(User.role == "admin")).first()
+        if admin is None:
+            return
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        fact = NotificationFact(
+            session_id=f"user:{admin.id}",
+            notification_type="external_event",
+            fact_id=f"billing_error:{today}",
+            payload={
+                "title": "Sity — Error de saldo",
+                "body": "La API de Anthropic rechazó llamadas por saldo insuficiente.",
+                "urgent": True,
+            },
+            urgency="high",
+            subtype="billing_error",
+        )
+        dispatch(fact, db)
+    except Exception as exc:
+        write_log(
+            level="ERROR", module="chat",
+            event="billing_error_admin_notification_failed",
+            payload={"error": str(exc)[:200]},
+        )
+
+
 def _snippet(text: str, max_chars: int) -> str:
     """Truncate text to max_chars, cutting at the last word boundary."""
     if len(text) <= max_chars:
@@ -140,6 +174,8 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
             # pause_menu when the user cancels mid-stream.
             from app.achievements.triggers.inline import fire as _fire_ach
             _result_error = getattr(result, "error_type", None)
+            if _result_error == "billing_error":
+                _notify_admin_billing_error(session, getattr(result, "error_message", ""))
             if _result_error == "cancelled":
                 _fire_ach(session, session_id, "pause_menu")
             elif not _result_error and getattr(result, "text", None):

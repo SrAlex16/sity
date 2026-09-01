@@ -576,3 +576,36 @@ def test_generate_refusal_without_history_sends_empty_prior_messages() -> None:
 
     assert captured
     assert captured[0].prior_messages == []
+
+
+# ---------------------------------------------------------------------------
+# Billing error in generate_refusal_response
+# ---------------------------------------------------------------------------
+
+_BILLING_MSG = (
+    "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+    "'message': 'Your credit balance is too low to access the Anthropic API.'}}"
+)
+
+
+def test_billing_error_in_refusal_returns_server_error_not_personality() -> None:
+    """When the API rejects with a billing error, generate_refusal_response must
+    return an honest server error message — NOT one of the _REFUSAL_FALLBACKS
+    personality strings like 'No me apetece.' or 'Paso.'"""
+
+    class _BillingError(Exception):
+        pass
+
+    with patch(
+        "app.cortex.mock_provider.MockProvider.generate",
+        side_effect=_BillingError(_BILLING_MSG),
+    ):
+        result = generate_refusal_response({}, "hola")
+
+    assert result not in _REFUSAL_FALLBACKS, (
+        f"Billing error produced a personality fallback: {result!r}\n"
+        "Billing failures must return an honest server error, not a canned personality response."
+    )
+    assert "Error del servidor" in result, (
+        f"Expected honest server error message, got: {result!r}"
+    )

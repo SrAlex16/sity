@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from app.cortex.schemas import AIRequest
 from app.core.language import LANGUAGE_BLOCK
+from app.trace.logger import write_log
 
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
@@ -212,8 +213,20 @@ def generate_refusal_response(
         response = provider.generate(request)
         if response.ok and response.text:
             return response.text.strip()
-    except Exception:
-        pass
+    except Exception as exc:
+        from app.cortex.ai_gateway import is_billing_error
+        if is_billing_error(exc):
+            write_log(
+                level="CRITICAL",
+                module="classifier",
+                event="billing_error_in_refusal_generator",
+                trace_id=trace_id,
+                payload={"exc_msg": str(exc)[:300]},
+            )
+            return (
+                "Error del servidor: no se pudo procesar tu mensaje. "
+                "Inténtalo de nuevo en unos minutos."
+            )
     return random.choice(_REFUSAL_FALLBACKS)
 
 

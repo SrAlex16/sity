@@ -8,6 +8,16 @@ from app.trace.logger import write_log
 
 _CONTINUABLE_TASK_TYPES = frozenset({"chat_message", "chat_message_tool_result"})
 
+_BILLING_ERROR_TEXT = (
+    "Error del servidor: no se pudo procesar tu mensaje. "
+    "Inténtalo de nuevo en unos minutos."
+)
+
+
+def is_billing_error(exc: Exception) -> bool:
+    """True when the Anthropic API rejects due to insufficient credit balance."""
+    return "credit balance" in str(exc).lower() or "billing" in str(exc).lower()
+
 
 class AIGateway:
     provider: AITextProvider
@@ -83,6 +93,25 @@ class AIGateway:
                 response = self._continue_truncated(request, response)
             return response
         except Exception as exc:
+            if is_billing_error(exc):
+                write_log(
+                    level="CRITICAL",
+                    module="cortex",
+                    event="billing_error_detected",
+                    trace_id=request.trace_id,
+                    payload={"exc_msg": str(exc)[:300]},
+                )
+                return AIResponse(
+                    ok=False,
+                    provider=self.provider.name,
+                    model=self.provider.model,
+                    text=_BILLING_ERROR_TEXT,
+                    usage=AIUsageData(),
+                    latency_ms=0,
+                    fallback_used=False,
+                    error_type="billing_error",
+                    error_message=str(exc),
+                )
             write_log(
                 level="ERROR",
                 module="cortex",
@@ -127,6 +156,25 @@ class AIGateway:
                 raise RuntimeError("Empty response from Claude after tool results")
             return response
         except Exception as exc:
+            if is_billing_error(exc):
+                write_log(
+                    level="CRITICAL",
+                    module="cortex",
+                    event="billing_error_detected",
+                    trace_id=request.trace_id,
+                    payload={"exc_msg": str(exc)[:300]},
+                )
+                return AIResponse(
+                    ok=False,
+                    provider=self.provider.name,
+                    model=self.provider.model,
+                    text=_BILLING_ERROR_TEXT,
+                    usage=AIUsageData(),
+                    latency_ms=0,
+                    fallback_used=False,
+                    error_type="billing_error",
+                    error_message=str(exc),
+                )
             write_log(
                 level="ERROR",
                 module="cortex",

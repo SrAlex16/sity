@@ -189,3 +189,97 @@ def test_continuable_task_types_includes_expected() -> None:
     assert "chat_message_tool_result" in _CONTINUABLE_TASK_TYPES
     assert "action_planner" not in _CONTINUABLE_TASK_TYPES
     assert "refusal_generation" not in _CONTINUABLE_TASK_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Billing error handling
+# ---------------------------------------------------------------------------
+
+class _BillingError(Exception):
+    """Simulates anthropic.BadRequestError with credit balance message."""
+
+
+_BILLING_MSG = (
+    "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+    "'message': 'Your credit balance is too low to access the Anthropic API. "
+    "Please go to Plans & Billing to upgrade or purchase credits.'}}"
+)
+
+
+def test_billing_error_returns_error_type_billing_error() -> None:
+    """Gateway must return error_type='billing_error' (not 'BadRequestError')
+    when the API rejects due to insufficient credit balance."""
+    gw = _gateway_with_mock_provider([])
+    gw.provider.generate.side_effect = _BillingError(_BILLING_MSG)
+
+    result = gw.generate(_request(task_type="chat_message"))
+
+    assert not result.ok
+    assert result.error_type == "billing_error", (
+        f"Expected 'billing_error', got {result.error_type!r}. "
+        "Billing failures must not be reported as generic BadRequestError."
+    )
+
+
+def test_billing_error_text_is_not_personality_fallback() -> None:
+    """Response text must be an honest server error, NOT sarcastic personality text."""
+    gw = _gateway_with_mock_provider([])
+    gw.provider.generate.side_effect = _BillingError(_BILLING_MSG)
+
+    result = gw.generate(_request(task_type="chat_message"))
+
+    assert "Error del servidor" in result.text, (
+        f"Response text must be a server error message, not: {result.text!r}"
+    )
+    # Must NOT look like a personality fallback
+    personality_phrases = ["Qué maravilla depender de una nube", "No me apetece", "Paso.", "No."]
+    for phrase in personality_phrases:
+        assert phrase not in result.text, (
+            f"Billing error must not produce personality text. Found {phrase!r} in: {result.text!r}"
+        )
+
+
+def test_billing_error_in_generate_with_tool_results() -> None:
+    """Same billing error handling applies to generate_with_tool_results."""
+    gw = object.__new__(AIGateway)
+    mock_provider = MagicMock()
+    mock_provider.name = "mock"
+    mock_provider.model = "mock"
+    mock_provider.generate_with_tool_results.side_effect = _BillingError(_BILLING_MSG)
+    gw.provider = mock_provider
+
+    result = gw.generate_with_tool_results(
+        request=_request(),
+        first_response_content=[],
+        tool_results=[],
+    )
+
+    assert not result.ok
+    assert result.error_type == "billing_error"
+    assert "Error del servidor" in result.text
+
+
+def test_non_billing_bad_request_still_uses_generic_fallback() -> None:
+    """A non-billing BadRequestError must NOT be treated as billing_error."""
+
+    class _OtherError(Exception):
+        pass
+
+    gw = _gateway_with_mock_provider([])
+    gw.provider.generate.side_effect = _OtherError("invalid_request_error: tool_use ids mismatch")
+
+    result = gw.generate(_request(task_type="chat_message"))
+
+    assert not result.ok
+    assert result.error_type != "billing_error", (
+        "Non-billing errors must not be classified as billing_error"
+    )
+
+
+def test_is_billing_error_detects_credit_balance_message() -> None:
+    from app.cortex.ai_gateway import is_billing_error
+
+    assert is_billing_error(Exception("Your credit balance is too low"))
+    assert is_billing_error(Exception(_BILLING_MSG))
+    assert not is_billing_error(Exception("tool_use ids were found without tool_result blocks"))
+    assert not is_billing_error(Exception("rate_limit_error"))
