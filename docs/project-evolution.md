@@ -344,6 +344,15 @@ El bot fue eliminado en 2026-06-28:
 - Sección Telegram en `tests/test_tts.py` y `tests/test_chat_message_metadata.py` — eliminada
 - `python-telegram-bot` — eliminado de `requirements.txt`
 
+Segunda pasada de limpieza realizada el 2026-09-02, eliminando referencias residuales que habían quedado:
+- Comentario `# "web" | "telegram"` en `models.py` (campo `source_channel`)
+- `sity-telegram` en `_ALLOWED` de `tests/test_system_actions.py`
+- `sity-telegram` como fixture de `tests/test_system_config_actions.py`
+- `telegram:42` / `telegram:99` como session_id en `test_social_tools.py` y `test_social_memory.py`
+- Tests `test_chatmessage_source_channel_telegram` y `test_save_chat_message_source_channel_telegram` en `test_chat_message_metadata.py`
+- `source_channel="telegram"` en `test_turn_persistence.py`
+- Mención en `README.md` ("voz en chat y Telegram")
+
 ## Búsqueda web y markdown
 
 Se añadió la tool `web_search` para que Sity pueda acceder a información

@@ -708,7 +708,7 @@ class TestSocialContextBlock:
 
     def test_non_user_session_returns_empty(self) -> None:
         from app.chat.prompt_context import _build_social_context_block
-        block = _build_social_context_block(_make_null_session(), "telegram:99")
+        block = _build_social_context_block(_make_null_session(), "guest:99")
         assert block == ""
 
     def test_no_profile_returns_empty(self) -> None:

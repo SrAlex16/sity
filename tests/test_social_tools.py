@@ -98,7 +98,7 @@ class TestGuestBlocked:
     def test_non_user_session_returns_no_memory_message(self) -> None:
         from app.memory.db import engine
         with Session(engine) as sess:
-            ctx = _make_ctx("telegram:42", "Alex", sess)
+            ctx = _make_ctx("guest:42", "Alex", sess)
             result = handle_social_recall_impression(ctx)
         assert result.ok is True
         assert "relaciones" in result.message.lower() or "sesión" in result.message.lower()

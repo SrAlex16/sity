@@ -77,21 +77,21 @@ def test_save_passes_optional_fields(db_session: Session) -> None:
     persistence.save(
         role="sity",
         text="respuesta con voz",
-        trace_id="trc_test_fields",
+        trace_id="trc_test_optional_fields",
         tone_meta='{"sarcasm": 0.5}',
         output_mode="voice",
         tts_fragments=2,
-        source_channel="telegram",
+        source_channel="web",
     )
 
     row = db_session.exec(
-        select(ChatMessage).where(ChatMessage.trace_id == "trc_test_fields")
+        select(ChatMessage).where(ChatMessage.trace_id == "trc_test_optional_fields")
     ).first()
     assert row is not None
     assert row.tone_meta == '{"sarcasm": 0.5}'
     assert row.output_mode == "voice"
     assert row.tts_fragments == 2
-    assert row.source_channel == "telegram"
+    assert row.source_channel == "web"
 
 
 def test_save_explicit_metadata_overrides_default(db_session: Session) -> None:

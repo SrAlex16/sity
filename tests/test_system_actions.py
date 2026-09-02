@@ -22,7 +22,7 @@ from app.actions.system_actions import (
     wait_for_service_state,
 )
 
-_ALLOWED = ("sity-backend", "sity-telegram", "nginx")
+_ALLOWED = ("sity-backend", "nginx")
 
 _RUN_OK = {"ok": True, "stdout": "", "stderr": "", "command": ["sudo", "systemctl"]}
 _RUN_FAIL = {"ok": False, "stdout": "", "stderr": "failed", "command": []}

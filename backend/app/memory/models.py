@@ -117,7 +117,7 @@ class ChatMessage(SQLModel, table=True):
     audio_filename: Optional[str] = Field(default=None)  # persistent audio file in data/audio/
 
     # Origin channel
-    source_channel: str = Field(default="web")        # "web" | "telegram"
+    source_channel: str = Field(default="web")
 
 
 class User(SQLModel, table=True):

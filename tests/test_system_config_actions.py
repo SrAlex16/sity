@@ -43,7 +43,7 @@ def _run(payload: dict, config: dict | None = None):
 
 class TestParsePayload:
     def test_valid_json(self):
-        data = {"action": "add_allowed_service", "service_name": "sity-telegram"}
+        data = {"action": "add_allowed_service", "service_name": "sity-new-service"}
         assert parse_payload(json.dumps(data)) == data
 
     def test_invalid_json_raises(self):
@@ -124,10 +124,10 @@ class TestValidationErrors:
 class TestAddAllowedService:
     def test_adds_new_service_to_both_lists(self):
         cfg = _config(read_services=["nginx"], action_services=["nginx"])
-        result = _run({"action": "add_allowed_service", "service_name": "sity-telegram"}, cfg)
+        result = _run({"action": "add_allowed_service", "service_name": "sity-new-service"}, cfg)
         assert result["ok"] is True
         assert result["changed"] is True
-        assert "sity-telegram" in result["message"]
+        assert "sity-new-service" in result["message"]
 
     def test_idempotent_when_already_present(self):
         cfg = _config(read_services=["nginx"], action_services=["nginx"])

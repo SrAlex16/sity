@@ -370,15 +370,6 @@ def test_chatmessage_source_channel_defaults_to_web(db_session: Session) -> None
     assert msg.source_channel == "web"
 
 
-def test_chatmessage_source_channel_telegram(db_session: Session) -> None:
-    msg = ChatMessage(session_id="default", role="user", text="desde telegram",
-                      source_channel="telegram")
-    db_session.add(msg)
-    db_session.commit()
-    db_session.refresh(msg)
-    assert msg.source_channel == "telegram"
-
-
 def test_save_chat_message_source_channel_web(db_session: Session) -> None:
     from app.chat.chat_persistence import save_chat_message
 
@@ -388,26 +379,17 @@ def test_save_chat_message_source_channel_web(db_session: Session) -> None:
     assert row.source_channel == "web"
 
 
-def test_save_chat_message_source_channel_telegram(db_session: Session) -> None:
-    from app.chat.chat_persistence import save_chat_message
-
-    save_chat_message(db_session, role="user", text="telegram test", source_channel="telegram")
-    row = db_session.exec(select(ChatMessage).where(ChatMessage.text == "telegram test")).first()
-    assert row is not None
-    assert row.source_channel == "telegram"
-
-
 def test_save_chat_message_sity_inherits_source_channel(db_session: Session) -> None:
-    """Sity message persisted with source_channel matches the turn channel."""
+    """Sity message persisted with explicit source_channel stores it correctly."""
     from app.chat.chat_persistence import save_chat_message
 
-    save_chat_message(db_session, role="sity", text="respuesta telegram",
-                      source_channel="telegram")
+    save_chat_message(db_session, role="sity", text="respuesta de sity",
+                      source_channel="web")
     row = db_session.exec(
-        select(ChatMessage).where(ChatMessage.text == "respuesta telegram")
+        select(ChatMessage).where(ChatMessage.text == "respuesta de sity")
     ).first()
     assert row is not None
-    assert row.source_channel == "telegram"
+    assert row.source_channel == "web"
 
 
 # ---------------------------------------------------------------------------
