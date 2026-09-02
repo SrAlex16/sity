@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-01 (ronda nocturna de bugs de comportamiento — 10 commits; 2353 tests).
+Última actualización: 2026-09-02 (auditoría de seguridad externa + fixes de infraestructura y mypy — 5 commits; 2378 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2310+ tests en verde (pytest, 1 xfailed; 1 flaky conocido — ver Bugs conocidos activos)
+- 2378 tests en verde (pytest, 1 xfailed; 1 flaky conocido — ver Bugs conocidos activos)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -81,6 +81,81 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-02)
+
+- **Auditoría de seguridad externa (ChatGPT), 2026-09-01 — tres hallazgos, uno resuelto:**
+
+  La auditoría fue realizada por el propio Alex usando ChatGPT como atacante externo sobre
+  la sesión guest de la PWA. Todos los hallazgos fueron verificados con evidencia real de
+  base de datos (`sqlite3`, mensajes literales de la sesión auditada).
+
+  **Hallazgo 1 — `history_limit_for_message`: expansión de contexto forzada por palabra suelta
+  (commit `ee1d60d`). RESUELTO.**
+  Síntoma reproducido: un mensaje que empezaba con "Resume..." (inglés, "resumir" coloquial)
+  activaba la clave `"resume"` del matching por palabras y expandía la ventana de historial de
+  4 a 20 mensajes. El atacante podía iniciar cualquier mensaje con "Recuerdas", "Ayer",
+  "Resume" y forzar la reintroducción de contexto histórico completo, incluyendo intentos de
+  manipulación o datos sensibles de turnos anteriores, en el prompt del modelo.
+  Causa raíz: lista `context_heavy_terms` con 21 keywords en `toolset_selector.py` —
+  matching por substring sin validación de intención real.
+  Fix estructural: lista eliminada; reemplazada por `classify_history_need()` en
+  `message_classifier.py` (clasificador Haiku, mismo patrón ya usado en el proyecto para
+  `classify_message`, `open_loop_hook`, etc.). El clasificador recibe el mensaje completo y
+  devuelve `"deep"` (expansión a 20 turnos) o `"standard"` (límite base por config); falla
+  de forma segura a `"standard"` ante cualquier error. 13 tests nuevos en
+  `test_message_classifier.py` y `test_toolset_selector.py`; 4 tests de regresión
+  actualizados en `test_prompt_context.py`.
+
+  **Hallazgo 2 — Fabricación de nombre de tool inexistente. PENDIENTE sin fix propio.**
+  Durante la auditoría, Sity mencionó espontáneamente `update_personality_settings` como si
+  fuera una herramienta disponible para el usuario externo, y luego negó su existencia cuando
+  se le preguntó directamente. El fix de `history_limit_for_message` no afecta este hallazgo:
+  la fabricación de tool names es un comportamiento del modelo principal cuando el contexto
+  de herramientas disponibles no está suficientemente delimitado. Pendiente de diagnóstico
+  de causa raíz (¿schema leak? ¿alucinación espontánea? ¿restricciones de system prompt
+  insuficientes?) y decisión de fix.
+
+  **Hallazgo 3 — Bloque de contexto temporal acusado como inyección del usuario. PENDIENTE.**
+  Sity acusó al usuario de haber fabricado el bloque `[Contexto temporal: ...]` que el propio
+  backend inyecta en el prompt vía `time_context.py`. El modelo trató contenido legítimo del
+  sistema como input malicioso externo. El fix de `history_limit_for_message` no afecta este
+  hallazgo. Pendiente de decisión: ¿añadir marcado de origen más explícito en el bloque de
+  contexto temporal? ¿regla en `persona_system.md` sobre bloques del sistema?
+
+- **Manejo de errores de API generalizado (commit `24dce26`).**
+  Horas antes de la auditoría se había corregido el caso específico de `billing_error` (commit
+  de la ronda nocturna). El commit `24dce26` generaliza el mismo patrón a CUALQUIER fallo real
+  de la API de Anthropic: `classify_api_error()` en `ai_gateway.py` detecta
+  `rate_limit_error`, `timeout_error`, `connection_error` y `api_error` genérico, además de
+  `billing_error`. Para cada tipo: mensaje honesto al usuario (ej. "El servicio está saturado
+  en este momento — intenta de nuevo en unos minutos") en lugar de los textos sarcásticos
+  hardcodeados que ya existían; notificación al admin con deduplicación diaria por tipo de
+  error (no spamea si el error es recurrente). La infra de notificación (`_notify_admin_api_error`
+  en `turn_runner.py`, `NotificationFact`) ya existía del fix de billing; `24dce26` la amplía
+  al resto de tipos de error clasificados.
+
+- **Test flaky resuelto de raíz — causa real identificada (commits `9b03f45` + `943b824`).**
+  `test_new_session_inherits_global_fallback` fallaba intermitentemente en CI según el orden
+  de ejecución de tests. La hipótesis inicial (contaminación de estado entre tests) era
+  correcta, pero la causa raíz era más profunda: `default_config.yaml` tiene
+  `initiative_level: 0.60`, mientras que `CANONICAL_PERSONALITY["initiative_level"] = 0.05`.
+  El test que leía la personalidad global veía valores de YAML cuando ningún test anterior
+  había escrito en la DB, y `0.05` cuando `test_chaos_head_uses_session_settings_not_global_defaults`
+  había corrido primero y escrito algunos (pero no todos) los valores canónicos al global.
+  Fix: fixture `init_database` en `conftest.py` inicializa TODAS las claves de
+  `CANONICAL_PERSONALITY` en la DB de test al inicio de la sesión (`source="test_init",
+  session_id=None`). Cualquier test que lea globals parte de un baseline determinista
+  independientemente del orden.
+
+  Hallazgo colateral: con el test flaky resuelto, CI dejó de enmascararlo y reveló 16 errores
+  de mypy pre-existentes en 6 archivos. Corregidos en el mismo ciclo en `943b824`. Ninguno
+  tenía impacto funcional real excepto uno: `final_response_builder.py:257` llamaba a
+  `set_last_refusal()` sin `session_id` — bug funcional real (el tracker es por sesión) que
+  habría causado `TypeError` en el path override+refusal. Confirmado con logs que nunca se
+  activó en producción: la ruta que llega a `build_final_ai_response` con `refusal_mode=True`
+  requiere "es una orden" + refusal activo simultáneamente, combinación no ocurrida. Los otros
+  15 errores eran tipado (mypy: 0 errores en 186 archivos post-fix). Tests: 2378 passed, 1 xfailed.
 
 ## Completado recientemente (2026-09-01)
 
