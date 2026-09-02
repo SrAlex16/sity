@@ -680,10 +680,6 @@ Ver .env.example para la lista completa.
   con un **campo de texto libre de "contexto de usuario"** (nombre, ocupación,
   preferencias estables) que se inyecte en el prompt de sistema junto a los
   parámetros — sin sustituir los sliders, como capa adicional de personalización.
-- **Gestión de enlaces compartidos** — pantalla frontend para listar y
-  revocar todos los enlaces activos del usuario. El backend ya tiene
-  `DELETE /chat/share/{id}` pero no hay un listado de los propios enlaces
-  en la UI. `max_views` también podría configurarse desde `POST /chat/share`.
 - **ElevenLabs: mapeo voice_id por idioma** — si Sity responde en inglés
   pero la voz ElevenLabs configurada es en español, el acento/pronunciación
   serán incorrectos. La API de ElevenLabs no selecciona voz por idioma
@@ -729,11 +725,22 @@ Ver .env.example para la lista completa.
   Docker aislado de la red interna de la Pi como prerrequisito no negociable.
   Ver `docs/web-navigation-risk-analysis.md`.
 
-- **Pantalla "Logros" — Paso 1 + Fase 2a implementados** (commit `2cd013d`, 2026-08-28).
-  Catálogo: 46 logros en 6 categorías. Motor de desbloqueo + endpoint `GET /achievements`
-  + 21 triggers inline activos. Ver `docs/achievements-architecture.md` para catálogo
-  completo y estado de cada trigger. Pendiente: Fases 2b (post-turno: distancia
-  personalidad, trust, rachas, antigüedad), 2c (clasificador Haiku), Paso 3 (frontend).
+- **Pantalla "Logros" — COMPLETO** (commits `2cd013d`→`b651d1d`, 2026-08-28→2026-08-31).
+  Sistema completo: 42 logros en 6 categorías, frontend propio, notificaciones push al
+  desbloquear. Ver `docs/achievements-architecture.md` para catálogo y arquitectura.
+
+  **6 commits principales de la implementación completa:**
+  - `5e95ee8` — Fase 2b: triggers post-turno (distancia personalidad, trust, rachas, antigüedad cuenta)
+  - `fd7ee66` — Fase 2c: clasificador Haiku para `no_gods_no_masters`, `tsundere`, `you_win` + `curiosity_killed_the_cat` inline
+  - `1953534` — Paso 3: pantalla de logros en frontend (catálogo visual por categorías)
+  - `c41d34d` — catálogo limpio definitivo: 42 logros aprobados (retirados 4 no aprobados en revisión)
+  - `5877ceb` — UI: fuentes grandes, color rosa de desbloqueo, sonido
+  - `24761fa` — notificación global + push cuando la app está cerrada
+
+  **3 bugs encontrados durante verificación en producción:**
+  - `e88ce35` — `hello_world` mal categorizado en Memoria en lugar de Personalidad
+  - `f997c99` — Sity negaba tener sistema de logros ("No tengo visibilidad sobre eso")
+  - `135258c` — `chaos_head` nunca se desbloqueaba: `_check_personality` leía globals (chaos=0.84) en lugar de la sesión del usuario (chaos=1.0)
 
   **Fórmula del "encabronamiento"** (confirmada en `mobile/src/screens/PersonalityScreen.tsx:13-19`):
   ```
