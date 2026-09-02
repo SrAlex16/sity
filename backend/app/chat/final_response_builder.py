@@ -255,6 +255,7 @@ def build_final_ai_response(
     # 6. Track refusal if applicable
     if refusal_mode:
         set_last_refusal(
+            session_id=session_id,
             user_message=user_message,
             assistant_message=response.text,
             trace_id=trace_id,

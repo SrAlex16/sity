@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlmodel import Session, desc, select
+from sqlmodel import Session, col, desc, select
 
 from app.initiative.settings import get_initiative_settings
 from app.memory.models import ChatMessage, InitiativeEvalLog, OpenLoop
@@ -215,7 +215,7 @@ def _check_open_loop(
             OpenLoop.status == "pending",
             OpenLoop.detected_at <= cutoff,
         )
-        .order_by(OpenLoop.detected_at)   # oldest first → most overdue
+        .order_by(col(OpenLoop.detected_at))   # oldest first → most overdue
         .limit(1)
     ).first()
 

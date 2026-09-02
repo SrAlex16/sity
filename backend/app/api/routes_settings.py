@@ -219,6 +219,7 @@ def list_alters(
     current: CurrentUser = Depends(get_current_user),
 ):
     _require_non_guest(current)
+    assert current.user_id is not None
     return AlterService(session).list_alters(user_id=current.user_id)
 
 
@@ -230,6 +231,7 @@ def save_alter(
     current: CurrentUser = Depends(get_current_user),
 ):
     _require_non_guest(current)
+    assert current.user_id is not None
     return AlterService(session).save_alter(
         user_id=current.user_id,
         slot=slot,
@@ -245,6 +247,7 @@ def load_alter(
     current: CurrentUser = Depends(get_current_user),
 ):
     _require_non_guest(current)
+    assert current.user_id is not None
     try:
         personality = AlterService(session).load_alter(
             user_id=current.user_id,
@@ -264,6 +267,7 @@ def rename_alter(
     current: CurrentUser = Depends(get_current_user),
 ):
     _require_non_guest(current)
+    assert current.user_id is not None
     try:
         AlterService(session).rename_alter(
             user_id=current.user_id,
@@ -282,6 +286,7 @@ def clear_alter(
     current: CurrentUser = Depends(get_current_user),
 ):
     _require_non_guest(current)
+    assert current.user_id is not None
     AlterService(session).clear_alter(user_id=current.user_id, slot=slot)
 
 
@@ -293,6 +298,7 @@ def copy_alter(
     current: CurrentUser = Depends(get_current_user),
 ):
     _require_non_guest(current)
+    assert current.user_id is not None
     try:
         return AlterService(session).copy_alter(
             user_id=current.user_id,

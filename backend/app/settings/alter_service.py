@@ -44,6 +44,7 @@ class AlterService:
             if row is None:
                 result.append({"slot": slot, **_EMPTY_SLOT})
             else:
+                assert row.parameters_json is not None
                 result.append({
                     "slot": slot,
                     "name": row.name,
@@ -97,6 +98,7 @@ class AlterService:
         row = self._get_row(user_id, slot)
         if row is None:
             raise ValueError(f"Slot {slot} is empty — nothing to load")
+        assert row.parameters_json is not None
         params: dict[str, float] = json.loads(row.parameters_json)
         result = self._svc.set_all_personality(session_id, params)
         write_log(level="INFO", module="alters", event="alter_loaded",
@@ -133,6 +135,7 @@ class AlterService:
         src = self._get_row(user_id, from_slot)
         if src is None:
             raise ValueError(f"Source slot {from_slot} is empty — nothing to copy")
+        assert src.parameters_json is not None
         params: dict[str, float] = json.loads(src.parameters_json)
         existing = self._get_row(user_id, to_slot)
         now = utc_now()

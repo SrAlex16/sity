@@ -64,7 +64,7 @@ def _check_personality(db: Any, user_id: int, cfg: dict, unlock) -> None:
 
 def _check_social(db: Any, user_id: int, cfg: dict, unlock) -> None:
     try:
-        from sqlmodel import select
+        from sqlmodel import col, select
         from app.memory.models import SocialProfile, OpinionSnapshot
 
         profile = db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
@@ -84,7 +84,7 @@ def _check_social(db: Any, user_id: int, cfg: dict, unlock) -> None:
         snapshots = db.exec(
             select(OpinionSnapshot)
             .where(OpinionSnapshot.profile_id == profile.id)
-            .order_by(OpinionSnapshot.computed_at.desc())
+            .order_by(col(OpinionSnapshot.computed_at).desc())
         ).all()
         if not snapshots:
             return

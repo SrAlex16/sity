@@ -19,7 +19,10 @@ import os
 import statistics
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from app.memory.models import SocialReflection
 
 from sqlalchemy import text as sa_text
 from sqlmodel import Session, select
@@ -133,15 +136,16 @@ def _get_reflection_config() -> dict:
         }
 
 
-def _get_latest_active_reflection(profile_id: int, db: Session) -> Optional[object]:
+def _get_latest_active_reflection(profile_id: int, db: Session) -> Optional[SocialReflection]:
     from app.memory.models import SocialReflection, utc_now
+    from sqlmodel import col
     now = utc_now()
     return db.exec(
         select(SocialReflection)
         .where(SocialReflection.profile_id == profile_id)
         .where(SocialReflection.superseded_at == None)  # noqa: E711
         .where(SocialReflection.expires_at > now)
-        .order_by(SocialReflection.created_at.desc())
+        .order_by(col(SocialReflection.created_at).desc())
         .limit(1)
     ).first()
 
@@ -149,7 +153,7 @@ def _get_latest_active_reflection(profile_id: int, db: Session) -> Optional[obje
 def _has_sufficient_signal(
     *,
     user_id: int,
-    latest_reflection: Optional[object],
+    latest_reflection: Optional[SocialReflection],
     new_opinion: float,
     cfg: dict,
     db: Session,
