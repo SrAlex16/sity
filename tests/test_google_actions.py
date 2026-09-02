@@ -193,7 +193,7 @@ class TestPendingActionRunnerGoogleUserExtraction:
             mock_build.return_value = mock_service
             mock_service.events().insert().execute.return_value = fake_event
 
-            result = runner._run_google(action, "trc_test")
+            result = runner._run_google(action, "trc_test", "es")
 
         assert "Dentista" in result.text
         runner.cm.mark_executed.assert_called_once()
@@ -203,7 +203,7 @@ class TestPendingActionRunnerGoogleUserExtraction:
         action = self._make_action()
 
         with patch("app.actions.google_actions._resolve_creds", return_value=None):
-            result = runner._run_google(action, "trc_test")
+            result = runner._run_google(action, "trc_test", "es")
 
         assert "Conéctalo en Ajustes" in result.text
         runner.cm.mark_failed.assert_called_once()

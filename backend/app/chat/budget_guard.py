@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from sqlmodel import Session
 
 from app.api.schemas import ChatMessageResponse, UsageSummary
+from app.core.language import resolve_lang
 from app.core.runtime_config import RuntimeConfig
+from app.core.system_messages import t
 
 
 @dataclass
@@ -18,30 +20,33 @@ class BudgetGuardContext:
     runtime_config: RuntimeConfig
     save_message: Callable[..., None]
     get_usage: Callable[[Session], int]
+    language_override: str = field(default="auto")
 
 
 class ChatBudgetGuard:
     def try_handle(self, ctx: BudgetGuardContext) -> ChatMessageResponse | None:
         daily_used = ctx.get_usage(ctx.session)
+        lang = resolve_lang(ctx.language_override)
 
         if ctx.runtime_config.local_only:
-            text = (
-                "Modo local-only activo. No voy a llamar a Claude. "
-                "Puedo ejecutar confirmaciones pendientes y respuestas locales, "
-                "pero no interpretar nuevas peticiones con IA."
+            return self._response(
+                ctx=ctx,
+                text=t("budget_local_only", lang),
+                model="local-only-guard",
+                daily_used_tokens=daily_used,
             )
-            return self._response(ctx=ctx, text=text, model="local-only-guard", daily_used_tokens=daily_used)
 
         if (
             ctx.runtime_config.daily_token_hard_cap
             and ctx.daily_budget > 0
             and daily_used >= ctx.daily_budget
         ):
-            text = (
-                "Presupuesto diario de IA agotado. No voy a llamar a Claude ahora. "
-                "Puedo seguir resolviendo confirmaciones, acciones pendientes y respuestas locales que no requieran IA."
+            return self._response(
+                ctx=ctx,
+                text=t("budget_exhausted", lang),
+                model="budget-guard",
+                daily_used_tokens=daily_used,
             )
-            return self._response(ctx=ctx, text=text, model="budget-guard", daily_used_tokens=daily_used)
 
         return None
 

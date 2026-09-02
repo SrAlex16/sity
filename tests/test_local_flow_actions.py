@@ -25,7 +25,8 @@ def _flow(cm: MagicMock | None = None) -> ChatLocalFlow:
     return ChatLocalFlow(cm or _cm())
 
 
-def _ctx(message: str = "confirmo", budget: int = 1000) -> LocalFlowContext:
+def _ctx(message: str = "confirmo", budget: int = 1000,
+         language_override: str = "auto") -> LocalFlowContext:
     return LocalFlowContext(
         session=MagicMock(),
         trace_id="trc_test",
@@ -34,6 +35,7 @@ def _ctx(message: str = "confirmo", budget: int = 1000) -> LocalFlowContext:
         warnings=[],
         save_message=MagicMock(),
         get_usage=MagicMock(return_value=50),
+        language_override=language_override,
     )
 
 
@@ -275,3 +277,47 @@ class TestTryHandleNoProposal:
 
         assert isinstance(result, ChatMessageResponse)
         assert "git pull" in result.text
+
+
+# ---------------------------------------------------------------------------
+# Language support
+# ---------------------------------------------------------------------------
+
+class TestLocalFlowLanguage:
+    def test_action_not_found_english(self):
+        """language_override='en-US' → English 'can't find' message."""
+        cm = _cm()
+        cm.extract_action_id_from_message.return_value = "act_999"
+        cm.find_action_by_id.return_value = None
+        flow = _flow(cm)
+        result = flow._handle_referenced_action_id(_ctx("act_999", language_override="en-US"))
+        assert isinstance(result, ChatMessageResponse)
+        assert "can't find" in result.text.lower()
+        assert "encuentro" not in result.text.lower()
+
+    def test_ambiguous_confirmation_english(self):
+        """language_override='en-US' → 'Do you mean' in English."""
+        latest = _pending_action(summary="git push", confirmation_phrase="confirmo ejecutar act_001")
+        cm = _cm()
+        cm.find_pending_action_by_confirmation.return_value = None
+        cm.has_multiple_active_pending_actions.return_value = False
+        cm.find_pending_action_by_context.return_value = None
+        cm.is_generic_confirmation_message.return_value = True
+        cm.get_latest_active_pending_action.return_value = latest
+        flow = _flow(cm)
+        result = flow._handle_pending_confirmation(_ctx("ok", language_override="en-US"))
+        assert isinstance(result, ChatMessageResponse)
+        assert "do you mean" in result.text.lower()
+        assert "refieres" not in result.text.lower()
+
+    def test_multiple_pending_english(self):
+        """language_override='en-US' → 'multiple pending actions' in English."""
+        cm = _cm()
+        cm.find_pending_action_by_confirmation.return_value = None
+        cm.has_multiple_active_pending_actions.return_value = True
+        cm.is_generic_confirmation_message.return_value = True
+        flow = _flow(cm)
+        result = flow._handle_pending_confirmation(_ctx("ok", language_override="en-US"))
+        assert isinstance(result, ChatMessageResponse)
+        assert "multiple" in result.text.lower()
+        assert "varias" not in result.text.lower()

@@ -32,7 +32,7 @@ interface SettingsScreenProps {
 }
 
 // Language codes that have an ElevenLabs voice configured in the backend
-const ELEVENLABS_LANGUAGES = new Set<string>(['en-US', 'en-GB', 'ja']);
+const ELEVENLABS_LANGUAGES = new Set<string>(['es-ES', 'es-419', 'en-US', 'en-GB', 'ja']);
 
 export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProps) {
   const tl = TRANSLATIONS[uiLang].settings;

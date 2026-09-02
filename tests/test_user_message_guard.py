@@ -41,7 +41,8 @@ def mem_session(mem_engine):
 # ---------------------------------------------------------------------------
 
 def _make_ctx(session, session_id: str, *, is_admin: bool = False,
-              user_limit: int = 5, guest_limit: int = 2):
+              user_limit: int = 5, guest_limit: int = 2,
+              language_override: str = "auto"):
     from app.chat.user_message_guard import UserMessageGuardContext
     return UserMessageGuardContext(
         session=session,
@@ -52,6 +53,7 @@ def _make_ctx(session, session_id: str, *, is_admin: bool = False,
         user_limit=user_limit,
         guest_limit=guest_limit,
         save_message=MagicMock(),
+        language_override=language_override,
     )
 
 
@@ -216,3 +218,28 @@ def test_no_db_write_when_blocked(mem_session):
     UserMessageGuard().try_handle(ctx)  # blocked
     count_after = mem_session.get(DailyMessageUsage, "user:40").count
     assert count_before == count_after == 1
+
+
+# ---------------------------------------------------------------------------
+# Language support
+# ---------------------------------------------------------------------------
+
+def test_msg_limit_reached_english(mem_session):
+    """language_override='en-US' → English message, not Spanish."""
+    from app.chat.user_message_guard import UserMessageGuard
+    ctx = _make_ctx(mem_session, "user:50", user_limit=1, language_override="en-US")
+    UserMessageGuard().try_handle(ctx)  # count=1
+    result = UserMessageGuard().try_handle(ctx)  # blocked
+    assert result is not None
+    assert "limit" in result.text.lower()
+    assert "límite" not in result.text.lower()
+
+
+def test_msg_limit_reached_default_spanish(mem_session):
+    """language_override='auto' → Spanish (default behaviour unchanged)."""
+    from app.chat.user_message_guard import UserMessageGuard
+    ctx = _make_ctx(mem_session, "user:51", user_limit=1, language_override="auto")
+    UserMessageGuard().try_handle(ctx)
+    result = UserMessageGuard().try_handle(ctx)
+    assert result is not None
+    assert "límite" in result.text.lower()

@@ -23,6 +23,8 @@ from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
 from app.audio.tts_service import maybe_attach_tts
 from app.chat.artifacts import capture_artifact_from_path
 from app.chat.local_flow import LocalFlowContext
+from app.core.language import resolve_lang
+from app.core.system_messages import t
 from app.memory.models import ChatMessage, PendingAction
 from sqlmodel import select
 
@@ -39,7 +41,8 @@ class PendingActionRunner:
         self.cm = confirmation_manager
 
     def run(self, pending_action: PendingAction, ctx: LocalFlowContext) -> ChatMessageResponse:
-        result = self._execute(pending_action, ctx.trace_id)
+        lang = resolve_lang(ctx.language_override)
+        result = self._execute(pending_action, ctx.trace_id, lang)
 
         if result.was_executed:
             from app.achievements.triggers.inline import fire as _fire_ach
@@ -74,17 +77,13 @@ class PendingActionRunner:
             artifacts=[result.artifact] if result.artifact else [],
         )
 
-        from app.settings.settings_service import SettingsService
-        _lang_override = SettingsService(ctx.session).get_language_override(
-            session_id=self.cm._session_id
-        )
         tts_result = maybe_attach_tts(
             text=result.text,
             session=ctx.session,
             session_id=self.cm._session_id,
             trace_id=ctx.trace_id,
             result=response,
-            language_override=_lang_override,
+            language_override=ctx.language_override,
         )
         if tts_result is not None:
             n_fragments, audio_filename = tts_result
@@ -102,77 +101,83 @@ class PendingActionRunner:
 
         return response
 
-    def _execute(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _execute(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         if action.action_type == "git":
-            return self._run_git(action, trace_id)
+            return self._run_git(action, trace_id, lang)
         if action.action_type == "system":
-            return self._run_system(action, trace_id)
+            return self._run_system(action, trace_id, lang)
         if action.action_type == "system_config":
-            return self._run_system_config(action, trace_id)
+            return self._run_system_config(action, trace_id, lang)
         if action.action_type == "file":
-            return self._run_file(action, trace_id)
+            return self._run_file(action, trace_id, lang)
         if action.action_type == "sense":
-            return self._run_sense(action, trace_id)
+            return self._run_sense(action, trace_id, lang)
         if action.action_type == "google":
-            return self._run_google(action, trace_id)
+            return self._run_google(action, trace_id, lang)
         if action.action_type == "ha":
-            return self._run_ha(action, trace_id)
-        return _ActionResult(text=f"Tipo de acción desconocido: {action.action_type}")
+            return self._run_ha(action, trace_id, lang)
+        return _ActionResult(text=t("action_unknown_type", lang, action_type=action.action_type))
 
-    def _run_git(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_git(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = parse_git_payload(action.payload_json)
             result = execute_git_action(payload)
             if result.get("ok"):
                 self.cm.mark_executed(action, trace_id)
-                lines = [f"Acción ejecutada: {action.summary}"]
+                no_output = t("no_output", lang)
+                lines = [t("action_executed", lang, summary=action.summary)]
                 if result.get("pre_command"):
-                    lines.append(f"\nPreparación: {' '.join(str(x) for x in result['pre_command'])}")
+                    cmd_str = ' '.join(str(x) for x in result['pre_command'])
+                    lines.append(t("action_pre_command", lang, cmd=cmd_str))
                     pre_out = result.get("pre_stdout", "").strip()
                     if pre_out:
-                        lines.append(f"Salida: {pre_out}")
-                lines.append(f"\nComando: {' '.join(str(x) for x in result.get('command', []))}")
-                lines.append(f"Salida:\n{result.get('stdout', '') or '(sin salida)'}")
+                        lines.append(t("action_pre_stdout", lang, out=pre_out))
+                cmd_str = ' '.join(str(x) for x in result.get('command', []))
+                lines.append(t("action_command", lang, cmd=cmd_str))
+                lines.append(t("action_stdout", lang, stdout=result.get('stdout', '') or no_output))
                 return _ActionResult(text="\n".join(lines), was_executed=True)
             else:
-                error = result.get("stderr", "Error desconocido")
+                error = result.get("stderr") or t("unknown_error", lang)
                 self.cm.mark_failed(action, trace_id, error)
                 return _ActionResult(
-                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{error}"
+                    text=t("action_exec_failed", lang, action_id=action.id, error=error)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
 
-    def _run_system(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_system(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = parse_system_payload(action.payload_json)
             result = execute_system_action(payload)
             if result.get("ok"):
                 self.cm.mark_executed(action, trace_id)
+                no_output = t("no_output", lang)
+                cmd_str = ' '.join(str(x) for x in result.get('command', []))
+                stdout = result.get('stdout', '') or no_output
                 text = (
-                    f"Acción ejecutada: {action.summary}\n\n"
-                    f"Comando: {' '.join(str(x) for x in result.get('command', []))}\n"
-                    f"Salida:\n{result.get('stdout', '') or '(sin salida)'}"
+                    t("action_executed", lang, summary=action.summary) + "\n\n"
+                    + t("action_command", lang, cmd=cmd_str).lstrip() + "\n"
+                    + t("action_stdout", lang, stdout=stdout)
                 )
                 if result.get("post_status"):
-                    text += f"\nEstado posterior: {result['post_status']}"
+                    text += t("sys_post_status", lang, status=result['post_status'])
                 return _ActionResult(text=text, was_executed=True)
             else:
                 error = (
                     result.get("stderr")
                     or result.get("stdout")
-                    or f"El comando terminó sin confirmación de éxito. Estado posterior: {result.get('post_status', 'desconocido')}"
+                    or t("sys_no_confirm", lang, post_status=result.get('post_status', t("unknown_error", lang)))
                 )
                 self.cm.mark_failed(action, trace_id, error)
                 return _ActionResult(
-                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{error}"
+                    text=t("action_exec_failed", lang, action_id=action.id, error=error)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
 
-    def _run_system_config(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_system_config(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = parse_system_config_payload(action.payload_json)
             result = execute_system_config_action(payload)
@@ -180,22 +185,22 @@ class PendingActionRunner:
                 self.cm.mark_executed(action, trace_id)
                 return _ActionResult(
                     text=(
-                        f"Acción ejecutada: {action.summary}\n\n"
-                        f"{result.get('message', 'Configuración actualizada.')}"
+                        t("action_executed", lang, summary=action.summary) + "\n\n"
+                        + result.get('message', t("config_updated", lang))
                     ),
                     was_executed=True,
                 )
             else:
-                error = result.get("stderr", "Error desconocido")
+                error = result.get("stderr") or t("unknown_error", lang)
                 self.cm.mark_failed(action, trace_id, error)
                 return _ActionResult(
-                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{error}"
+                    text=t("action_exec_failed", lang, action_id=action.id, error=error)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
 
-    def _run_file(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_file(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = json.loads(action.payload_json)
             payload["pending_action_id"] = action.id
@@ -206,53 +211,57 @@ class PendingActionRunner:
                 self.cm.mark_executed(action, trace_id)
                 path = result.get("path", "")
                 if file_action == "apply_unified_diff":
-                    text = f"Unified diff aplicado: {path}"
+                    text = t("file_diff_applied", lang, path=path)
                 elif file_action == "rollback_file_change":
-                    restored_from = result.get("restored_from_backup_path", "")
-                    text = f"Rollback aplicado: {path}\nRestaurado desde: {restored_from}"
+                    backup = result.get("restored_from_backup_path", "")
+                    text = t("file_rollback_applied", lang, path=path, backup=backup)
                 elif file_action == "apply_text_patch":
-                    text = f"Patch aplicado: {path}"
+                    text = t("file_patch_applied", lang, path=path)
                 elif file_action == "write_file":
-                    created = result.get("created", True)
-                    text = f"Archivo {'creado' if created else 'sobreescrito'}: {path}"
+                    key = "file_created" if result.get("created", True) else "file_overwritten"
+                    text = t(key, lang, path=path)
                 else:
-                    text = f"Acción de archivo ejecutada: {path}"
+                    text = t("file_action_executed", lang, path=path)
                 return _ActionResult(text=text, was_executed=True)
             else:
-                error = result.get("error", "Error desconocido")
+                error = result.get("error") or t("unknown_error", lang)
                 self.cm.mark_failed(action, trace_id, error)
                 if file_action == "apply_unified_diff":
-                    text = f"No he podido aplicar el unified diff: {error}"
+                    text = t("file_diff_failed", lang, error=error)
                 elif file_action == "rollback_file_change":
-                    text = f"No he podido hacer el rollback: {error}"
+                    text = t("file_rollback_failed", lang, error=error)
                 elif file_action == "apply_text_patch":
-                    text = f"No he podido aplicar el patch: {error}"
+                    text = t("file_patch_failed", lang, error=error)
                 else:
-                    text = f"No he podido escribir el archivo: {error}"
+                    text = t("file_write_failed", lang, error=error)
                 return _ActionResult(text=text)
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la acción de archivo: {exc}")
+            return _ActionResult(text=t("file_action_exception", lang, exc=str(exc)))
 
-    def _run_sense(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_sense(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = parse_sense_payload(action.payload_json)
             result = execute_sense_action(payload)
             if result.get("ok"):
                 self.cm.mark_executed(action, trace_id)
                 artifact = capture_artifact_from_path(str(result.get("path", "")))
-                return _ActionResult(text=f"Listo. {action.summary}.", artifact=artifact, was_executed=True)
+                return _ActionResult(
+                    text=t("sense_done", lang, summary=action.summary),
+                    artifact=artifact,
+                    was_executed=True,
+                )
             else:
-                error = result.get("stderr") or result.get("stdout") or "Error desconocido"
+                error = result.get("stderr") or result.get("stdout") or t("unknown_error", lang)
                 self.cm.mark_failed(action, trace_id, error)
                 return _ActionResult(
-                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{error}"
+                    text=t("action_exec_failed", lang, action_id=action.id, error=error)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
 
-    def _run_ha(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_ha(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = parse_ha_payload(action.payload_json)
             result = execute_ha_action(payload)
@@ -262,13 +271,13 @@ class PendingActionRunner:
             else:
                 self.cm.mark_failed(action, trace_id, result.text)
                 return _ActionResult(
-                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{result.text}"
+                    text=t("action_exec_failed", lang, action_id=action.id, error=result.text)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
 
-    def _run_google(self, action: PendingAction, trace_id: str) -> _ActionResult:
+    def _run_google(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
         try:
             payload = parse_google_payload(action.payload_json)
             sid: str = self.cm._session_id
@@ -285,8 +294,8 @@ class PendingActionRunner:
             else:
                 self.cm.mark_failed(action, trace_id, result.text)
                 return _ActionResult(
-                    text=f"No he podido ejecutar la acción pendiente {action.id}.\n\nError:\n{result.text}"
+                    text=t("action_exec_failed", lang, action_id=action.id, error=result.text)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
-            return _ActionResult(text=f"Falló la ejecución de la acción pendiente {action.id}: {exc}")
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))

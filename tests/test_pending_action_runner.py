@@ -41,7 +41,7 @@ def _action(action_type: str, payload: dict | None = None, *, summary: str = "Te
     )
 
 
-def _ctx(*, budget: int = 1000) -> LocalFlowContext:
+def _ctx(*, budget: int = 1000, language_override: str = "auto") -> LocalFlowContext:
     return LocalFlowContext(
         session=MagicMock(),
         trace_id="trc_test",
@@ -50,6 +50,7 @@ def _ctx(*, budget: int = 1000) -> LocalFlowContext:
         warnings=[],
         save_message=MagicMock(),
         get_usage=MagicMock(return_value=42),
+        language_override=language_override,
     )
 
 
@@ -63,12 +64,6 @@ def _runner() -> tuple[PendingActionRunner, MagicMock]:
 # ---------------------------------------------------------------------------
 
 class TestRun:
-    @pytest.fixture(autouse=True)
-    def _patch_settings_service(self):
-        with patch("app.settings.settings_service.SettingsService") as mock_svc:
-            mock_svc.return_value.get_language_override.return_value = "auto"
-            yield
-
     def test_run_saves_user_and_sity_messages(self):
         runner, _ = _runner()
         ctx = _ctx()
@@ -117,6 +112,29 @@ class TestRun:
         cm.mark_executed.assert_not_called()
         cm.mark_failed.assert_not_called()
 
+    def test_run_unknown_action_type_english(self):
+        """language_override='en-US' → English message for unknown action type."""
+        runner, _ = _runner()
+        ctx = _ctx(language_override="en-US")
+        action = _action("nonexistent_type")
+        resp = runner.run(action, ctx)
+
+        assert "unknown" in resp.text.lower()
+        assert "desconocido" not in resp.text.lower()
+
+    def test_run_git_success_english(self):
+        """language_override='en-US' → 'Action executed' in English."""
+        runner, _ = _runner()
+        ctx = _ctx(language_override="en-US")
+        action = _action("git", summary="git pull")
+        with patch("app.chat.pending_action_runner.parse_git_payload", return_value={}), \
+             patch("app.chat.pending_action_runner.execute_git_action",
+                   return_value={"ok": True, "command": ["git", "pull"], "stdout": ""}):
+            resp = runner.run(action, ctx)
+
+        assert "Action executed" in resp.text
+        assert "Acción ejecutada" not in resp.text
+
 
 # ---------------------------------------------------------------------------
 # Git actions
@@ -128,7 +146,7 @@ class TestRunGit:
         result = {"ok": True, "command": ["git", "pull"], "stdout": "Already up to date."}
         with patch("app.chat.pending_action_runner.parse_git_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_git_action", return_value=result):
-            r = runner._run_git(_action("git", summary="git pull"), "trc")
+            r = runner._run_git(_action("git", summary="git pull"), "trc", "es")
 
         cm.mark_executed.assert_called_once()
         cm.mark_failed.assert_not_called()
@@ -145,7 +163,7 @@ class TestRunGit:
         }
         with patch("app.chat.pending_action_runner.parse_git_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_git_action", return_value=result):
-            r = runner._run_git(_action("git"), "trc")
+            r = runner._run_git(_action("git"), "trc", "es")
 
         assert "Preparación" in r.text
         assert "From origin" in r.text
@@ -155,7 +173,7 @@ class TestRunGit:
         result = {"ok": False, "stderr": "Permission denied"}
         with patch("app.chat.pending_action_runner.parse_git_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_git_action", return_value=result):
-            r = runner._run_git(_action("git"), "trc")
+            r = runner._run_git(_action("git"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "Permission denied" in r.text
@@ -164,7 +182,7 @@ class TestRunGit:
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_git_payload", side_effect=ValueError("bad json")):
-            r = runner._run_git(_action("git"), "trc")
+            r = runner._run_git(_action("git"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "bad json" in r.text
@@ -181,7 +199,7 @@ class TestRunSystem:
         result = {"ok": True, "command": ["systemctl", "restart", "sity-backend"], "stdout": "", "post_status": "active"}
         with patch("app.chat.pending_action_runner.parse_system_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_system_action", return_value=result):
-            r = runner._run_system(_action("system"), "trc")
+            r = runner._run_system(_action("system"), "trc", "es")
 
         cm.mark_executed.assert_called_once()
         assert "active" in r.text
@@ -191,7 +209,7 @@ class TestRunSystem:
         result = {"ok": False, "stderr": "Unit not found"}
         with patch("app.chat.pending_action_runner.parse_system_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_system_action", return_value=result):
-            r = runner._run_system(_action("system"), "trc")
+            r = runner._run_system(_action("system"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "Unit not found" in r.text
@@ -202,7 +220,7 @@ class TestRunSystem:
         result = {"ok": False, "stderr": "", "stdout": "", "post_status": "failed"}
         with patch("app.chat.pending_action_runner.parse_system_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_system_action", return_value=result):
-            r = runner._run_system(_action("system"), "trc")
+            r = runner._run_system(_action("system"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "failed" in r.text
@@ -210,7 +228,7 @@ class TestRunSystem:
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_system_payload", side_effect=RuntimeError("oops")):
-            r = runner._run_system(_action("system"), "trc")
+            r = runner._run_system(_action("system"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "oops" in r.text
@@ -226,7 +244,7 @@ class TestRunSystemConfig:
         result = {"ok": True, "message": "Config updated."}
         with patch("app.chat.pending_action_runner.parse_system_config_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_system_config_action", return_value=result):
-            r = runner._run_system_config(_action("system_config"), "trc")
+            r = runner._run_system_config(_action("system_config"), "trc", "es")
 
         cm.mark_executed.assert_called_once()
         assert "Config updated." in r.text
@@ -236,7 +254,7 @@ class TestRunSystemConfig:
         result = {"ok": False, "stderr": "Config key unknown"}
         with patch("app.chat.pending_action_runner.parse_system_config_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_system_config_action", return_value=result):
-            r = runner._run_system_config(_action("system_config"), "trc")
+            r = runner._run_system_config(_action("system_config"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "Config key unknown" in r.text
@@ -244,7 +262,7 @@ class TestRunSystemConfig:
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_system_config_payload", side_effect=KeyError("missing")):
-            r = runner._run_system_config(_action("system_config"), "trc")
+            r = runner._run_system_config(_action("system_config"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
 
@@ -262,7 +280,7 @@ class TestRunFile:
         action = _action("file", {"action": "write_file"})
         result = {"ok": True, "path": "/tmp/foo.txt", "created": True}
         with self._patch_file(result):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         cm.mark_executed.assert_called_once()
         assert "creado" in r.text
 
@@ -271,7 +289,7 @@ class TestRunFile:
         action = _action("file", {"action": "write_file"})
         result = {"ok": True, "path": "/tmp/foo.txt", "created": False}
         with self._patch_file(result):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         assert "sobreescrito" in r.text
 
     def test_apply_unified_diff_success(self):
@@ -279,7 +297,7 @@ class TestRunFile:
         action = _action("file", {"action": "apply_unified_diff"})
         result = {"ok": True, "path": "/tmp/foo.txt"}
         with self._patch_file(result):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         assert "Unified diff aplicado" in r.text
 
     def test_rollback_success(self):
@@ -287,7 +305,7 @@ class TestRunFile:
         action = _action("file", {"action": "rollback_file_change"})
         result = {"ok": True, "path": "/tmp/foo.txt", "restored_from_backup_path": "/tmp/foo.bak"}
         with self._patch_file(result):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         assert "Rollback" in r.text
         assert "/tmp/foo.bak" in r.text
 
@@ -296,7 +314,7 @@ class TestRunFile:
         action = _action("file", {"action": "apply_unified_diff"})
         result = {"ok": False, "error": "Hunk mismatch"}
         with self._patch_file(result):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         cm.mark_failed.assert_called_once()
         assert "unified diff" in r.text.lower()
         assert "Hunk mismatch" in r.text
@@ -306,14 +324,14 @@ class TestRunFile:
         action = _action("file", {"action": "rollback_file_change"})
         result = {"ok": False, "error": "Backup not found"}
         with self._patch_file(result):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         assert "rollback" in r.text.lower()
 
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         action = _action("file", {"action": "write_file"})
         with patch("app.chat.pending_action_runner.execute_file_action", side_effect=OSError("disk full")):
-            r = runner._run_file(action, "trc")
+            r = runner._run_file(action, "trc", "es")
         cm.mark_failed.assert_called_once()
         assert "disk full" in r.text
 
@@ -322,7 +340,7 @@ class TestRunFile:
         runner, cm = _runner()
         action = _action("file")
         action.payload_json = "not-valid-json{"
-        r = runner._run_file(action, "trc")
+        r = runner._run_file(action, "trc", "es")
         cm.mark_failed.assert_called_once()
         assert "Falló" in r.text
 
@@ -337,7 +355,7 @@ class TestRunHA:
         ha_result = HaActionResult(ok=True, text="Luz encendida.")
         with patch("app.chat.pending_action_runner.parse_ha_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_ha_action", return_value=ha_result):
-            r = runner._run_ha(_action("ha"), "trc")
+            r = runner._run_ha(_action("ha"), "trc", "es")
 
         cm.mark_executed.assert_called_once()
         assert r.text == "Luz encendida."
@@ -347,7 +365,7 @@ class TestRunHA:
         ha_result = HaActionResult(ok=False, text="Entity not found")
         with patch("app.chat.pending_action_runner.parse_ha_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_ha_action", return_value=ha_result):
-            r = runner._run_ha(_action("ha"), "trc")
+            r = runner._run_ha(_action("ha"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "Entity not found" in r.text
@@ -355,7 +373,7 @@ class TestRunHA:
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_ha_payload", side_effect=ConnectionError("HA offline")):
-            r = runner._run_ha(_action("ha"), "trc")
+            r = runner._run_ha(_action("ha"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "HA offline" in r.text
@@ -377,7 +395,7 @@ class TestRunGoogle:
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_google_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_google_action", return_value=self._google_result(True, "Evento creado.")):
-            r = runner._run_google(_action("google"), "trc")
+            r = runner._run_google(_action("google"), "trc", "es")
 
         cm.mark_executed.assert_called_once()
         assert r.text == "Evento creado."
@@ -386,7 +404,7 @@ class TestRunGoogle:
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_google_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_google_action", return_value=self._google_result(False, "Token expired")):
-            r = runner._run_google(_action("google"), "trc")
+            r = runner._run_google(_action("google"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "Token expired" in r.text
@@ -394,7 +412,7 @@ class TestRunGoogle:
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_google_payload", side_effect=TimeoutError("timeout")):
-            r = runner._run_google(_action("google"), "trc")
+            r = runner._run_google(_action("google"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "timeout" in r.text
@@ -411,7 +429,7 @@ class TestRunSense:
         with patch("app.chat.pending_action_runner.parse_sense_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_sense_action", return_value=result), \
              patch("app.chat.pending_action_runner.capture_artifact_from_path", return_value=None):
-            r = runner._run_sense(_action("sense", summary="Foto tomada"), "trc")
+            r = runner._run_sense(_action("sense", summary="Foto tomada"), "trc", "es")
 
         cm.mark_executed.assert_called_once()
         assert r.artifact is None
@@ -421,7 +439,7 @@ class TestRunSense:
         result = {"ok": False, "stderr": "Camera unavailable"}
         with patch("app.chat.pending_action_runner.parse_sense_payload", return_value={}), \
              patch("app.chat.pending_action_runner.execute_sense_action", return_value=result):
-            r = runner._run_sense(_action("sense"), "trc")
+            r = runner._run_sense(_action("sense"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "Camera unavailable" in r.text
@@ -429,7 +447,7 @@ class TestRunSense:
     def test_exception_marks_failed(self):
         runner, cm = _runner()
         with patch("app.chat.pending_action_runner.parse_sense_payload", side_effect=RuntimeError("sensor error")):
-            r = runner._run_sense(_action("sense"), "trc")
+            r = runner._run_sense(_action("sense"), "trc", "es")
 
         cm.mark_failed.assert_called_once()
         assert "sensor error" in r.text

@@ -160,6 +160,7 @@ audio:
   cleanup_days: 7
   elevenlabs_daily_char_limit: 10000
   elevenlabs_voice_ids:
+    es: "f18RlRJGEw0TaGYwmk8B"
     en: "hod33eJyEU4TLqiYFttr"
     ja: "8kgj5469z1URcH4MB2G4"
 

@@ -49,6 +49,7 @@ class ChatPreAIFlow:
             warnings=[],
             save_message=self.ctx.persistence.save,
             get_usage=get_today_token_usage,
+            language_override=self.ctx.language_override,
         )
 
         local_response = self.local_flow.try_handle(_local_ctx)
@@ -77,6 +78,7 @@ class ChatPreAIFlow:
                 user_limit=int(auth_config.get("user_daily_message_limit", 100)),
                 guest_limit=int(auth_config.get("guest_daily_message_limit", 20)),
                 save_message=self.ctx.persistence.save,
+                language_override=self.ctx.language_override,
             )
         )
         if msg_guard_response:
@@ -91,6 +93,7 @@ class ChatPreAIFlow:
                 runtime_config=self.runtime_config,
                 save_message=self.ctx.persistence.save,
                 get_usage=get_today_token_usage,
+                language_override=self.ctx.language_override,
             )
         )
         if budget_response:

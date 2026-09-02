@@ -18,20 +18,22 @@ import pytest
 
 from app.audio.tts_service import _resolve_elevenlabs_voice_id
 
-_VOICE_IDS = {"en": "voice-en-id", "ja": "voice-ja-id"}
+_VOICE_IDS = {"es": "voice-es-id", "en": "voice-en-id", "ja": "voice-ja-id"}
 
 
 @pytest.mark.parametrize("lang_override,expected", [
-    ("en-US", "voice-en-id"),
-    ("en-GB", "voice-en-id"),
-    ("ja",    "voice-ja-id"),
+    ("es-ES",  "voice-es-id"),
+    ("es-419", "voice-es-id"),
+    ("en-US",  "voice-en-id"),
+    ("en-GB",  "voice-en-id"),
+    ("ja",     "voice-ja-id"),
 ])
 def test_resolve_voice_id_supported_languages(lang_override, expected):
     assert _resolve_elevenlabs_voice_id(_VOICE_IDS, lang_override) == expected
 
 
 @pytest.mark.parametrize("lang_override", [
-    "auto", "es-ES", "es-419", "fr-FR", "de-DE", "pt-BR", "it-IT", "",
+    "auto", "fr-FR", "de-DE", "pt-BR", "it-IT", "",
 ])
 def test_resolve_voice_id_unsupported_returns_none(lang_override):
     assert _resolve_elevenlabs_voice_id(_VOICE_IDS, lang_override) is None
@@ -63,7 +65,7 @@ def _piper_result():
 
 _FAKE_AUDIO_CFG = {
     "audio": {
-        "elevenlabs_voice_ids": {"en": "voice-en-id", "ja": "voice-ja-id"},
+        "elevenlabs_voice_ids": {"es": "voice-es-id", "en": "voice-en-id", "ja": "voice-ja-id"},
         "elevenlabs_daily_char_limit": 10000,
         "persist_tts": False,
     }
@@ -105,8 +107,8 @@ def _run_attach(language_override: str, tts_engine: str = "elevenlabs"):
 
 
 def test_elevenlabs_unsupported_language_falls_back_to_piper():
-    """ElevenLabs engine with es-ES (no voice) must use Piper and log the fallback."""
-    mock_synth, mock_log = _run_attach("es-ES")
+    """ElevenLabs engine with fr-FR (no voice) must use Piper and log the fallback."""
+    mock_synth, mock_log = _run_attach("fr-FR")
 
     call_kwargs = mock_synth.call_args[1]
     assert call_kwargs["tts_engine"] == "piper", (
@@ -124,6 +126,15 @@ def test_elevenlabs_supported_language_uses_elevenlabs():
     call_kwargs = mock_synth.call_args[1]
     assert call_kwargs["tts_engine"] == "elevenlabs"
     assert call_kwargs["voice_id"] == "voice-en-id"
+
+
+def test_elevenlabs_spanish_uses_correct_voice_id():
+    """Spanish language (es-ES) must receive the es voice_id."""
+    mock_synth, _ = _run_attach("es-ES")
+
+    call_kwargs = mock_synth.call_args[1]
+    assert call_kwargs["tts_engine"] == "elevenlabs"
+    assert call_kwargs["voice_id"] == "voice-es-id"
 
 
 def test_elevenlabs_japanese_uses_correct_voice_id():

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Union
 
 from sqlmodel import Session
@@ -9,6 +9,8 @@ from sqlmodel import Session
 from app.actions.confirmation_manager import ConfirmationManager
 from app.api.schemas import ChatMessageResponse, UsageSummary
 from app.chat.model_router import LocalFlowSignal, clear_proposal, get_proposal
+from app.core.language import resolve_lang
+from app.core.system_messages import t
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ class LocalFlowContext:
     warnings: list[str]
     save_message: Callable[..., None]
     get_usage: Callable[[Session], int]
+    language_override: str = field(default="auto")
 
 
 class ChatLocalFlow:
@@ -121,6 +124,7 @@ class ChatLocalFlow:
             return None
 
         referenced_action = self.confirmation_manager.find_action_by_id(referenced_action_id)
+        lang = resolve_lang(ctx.language_override)
 
         if referenced_action and referenced_action.status == "pending":
             normalized = ctx.message.strip().lower()
@@ -130,34 +134,32 @@ class ChatLocalFlow:
                 return None
 
             if self.confirmation_manager.message_starts_with_confirmation_prefix(ctx.message):
-                text = (
-                    f"He detectado la acción `{referenced_action_id}`, pero la confirmación debe ser exacta.\n\n"
-                    f"Usa: `{referenced_action.confirmation_phrase}`"
+                text = t(
+                    "action_id_exact_needed", lang,
+                    action_id=referenced_action_id,
+                    phrase=referenced_action.confirmation_phrase,
                 )
                 return self._response(ctx=ctx, text=text)
 
             return None
 
         if referenced_action and referenced_action.status != "pending":
-            text = (
-                f"La acción `{referenced_action_id}` no está pendiente; "
-                f"su estado actual es `{referenced_action.status}`."
+            text = t(
+                "action_not_pending", lang,
+                action_id=referenced_action_id,
+                status=referenced_action.status,
             )
-
             if referenced_action.status == "executed":
-                text += " Ya fue ejecutada, no voy a repetirla."
+                text += t("action_already_executed", lang)
             elif referenced_action.status == "expired":
-                text += " Ya expiró. Crea una acción nueva si todavía quieres hacer eso."
+                text += t("action_expired", lang)
             elif referenced_action.status == "failed":
-                text += " Falló anteriormente. Crea una acción nueva si quieres reintentarlo."
+                text += t("action_previously_failed", lang)
 
             return self._response(ctx=ctx, text=text)
 
         if not referenced_action:
-            text = (
-                f"No encuentro ninguna acción con ID `{referenced_action_id}`. "
-                "Puede que sea antigua, incorrecta o de otra base de datos."
-            )
+            text = t("action_not_found", lang, action_id=referenced_action_id)
             return self._response(ctx=ctx, text=text)
 
         return None
@@ -168,15 +170,13 @@ class ChatLocalFlow:
         if pending_action:
             return None
 
+        lang = resolve_lang(ctx.language_override)
+
         if (
             self.confirmation_manager.has_multiple_active_pending_actions()
             and self.confirmation_manager.is_generic_confirmation_message(ctx.message)
         ):
-            text = (
-                "Hay varias acciones pendientes, así que no voy a adivinar cuál quieres ejecutar. "
-                "Confirma usando la frase exacta de la acción, tipo `confirmo ejecutar act_xxxxxxxx`."
-            )
-            return self._response(ctx=ctx, text=text)
+            return self._response(ctx=ctx, text=t("multiple_pending_actions", lang))
 
         pending_action = self.confirmation_manager.find_pending_action_by_context(ctx.message)
 
@@ -186,9 +186,10 @@ class ChatLocalFlow:
         if self.confirmation_manager.is_generic_confirmation_message(ctx.message):
             latest = self.confirmation_manager.get_latest_active_pending_action()
             if latest:
-                text = (
-                    f"¿Te refieres a «{latest.summary}»? "
-                    f"Usa `{latest.confirmation_phrase}` para confirmar."
+                text = t(
+                    "ambiguous_confirmation", lang,
+                    summary=latest.summary,
+                    phrase=latest.confirmation_phrase,
                 )
                 return self._response(ctx=ctx, text=text)
 

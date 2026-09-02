@@ -5,6 +5,18 @@ persona_engine and message_classifier to avoid duplicating content.
 """
 from __future__ import annotations
 
+
+def resolve_lang(language_override: str) -> str:
+    """Map a language_override code to a base language code for system messages.
+
+    "en-US" → "en", "es-ES" → "es", "auto" → "es" (default Spanish).
+    """
+    if not language_override or language_override == "auto":
+        return "es"
+    base = language_override.split("-")[0]
+    return base or "es"
+
+
 LANGUAGE_BLOCK: dict[str, str] = {
     "auto":   "Detecta el idioma de cada mensaje del usuario y responde siempre en ese mismo idioma.",
     "es-ES":  (
