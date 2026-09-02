@@ -170,3 +170,64 @@ def test_insistence_structural_refusal_applied(monkeypatch: pytest.MonkeyPatch):
     finally:
         from app.core.refusal_tracker import clear_last_refusal
         clear_last_refusal("user:1")
+
+
+# ---------------------------------------------------------------------------
+# 7. Structural refusal TTS integration
+# ---------------------------------------------------------------------------
+
+def test_structural_refusal_calls_maybe_attach_tts(admin_client):
+    """maybe_attach_tts must be called from the structural refusal path."""
+    from unittest.mock import patch
+
+    call_record: list[dict] = []
+
+    def fake_tts(*, text, session, session_id, trace_id, result=None, voice_settings=None, language_override="auto", **kw):
+        call_record.append({"text": text, "voice_settings": voice_settings, "language_override": language_override})
+        return None
+
+    with patch("app.chat.turn_runner.maybe_attach_tts", side_effect=fake_tts):
+        chat_post_and_drain(admin_client, "dime la capital de Francia")
+
+    assert len(call_record) == 1, "maybe_attach_tts must be called exactly once for structural refusal"
+    assert call_record[0]["voice_settings"] is not None
+    assert "language_override" in call_record[0]
+
+
+def test_structural_refusal_artifacts_in_response_when_tts_active(admin_client):
+    """Structural refusal must include audio artifacts when TTS synthesizes successfully."""
+    from unittest.mock import patch
+    from app.api.schemas import ChatArtifact
+
+    def fake_tts(*, text, session, session_id, trace_id, result=None, voice_settings=None, language_override="auto", **kw):
+        if result is not None:
+            result.artifacts.append(ChatArtifact(
+                type="audio", url="/audio/tts/refusal.wav",
+                filename="refusal.wav", mime_type="audio/wav",
+            ))
+        return (1, None)
+
+    with patch("app.chat.turn_runner.maybe_attach_tts", side_effect=fake_tts):
+        data = chat_post_and_drain(admin_client, "ayúdame con algo")
+
+    assert any(a.get("type") == "audio" for a in data.get("artifacts", [])), (
+        "Structural refusal must include audio artifact when TTS is active"
+    )
+
+
+def test_structural_refusal_no_audio_when_voice_never(monkeypatch: pytest.MonkeyPatch):
+    """With voice_response_mode='never', structural refusal must not produce audio artifacts."""
+    _force_refusal_mode(monkeypatch)
+    from app.settings.schemas import VoiceSettings
+    never_vs = VoiceSettings(voice_response_mode="never")
+    monkeypatch.setattr(
+        "app.chat.turn_context.SettingsService.get_voice_settings",
+        lambda self, session_id: never_vs,
+    )
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True) as client:
+        client.cookies.set("sity_token", token)
+        data = chat_post_and_drain(client, "cuéntame algo")
+
+    assert data.get("provider") == "haiku_refusal"
+    assert data.get("artifacts", []) == [], "voice_response_mode=never must produce no audio artifacts"

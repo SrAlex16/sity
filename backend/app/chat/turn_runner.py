@@ -23,6 +23,7 @@ from app.core.refusal_tracker import (
     reset_consecutive_refusals,
     set_last_refusal,
 )
+from app.audio.tts_service import maybe_attach_tts
 from app.trace.logger import write_log
 
 
@@ -375,12 +376,37 @@ def _chat_message_inner(
                 "refusal_length": len(refusal_text),
             },
         )
-        return refusal_response(
+        _refusal_resp = refusal_response(
             trace_id=ctx.trace_id,
             text=refusal_text,
             daily_used=get_today_token_usage(session),
             daily_budget=ctx.daily_budget,
         )
+        _tts = maybe_attach_tts(
+            text=refusal_text,
+            session=session,
+            session_id=ctx.session_id,
+            trace_id=ctx.trace_id,
+            result=_refusal_resp,
+            voice_settings=ctx.voice_settings,
+            language_override=ctx.language_override,
+        )
+        if _tts is not None:
+            from sqlmodel import select as _select
+            from app.memory.models import ChatMessage as _ChatMessage
+            n_fragments, audio_filename = _tts
+            _tts_row = session.exec(
+                _select(_ChatMessage).where(
+                    _ChatMessage.trace_id == ctx.trace_id,
+                    _ChatMessage.role == "sity",
+                )
+            ).first()
+            if _tts_row is not None:
+                _tts_row.tts_fragments = n_fragments
+                _tts_row.audio_filename = audio_filename
+                session.add(_tts_row)
+                session.commit()
+        return _refusal_resp
 
     # Non-refusal turn: clear the per-session refusal state so the next turn
     # does not receive stale "last was refusal" context.
