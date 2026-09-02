@@ -38,6 +38,7 @@ export interface T {
     ttsEngineHint: string;
     ttsEnginePiper: string;
     ttsEngineElevenLabs: string;
+    ttsElevenLabsUnavailable: string;
     ttsUsage: (used: number, limit: number) => string;
     // Admin cleanup
     cleanupSection: string;
@@ -266,6 +267,7 @@ const es: T = {
     ttsEngineHint: 'Piper es local y gratuito. ElevenLabs usa la nube con límite diario de caracteres.',
     ttsEnginePiper: 'Piper (local)',
     ttsEngineElevenLabs: 'ElevenLabs (nube)',
+    ttsElevenLabsUnavailable: 'No disponible para el idioma seleccionado',
     ttsUsage: (used: number, limit: number) => limit > 0 ? `Uso hoy: ${used} / ${limit} caracteres` : `Uso hoy: ${used} caracteres`,
     cleanupSection: 'Periodicidad de borrado',
     cleanupHint: 'Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.',
@@ -481,6 +483,7 @@ const en: T = {
     ttsEngineHint: 'Piper is local and free. ElevenLabs uses the cloud with a daily character limit.',
     ttsEnginePiper: 'Piper (local)',
     ttsEngineElevenLabs: 'ElevenLabs (cloud)',
+    ttsElevenLabsUnavailable: 'Not available for the selected language',
     ttsUsage: (used: number, limit: number) => limit > 0 ? `Today's usage: ${used} / ${limit} characters` : `Today's usage: ${used} characters`,
     cleanupSection: 'Cleanup period',
     cleanupHint: 'Audio messages are replaced by their transcript after this time.',
@@ -696,6 +699,7 @@ const ja: T = {
     ttsEngineHint: 'Piperはローカルで無料。ElevenLabsはクラウドを使用し、1日あたりの文字数制限があります。',
     ttsEnginePiper: 'Piper（ローカル）',
     ttsEngineElevenLabs: 'ElevenLabs（クラウド）',
+    ttsElevenLabsUnavailable: '選択した言語では利用できません',
     ttsUsage: (used: number, limit: number) => limit > 0 ? `本日の使用量: ${used} / ${limit} 文字` : `本日の使用量: ${used} 文字`,
     cleanupSection: '削除周期',
     cleanupHint: 'この時間が経過すると音声メッセージは文字起こしに置き換えられます。',

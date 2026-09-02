@@ -169,12 +169,17 @@ def _dispatch_initiative(
     db.commit()
     db.refresh(chat_msg)
 
+    from app.settings.settings_service import SettingsService
+    _lang_override = SettingsService(db).get_language_override(
+        session_id=candidate.session_id
+    )
     tts_result = maybe_attach_tts(
         text=message,
         session=db,
         session_id=candidate.session_id,
         trace_id=trace_id,
         force_persist=True,
+        language_override=_lang_override,
     )
     if tts_result is not None:
         n_fragments, audio_filename = tts_result

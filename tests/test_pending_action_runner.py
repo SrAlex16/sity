@@ -63,6 +63,12 @@ def _runner() -> tuple[PendingActionRunner, MagicMock]:
 # ---------------------------------------------------------------------------
 
 class TestRun:
+    @pytest.fixture(autouse=True)
+    def _patch_settings_service(self):
+        with patch("app.settings.settings_service.SettingsService") as mock_svc:
+            mock_svc.return_value.get_language_override.return_value = "auto"
+            yield
+
     def test_run_saves_user_and_sity_messages(self):
         runner, _ = _runner()
         ctx = _ctx()

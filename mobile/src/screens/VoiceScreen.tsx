@@ -31,6 +31,9 @@ interface SettingsScreenProps {
   onUiLangChange: (lang: UiLang) => void;
 }
 
+// Language codes that have an ElevenLabs voice configured in the backend
+const ELEVENLABS_LANGUAGES = new Set<string>(['en-US', 'en-GB', 'ja']);
+
 export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProps) {
   const tl = TRANSLATIONS[uiLang].settings;
   const { settings, isLoading, error, save, reload } = useVoice();
@@ -55,6 +58,17 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   useEffect(() => {
     if (settings) setForm(settings);
   }, [settings]);
+
+  // ElevenLabs is only available for languages with a configured voice
+  const elevenLabsAvailable = !langSettings || ELEVENLABS_LANGUAGES.has(langSettings.language_override);
+
+  // When language changes to one without ElevenLabs support, revert engine to Piper
+  const handleLangChange = async (code: LanguageCode) => {
+    await saveLang(code);
+    if (!ELEVENLABS_LANGUAGES.has(code) && form?.tts_engine === 'elevenlabs') {
+      await autoSave({ ...form!, tts_engine: 'piper' });
+    }
+  };
 
   const backgroundStyle: React.CSSProperties = bgValue
     ? (bgValue.startsWith('/') || bgValue.startsWith('data:') || bgValue.startsWith('http'))
@@ -309,22 +323,32 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                 <p className={styles.sectionJp}>音声合成エンジン</p>
                 <p className={styles.sectionHint} style={{ marginBottom: 10 }}>{tl.ttsEngineHint}</p>
                 <div className={styles.radioGroup}>
-                  {(['piper', 'elevenlabs'] as const).map((engine) => (
-                    <label key={engine} className={styles.radioRow}>
-                      <input
-                        type="radio"
-                        className={styles.hiddenInput}
-                        name="tts_engine"
-                        value={engine}
-                        checked={form.tts_engine === engine}
-                        onChange={() => void autoSave({ ...form!, tts_engine: engine })}
-                      />
-                      <span className={styles.radioIndicator} />
-                      <span className={styles.optionText}>
-                        {engine === 'piper' ? tl.ttsEnginePiper : tl.ttsEngineElevenLabs}
-                      </span>
-                    </label>
-                  ))}
+                  {(['piper', 'elevenlabs'] as const).map((engine) => {
+                    const isDisabled = engine === 'elevenlabs' && !elevenLabsAvailable;
+                    return (
+                      <label
+                        key={engine}
+                        className={`${styles.radioRow} ${isDisabled ? styles.radioRowDisabled : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          className={styles.hiddenInput}
+                          name="tts_engine"
+                          value={engine}
+                          checked={form.tts_engine === engine}
+                          disabled={isDisabled}
+                          onChange={() => !isDisabled && void autoSave({ ...form!, tts_engine: engine })}
+                        />
+                        <span className={styles.radioIndicator} />
+                        <span className={styles.optionText}>
+                          {engine === 'piper' ? tl.ttsEnginePiper : tl.ttsEngineElevenLabs}
+                          {isDisabled && (
+                            <span className={styles.disabledHint}>{tl.ttsElevenLabsUnavailable}</span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
                 {form.tts_engine === 'elevenlabs' && (
                   <p className={styles.sectionHint} style={{ marginTop: 10 }}>
@@ -391,7 +415,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
               <select
                 className={styles.select}
                 value={langSettings.language_override}
-                onChange={(e) => void saveLang(e.target.value as LanguageCode)}
+                onChange={(e) => void handleLangChange(e.target.value as LanguageCode)}
                 disabled={langLoading}
               >
                 {SUPPORTED_LANGUAGES.map(({ code, label }) => (

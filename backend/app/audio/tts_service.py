@@ -15,6 +15,18 @@ from sqlmodel import Session
 from app.trace.logger import write_log
 
 
+def _resolve_elevenlabs_voice_id(voice_ids: dict, language_override: str) -> str | None:
+    """Return the ElevenLabs voice_id for this language, or None if not available.
+
+    Maps full language codes to base keys: "en-US"/"en-GB" → "en", "ja" → "ja".
+    "auto" and any language without an entry return None (use Piper instead).
+    """
+    if not language_override or language_override == "auto":
+        return None
+    base = language_override.split("-")[0]
+    return voice_ids.get(base) or None
+
+
 def _clean_text_for_tts(text: str) -> str:
     # Strip confirmation command (unpronounceable action ID + literal phrase in backticks)
     text = re.sub(
@@ -36,6 +48,7 @@ def _attach_tts_artifacts(
     *, result, text: str, voice_settings, trace_id: str,
     session=None, session_id: str = "",
     force_persist: bool = False,
+    language_override: str = "auto",
 ) -> Optional[tuple[int, Optional[str]]]:
     """Synthesize TTS audio and attach as artifacts to result. Modifies result.artifacts in place.
 
@@ -53,9 +66,19 @@ def _attach_tts_artifacts(
     cfg = load_tts_config()
     raw_audio_cfg = load_default_config().get("audio", {})
     persist_tts: bool = force_persist or bool(raw_audio_cfg.get("persist_tts", False))
-    voice_id: str = str(raw_audio_cfg.get("elevenlabs_voice_id", "EXAVITQu4vr4xnSDxMaL"))
+    voice_ids: dict = raw_audio_cfg.get("elevenlabs_voice_ids", {})
     daily_limit: int = int(raw_audio_cfg.get("elevenlabs_daily_char_limit", 0))
     tts_engine: str = getattr(voice_settings, "tts_engine", "piper")
+
+    resolved_voice_id = _resolve_elevenlabs_voice_id(voice_ids, language_override)
+    if tts_engine == "elevenlabs" and resolved_voice_id is None:
+        write_log(
+            level="INFO", module="audio", event="elevenlabs_language_fallback",
+            trace_id=trace_id,
+            payload={"language_override": language_override, "session_id": session_id},
+        )
+        tts_engine = "piper"
+    voice_id: str = resolved_voice_id or ""
 
     try:
         tts_text = _clean_text_for_tts(text)
@@ -122,6 +145,7 @@ def maybe_attach_tts(
     result=None,
     voice_settings=None,
     force_persist: bool = False,
+    language_override: str = "auto",
 ) -> Optional[tuple[int, Optional[str]]]:
     """Synthesize TTS for a Sity response if voice is enabled for this session.
 
@@ -157,6 +181,7 @@ def maybe_attach_tts(
             session=session,
             session_id=session_id,
             force_persist=force_persist,
+            language_override=language_override,
         )
     except Exception as exc:
         try:

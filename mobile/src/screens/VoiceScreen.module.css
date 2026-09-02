@@ -156,6 +156,18 @@
   user-select: none;
 }
 
+.radioRowDisabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.disabledHint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
 /* ── Checkbox row ────────────────────────────────────────────────────────── */
 
 .checkboxRow {

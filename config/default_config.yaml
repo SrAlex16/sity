@@ -159,7 +159,9 @@ audio:
   persist_tts: true
   cleanup_days: 7
   elevenlabs_daily_char_limit: 10000
-  elevenlabs_voice_id: "f18RlRJGEw0TaGYwmk8B"
+  elevenlabs_voice_ids:
+    en: "hod33eJyEU4TLqiYFttr"
+    ja: "8kgj5469z1URcH4MB2G4"
 
 
 home_assistant:

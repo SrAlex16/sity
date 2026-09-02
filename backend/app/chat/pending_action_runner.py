@@ -74,12 +74,17 @@ class PendingActionRunner:
             artifacts=[result.artifact] if result.artifact else [],
         )
 
+        from app.settings.settings_service import SettingsService
+        _lang_override = SettingsService(ctx.session).get_language_override(
+            session_id=self.cm._session_id
+        )
         tts_result = maybe_attach_tts(
             text=result.text,
             session=ctx.session,
             session_id=self.cm._session_id,
             trace_id=ctx.trace_id,
             result=response,
+            language_override=_lang_override,
         )
         if tts_result is not None:
             n_fragments, audio_filename = tts_result

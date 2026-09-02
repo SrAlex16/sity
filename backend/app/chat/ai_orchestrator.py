@@ -165,6 +165,7 @@ class ChatAIOrchestrator:
                 trace_id=ctx.trace_id,
                 result=chat_result,
                 voice_settings=ctx.voice_settings,
+                language_override=ctx.language_override,
             )
             if tts_result is not None:
                 n_fragments, audio_filename = tts_result
@@ -512,6 +513,7 @@ class ChatAIOrchestrator:
                     trace_id=ctx.trace_id,
                     result=_early_response,
                     voice_settings=ctx.voice_settings,
+                    language_override=ctx.language_override,
                 )
                 if _tts_result is not None:
                     _n_frags, _audio_fn = _tts_result
