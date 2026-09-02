@@ -77,6 +77,14 @@ def init_database() -> None:
     Safety net: asserts that we are NOT connected to data/app.db so a
     misconfigured environment fails loudly instead of silently polluting
     the development database.
+
+    Also initializes global personality rows (session_id=None) to CANONICAL_PERSONALITY
+    so that all tests see a predictable baseline regardless of test order. Without this,
+    tests that read global personality see YAML config values, which differ from
+    CANONICAL_PERSONALITY (e.g. initiative_level: yaml=0.60, canonical=0.05), causing
+    test_new_session_inherits_global_fallback to fail intermittently depending on whether
+    test_chaos_head_uses_session_settings_not_global_defaults ran first and wrote some
+    (but not all) canonical values to the DB as part of its try/finally restore.
     """
     from app.memory.db import engine, init_db  # imported here so env is already set
 
@@ -86,6 +94,14 @@ def init_database() -> None:
         "Check that conftest.py runs before any test module imports app.memory.db."
     )
     init_db()
+
+    from sqlmodel import Session
+    from app.settings.settings_service import SettingsService, CANONICAL_PERSONALITY
+    with Session(engine) as session:
+        svc = SettingsService(session)
+        for key, value in CANONICAL_PERSONALITY.items():
+            svc.set_setting(f"personality.{key}", value, source="test_init", session_id=None)
+        session.commit()
 
 
 @pytest.fixture
