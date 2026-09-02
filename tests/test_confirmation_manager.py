@@ -212,6 +212,75 @@ def test_multiple_pending_actions_exact_confirmation_still_works() -> None:
     assert found_b.id == multi_b.id
 
 
+# ---------------------------------------------------------------------------
+# 6. Cross-session isolation
+# ---------------------------------------------------------------------------
+
+def _make_session_pair() -> tuple[Session, ConfirmationManager, ConfirmationManager]:
+    """One in-memory DB, two managers bound to different session_ids."""
+    engine = create_engine("sqlite:///:memory:")
+    SQLModel.metadata.create_all(engine)
+    session = Session(engine)
+    return session, ConfirmationManager(session, session_id="session_A"), ConfirmationManager(session, session_id="session_B")
+
+
+def test_cross_session_isolation_all_lookup_methods() -> None:
+    """Session A creates an action; Session B cannot find it via any lookup method."""
+    session, mgr_a, mgr_b = _make_session_pair()
+
+    created = mgr_a.create_pending_action(
+        action_type="file",
+        risk_level="critical",
+        summary="Session A action",
+        payload={"action": "write_file", "path": "config/a.txt", "content": "a"},
+        trace_id="trc_iso_a",
+    )
+
+    # find_pending_action_by_confirmation
+    assert mgr_b.find_pending_action_by_confirmation(created.confirmation_phrase) is None
+    # find_action_by_id
+    assert mgr_b.find_action_by_id(created.id) is None
+    # get_latest_active_pending_action
+    assert mgr_b.get_latest_active_pending_action() is None
+    # has_multiple_active_pending_actions
+    assert not mgr_b.has_multiple_active_pending_actions()
+    # find_equivalent_pending_action
+    assert mgr_b.find_equivalent_pending_action(
+        action_type="file",
+        payload={"action": "write_file", "path": "config/a.txt", "content": "a"},
+    ) is None
+    # find_pending_action_by_context
+    assert mgr_b.find_pending_action_by_context("sí, hazlo") is None
+
+    # Regression: Session A can still confirm its own action
+    assert mgr_a.find_pending_action_by_confirmation(created.confirmation_phrase) is not None
+    assert mgr_a.find_action_by_id(created.id) is not None
+    assert mgr_a.get_latest_active_pending_action() is not None
+    assert mgr_a.find_equivalent_pending_action(
+        action_type="file",
+        payload={"action": "write_file", "path": "config/a.txt", "content": "a"},
+    ) is not None
+
+
+def test_cross_session_has_multiple_isolation() -> None:
+    """Session A has 2 pending actions; Session B sees zero."""
+    session, mgr_a, mgr_b = _make_session_pair()
+
+    mgr_a.create_pending_action(
+        action_type="file", risk_level="critical", summary="A1",
+        payload={"action": "write_file", "path": "config/a1.txt", "content": "x"},
+        trace_id="trc_iso_multi_a1",
+    )
+    mgr_a.create_pending_action(
+        action_type="file", risk_level="critical", summary="A2",
+        payload={"action": "write_file", "path": "config/a2.txt", "content": "y"},
+        trace_id="trc_iso_multi_a2",
+    )
+
+    assert mgr_a.has_multiple_active_pending_actions()
+    assert not mgr_b.has_multiple_active_pending_actions()
+
+
 def test_multiple_pending_generic_confirmation_route_invariant() -> None:
     """routes_chat must reject generic confirmation when multiple actions are pending."""
     session = _make_session()

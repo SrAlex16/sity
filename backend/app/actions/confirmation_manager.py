@@ -57,6 +57,7 @@ class ConfirmationManager:
             summary=summary,
             payload_json=json.dumps(payload, ensure_ascii=False),
             confirmation_phrase=confirmation_phrase,
+            session_id=self._session_id,
             created_at=utc_now(),
             expires_at=utc_now() + timedelta(minutes=ttl_minutes),
             trace_id=trace_id,
@@ -89,7 +90,10 @@ class ConfirmationManager:
         )
 
     def _get_active_pending_actions(self) -> list[PendingAction]:
-        statement = select(PendingAction).where(PendingAction.status == "pending")
+        statement = select(PendingAction).where(
+            PendingAction.status == "pending",
+            PendingAction.session_id == self._session_id,
+        )
         actions = list(self.session.exec(statement))
 
         now = ensure_aware_utc(utc_now())
@@ -115,7 +119,10 @@ class ConfirmationManager:
         return match.group(0).lower()
 
     def find_action_by_id(self, action_id: str) -> PendingAction | None:
-        statement = select(PendingAction).where(PendingAction.id == action_id)
+        statement = select(PendingAction).where(
+            PendingAction.id == action_id,
+            PendingAction.session_id == self._session_id,
+        )
         return self.session.exec(statement).first()
 
     def find_equivalent_pending_action(

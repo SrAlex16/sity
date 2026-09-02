@@ -123,6 +123,22 @@ def _migrate_setting() -> None:
                        "constraint_change": "key_unique → (key, session_id)_composite"})
 
 
+def _migrate_pendingaction() -> None:
+    """Add session_id column to pendingaction if absent (idempotent ALTER TABLE)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(pendingaction)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return
+        if "session_id" not in existing:
+            conn.execute(text(
+                "ALTER TABLE pendingaction ADD COLUMN session_id TEXT NOT NULL DEFAULT 'default'"
+            ))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "pendingaction", "added_columns": ["session_id"]})
+
+
 def _migrate_userachievement() -> None:
     """Ensure userachievement table exists. create_all handles new deployments.
 
@@ -181,6 +197,7 @@ def init_db() -> None:
         _migrate_chatmessage()
         _migrate_user()
         _migrate_setting()
+        _migrate_pendingaction()
         _migrate_social_reflection()
         _migrate_userachievement()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.

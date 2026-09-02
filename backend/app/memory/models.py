@@ -167,6 +167,7 @@ class PendingAction(SQLModel, table=True):
     summary: str
     payload_json: str
     confirmation_phrase: str
+    session_id: str = Field(default="default", index=True)
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime
     executed_at: Optional[datetime] = None
