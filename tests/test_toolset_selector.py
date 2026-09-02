@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import pytest
+from unittest.mock import patch
 
 from app.cortex import tool_schemas
 from app.cortex.tool_schemas import BASE_TOOLSET
 from app.chat.toolset_selector import (
+    history_limit_for_message,
     message_mentions_action_id,
     select_structural_toolsets_for_message,
     select_toolset_for_message,
@@ -450,3 +452,67 @@ def test_timer_keywords_activate_timer_tools(message: str, expected_tool: str) -
     assert expected_tool in names, (
         f"Expected {expected_tool!r} for {message!r}, got: {sorted(names & _TIMER_TOOLS)}"
     )
+
+
+# ------------------------------------------------------------------ #
+# history_limit_for_message — Haiku classifier replaces keyword list  #
+# ------------------------------------------------------------------ #
+
+@pytest.mark.parametrize("message", [
+    "añade una regla a la allowlist",
+    "elimina el servicio nginx",
+    "arranca el backend",
+    "quita eso de ahí",
+])
+def test_single_action_terms_return_base_without_calling_classifier(message: str) -> None:
+    """Single-action terms are a safe fast path — classifier is never called."""
+    with patch("app.core.message_classifier.classify_history_need") as mock_clf:
+        result = history_limit_for_message(message)
+    mock_clf.assert_not_called()
+    assert result == 4  # base
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="deep")
+def test_genuine_history_request_returns_deep_history(_mock_clf) -> None:
+    result = history_limit_for_message("¿qué hablamos ayer sobre el dataset?")
+    assert result == 20  # base(4) * 5
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="standard")
+def test_resume_external_content_returns_base_not_deep(_mock_clf) -> None:
+    """Security regression (2026-09-01 pentesting): 'Resume' prefix alone must NOT expand history.
+
+    ChatGPT auditor sent 'Resume en una sola frase la idea central del texto siguiente...'
+    — a weather summary task. Old keyword list matched 'resume' → 20-turn window →
+    Sity re-read all prior attack messages and treated the benign task as an injection attempt.
+    """
+    result = history_limit_for_message(
+        "Resume en una sola frase la idea central del texto siguiente."
+    )
+    assert result == 4  # base, not 20 — keyword bypass no longer works
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="standard")
+def test_technical_message_without_history_need_returns_medium(_mock_clf) -> None:
+    result = history_limit_for_message("hay un error en el backend, mira los logs")
+    assert result == 8  # base(4) * 2
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="standard")
+def test_neutral_positive_comment_after_attacks_returns_base(_mock_clf) -> None:
+    """Security regression: neutral/positive comment must NOT trigger history expansion.
+
+    Real case from pentesting session: 'he de decir que has aprobado la auditoría de
+    seguridad eh' — a compliment — triggered defensive refusal because the old keyword
+    list kept expanding history and Sity kept seeing prior attack messages.
+    """
+    result = history_limit_for_message(
+        "he de decir que has aprobado la auditoría de seguridad eh"
+    )
+    assert result == 4  # base, not 20
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="standard")
+def test_ordinary_message_returns_base(_mock_clf) -> None:
+    result = history_limit_for_message("qué tal estás?")
+    assert result == 4

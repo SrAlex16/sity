@@ -8,6 +8,7 @@ the most recent turns.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -84,24 +85,28 @@ def test_history_limit_single_action_stays_small() -> None:
     assert history_limit_for_message("saca una foto") <= 4
 
 
-def test_history_limit_hemos_hablado_is_large() -> None:
-    """'hemos hablado' must trigger the deep context window."""
+@patch("app.core.message_classifier.classify_history_need", return_value="deep")
+def test_history_limit_hemos_hablado_is_large(_mock_clf) -> None:
+    """When classifier identifies a genuine conversation history query, limit must be large."""
     limit = history_limit_for_message("¿de qué temas hemos hablado?")
-    assert limit >= 16, f"'hemos hablado' should trigger large limit, got {limit}"
+    assert limit >= 16, f"deep classification should return large limit, got {limit}"
 
 
-def test_history_limit_qué_temas_is_large() -> None:
+@patch("app.core.message_classifier.classify_history_need", return_value="deep")
+def test_history_limit_qué_temas_is_large(_mock_clf) -> None:
     limit = history_limit_for_message("¿qué temas hemos tratado?")
     assert limit >= 16
 
 
-def test_history_limit_mencionaste_is_large() -> None:
+@patch("app.core.message_classifier.classify_history_need", return_value="deep")
+def test_history_limit_mencionaste_is_large(_mock_clf) -> None:
     limit = history_limit_for_message("antes mencionaste algo de música")
     assert limit >= 16
 
 
-def test_history_limit_recuerdas_still_large() -> None:
-    """Previously-supported terms must still trigger the large window."""
+@patch("app.core.message_classifier.classify_history_need", return_value="deep")
+def test_history_limit_recuerdas_still_large(_mock_clf) -> None:
+    """Genuine conversation recall queries must still trigger the large window."""
     limit = history_limit_for_message("¿recuerdas lo que dijiste?")
     assert limit >= 16
 

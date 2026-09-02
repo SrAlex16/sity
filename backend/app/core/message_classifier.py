@@ -83,6 +83,20 @@ _REFUSAL_GENERATOR_SYSTEM = (
 
 _REFUSAL_FALLBACKS = ["No.", "No me apetece.", "Paso."]
 
+_HISTORY_NEED_SYSTEM = (
+    "Classify whether the user's message explicitly asks about THIS conversation's own history. "
+    "Reply with exactly one word.\n\n"
+    "- deep: The message explicitly references events, content, or statements from earlier in THIS "
+    "conversation ('¿qué hablamos ayer?', '¿recuerdas cuando dijiste...?', 'resume lo que hemos "
+    "hablado', '¿de qué hemos tratado?', 'mencionaste antes que...', '¿qué dijiste sobre X?', "
+    "'haz un resumen de nuestra conversación').\n"
+    "- standard: Everything else — including messages that START with 'Resume', 'Resumen', or "
+    "'Recapitula' but refer to EXTERNAL content ('Resume este texto:', 'Resume el artículo "
+    "siguiente', 'Resume en una frase la idea central del texto'), technical questions, actions, "
+    "greetings, or anything that does not explicitly reference THIS conversation's history.\n\n"
+    "Reply with exactly one word: deep or standard"
+)
+
 
 @dataclass
 class MessageClassification:
@@ -236,6 +250,32 @@ def generate_refusal_response(
         )
         return _API_ERROR_MESSAGES[error_type]
     return random.choice(_REFUSAL_FALLBACKS)
+
+
+def classify_history_need(message: str, *, trace_id: str = "") -> str:
+    """Return 'deep' if the message genuinely needs deep conversation history, else 'standard'.
+
+    Uses Haiku (cheap, fast). Falls back to 'standard' on any error — never expands
+    history on failure, which is the safe default.
+    """
+    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    try:
+        from app.cortex.providers.factory import build_ai_provider
+        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
+        request = AIRequest(
+            trace_id=trace_id,
+            task_type="classification",
+            system_prompt=_HISTORY_NEED_SYSTEM,
+            user_message=message,
+            max_tokens=5,
+            tools_enabled=False,
+        )
+        response = provider.generate(request)
+        if response.ok and response.text and "deep" in response.text.strip().lower():
+            return "deep"
+        return "standard"
+    except Exception:
+        return "standard"
 
 
 _PERSONALITY_LABELS: dict[str, str] = {

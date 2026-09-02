@@ -9,6 +9,7 @@ from app.core.message_classifier import (
     _PERSONALITY_LABELS,
     _REFUSAL_FALLBACKS,
     build_verified_config_block,
+    classify_history_need,
     classify_message,
     generate_refusal_response,
 )
@@ -687,3 +688,48 @@ def test_refusal_truncated_by_max_tokens_falls_back_to_hardcoded() -> None:
         f"Got: {result!r}\n"
         f"The mid-word text '...ya sabes d' must never be returned to the user."
     )
+
+
+# ------------------------------------------------------------------ #
+# classify_history_need — Haiku-based history depth classifier        #
+# ------------------------------------------------------------------ #
+
+def _mock_resp(text: str) -> AIResponse:
+    return AIResponse(
+        ok=True, provider="mock", model="mock", text=text,
+        usage=AIUsageData(input_tokens=1, output_tokens=1), latency_ms=0,
+    )
+
+
+def test_classify_history_need_returns_deep_when_provider_says_deep() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("deep")):
+        assert classify_history_need("¿qué hablamos ayer sobre el dataset?") == "deep"
+
+
+def test_classify_history_need_returns_standard_when_provider_says_standard() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("standard")):
+        assert classify_history_need("Resume este artículo en una frase") == "standard"
+
+
+def test_classify_history_need_standard_on_garbage_response() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("????")):
+        assert classify_history_need("algo") == "standard"
+
+
+def test_classify_history_need_standard_on_empty_response() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("")):
+        assert classify_history_need("algo") == "standard"
+
+
+def test_classify_history_need_standard_on_api_exception() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=Exception("boom")):
+        assert classify_history_need("algo") == "standard"
+
+
+def test_classify_history_need_standard_on_ok_false() -> None:
+    bad = AIResponse(
+        ok=False, provider="mock", model="mock", text="deep",
+        usage=AIUsageData(input_tokens=0, output_tokens=0), latency_ms=0,
+    )
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=bad):
+        assert classify_history_need("algo") == "standard"

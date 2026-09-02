@@ -364,21 +364,11 @@ def select_toolset_with_metadata(message: str, input_mode: str = "text", is_admi
     )
 
 
-def history_limit_for_message(message: str) -> int:
+def history_limit_for_message(message: str, *, trace_id: str = "") -> int:
     from app.settings.config_loader import load_default_config
     base = int(load_default_config().get("tokens", {}).get("max_recent_turns", 4))
 
     normalized = message.lower()
-
-    # Explicit memory/continuity queries — need the deepest window.
-    context_heavy_terms = [
-        "ayer", "antes", "recuerdas", "dijiste", "hablamos",
-        "historial", "qué hicimos", "que hicimos", "resume",
-        "hemos hablado", "hemos dicho", "hemos tratado",
-        "mencionaste", "comentaste", "qué recuerdas",
-        "te acuerdas", "en esta conversación", "durante esta sesión",
-        "de qué hablamos", "qué temas",
-    ]
 
     single_action_terms = [
         "añade", "agrega", "quita", "elimina",
@@ -386,6 +376,8 @@ def history_limit_for_message(message: str) -> int:
         "servicios permitidos", "allowlist",
         "saca una foto", "graba audio", "graba ",
     ]
+    if any(term in normalized for term in single_action_terms):
+        return base
 
     technical_terms = [
         "error", "bug", "trace", "debug", "logs", "falló", "fallo",
@@ -393,10 +385,12 @@ def history_limit_for_message(message: str) -> int:
         "raspberry", "sistema", "cpu", "ram", "disco",
     ]
 
-    if any(term in normalized for term in single_action_terms):
-        return base
-
-    if any(term in normalized for term in context_heavy_terms):
+    # Keyword lists are not used for deep history — they were bypassable by an attacker
+    # including "resume" or "ayer" in an otherwise unrelated message. Haiku evaluates
+    # genuine intent: only expands to 20 turns when the message explicitly asks about
+    # THIS conversation's history.
+    from app.core.message_classifier import classify_history_need
+    if classify_history_need(message, trace_id=trace_id) == "deep":
         return base * 5
 
     if any(term in normalized for term in technical_terms):
