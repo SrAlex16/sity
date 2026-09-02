@@ -661,6 +661,20 @@ Ver .env.example para la lista completa.
   datos genérico (`NotificationRule` con tipo, parámetros, condición de
   disparo). El sistema de Web Push que lo entregará sigue adelante
   independientemente (ver entrada de Web Push API).
+- **Gestión de archivos subidos** — desde 2026-08-11 hay un placeholder visible en
+  la pantalla Ajustes ("gestión de archivos"), pero no hay implementación ni diseño
+  formal. Lo que existe: la tabla `ChatMessage` puede llevar `audio_filename` (STT
+  y TTS), y hay capturas de cámara en `data/captures/`. Lo que falta inventariar y
+  diseñar antes de implementar: (a) **inventario completo de artefactos** — qué tipos
+  de archivo genera Sity (capturas, audio de voz, audio TTS, posibles adjuntos futuros),
+  dónde se almacenan, y qué metadatos existen en DB para cada uno; (b) **frontend de
+  listado y borrado** — pantalla o sección en Ajustes que permita ver los archivos del
+  usuario y eliminarlos individualmente o en bloque; (c) **política de retención** —
+  `audio_cleanup_days` ya existe en config para audios, pero no hay limpieza automática
+  ni UI para configurarla; (d) **privacidad**: si se permite exportar el historial de
+  conversación (ya existe `GET /chat/export`), ¿se incluyen o excluyen los archivos
+  binarios asociados? No bloquea ningún flujo actual; pendiente de sesión dedicada de
+  diseño antes de picar código.
 - **Google Analytics / GTM** — integrar métricas de uso de la PWA (sesiones,
   pantallas visitadas, acciones de voz, errores de red). Tensión no resuelta
   con privacidad/RGPD: la PWA es un asistente personal con datos sensibles
