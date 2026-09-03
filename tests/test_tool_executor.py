@@ -336,6 +336,68 @@ class TestUpdatePersonalitySettings:
 
 
 # ---------------------------------------------------------------------------
+# _coerce_personality_tool_input — flat-dict format from model
+# ---------------------------------------------------------------------------
+
+class TestCoercePersonalityToolInput:
+    """The model sometimes sends {param: value} flat dicts instead of {updates:[...]}."""
+
+    def test_already_structured_passthrough(self):
+        structured = {"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.6}], "reason": "ok"}
+        assert ToolExecutor._coerce_personality_tool_input(structured) is structured
+
+    def test_flat_dict_0_100_scale_converted(self):
+        """Values in 0-100 scale (as sent during the real bug) are normalized to 0-1."""
+        result = ToolExecutor._coerce_personality_tool_input({
+            "sarcasm_level": "60",
+            "warmth_level": "75",
+            "helpfulness_level": "50",
+        })
+        assert "updates" in result
+        params = {u["parameter"]: u["value"] for u in result["updates"]}
+        assert abs(params["sarcasm_level"] - 0.6) < 1e-9
+        assert abs(params["warmth_level"] - 0.75) < 1e-9
+        assert abs(params["helpfulness_level"] - 0.5) < 1e-9
+        assert all(u["operation"] == "set_absolute" for u in result["updates"])
+
+    def test_flat_dict_0_1_scale_not_divided(self):
+        """Values already in 0-1 range are NOT divided by 100."""
+        result = ToolExecutor._coerce_personality_tool_input({"sarcasm_level": 0.6})
+        assert "updates" in result
+        assert abs(result["updates"][0]["value"] - 0.6) < 1e-9
+
+    def test_flat_dict_ignores_unknown_keys(self):
+        result = ToolExecutor._coerce_personality_tool_input({
+            "sarcasm_level": 0.5,
+            "nonexistent_field": 99,
+        })
+        params = [u["parameter"] for u in result["updates"]]
+        assert "sarcasm_level" in params
+        assert "nonexistent_field" not in params
+
+    def test_no_valid_params_returns_unchanged(self):
+        bad = {"reason": "no valid params here"}
+        result = ToolExecutor._coerce_personality_tool_input(bad)
+        assert result is bad
+
+    def test_real_bug_flat_dict_executes_successfully(self, db_session: Session):
+        """Regression: the exact tool_input from the real bug (2026-09-03) must succeed."""
+        executor = ToolExecutor(db_session)
+        result = executor._update_personality_settings(
+            tool_input={
+                "sarcasm_level": "60",
+                "warmth_level": "75",
+                "helpfulness_level": "50",
+            },
+            trace_id="trc_regression",
+        )
+        assert result.ok is True
+        assert "sarcasm_level" in result.updated_parameters
+        assert "warmth_level" in result.updated_parameters
+        assert "helpfulness_level" in result.updated_parameters
+
+
+# ---------------------------------------------------------------------------
 # _read_recent_debug_events
 # ---------------------------------------------------------------------------
 
