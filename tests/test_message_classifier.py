@@ -799,6 +799,23 @@ def test_refusal_generator_system_prohibits_no_history_claims() -> None:
     )
 
 
+def test_persona_system_has_source_transparency_rule() -> None:
+    """persona_system.md must contain the REGLA DE TRANSPARENCIA DE FUENTES rule."""
+    from pathlib import Path
+    persona_path = Path(__file__).parent.parent / "backend/app/prompts/persona_system.md"
+    text = persona_path.read_text()
+    assert "REGLA DE TRANSPARENCIA DE FUENTES" in text, (
+        "persona_system.md must define REGLA DE TRANSPARENCIA DE FUENTES"
+    )
+    lower = text.lower()
+    assert "web_search" in lower or "búsqueda web" in lower or "búsqueda que hice" in lower, (
+        "rule must mention web search as a citable source"
+    )
+    assert "inventar" in lower or "inventes" in lower or "involuntaria" in lower, (
+        "rule must warn against inventing explanations"
+    )
+
+
 def test_classify_history_need_standard_on_ok_false() -> None:
     bad = AIResponse(
         ok=False, provider="mock", model="mock", text="deep",
