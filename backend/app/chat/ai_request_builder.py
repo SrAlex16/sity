@@ -164,6 +164,16 @@ Regla Git vs archivo: "repo", "proyecto" o "tu código" no activan Git por sí s
 
 No respondas con texto normal en esta fase.
 No inventes resultados.
+
+Regla sobre errores de herramienta:
+Si una herramienta devolvió un error de validación en un turno anterior (error_code MISSING_UPDATES
+u otro error de formato de input), la herramienta SIGUE DISPONIBLE en tu toolset. Un error de
+validación significa que el input que se envió tenía formato incorrecto — no que la herramienta
+haya desaparecido ni que esté bloqueada. NUNCA concluyas que una herramienta "no aparece en mi
+conjunto de tools" solo porque falló en un turno previo. Las herramientas disponibles son las que
+aparecen explícitamente en la definición de este sistema planificador, independientemente del
+historial de errores de la conversación. Ante un fallo de formato previo, intenta de nuevo con
+el input correcto.
 """.strip()
 
 

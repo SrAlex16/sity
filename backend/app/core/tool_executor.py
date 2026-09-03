@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 _SENSITIVE_KEYS = frozenset({"token", "secret", "password", "authorization", "api_key"})
@@ -170,37 +171,52 @@ class ToolExecutor:
 
     @staticmethod
     def _coerce_personality_tool_input(tool_input: dict[str, Any]) -> dict[str, Any]:
-        """Convert flat {param: value} format to the canonical {updates: [...]} format.
+        """Normalize any model-generated format to canonical {updates: [...], reason: str}.
 
-        The model sometimes sends values as a flat dict (e.g. {"sarcasm_level": 60})
-        when it is executing a previously-announced plan in a follow-up turn.  The
-        schema says additionalProperties=false but the Anthropic API does not enforce
-        that at the network layer, so the flat dict reaches us intact.  We accept it
-        rather than failing the user's confirmed request.
+        Handles three malformed formats the model produces in confirmation turns:
+        1. Flat dict:  {sarcasm_level: 60, warmth_level: 75}  (no 'updates' key)
+        2. JSON string: {updates: '{"sarcasm_level": 60, ...}'}  (stringified object)
+        3. Short names: {sarcasm: 60} or updates='{"sarcasm": 60}'  (missing _level suffix)
         """
-        if tool_input.get("updates"):
-            return tool_input  # already structured — nothing to do
+        raw_updates = tool_input.get("updates")
+        reason = str(tool_input.get("reason", ""))
 
+        # Case 1: already a proper list — pass through unchanged
+        if isinstance(raw_updates, list) and raw_updates:
+            return tool_input
+
+        # Case 2: updates is a JSON-encoded string — parse and continue
+        flat_source: dict[str, Any] = tool_input
+        if isinstance(raw_updates, str) and raw_updates.strip():
+            try:
+                parsed = json.loads(raw_updates)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, list):
+                return {"updates": parsed, "reason": reason}
+            if isinstance(parsed, dict):
+                flat_source = parsed  # extract params from the parsed payload
+
+        # Case 3: flat dict extraction — full names and short aliases both accepted
         flat_updates = []
         for param in PERSONALITY_PARAMETERS:
-            if param in tool_input:
-                try:
-                    raw_val = float(tool_input[param])
-                except (TypeError, ValueError):
-                    continue
-                # Tolerate values sent in 0-100 scale (e.g. 60 → 0.6)
-                value = raw_val / 100.0 if raw_val > 1.0 else raw_val
-                flat_updates.append({
-                    "parameter": param,
-                    "operation": "set_absolute",
-                    "value": round(value, 4),
-                })
+            alias = param.replace("_level", "").replace("_chance", "")
+            raw_val = flat_source.get(param) if param in flat_source else flat_source.get(alias)
+            if raw_val is None:
+                continue
+            try:
+                float_val = float(raw_val)
+            except (TypeError, ValueError):
+                continue
+            value = float_val / 100.0 if float_val > 1.0 else float_val
+            flat_updates.append({
+                "parameter": param,
+                "operation": "set_absolute",
+                "value": round(value, 4),
+            })
 
         if flat_updates:
-            return {
-                "updates": flat_updates,
-                "reason": str(tool_input.get("reason", "flat-dict coerced")),
-            }
+            return {"updates": flat_updates, "reason": reason or "flat-dict coerced"}
 
         return tool_input  # unchanged — validation will catch the missing field
 

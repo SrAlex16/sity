@@ -360,6 +360,42 @@ class TestCoercePersonalityToolInput:
         assert abs(params["helpfulness_level"] - 0.5) < 1e-9
         assert all(u["operation"] == "set_absolute" for u in result["updates"])
 
+    def test_updates_as_json_string_with_full_names(self):
+        """Regression trc_946f91700bb9: updates is a JSON-encoded string of a dict."""
+        result = ToolExecutor._coerce_personality_tool_input({
+            "updates": '{\n  "sarcasm_level": 60,\n  "warmth_level": 75,\n  "helpfulness_level": 50\n}',
+        })
+        assert "updates" in result
+        params = {u["parameter"]: u["value"] for u in result["updates"]}
+        assert abs(params["sarcasm_level"] - 0.6) < 1e-9
+        assert abs(params["warmth_level"] - 0.75) < 1e-9
+        assert abs(params["helpfulness_level"] - 0.5) < 1e-9
+
+    def test_updates_as_json_string_with_short_names(self):
+        """Regression trc_1dcaadfca792: updates is a JSON string with short param names."""
+        result = ToolExecutor._coerce_personality_tool_input({
+            "updates": '{"sarcasm": 60, "warmth": 75, "helpfulness": 50}',
+        })
+        assert "updates" in result
+        params = {u["parameter"]: u["value"] for u in result["updates"]}
+        assert abs(params["sarcasm_level"] - 0.6) < 1e-9
+        assert abs(params["warmth_level"] - 0.75) < 1e-9
+        assert abs(params["helpfulness_level"] - 0.5) < 1e-9
+
+    def test_updates_as_json_string_list_passthrough(self):
+        """If the JSON string parses to a list, use it directly."""
+        canonical = [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.6}]
+        import json
+        result = ToolExecutor._coerce_personality_tool_input({"updates": json.dumps(canonical)})
+        assert result["updates"] == canonical
+
+    def test_short_name_aliases_in_flat_dict(self):
+        """Flat dict with short names (sarcasm, warmth) resolves to full param names."""
+        result = ToolExecutor._coerce_personality_tool_input({"sarcasm": 0.6, "warmth": 0.75})
+        params = {u["parameter"] for u in result["updates"]}
+        assert "sarcasm_level" in params
+        assert "warmth_level" in params
+
     def test_flat_dict_0_1_scale_not_divided(self):
         """Values already in 0-1 range are NOT divided by 100."""
         result = ToolExecutor._coerce_personality_tool_input({"sarcasm_level": 0.6})
@@ -381,7 +417,7 @@ class TestCoercePersonalityToolInput:
         assert result is bad
 
     def test_real_bug_flat_dict_executes_successfully(self, db_session: Session):
-        """Regression: the exact tool_input from the real bug (2026-09-03) must succeed."""
+        """Regression trc_820089cba3da: flat dict with string values must succeed."""
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
             tool_input={
@@ -390,6 +426,28 @@ class TestCoercePersonalityToolInput:
                 "helpfulness_level": "50",
             },
             trace_id="trc_regression",
+        )
+        assert result.ok is True
+        assert "sarcasm_level" in result.updated_parameters
+        assert "warmth_level" in result.updated_parameters
+        assert "helpfulness_level" in result.updated_parameters
+
+    def test_real_bug_json_string_updates_executes_successfully(self, db_session: Session):
+        """Regression trc_946f91700bb9: updates as JSON string dict must succeed."""
+        executor = ToolExecutor(db_session)
+        result = executor._update_personality_settings(
+            tool_input={"updates": '{\n  "sarcasm_level": 60,\n  "warmth_level": 75,\n  "helpfulness_level": 50\n}'},
+            trace_id="trc_946f91700bb9_regression",
+        )
+        assert result.ok is True
+        assert "sarcasm_level" in result.updated_parameters
+
+    def test_real_bug_json_string_short_names_executes_successfully(self, db_session: Session):
+        """Regression trc_1dcaadfca792: JSON string with short names must succeed."""
+        executor = ToolExecutor(db_session)
+        result = executor._update_personality_settings(
+            tool_input={"updates": '{"sarcasm": 60, "warmth": 75, "helpfulness": 50}'},
+            trace_id="trc_1dcaadfca792_regression",
         )
         assert result.ok is True
         assert "sarcasm_level" in result.updated_parameters
