@@ -19,6 +19,16 @@ os.environ.setdefault("SITY_COOKIE_SECURE", "false")
 # causing auth endpoints to reject requests with real-key verification.
 # setdefault wins because load_dotenv() does not override existing env vars.
 os.environ.setdefault("RECAPTCHA_SECRET_KEY", "")
+# Block ANTHROPIC_API_KEY from leaking via load_dotenv() into the test process.
+# app/main.py and app/cortex/claude_provider.py both call load_dotenv() at module
+# import time, which would set the real production key from .env — making
+# @pytest.mark.behavior_regression tests run with real API calls non-deterministically
+# instead of being properly skipped. setdefault("", "") ensures load_dotenv() finds
+# the key already set and leaves it as "". behavior_regression tests check
+# `not os.getenv("ANTHROPIC_API_KEY")` at collection time, so they are skipped.
+# To run behavior tests intentionally, set ANTHROPIC_API_KEY in the shell before
+# invoking pytest (setdefault is a no-op when the var is already in the environment).
+os.environ.setdefault("ANTHROPIC_API_KEY", "")
 # Disable real SMTP in tests — email_stub uses stub (log-only) path when host is empty.
 os.environ.setdefault("SITY_SMTP_HOST", "")
 # Stable test key for Fernet encryption (UserIntegration). Generated once and fixed

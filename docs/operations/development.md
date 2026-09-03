@@ -403,6 +403,14 @@ ANTHROPIC_API_KEY=<tu_key> backend/.venv/bin/pytest \
 ```
 
 El marcador `behavior_regression` está registrado en `pytest.ini`.
+
+**Aislamiento de entorno:** `conftest.py` aplica `os.environ.setdefault("ANTHROPIC_API_KEY", "")`
+antes de cualquier importación de la app. Esto bloquea el filtrado accidental de la clave
+real desde `.env` vía `load_dotenv()` (que se llama en `app/main.py` y `claude_provider.py`
+a nivel de módulo). Consecuencia: en el ciclo normal de tests la clave nunca llega al proceso
+de forma accidental — los tests `behavior_regression` siempre se saltan a menos que se pase
+la clave explícitamente en el entorno del shell antes de invocar pytest.
+
 Pasar solo `ANTHROPIC_API_KEY` en el entorno — no sourcear el `.env`
 completo, porque `SITY_ENCRYPTION_KEY` colisiona con la clave del test DB.
 

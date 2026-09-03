@@ -4,7 +4,7 @@ Uses stub ConfirmationManager so no DB is required for these tests.
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -41,6 +41,19 @@ def _flow() -> ChatLocalFlow:
     cm.is_generic_confirmation_message.return_value = False
     cm.find_pending_action_by_context.return_value = None
     return ChatLocalFlow(confirmation_manager=cm)
+
+
+@pytest.fixture(autouse=True)
+def _patch_settings_service():
+    """SettingsService is called in the affirmative path to read model_upgrade_ttl_hours.
+
+    These tests use MagicMock sessions (no real DB by design). Patch SettingsService
+    to return default VoiceSettings so the TTL read doesn't hit the MagicMock session.
+    """
+    from app.settings.schemas import VoiceSettings
+    with patch("app.settings.settings_service.SettingsService") as mock_svc:
+        mock_svc.return_value.get_voice_settings.return_value = VoiceSettings()
+        yield
 
 
 def setup_function():

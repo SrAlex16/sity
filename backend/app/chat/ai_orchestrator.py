@@ -31,7 +31,6 @@ from app.chat.model_router import (
     ModelUpgradeProposal,
     _categorize_upgrade_reason,
     get_accepted_upgrade_category,
-    record_accepted_upgrade,
     set_proposal,
 )
 from app.chat.response_factory import local_tool_response, micro_reaction_response
