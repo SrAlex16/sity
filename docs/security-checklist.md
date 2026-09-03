@@ -254,9 +254,24 @@ Cubierto junto con SEC-11 por los 12 tests de admin gating.
 - La acción queda en `status="pending"` hasta que `PendingActionRunner` la ejecuta
 - `PendingActionRunner` solo se activa cuando el mensaje del usuario coincide
   exactamente con `action.confirmation_phrase`
-- Cubierto por 32 tests en `tests/test_pending_action_runner.py`
+- Cubierto por 34 tests en `tests/test_pending_action_runner.py`
 
-**Resultado:** ✅
+**⚠️ Vulnerabilidad encontrada y corregida (2026-09-02, commit `c4a307a`):**
+El checklist original verificaba SOLO el flujo de creación y ejecución
+(`confirmation_phrase`), pero NO verificaba aislamiento entre sesiones.
+`PendingAction` carecía de campo `session_id`; `ConfirmationManager` buscaba
+acciones sin filtrar por sesión — cualquier sesión podía confirmar o rechazar
+acciones pendientes de cualquier otra sesión (vulnerabilidad P0).
+Identificada en auditoría externa (`docs/auditoria-seguridad-qa.md`) y verificada
+independientemente antes del fix.
+
+**Fix aplicado:** campo `session_id` añadido a `PendingAction`; 7 métodos de
+búsqueda en `ConfirmationManager` corregidos para filtrar por `session_id` en
+todas sus queries. 9 tests de aislamiento cross-sesión en
+`tests/test_confirmation_manager.py` (`test_cross_session_isolation_all_lookup_methods`,
+`test_cross_session_has_multiple_isolation`, y otros).
+
+**Resultado:** ✅ — cubre flujo de creación/confirmación Y aislamiento por sesión.
 
 ---
 
@@ -390,7 +405,7 @@ o `error` de la respuesta no contenga esa información.
 | SEC-10 | Cross-user data disclosure | ✅ | Solo información cualitativa; valores numéricos no filtrados |
 | SEC-11 | Guest + acción destructiva | ✅ | GIT/FILE/SERVICE_CONTROL toolsets gateados a Admin |
 | SEC-12 | User + acción destructiva | ✅ | Mismo gating; `role=="admin"` es el único pase |
-| SEC-13 | Pending action flow (código) | ✅ | 32 tests en `test_pending_action_runner.py` |
+| SEC-13 | Pending action flow + aislamiento por sesión (código) | ✅ | 34 tests en `test_pending_action_runner.py` + 9 en `test_confirmation_manager.py`; vuln P0 corregida en `c4a307a` |
 | SEC-14 | Pending action (conversación) | ✅ | Propuesta con frase de confirmación; sin ejecución directa |
 | SEC-15 | Secretos al modelo | ✅ | `_redact_sensitive` cubre `raw_result` → modelo |
 | SEC-16 | Timeouts HTTP | ✅ | Google 30 s; Claude SDK 120 s (silencio entre chunks) |
