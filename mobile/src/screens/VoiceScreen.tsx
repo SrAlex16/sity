@@ -5,6 +5,7 @@ import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import type { LanguageCode } from '../hooks/useLanguage';
 import { useInitiative } from '../hooks/useInitiative';
 import type { InitiativeSettings } from '../hooks/useInitiative';
+import { useLocation } from '../hooks/useLocation';
 import { useIntegrations } from '../hooks/useIntegrations';
 import { TRANSLATIONS, UI_LANGUAGES } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
@@ -39,8 +40,11 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const { settings, isLoading, error, save, reload } = useVoice();
   const { settings: initiativeSettings, save: saveInitiative } = useInitiative();
   const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage();
+  const { settings: locationSettings, isLoading: locLoading, save: saveLocation } = useLocation();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
+  const [locationInput, setLocationInput] = useState('');
+  const [locationDetecting, setLocationDetecting] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -201,6 +205,38 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
     } catch { /* silent */ } finally {
       setDisconnecting(null);
     }
+  };
+
+  const handleDetectLocation = async () => {
+    if (!navigator.geolocation) return;
+    setLocationDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+            { headers: { 'User-Agent': 'Sity/1.0' } }
+          );
+          if (!resp.ok) throw new Error('Nominatim error');
+          const data = await resp.json() as { address?: Record<string, string> };
+          const addr = data.address ?? {};
+          const city = addr.city ?? addr.town ?? addr.municipality ?? addr.county ?? addr.state ?? '';
+          await saveLocation({ city, source: 'browser' });
+        } catch {
+          // silent
+        } finally {
+          setLocationDetecting(false);
+        }
+      },
+      async () => {
+        try {
+          await saveLocation({ city: '', source: 'denied' });
+        } catch { /* silent */ }
+        setLocationDetecting(false);
+      },
+      { timeout: 10000 }
+    );
   };
 
   const handleDeleteAccount = async () => {
@@ -439,6 +475,75 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                   <option key={code} value={code}>{label}</option>
                 ))}
               </select>
+            )}
+          </div>
+        )}
+
+        {/* Ubicación — User/Admin only */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionEs}>{tl.locationSection}</p>
+            <p className={styles.sectionJp}>位置情報</p>
+            <p className={styles.sectionHint}>{tl.locationHint}</p>
+
+            {/* Current location display */}
+            {locationSettings?.city && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span className={styles.sectionHint} style={{ flex: 1 }}>
+                  {locationSettings.city}
+                  {locationSettings.source && (
+                    <> — <span style={{ opacity: 0.6 }}>{tl.locationSourceLabel(locationSettings.source)}</span></>
+                  )}
+                </span>
+                <button
+                  className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                  onClick={() => void saveLocation({ city: '', source: '' })}
+                  disabled={locLoading}
+                >
+                  {tl.locationClear}
+                </button>
+              </div>
+            )}
+
+            {locationSettings?.source === 'denied' && !locationSettings.city && (
+              <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
+                {tl.locationDenied}
+              </p>
+            )}
+
+            {/* Manual input */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input
+                type="text"
+                className={styles.cleanupInput}
+                style={{ flex: 1 }}
+                placeholder={tl.locationPlaceholder}
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && locationInput.trim()) {
+                    void saveLocation({ city: locationInput.trim(), source: 'manual' }).then(() => setLocationInput(''));
+                  }
+                }}
+              />
+              <button
+                className={`${styles.sectionBtn} ${styles.btnCyan}`}
+                disabled={!locationInput.trim() || locLoading}
+                onClick={() => void saveLocation({ city: locationInput.trim(), source: 'manual' }).then(() => setLocationInput(''))}
+              >
+                {tl.locationSave}
+              </button>
+            </div>
+
+            {/* Browser detection */}
+            {typeof navigator !== 'undefined' && 'geolocation' in navigator && (
+              <button
+                className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                onClick={() => void handleDetectLocation()}
+                disabled={locationDetecting || locLoading}
+              >
+                {locationDetecting ? tl.locationDetecting : tl.locationDetect}
+              </button>
             )}
           </div>
         )}

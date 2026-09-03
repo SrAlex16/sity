@@ -136,6 +136,20 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
     return "\n".join(lines)
 
 
+def _build_location_block(session: Session, session_id: str) -> str:
+    """Return location context block for prompt injection.
+
+    Returns "" when no location is stored or on any error.
+    """
+    try:
+        from app.settings.settings_service import SettingsService
+        from app.chat.location_context import build_location_context, render_location_context
+        settings = SettingsService(session).get_location_settings(session_id=session_id)
+        return render_location_context(build_location_context(settings))
+    except Exception:
+        return ""
+
+
 def _build_planner_memory_ctx(n_total: int, history_limit: int, visible_count: int) -> str:
     return (
         "Contexto estructural de memoria:\n"
@@ -190,10 +204,13 @@ class PromptContextBuilder:
         )
 
         social_block = _build_social_context_block(session, session_id)
+        location_block = _build_location_block(session, session_id)
 
         parts = [time_block, memory_ctx]
         if social_block:
             parts.append(social_block)
+        if location_block:
+            parts.append(location_block)
         if input_mode == "voice":
             parts.append("[input_mode: voice]")
         if output_mode == "voice":
@@ -215,6 +232,8 @@ class PromptContextBuilder:
             planner_parts.append(task_ctx_block)
         if social_block:
             planner_parts.append(social_block)
+        if location_block:
+            planner_parts.append(location_block)
         planner_parts.append(message)
         planner_user_message = "\n\n".join(planner_parts)
 

@@ -90,6 +90,16 @@ export interface T {
     initiativeInactivityHint: string;
     initiativeOpenLoop: string;
     initiativeOpenLoopHint: string;
+    // Location
+    locationSection: string;
+    locationHint: string;
+    locationPlaceholder: string;
+    locationSave: string;
+    locationDetect: string;
+    locationDetecting: string;
+    locationDenied: string;
+    locationClear: string;
+    locationSourceLabel: (source: string) => string;
   };
   chat: {
     guest: string;
@@ -313,6 +323,19 @@ const es: T = {
     initiativeInactivityHint: 'Si llevas tiempo sin hablar con Sity, puede escribirte para saber cómo estás.',
     initiativeOpenLoop: 'Seguimiento de temas pendientes',
     initiativeOpenLoopHint: 'Si mencionas algo que querías resolver, Sity puede preguntarte más tarde qué tal fue.',
+    locationSection: 'Ubicación',
+    locationHint: 'Sity usa tu ubicación cuando preguntas por cosas locales (tiempo, restaurantes, horarios). Se guarda en el servidor, no en el navegador.',
+    locationPlaceholder: 'Ciudad o región (ej: Madrid)',
+    locationSave: 'Guardar',
+    locationDetect: 'Detectar con el navegador',
+    locationDetecting: 'Detectando…',
+    locationDenied: 'Acceso denegado por el navegador',
+    locationClear: 'Borrar ubicación',
+    locationSourceLabel: (source: string) =>
+      source === 'browser' ? 'Detectada con el navegador' :
+      source === 'manual'  ? 'Introducida manualmente' :
+      source === 'auto'    ? 'Detectada por Sity' :
+      source === 'denied'  ? 'Acceso denegado' : '',
   },
   chat: {
     guest: 'Invitado',
@@ -532,6 +555,19 @@ const en: T = {
     initiativeInactivityHint: "If you haven't talked to Sity in a while, it may check in on you.",
     initiativeOpenLoop: 'Pending topic follow-up',
     initiativeOpenLoopHint: 'If you mention something you wanted to resolve, Sity may ask about it later.',
+    locationSection: 'Location',
+    locationHint: 'Sity uses your location when you ask about local things (weather, restaurants, hours). Saved on the server, not in the browser.',
+    locationPlaceholder: 'City or region (e.g. Madrid)',
+    locationSave: 'Save',
+    locationDetect: 'Detect with browser',
+    locationDetecting: 'Detecting…',
+    locationDenied: 'Access denied by browser',
+    locationClear: 'Clear location',
+    locationSourceLabel: (source: string) =>
+      source === 'browser' ? 'Detected via browser' :
+      source === 'manual'  ? 'Set manually' :
+      source === 'auto'    ? 'Detected by Sity' :
+      source === 'denied'  ? 'Access denied' : '',
   },
   chat: {
     guest: 'Guest',
@@ -751,6 +787,19 @@ const ja: T = {
     initiativeInactivityHint: 'しばらく話していない場合、Sityが様子を聞くことがあります。',
     initiativeOpenLoop: '保留中のトピックのフォローアップ',
     initiativeOpenLoopHint: '解決したいことを話すと、Sityが後で状況を確認することがあります。',
+    locationSection: '位置情報',
+    locationHint: '天気、レストラン、営業時間など地域に関する質問をするとき、Sityはあなたの場所を使用します。サーバーに保存されます。',
+    locationPlaceholder: '都市または地域（例：東京）',
+    locationSave: '保存',
+    locationDetect: 'ブラウザで検出',
+    locationDetecting: '検出中…',
+    locationDenied: 'ブラウザにアクセスを拒否されました',
+    locationClear: '位置情報を削除',
+    locationSourceLabel: (source: string) =>
+      source === 'browser' ? 'ブラウザで検出' :
+      source === 'manual'  ? '手動で設定' :
+      source === 'auto'    ? 'Sityが検出' :
+      source === 'denied'  ? 'アクセス拒否' : '',
   },
   chat: {
     guest: 'ゲスト',

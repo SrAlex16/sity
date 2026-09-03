@@ -12,6 +12,7 @@ from app.settings.alter_service import AlterService
 from app.settings.schemas import (
     AlterSlot,
     LanguageSettings,
+    LocationSettings,
     PersonalityAdjustRequest,
     PersonalityAdjustResponse,
     PersonalitySettings,
@@ -182,6 +183,36 @@ def update_language_settings(
         session_id=current.session_id,
     )
     return LanguageSettings(language_override=body.language_override)
+
+
+# ---------------------------------------------------------------------------
+# Location settings — per-session
+# ---------------------------------------------------------------------------
+
+_VALID_LOCATION_SOURCES = frozenset({"manual", "browser", "auto", "denied", ""})
+
+
+@router.get("/location", response_model=LocationSettings)
+def get_location_settings_endpoint(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Per-session location (city + source) used by Sity for local context."""
+    _require_non_guest(current)
+    return SettingsService(session).get_location_settings(session_id=current.session_id)
+
+
+@router.put("/location", response_model=LocationSettings)
+def update_location_settings_endpoint(
+    body: LocationSettings,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Save per-session location settings."""
+    _require_non_guest(current)
+    if body.source not in _VALID_LOCATION_SOURCES:
+        raise HTTPException(status_code=422, detail=f"Fuente de ubicación no válida: {body.source!r}")
+    return SettingsService(session).set_location_settings(body, session_id=current.session_id)
 
 
 # ---------------------------------------------------------------------------

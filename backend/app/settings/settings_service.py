@@ -5,7 +5,7 @@ from sqlmodel import Session, col, select
 
 from app.memory.models import Setting, utc_now
 from app.settings.config_loader import load_default_config
-from app.settings.schemas import VoiceSettings
+from app.settings.schemas import LocationSettings, VoiceSettings
 
 
 PERSONALITY_KEYS = {
@@ -283,6 +283,43 @@ class SettingsService:
     ) -> str:
         self.set_setting("language.override", value, source=source, session_id=session_id)
         return self.get_language_override(session_id=session_id)
+
+    # ── Location settings ──────────────────────────────────────────────────────
+    # Per-session: session row first, fall back to global, then defaults.
+
+    _LOCATION_KEYS = ("city", "source")
+
+    def get_location_settings(self, session_id: Optional[str] = None) -> LocationSettings:
+        data: dict[str, Any] = {}
+        for key in self._LOCATION_KEYS:
+            row = None
+            if session_id is not None:
+                row = self.session.exec(
+                    select(Setting).where(
+                        Setting.key == f"location.{key}",
+                        Setting.session_id == session_id,
+                    )
+                ).first()
+            if row is None:
+                row = self.session.exec(
+                    select(Setting).where(
+                        Setting.key == f"location.{key}",
+                        col(Setting.session_id).is_(None),
+                    )
+                ).first()
+            if row is not None:
+                data[key] = json.loads(row.value_json)
+        return LocationSettings(**data)
+
+    def set_location_settings(
+        self,
+        settings: LocationSettings,
+        session_id: Optional[str] = None,
+        source: str = "ui",
+    ) -> LocationSettings:
+        self.set_setting("location.city", settings.city, source=source, session_id=session_id)
+        self.set_setting("location.source", settings.source, source=source, session_id=session_id)
+        return self.get_location_settings(session_id=session_id)
 
     # ── Bulk personality write — used by AlterService.load_alter ──────────────
 

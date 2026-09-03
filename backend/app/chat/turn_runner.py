@@ -259,6 +259,13 @@ def _chat_message_inner(
 
     ctx = build_turn_context(session, request, _strong_model, session_id=_session_id, is_admin=_is_admin)
 
+    if _session_id.startswith("user:"):
+        from app.chat.location_context import maybe_auto_detect_location
+        maybe_auto_detect_location(
+            session, ctx.settings_service, _session_id, request.message,
+            trace_id=ctx.trace_id,
+        )
+
     persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin)
 
     # Classify the message when refusal_mode is active:

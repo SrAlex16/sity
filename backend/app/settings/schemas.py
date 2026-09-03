@@ -76,3 +76,8 @@ SUPPORTED_LANGUAGE_CODES = frozenset({
 
 class LanguageSettings(BaseModel):
     language_override: str = "auto"
+
+
+class LocationSettings(BaseModel):
+    city: str = ""
+    source: Literal["manual", "browser", "auto", "denied", ""] = ""
