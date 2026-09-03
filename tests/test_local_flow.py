@@ -106,6 +106,31 @@ def test_affirmative_clears_proposal():
     assert get_proposal() is None
 
 
+def test_affirmative_records_accepted_upgrade_category():
+    from app.chat.model_router import get_accepted_upgrade_category, _session_accepted_upgrade_types
+    _session_accepted_upgrade_types.clear()
+    proposal = ModelUpgradeProposal(
+        original_message="sube el sarcasmo",
+        strong_model="claude-sonnet-4-6",
+        reason="ajuste de personalidad — parámetros de sarcasmo",
+    )
+    set_proposal(proposal)
+    ctx = _ctx("sí")
+    ctx.session_id = "session_test_record"
+    _flow().try_handle(ctx)
+    assert get_accepted_upgrade_category("session_test_record") == "personality"
+
+
+def test_affirmative_auto_accept_different_session_is_isolated():
+    from app.chat.model_router import get_accepted_upgrade_category, _session_accepted_upgrade_types
+    _session_accepted_upgrade_types.clear()
+    set_proposal(_active_proposal())
+    ctx = _ctx("sí")
+    ctx.session_id = "session_a"
+    _flow().try_handle(ctx)
+    assert get_accepted_upgrade_category("session_b") is None
+
+
 # ---------------------------------------------------------------------------
 # Negative response → model_upgrade_rejected signal, re-run with current model
 # ---------------------------------------------------------------------------

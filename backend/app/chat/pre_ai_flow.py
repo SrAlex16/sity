@@ -50,6 +50,7 @@ class ChatPreAIFlow:
             save_message=self.ctx.persistence.save,
             get_usage=get_today_token_usage,
             language_override=self.ctx.language_override,
+            session_id=self.ctx.session_id,
         )
 
         local_response = self.local_flow.try_handle(_local_ctx)

@@ -34,9 +34,37 @@ class LocalFlowSignal:
     original_message: str
     strong_model: str
     selected_tools: list[dict] = field(default_factory=list)
+    skip_history_turns: int = 3
 
 
 _pending_proposal: Optional[ModelUpgradeProposal] = None
+
+# Per-session record of already-accepted upgrade task categories.
+# Key: session_id. Value: task category string (see _categorize_upgrade_reason).
+# Reset on server restart; no persistence needed — this is a UX convenience, not state.
+_session_accepted_upgrade_types: dict[str, str] = {}
+
+
+def _categorize_upgrade_reason(reason: str) -> str:
+    """Map a free-text upgrade reason to a normalized task category for dedup."""
+    r = reason.lower()
+    if any(w in r for w in ("personalidad", "personality", "parámetr", "slider",
+                             "sarcas", "verbos", "calidez", "rudeness", "warmth")):
+        return "personality"
+    if any(w in r for w in ("código", "code", "refactor", "debug", "arquitect",
+                             "análisis de múltiple", "multiple files")):
+        return "code"
+    return reason[:50].lower().strip()
+
+
+def get_accepted_upgrade_category(session_id: str) -> str | None:
+    """Return the accepted task category for this session, or None."""
+    return _session_accepted_upgrade_types.get(session_id)
+
+
+def record_accepted_upgrade(session_id: str, reason: str) -> None:
+    """Record that the user accepted an upgrade for this task category."""
+    _session_accepted_upgrade_types[session_id] = _categorize_upgrade_reason(reason)
 
 
 def set_proposal(proposal: ModelUpgradeProposal) -> None:

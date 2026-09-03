@@ -26,7 +26,14 @@ from app.chat.background_dispatch import _detach_tool
 from app.chat.budget_snapshot import build_budget_snapshot
 from app.chat.chat_persistence import get_today_token_usage
 from app.chat.final_response_builder import build_final_ai_response
-from app.chat.model_router import ModelUpgradeProposal, set_proposal
+from app.chat.model_router import (
+    LocalFlowSignal,
+    ModelUpgradeProposal,
+    _categorize_upgrade_reason,
+    get_accepted_upgrade_category,
+    record_accepted_upgrade,
+    set_proposal,
+)
 from app.chat.response_factory import local_tool_response, micro_reaction_response
 from app.chat.response_guard import has_narrated_search
 from app.chat.routing_decision import ProviderMode
@@ -363,14 +370,36 @@ class ChatAIOrchestrator:
 
     def _handle_model_upgrade(
         self, planner_response: Any, persona_decision: PersonaDecision
-    ) -> ChatMessageResponse:
-        """Record a model-upgrade proposal and return the prompt-the-user response."""
+    ):
+        """Record a model-upgrade proposal and return the prompt-the-user response.
+
+        If the user already accepted an upgrade for the same task category this session,
+        auto-accepts and returns LocalFlowSignal instead of asking again.
+        """
         ctx = self.ctx
         prep = self.prep
 
         first_tool = planner_response.tool_calls[0]
         _reason = str(first_tool.input.get("reason", "")).strip()
         _strong = ctx.ai_config.get("claude", {}).get("strong_model", "claude-sonnet-4-6")
+
+        # Auto-accept if the same task category was already accepted this session.
+        _category = _categorize_upgrade_reason(_reason)
+        _accepted_category = get_accepted_upgrade_category(ctx.session_id)
+        if _accepted_category is not None and _accepted_category == _category:
+            write_log(
+                level="INFO", module="chat", event="model_upgrade_auto_accepted",
+                trace_id=ctx.trace_id,
+                payload={"reason": _reason, "category": _category, "strong_model": _strong},
+            )
+            return LocalFlowSignal(
+                kind="model_upgrade_accepted",
+                original_message=self.request.message,
+                strong_model=_strong,
+                selected_tools=list(prep.selected_tools),
+                skip_history_turns=0,
+            )
+
         set_proposal(ModelUpgradeProposal(
             original_message=self.request.message,
             strong_model=_strong,

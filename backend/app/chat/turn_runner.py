@@ -171,7 +171,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     request=upgraded,
                     session=session,
                     _strong_model=strong_model,
-                    _skip_history_turns=3,
+                    _skip_history_turns=result.skip_history_turns,
                     _upgrade_context=_upgrade_ctx,
                     _session_id=session_id,
                     _forced_tools=forced_tools,
@@ -286,6 +286,20 @@ def _chat_message_inner(
 
     persona_prompt = persona_decision.system_prompt
 
+    # Detect personality/system-instruction override attempts BEFORE everything else.
+    # If detected: inject high-priority integrity block and skip structural refusal
+    # (override attempts should reach the main model with real values enforced).
+    from app.core.message_classifier import classify_personality_override, _build_personality_integrity_block
+    _is_personality_override = classify_personality_override(request.message, trace_id=ctx.trace_id)
+    if _is_personality_override:
+        write_log(
+            level="WARN", module="chat",
+            event="personality_override_attempt_detected",
+            trace_id=ctx.trace_id,
+            payload={"message_snippet": request.message[:120]},
+        )
+        persona_prompt = _build_personality_integrity_block(ctx.personality) + "\n\n" + persona_prompt
+
     # Config query: inject verified parameter values so the model cannot hallucinate them.
     if _classification is not None and _classification.is_config_query:
         from app.core.message_classifier import build_verified_config_block
@@ -322,6 +336,7 @@ def _chat_message_inner(
         and _classification.is_real_request
         and not _classification.is_config_query
         and not _has_override
+        and not _is_personality_override
     ):
         from app.core.message_classifier import generate_refusal_response
         from app.chat.chat_persistence import get_today_token_usage, get_recent_db_messages

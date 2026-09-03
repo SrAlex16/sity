@@ -25,6 +25,7 @@ class LocalFlowContext:
     save_message: Callable[..., None]
     get_usage: Callable[[Session], int]
     language_override: str = field(default="auto")
+    session_id: str = field(default="default")
 
 
 class ChatLocalFlow:
@@ -51,6 +52,8 @@ class ChatLocalFlow:
             )
             if is_affirmative:
                 ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
+                from app.chat.model_router import record_accepted_upgrade
+                record_accepted_upgrade(ctx.session_id, proposal.reason)
                 clear_proposal()
                 return LocalFlowSignal(
                     kind="model_upgrade_accepted",
