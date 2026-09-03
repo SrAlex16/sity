@@ -112,6 +112,7 @@ def test_voice_settings_defaults():
     assert s.voice_response_mode == "symmetric"
     assert s.voice_include_text is True
     assert s.voice_long_response_action == "text_only"
+    assert s.model_upgrade_ttl_hours == 4
 
 
 def test_voice_settings_persist_and_reload():
@@ -127,6 +128,44 @@ def test_voice_settings_persist_and_reload():
     assert result.voice_response_mode == "always"
     assert result.voice_include_text is False
     assert result.voice_long_response_action == "split"
+
+
+def test_model_upgrade_ttl_hours_default_is_4():
+    from app.settings.settings_service import SettingsService
+    with _make_session() as session:
+        svc = SettingsService(session)
+        s = svc.get_voice_settings(session_id="user:99")
+    assert s.model_upgrade_ttl_hours == 4
+
+
+def test_model_upgrade_ttl_hours_persisted_per_session():
+    from app.settings.settings_service import SettingsService
+    with _make_session() as session:
+        svc = SettingsService(session)
+        svc.set_voice_settings(VoiceSettings(model_upgrade_ttl_hours=2), session_id="user:1")
+        result = svc.get_voice_settings(session_id="user:1")
+    assert result.model_upgrade_ttl_hours == 2
+
+
+def test_model_upgrade_ttl_hours_session_isolated():
+    from app.settings.settings_service import SettingsService
+    with _make_session() as session:
+        svc = SettingsService(session)
+        svc.set_voice_settings(VoiceSettings(model_upgrade_ttl_hours=6), session_id="user:1")
+        result_other = svc.get_voice_settings(session_id="user:2")
+    # user:2 never set a value — must get the default (4)
+    assert result_other.model_upgrade_ttl_hours == 4
+
+
+def test_model_upgrade_ttl_hours_guest_always_gets_default():
+    """Guest cannot persist model_upgrade_ttl_hours — always reads 4 from default."""
+    from app.settings.settings_service import SettingsService
+    with _make_session() as session:
+        svc = SettingsService(session)
+        # Even if somehow a guest tries to set it (shouldn't happen, blocked by API layer)
+        # the guest session_id will never match user:N rows, so they get default
+        result = svc.get_voice_settings(session_id="guest:abc123")
+    assert result.model_upgrade_ttl_hours == 4
 
 
 # ---------------------------------------------------------------------------

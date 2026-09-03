@@ -45,6 +45,10 @@ export interface T {
     cleanupHint: string;
     cleanupUnit: string;
     cleanupNever: string;
+    // Model upgrade memory TTL
+    upgradeMemorySection: string;
+    upgradeMemoryHint: string;
+    upgradeMemoryUnit: string;
     // UI language — Sistema 1
     uiLanguageSection: string;
     uiLanguageHint: string;
@@ -273,6 +277,9 @@ const es: T = {
     cleanupHint: 'Los mensajes de audio se sustituyen por su transcripción transcurrido este tiempo.',
     cleanupUnit: 'días',
     cleanupNever: '(0 = nunca borrar)',
+    upgradeMemorySection: 'Memoria de propuesta de modelo',
+    upgradeMemoryHint: 'Tiempo que Sity recuerda que ya aceptaste un upgrade del modelo para la misma tarea. Tras este tiempo, vuelve a preguntar.',
+    upgradeMemoryUnit: 'horas',
     uiLanguageSection: 'Idioma de la app',
     uiLanguageHint: 'Idioma de los menús y botones. Se guarda en este navegador.',
     uiLanguageNote: 'Controla la interfaz, no las respuestas de Sity.',
@@ -489,6 +496,9 @@ const en: T = {
     cleanupHint: 'Audio messages are replaced by their transcript after this time.',
     cleanupUnit: 'days',
     cleanupNever: '(0 = never delete)',
+    upgradeMemorySection: 'Model upgrade memory',
+    upgradeMemoryHint: 'How long Sity remembers that you accepted a model upgrade for the same task. After this time, it will ask again.',
+    upgradeMemoryUnit: 'hours',
     uiLanguageSection: 'App language',
     uiLanguageHint: 'Language for menus and buttons. Saved in this browser.',
     uiLanguageNote: "Controls the interface, not Sity's responses.",
@@ -705,6 +715,9 @@ const ja: T = {
     cleanupHint: 'この時間が経過すると音声メッセージは文字起こしに置き換えられます。',
     cleanupUnit: '日',
     cleanupNever: '（0 = 削除しない）',
+    upgradeMemorySection: 'モデルアップグレード記憶',
+    upgradeMemoryHint: '同じタスクのモデルアップグレードを承認したことをSityが記憶する時間。この時間が過ぎると再度確認します。',
+    upgradeMemoryUnit: '時間',
     uiLanguageSection: 'アプリ言語',
     uiLanguageHint: 'メニューとボタンの言語。このブラウザに保存されます。',
     uiLanguageNote: 'インターフェースの言語を制御します（Sityの返答言語ではありません）。',

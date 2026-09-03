@@ -53,7 +53,11 @@ class ChatLocalFlow:
             if is_affirmative:
                 ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
                 from app.chat.model_router import record_accepted_upgrade
-                record_accepted_upgrade(ctx.session_id, proposal.reason)
+                from app.settings.settings_service import SettingsService
+                ttl_hours = SettingsService(ctx.session).get_voice_settings(
+                    session_id=ctx.session_id
+                ).model_upgrade_ttl_hours
+                record_accepted_upgrade(ctx.session_id, proposal.reason, ttl_hours=ttl_hours)
                 clear_proposal()
                 return LocalFlowSignal(
                     kind="model_upgrade_accepted",

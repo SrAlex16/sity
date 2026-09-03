@@ -39,10 +39,19 @@ class LocalFlowSignal:
 
 _pending_proposal: Optional[ModelUpgradeProposal] = None
 
-# Per-session record of already-accepted upgrade task categories.
-# Key: session_id. Value: task category string (see _categorize_upgrade_reason).
-# Reset on server restart; no persistence needed — this is a UX convenience, not state.
-_session_accepted_upgrade_types: dict[str, str] = {}
+# Per-session record of already-accepted upgrade task categories, with expiry.
+# Key: session_id. Value: (category, expires_at).
+# TTL is configurable per user (default 4h); on expiry get_accepted_upgrade_category returns None.
+_DEFAULT_UPGRADE_TTL_HOURS: int = 4
+
+
+@dataclass
+class _AcceptedUpgradeEntry:
+    category: str
+    expires_at: datetime
+
+
+_session_accepted_upgrade_types: dict[str, _AcceptedUpgradeEntry] = {}
 
 
 def _categorize_upgrade_reason(reason: str) -> str:
@@ -58,13 +67,22 @@ def _categorize_upgrade_reason(reason: str) -> str:
 
 
 def get_accepted_upgrade_category(session_id: str) -> str | None:
-    """Return the accepted task category for this session, or None."""
-    return _session_accepted_upgrade_types.get(session_id)
+    """Return the accepted task category for this session, or None if absent/expired."""
+    entry = _session_accepted_upgrade_types.get(session_id)
+    if entry is None:
+        return None
+    if datetime.utcnow() >= entry.expires_at:
+        del _session_accepted_upgrade_types[session_id]
+        return None
+    return entry.category
 
 
-def record_accepted_upgrade(session_id: str, reason: str) -> None:
+def record_accepted_upgrade(session_id: str, reason: str, ttl_hours: int = _DEFAULT_UPGRADE_TTL_HOURS) -> None:
     """Record that the user accepted an upgrade for this task category."""
-    _session_accepted_upgrade_types[session_id] = _categorize_upgrade_reason(reason)
+    _session_accepted_upgrade_types[session_id] = _AcceptedUpgradeEntry(
+        category=_categorize_upgrade_reason(reason),
+        expires_at=datetime.utcnow() + timedelta(hours=ttl_hours),
+    )
 
 
 def set_proposal(proposal: ModelUpgradeProposal) -> None:

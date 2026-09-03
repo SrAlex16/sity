@@ -85,7 +85,10 @@ def test_set_proposal_replaces_previous():
 # Per-session accepted upgrade type tracking
 # ---------------------------------------------------------------------------
 
+from unittest.mock import patch
+
 from app.chat.model_router import (
+    _DEFAULT_UPGRADE_TTL_HOURS,
     _categorize_upgrade_reason,
     get_accepted_upgrade_category,
     record_accepted_upgrade,
@@ -128,6 +131,62 @@ def test_accepted_upgrade_is_per_session():
     _clear_accepted()
     record_accepted_upgrade("session_a", "ajuste de personalidad")
     assert get_accepted_upgrade_category("session_b") is None
+
+
+def test_default_ttl_is_4_hours():
+    assert _DEFAULT_UPGRADE_TTL_HOURS == 4
+
+
+def test_entry_not_expired_within_ttl():
+    _clear_accepted()
+    record_accepted_upgrade("session_ttl", "ajuste de personalidad", ttl_hours=4)
+    # Immediately after recording it must still be valid
+    assert get_accepted_upgrade_category("session_ttl") == "personality"
+
+
+def test_entry_expires_after_ttl():
+    _clear_accepted()
+    record_accepted_upgrade("session_exp", "ajuste de personalidad", ttl_hours=2)
+    # Simulate time passing beyond TTL
+    from datetime import datetime, timedelta
+    future = datetime.utcnow() + timedelta(hours=3)
+    with patch("app.chat.model_router.datetime") as mock_dt:
+        mock_dt.utcnow.return_value = future
+        result = get_accepted_upgrade_category("session_exp")
+    assert result is None
+
+
+def test_entry_still_valid_just_before_expiry():
+    _clear_accepted()
+    record_accepted_upgrade("session_before", "ajuste de personalidad", ttl_hours=4)
+    from datetime import datetime, timedelta
+    just_before = datetime.utcnow() + timedelta(hours=3, minutes=59)
+    with patch("app.chat.model_router.datetime") as mock_dt:
+        mock_dt.utcnow.return_value = just_before
+        result = get_accepted_upgrade_category("session_before")
+    assert result == "personality"
+
+
+def test_expired_entry_removed_from_dict():
+    _clear_accepted()
+    record_accepted_upgrade("session_clean", "personalidad", ttl_hours=1)
+    from datetime import datetime, timedelta
+    future = datetime.utcnow() + timedelta(hours=2)
+    with patch("app.chat.model_router.datetime") as mock_dt:
+        mock_dt.utcnow.return_value = future
+        get_accepted_upgrade_category("session_clean")
+    assert "session_clean" not in _session_accepted_upgrade_types
+
+
+def test_custom_ttl_2h_respected():
+    _clear_accepted()
+    record_accepted_upgrade("session_2h", "personalidad", ttl_hours=2)
+    from datetime import datetime, timedelta
+    # Should be present at 1h59m
+    just_before = datetime.utcnow() + timedelta(hours=1, minutes=59)
+    with patch("app.chat.model_router.datetime") as mock_dt:
+        mock_dt.utcnow.return_value = just_before
+        assert get_accepted_upgrade_category("session_2h") == "personality"
 
 
 def test_local_flow_signal_default_skip_history_turns():

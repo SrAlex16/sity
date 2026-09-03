@@ -196,7 +196,7 @@ class SettingsService:
     # Per-session keys: read from session row first, fall back to global default.
     # Admin-only key: audio_cleanup_days — always global (session_id=NULL).
 
-    _VOICE_PER_SESSION = ("voice_response_mode", "voice_include_text", "voice_long_response_action", "tts_engine")
+    _VOICE_PER_SESSION = ("voice_response_mode", "voice_include_text", "voice_long_response_action", "tts_engine", "model_upgrade_ttl_hours")
     _VOICE_ADMIN_GLOBAL = ("audio_cleanup_days",)
 
     def get_voice_settings(self, session_id: Optional[str] = None) -> VoiceSettings:

@@ -381,6 +381,23 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           </>
         )}
 
+        {/* Memoria de propuesta de modelo — visible para todos, editable solo por usuarios */}
+        <div className={styles.section}>
+          <p className={styles.sectionEs}>{tl.upgradeMemorySection}</p>
+          <p className={styles.sectionJp}>モデル記憶</p>
+          <p className={styles.sectionHint}>{tl.upgradeMemoryHint}</p>
+          <select
+            className={role === 'guest' ? styles.selectDisabled : styles.select}
+            disabled={role === 'guest' || !form || busy}
+            value={form?.model_upgrade_ttl_hours ?? 4}
+            onChange={(e) => form && void autoSave({ ...form, model_upgrade_ttl_hours: Number(e.target.value) as 2 | 4 | 6 | 8 })}
+          >
+            {([2, 4, 6, 8] as const).map(h => (
+              <option key={h} value={h}>{h} {tl.upgradeMemoryUnit}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Idioma de la app — Sistema 1, funcional */}
         <div className={styles.section}>
           <p className={styles.sectionEs}>{tl.uiLanguageSection}</p>

@@ -4,6 +4,8 @@ export type VoiceResponseMode = 'always' | 'never' | 'symmetric';
 export type VoiceLongResponseAction = 'split' | 'text_only';
 export type TtsEngine = 'piper' | 'elevenlabs';
 
+export type ModelUpgradeTtlHours = 2 | 4 | 6 | 8;
+
 export interface VoiceSettings {
   voice_response_mode: VoiceResponseMode;
   voice_include_text: boolean;
@@ -12,6 +14,7 @@ export interface VoiceSettings {
   tts_engine: TtsEngine;
   elevenlabs_chars_used: number;   // read-only from server
   elevenlabs_daily_limit: number;  // read-only from server
+  model_upgrade_ttl_hours: ModelUpgradeTtlHours;
 }
 
 export const VOICE_DEFAULTS: VoiceSettings = {
@@ -22,6 +25,7 @@ export const VOICE_DEFAULTS: VoiceSettings = {
   tts_engine: 'piper',
   elevenlabs_chars_used: 0,
   elevenlabs_daily_limit: 0,
+  model_upgrade_ttl_hours: 4,
 };
 
 export function useVoice() {

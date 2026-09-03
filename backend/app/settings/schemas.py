@@ -63,6 +63,7 @@ class VoiceSettings(BaseModel):
     tts_engine: Literal["piper", "elevenlabs"] = "piper"
     elevenlabs_chars_used: int = 0   # read-only: today's usage from DailyTtsUsage
     elevenlabs_daily_limit: int = 0  # read-only: from config
+    model_upgrade_ttl_hours: Literal[2, 4, 6, 8] = 4
 
 
 SUPPORTED_LANGUAGE_CODES = frozenset({
