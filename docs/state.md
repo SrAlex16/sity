@@ -723,6 +723,12 @@ Ver .env.example para la lista completa.
 
 ## Mejoras pendientes
 
+- **Geolocalización real del usuario** — Sity no tiene acceso a la ubicación
+  aproximada del usuario (a diferencia de Claude.ai, que recibe esta señal de
+  la plataforma). Verificado 2026-09-03: el único campo `location` existente en
+  el código es de dispositivos de Home Assistant (`ai_request_builder.py`), no
+  del usuario. Idea para el futuro, sin diseño técnico aún.
+
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
   timers por tiempo. Dos categorías distintas: (a) **vigilancia reactiva**
