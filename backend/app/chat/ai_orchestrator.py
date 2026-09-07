@@ -41,12 +41,28 @@ from app.core.cancellation import is_cancelled
 from app.chat.turn_context import TurnContext
 from app.core.persona_engine import PersonaDecision, PersonaEngine
 from app.core.tool_executor import ToolExecutor
+from app.chat.file_artifact import register_capture_artifact, user_id_from_session
 from app.memory.models import AIUsage, ChatMessage
 from app.trace.logger import write_log
 from app.trace.redaction import redact_tool_call_input
 
 
 # _detach_tool and _dispatch_background_task_result live in background_dispatch.py
+
+
+def _register_capture_artifacts(
+    session: Session,
+    session_id: str,
+    artifacts: list[ChatArtifact],
+) -> None:
+    """Register camera/audio capture artifacts in FileArtifact.  Best-effort."""
+    uid = user_id_from_session(session_id)
+    for art in artifacts:
+        if art.type in ("image", "audio"):
+            try:
+                register_capture_artifact(art, session, uid)
+            except Exception:
+                pass
 
 
 def _tool_use_blocks(response: "Any") -> "list[dict[str, Any]]":
@@ -585,6 +601,8 @@ class ChatAIOrchestrator:
                 role="sity", text=_react_text, trace_id=ctx.trace_id,
                 tone_meta=json.dumps(persona_decision.tone_snapshot),
             )
+            # Register sensor artifacts (camera/audio captures) in FileArtifact inventory.
+            _register_capture_artifacts(self.session, ctx.session_id, _loop.sensor_artifacts)
             return _ToolBranchOutcome(
                 early_return=micro_reaction_response(
                     trace_id=ctx.trace_id,
@@ -617,6 +635,8 @@ class ChatAIOrchestrator:
             ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin
         )
 
+        # Register normal-path tool artifacts (camera/audio captures) in FileArtifact inventory.
+        _register_capture_artifacts(self.session, ctx.session_id, _loop.artifacts)
         return _ToolBranchOutcome(
             early_return=None,
             tool_results=_loop.tool_results_for_claude,

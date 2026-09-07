@@ -47,6 +47,14 @@ class PendingActionRunner:
         if result.was_executed:
             from app.achievements.triggers.inline import fire as _fire_ach
             _fire_ach(ctx.session, self.cm._session_id, "would_you_kindly")
+            if result.artifact:
+                from app.chat.file_artifact import register_capture_artifact, user_id_from_session
+                try:
+                    register_capture_artifact(
+                        result.artifact, ctx.session, user_id_from_session(ctx.session_id)
+                    )
+                except Exception:
+                    pass
 
         ctx.save_message(role="user", text=ctx.message, trace_id=ctx.trace_id)
         ctx.save_message(role="sity", text=result.text, trace_id=ctx.trace_id)

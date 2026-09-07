@@ -18,6 +18,7 @@ from app.api.routes_integrations import router as integrations_router
 from app.api.routes_notifications import router as notifications_router
 from app.api.routes_share import router as share_router
 from app.api.routes_settings import router as settings_router
+from app.api.routes_uploads import router as uploads_router
 from app.auth.maintenance import MaintenanceModeMiddleware
 from app.core.cors_config import get_cors_origins
 from app.core.realtime_events import set_event_loop
@@ -101,4 +102,5 @@ app.include_router(debug_router)
 app.include_router(chat_router)
 app.include_router(audio_router)
 app.include_router(captures_router)
+app.include_router(uploads_router)
 app.include_router(events_router)

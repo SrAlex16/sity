@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, select  # Session used in Depends
 
 from app.api.schemas import (
     ChatImageInput,
@@ -22,6 +22,7 @@ from app.audio.tts_service import (  # noqa: F401  (re-exported for test backwar
     _clean_text_for_tts,
 )
 from app.chat.chat_persistence import get_or_create_chat_session
+from app.chat.file_artifact import save_uploaded_image
 from app.chat.turn_runner import _run_turn_in_background
 from app.core.cancellation import cancel_operation, register_operation
 from app.core.realtime_events import (
@@ -131,10 +132,21 @@ def export_chat(
 async def chat_message(
     request: ChatMessageRequest,
     http_request: Request,
+    db: Session = Depends(get_session),
     current: CurrentUser = Depends(get_current_user),
 ):
     if err := _validate_images(request.images):
         raise HTTPException(status_code=400, detail=err)
+
+    # Persist uploaded images to disk and register in FileArtifact inventory.
+    # Non-blocking: a failure here must never prevent the chat turn from running.
+    if request.images:
+        user_id = current.user.id if current.user else None
+        for img in request.images:
+            try:
+                save_uploaded_image(img.data, img.media_type, db, user_id)
+            except Exception:
+                pass  # best-effort; model still gets the image via base64 in request
 
     if current.is_guest:
         ip = get_real_client_ip(http_request)

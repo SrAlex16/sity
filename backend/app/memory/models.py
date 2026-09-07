@@ -364,6 +364,26 @@ class UserAchievement(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("user_id", "slug", name="uq_userachievement_user_slug"),)
 
 
+class FileArtifact(SQLModel, table=True):
+    """Inventory record for every file saved to disk (uploaded images, camera/audio captures).
+
+    user_id=None for guest sessions. rel_path is relative to PROJECT_ROOT so the
+    file can always be resolved as PROJECT_ROOT / rel_path regardless of deployment.
+    source distinguishes how the file arrived: chat_upload = user-uploaded via the
+    chat input; camera_capture = taken by the capture_camera_snapshot / record_audio_sample tools.
+    chat_message_id is reserved for Paso 2 (file manager frontend) — always NULL for now.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, index=True)  # None = guest
+    artifact_type: str                    # "image" | "audio"
+    filename: str
+    rel_path: str                         # e.g. "uploads/images/abc.jpg"
+    mime_type: Optional[str] = Field(default=None)
+    source: str                           # "chat_upload" | "camera_capture"
+    chat_message_id: Optional[int] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class InitiativeEvalLog(SQLModel, table=True):
     """Audit record for every initiative evaluation — both send and skip decisions.
 

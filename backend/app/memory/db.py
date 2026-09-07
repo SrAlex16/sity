@@ -151,6 +151,18 @@ def _migrate_userachievement() -> None:
     # Table exists — nothing to migrate
 
 
+def _migrate_fileartifact() -> None:
+    """Ensure fileartifact table exists. create_all handles new deployments.
+
+    No column-level migration needed — entirely new table.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(fileartifact)"))
+        if not result.fetchall():
+            return  # not yet created; create_all handles full schema
+    # Table exists — nothing to migrate
+
+
 def _migrate_social_reflection() -> None:
     """Ensure socialreflection table and its profile_id index exist.
 
@@ -200,6 +212,7 @@ def init_db() -> None:
         _migrate_pendingaction()
         _migrate_social_reflection()
         _migrate_userachievement()
+        _migrate_fileartifact()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()
