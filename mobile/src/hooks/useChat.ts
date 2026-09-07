@@ -19,7 +19,7 @@ interface BaseMsg {
 export interface TextChatMessage extends BaseMsg {
   type: 'text';
   text: string;
-  imagePreviewUrl?: string; // data URL de la imagen adjunta (solo cliente, no persiste)
+  imagePreviewUrl?: string; // data URL (upload nuevo) o URL /uploads/images/{f} (historial)
 }
 
 export interface AudioChatMessage extends BaseMsg {
@@ -47,6 +47,7 @@ interface ApiHistoryMessage {
   created_at?: string;
   audio_filename?: string;
   trace_id?: string;
+  image_urls?: string[];
 }
 
 interface ApiArtifact {
@@ -206,7 +207,10 @@ export function useChat(userKey: string | null) {
                 trace_id: m.trace_id,
               };
             }
-            return { id: uid(), type: 'text', role, text: m.text, timestamp: ts, trace_id: m.trace_id };
+            return {
+              id: uid(), type: 'text', role, text: m.text, timestamp: ts, trace_id: m.trace_id,
+              imagePreviewUrl: m.image_urls?.[0],
+            };
           }),
       );
       setStatus('conectado');

@@ -73,6 +73,23 @@ def current_chat(
     rows = list(session.exec(statement))
     rows.reverse()
 
+    # Batch-load image URLs for user messages that have linked FileArtifact rows.
+    from app.memory.models import FileArtifact
+    user_msg_ids = [r.id for r in rows if r.role == "user" and r.id is not None]
+    images_by_msg: dict[int, list[str]] = {}
+    if user_msg_ids:
+        fa_rows = session.exec(
+            select(FileArtifact).where(
+                FileArtifact.chat_message_id.in_(user_msg_ids),  # type: ignore[union-attr]
+                FileArtifact.artifact_type == "image",
+            )
+        ).all()
+        for fa in fa_rows:
+            if fa.chat_message_id is not None:
+                images_by_msg.setdefault(fa.chat_message_id, []).append(
+                    f"/uploads/images/{fa.filename}"
+                )
+
     messages = [
         ChatMessageItem(
             role=row.role,
@@ -80,6 +97,7 @@ def current_chat(
             trace_id=row.trace_id,
             created_at=row.created_at,
             audio_filename=row.audio_filename,
+            image_urls=images_by_msg.get(row.id, []) if row.id is not None else [],
         )
         for row in rows
     ]

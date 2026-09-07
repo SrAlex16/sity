@@ -16,6 +16,7 @@ class ChatMessageItem(BaseModel):
     trace_id: Optional[str] = None
     created_at: Optional[datetime] = None
     audio_filename: Optional[str] = None
+    image_urls: list[str] = []
 
     @field_serializer("created_at")
     def _serialize_created_at(self, v: Optional[datetime]) -> Optional[str]:
