@@ -952,3 +952,51 @@ def test_planner_no_search_for_proactive_storytelling() -> None:
         f"Tool calls: {triggered}"
     )
 
+
+# ---------------------------------------------------------------------------
+# Case 18 — refusal_mode must not fabricate data-access limitations
+#
+# Bug (2026-09-07): with refusal_mode active, generate_refusal_response()
+# produced "no tengo acceso a datos meteorológicos en tiempo real" — a false
+# technical limitation. Sity has web_search and COULD get weather data.
+# The existing CONTENT RESTRICTIONS rule ("never deny a capability") did not
+# catch it because Haiku used an abstract information-type claim instead of
+# denying a specific tool by name.
+# Fix: extended CONTENT RESTRICTIONS in _REFUSAL_GENERATOR_SYSTEM to explicitly
+# prohibit inventing data-access restrictions as a refusal justification.
+# ---------------------------------------------------------------------------
+@pytest.mark.behavior_regression
+def test_refusal_mode_no_false_data_access_claim() -> None:
+    """With refusal_mode active, the generated refusal must NOT fabricate a
+    data-access limitation (e.g. 'no tengo acceso a datos meteorológicos en
+    tiempo real'). Sity has web_search — claiming it cannot access certain types
+    of data is factually false. The model may refuse by personality/mood, but
+    must never invent a technical constraint about lacking access to a data type."""
+    from app.core.message_classifier import generate_refusal_response
+
+    user_msg = "¿Qué tiempo va a hacer mañana en Madrid?"
+    response = generate_refusal_response(
+        personality=_DEFAULT_PERSONALITY,
+        user_message=user_msg,
+        language_override="es",
+        trace_id="behavior_regression_18",
+    )
+
+    false_access_patterns = [
+        r"no\s+tengo\s+acceso\s+a\s+(datos\s+)?meteorológic",
+        r"no\s+tengo\s+acceso\s+a\s+información\s+en\s+tiempo\s+real",
+        r"no\s+(puedo\s+)?acceder\s+a\s+(datos|información)\s+meteorológic",
+        r"no\s+tengo\s+información\s+en\s+tiempo\s+real",
+        r"sin\s+acceso\s+a\s+(datos|fuentes)\s+(del\s+)?tiempo",
+        r"no\s+tengo\s+(acceso|conexión)\s+a\s+(internet|la\s+red|fuentes\s+externas)",
+        r"no\s+puedo\s+consultar\s+(datos|fuentes)\s+externas",
+    ]
+    for pattern in false_access_patterns:
+        assert not re.search(pattern, response, re.IGNORECASE), (
+            f"Refusal fabricated a false data-access limitation matching {pattern!r}.\n"
+            f"The model has web_search — claiming it lacks access to a type of data is false.\n"
+            f"Response: {response!r}"
+        )
+
+    assert len(response) > 5, f"Refusal was unexpectedly empty: {response!r}"
+
