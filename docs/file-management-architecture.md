@@ -117,10 +117,42 @@ POST /chat/message (turn N+1, no images)
 Note: the planner (routing model) never receives image blocks — `planner_prior_messages`
 is built with `include_images=False` to avoid wasting tokens on a routing decision.
 
-## Paso 3 — pending (file manager frontend)
+## Paso 3 — completed (2026-09-07)
 
-- `GET /files` — list user's FileArtifact rows (paginated)
-- `DELETE /files/{id}` — delete one file (disk + DB row)
-- `DELETE /files` — bulk delete
-- `GET /files/export` — zip all user's files as binary download
-- Consider retention policy (auto-delete uploads older than N days)
+### Backend endpoints (`backend/app/api/routes_files.py`)
+
+All endpoints require authentication (guests get 401 — their files cannot be isolated
+since all guest rows share `user_id=None`).
+
+- `GET /files?page=1&size=20` — list user's FileArtifact rows (paginated, max 100 per page).
+  Returns `{ok, total, page, size, files: [{id, artifact_type, filename, url, mime_type, source, size_bytes, created_at}]}`.
+- `GET /files/export` — zip all user's binary files, downloads as `sity-archivos.zip`.
+- `DELETE /files/{id}` — delete one file (disk + DB). Returns 404 for missing IDs or
+  IDs belonging to another user (never reveals whether an ID exists in the system).
+- `DELETE /files` — bulk delete all user's files (disk + DB).
+
+Caddy routes: `handle /files* { reverse_proxy localhost:8000 }` added to both `:443` and `:80` blocks.
+
+### Retention (`backend/app/chat/file_retention.py`)
+
+Fixed at 7 days (same convention as ElevenLabs cleanup and captures retention). Not
+admin-configurable — simple default that fits the use case. If a configurable policy
+is needed later, follow the `audio_cleanup_days` pattern in `VoiceSettings`.
+
+- `delete_old_file_artifacts(db, older_than_days=7)` — deletes rows older than cutoff
+  plus their files on disk. Idempotent: missing files on disk are silently skipped.
+- `file_retention_loop()` / `start_file_retention_loop(loop)` — asyncio loop, runs
+  every 6 hours (same pattern as `initiative/runner.py`). Started from `main.py on_startup`.
+
+### Frontend (`mobile/src/screens/VoiceScreen.tsx`)
+
+The "Gestión de archivos" section (previously a placeholder) now shows:
+- List of files with thumbnail (images) or audio icon, filename, date, size.
+- Per-file delete button.
+- "Exportar archivos (.zip)" button.
+- "Eliminar todos" button with confirmation.
+- Only visible for non-guest users.
+
+i18n: new keys added to all 3 languages (`filesLoading`, `filesEmpty`, `filesDelete`,
+`filesDeleteAll`, `filesDeleteAllConfirm`, `filesDeleteAllYes`, `filesExport`,
+`filesExporting`). Existing `filesHint` updated from "Próximamente…" to the real description.

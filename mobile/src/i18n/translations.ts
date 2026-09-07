@@ -78,6 +78,14 @@ export interface T {
     // Files
     filesSection: string;
     filesHint: string;
+    filesLoading: string;
+    filesEmpty: string;
+    filesDelete: string;
+    filesDeleteAll: string;
+    filesDeleteAllConfirm: string;
+    filesDeleteAllYes: string;
+    filesExport: string;
+    filesExporting: string;
     // Status
     justConnected: (name: string) => string;
     // Initiative — proactive messaging
@@ -312,7 +320,15 @@ const es: T = {
     deleteConfirmWarning: '¿Estás seguro? Esta acción no puede deshacerse.',
     confirmDeleteAll: 'Sí, borrar todo',
     filesSection: 'Gestión de archivos',
-    filesHint: 'Próximamente. Aquí podrás ver y eliminar los archivos que hayas compartido con Sity.',
+    filesHint: 'Imágenes y capturas que has compartido con Sity. Se eliminan automáticamente a los 7 días.',
+    filesLoading: 'Cargando archivos…',
+    filesEmpty: 'No tienes archivos guardados.',
+    filesDelete: 'Eliminar',
+    filesDeleteAll: 'Eliminar todos',
+    filesDeleteAllConfirm: '¿Eliminar todos los archivos? Esta acción no puede deshacerse.',
+    filesDeleteAllYes: 'Sí, eliminar todo',
+    filesExport: 'Exportar archivos (.zip)',
+    filesExporting: 'Exportando…',
     justConnected: (name) => `${name} conectado correctamente.`,
     initiativeSection: 'Mensajes proactivos',
     initiativeMasterLabel: 'Permitir que Sity te escriba primero',
@@ -544,7 +560,15 @@ const en: T = {
     deleteConfirmWarning: 'Are you sure? This action cannot be undone.',
     confirmDeleteAll: 'Yes, delete everything',
     filesSection: 'File management',
-    filesHint: 'Coming soon. Here you will be able to view and delete files shared with Sity.',
+    filesHint: 'Images and captures you have shared with Sity. Automatically deleted after 7 days.',
+    filesLoading: 'Loading files…',
+    filesEmpty: 'You have no saved files.',
+    filesDelete: 'Delete',
+    filesDeleteAll: 'Delete all',
+    filesDeleteAllConfirm: 'Delete all files? This action cannot be undone.',
+    filesDeleteAllYes: 'Yes, delete all',
+    filesExport: 'Export files (.zip)',
+    filesExporting: 'Exporting…',
     justConnected: (name) => `${name} connected successfully.`,
     initiativeSection: 'Proactive messages',
     initiativeMasterLabel: 'Allow Sity to message you first',
@@ -776,7 +800,15 @@ const ja: T = {
     deleteConfirmWarning: '本当に削除しますか？この操作は元に戻せません。',
     confirmDeleteAll: 'すべて削除',
     filesSection: 'ファイル管理',
-    filesHint: '近日公開。ここでSityと共有したファイルを確認・削除できます。',
+    filesHint: 'Sityと共有した画像やキャプチャ。7日後に自動削除されます。',
+    filesLoading: 'ファイル読込中…',
+    filesEmpty: '保存されたファイルはありません。',
+    filesDelete: '削除',
+    filesDeleteAll: 'すべて削除',
+    filesDeleteAllConfirm: 'すべてのファイルを削除しますか？この操作は元に戻せません。',
+    filesDeleteAllYes: 'はい、すべて削除',
+    filesExport: 'ファイルをエクスポート（.zip）',
+    filesExporting: 'エクスポート中…',
     justConnected: (name) => `${name}が正常に接続されました。`,
     initiativeSection: 'プロアクティブメッセージ',
     initiativeMasterLabel: 'Sityからのメッセージを許可する',

@@ -14,6 +14,7 @@ from app.api.routes_captures import router as captures_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_debug import router as debug_router
 from app.api.routes_events import router as events_router
+from app.api.routes_files import router as files_router
 from app.api.routes_integrations import router as integrations_router
 from app.api.routes_notifications import router as notifications_router
 from app.api.routes_share import router as share_router
@@ -50,11 +51,13 @@ async def on_startup():
     from app.notifications.dispatcher import notifications_gc_loop
     from app.initiative.runner import start_initiative_runner
     from app.timers.runner import start_runner
+    from app.chat.file_retention import start_file_retention_loop
     loop = asyncio.get_running_loop()
     set_event_loop(loop)
     init_db()
     start_runner(loop)
     start_initiative_runner(loop)
+    start_file_retention_loop(loop)
     loop.create_task(notifications_gc_loop())
     from app.auth.admin_seeder import seed_admin
     seed_admin()
@@ -94,6 +97,7 @@ def health():
 
 app.include_router(achievements_router)
 app.include_router(auth_router)
+app.include_router(files_router)
 app.include_router(integrations_router)
 app.include_router(notifications_router)
 app.include_router(share_router)

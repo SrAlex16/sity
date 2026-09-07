@@ -11,7 +11,26 @@ import { TRANSLATIONS, UI_LANGUAGES } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
 import styles from './VoiceScreen.module.css';
 
-// ── Icons ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface FileItem {
+  id: number;
+  artifact_type: 'image' | 'audio';
+  filename: string;
+  url: string;
+  mime_type: string | null;
+  source: string;
+  size_bytes: number | null;
+  created_at: string | null;
+}
+
+function _fmtSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1048576).toFixed(1)}MB`;
+}
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconReload() {
   return (
@@ -52,6 +71,12 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const [exporting, setExporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // File manager state
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesDeleteAllConfirm, setFilesDeleteAllConfirm] = useState(false);
+  const [deletingFileId, setDeletingFileId] = useState<number | null>(null);
+  const [exportingFiles, setExportingFiles] = useState(false);
   // Integrations state
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnectConfirm, setDisconnectConfirm] = useState<string | null>(null);
@@ -249,6 +274,57 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
       setDeleteConfirm(false);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const loadFiles = useCallback(async () => {
+    if (role === 'guest') return;
+    setFilesLoading(true);
+    try {
+      const resp = await fetch('/files?size=100', { credentials: 'include' });
+      if (resp.ok) {
+        const data = await resp.json() as { files: FileItem[] };
+        setFiles(data.files ?? []);
+      }
+    } catch { /* silent */ } finally {
+      setFilesLoading(false);
+    }
+  }, [role]);
+
+  useEffect(() => { void loadFiles(); }, [loadFiles]);
+
+  const handleDeleteFile = async (id: number) => {
+    setDeletingFileId(id);
+    try {
+      const resp = await fetch(`/files/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (resp.ok) setFiles((prev) => prev.filter((f) => f.id !== id));
+    } catch { /* silent */ } finally {
+      setDeletingFileId(null);
+    }
+  };
+
+  const handleDeleteAllFiles = async () => {
+    setFilesDeleteAllConfirm(false);
+    try {
+      const resp = await fetch('/files', { method: 'DELETE', credentials: 'include' });
+      if (resp.ok) setFiles([]);
+    } catch { /* silent */ }
+  };
+
+  const handleExportFiles = async () => {
+    setExportingFiles(true);
+    try {
+      const resp = await fetch('/files/export', { credentials: 'include' });
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sity-archivos.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ } finally {
+      setExportingFiles(false);
     }
   };
 
@@ -743,12 +819,96 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           </div>
         )}
 
-        {/* Gestión de archivos — placeholder */}
-        <div className={styles.section}>
-          <p className={styles.sectionEs}>{tl.filesSection}</p>
-          <p className={styles.sectionJp}>ファイル管理</p>
-          <p className={styles.sectionHint}>{tl.filesHint}</p>
-        </div>
+        {/* Gestión de archivos — User/Admin only */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionEs}>{tl.filesSection}</p>
+            <p className={styles.sectionJp}>ファイル管理</p>
+            <p className={styles.sectionHint}>{tl.filesHint}</p>
+
+            {filesLoading && <p className={styles.sectionHint}>{tl.filesLoading}</p>}
+
+            {!filesLoading && files.length === 0 && (
+              <p className={styles.sectionHint} style={{ opacity: 0.6 }}>{tl.filesEmpty}</p>
+            )}
+
+            {files.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                {files.map((f) => (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {f.artifact_type === 'image' ? (
+                      <img
+                        src={f.url}
+                        alt={f.filename}
+                        style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.07)', borderRadius: 6, flexShrink: 0 }}>
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                        </svg>
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p className={styles.sectionEs} style={{ fontSize: '0.8rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {f.filename}
+                      </p>
+                      <p className={styles.sectionHint} style={{ margin: 0, fontSize: '0.72rem' }}>
+                        {f.created_at ? new Date(f.created_at).toLocaleDateString() : ''}
+                        {f.size_bytes != null ? ` · ${_fmtSize(f.size_bytes)}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                      style={{ flexShrink: 0 }}
+                      onClick={() => void handleDeleteFile(f.id)}
+                      disabled={deletingFileId === f.id}
+                    >
+                      {deletingFileId === f.id ? '…' : tl.filesDelete}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              <button
+                className={`${styles.sectionBtn} ${styles.btnCyan}`}
+                onClick={() => void handleExportFiles()}
+                disabled={exportingFiles || files.length === 0}
+              >
+                {exportingFiles ? tl.filesExporting : tl.filesExport}
+              </button>
+              {!filesDeleteAllConfirm ? (
+                <button
+                  className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                  onClick={() => setFilesDeleteAllConfirm(true)}
+                  disabled={files.length === 0}
+                >
+                  {tl.filesDeleteAll}
+                </button>
+              ) : (
+                <div className={styles.confirmRow}>
+                  <p className={styles.confirmWarning}>{tl.filesDeleteAllConfirm}</p>
+                  <div className={styles.confirmActions}>
+                    <button
+                      className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                      onClick={() => setFilesDeleteAllConfirm(false)}
+                    >
+                      {tl.cancel}
+                    </button>
+                    <button
+                      className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                      onClick={() => void handleDeleteAllFiles()}
+                    >
+                      {tl.filesDeleteAllYes}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
     </div>
