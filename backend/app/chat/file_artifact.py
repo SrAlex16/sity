@@ -115,6 +115,27 @@ def register_capture_artifact(
     return row
 
 
+def wire_uploaded_images_to_message(
+    db: Session,
+    artifact_ids: list[int],
+    chat_message_id: int,
+) -> None:
+    """Link FileArtifact rows to the ChatMessage that triggered their upload.
+
+    Called immediately after the user's ChatMessage is persisted so that
+    _load_history() can find images by chat_message_id in later turns.
+    Best-effort: if any row is missing, the rest are still updated.
+    """
+    if not artifact_ids:
+        return
+    for aid in artifact_ids:
+        row = db.get(FileArtifact, aid)
+        if row is not None and row.chat_message_id is None:
+            row.chat_message_id = chat_message_id
+            db.add(row)
+    db.commit()
+
+
 def user_id_from_session(session_id: str) -> int | None:
     """Extract numeric user_id from session_id ('user:42' → 42, else None)."""
     if session_id.startswith("user:"):

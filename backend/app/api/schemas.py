@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_serializer
 class ChatHistoryItem(BaseModel):
     role: str
     text: str
+    images: list[dict] = []  # [{media_type, data}] — base64 images from FileArtifact
 
 
 class ChatMessageItem(BaseModel):

@@ -150,6 +150,36 @@ def test_user_id_from_session_default() -> None:
 # 4. User isolation — user A cannot see user B's FileArtifact rows   #
 # ------------------------------------------------------------------ #
 
+# ------------------------------------------------------------------ #
+# 5. wire_uploaded_images_to_message — links FileArtifact to msg     #
+# ------------------------------------------------------------------ #
+
+def test_wire_uploaded_images_to_message(db_session: Session, upload_dir: Path) -> None:
+    from app.chat.file_artifact import save_uploaded_image, wire_uploaded_images_to_message
+    from app.memory.models import FileArtifact
+
+    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=1)
+    assert row.chat_message_id is None  # not linked yet
+
+    wire_uploaded_images_to_message(db_session, [row.id], chat_message_id=999)
+
+    refreshed = db_session.get(FileArtifact, row.id)
+    assert refreshed is not None
+    assert refreshed.chat_message_id == 999
+
+
+def test_wire_uploaded_images_noop_for_empty_list(db_session: Session, upload_dir: Path) -> None:
+    """wire with empty list does not raise and does not corrupt state."""
+    from app.chat.file_artifact import wire_uploaded_images_to_message
+    wire_uploaded_images_to_message(db_session, [], chat_message_id=1)  # must not raise
+
+
+def test_wire_uploaded_images_skips_missing_id(db_session: Session, upload_dir: Path) -> None:
+    """Non-existent artifact ID is silently skipped."""
+    from app.chat.file_artifact import wire_uploaded_images_to_message
+    wire_uploaded_images_to_message(db_session, [99999], chat_message_id=1)  # must not raise
+
+
 def test_file_artifact_user_isolation(db_session: Session, upload_dir: Path) -> None:
     from app.chat.file_artifact import save_uploaded_image
     from app.memory.models import FileArtifact

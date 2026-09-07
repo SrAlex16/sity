@@ -50,35 +50,34 @@ def save_chat_message(
     output_mode: str = "text",
     tts_fragments: Optional[int] = None,
     source_channel: str = "web",
-) -> None:
+) -> int:
     if metadata is None:
         metadata = build_message_metadata(role=role)
 
     get_or_create_chat_session(session, session_id)
 
-    session.add(
-        ChatMessage(
-            session_id=session_id,
-            role=role,
-            text=text,
-            trace_id=trace_id,
-            tone_meta=tone_meta,
-            speaker_id=metadata.speaker_id,
-            speaker_label=metadata.speaker_label,
-            speaker_source=metadata.speaker_source,
-            speaker_confidence=metadata.speaker_confidence,
-            identity_evidence_json=metadata.identity_evidence_json,
-            dataset_source=metadata.dataset_source,
-            dataset_eligible=metadata.dataset_eligible,
-            dataset_tags_json=metadata.dataset_tags_json,
-            input_mode=input_mode,
-            voice_transcript_original=voice_transcript_original,
-            edit_distance_pct=edit_distance_pct,
-            output_mode=output_mode,
-            tts_fragments=tts_fragments,
-            source_channel=source_channel,
-        )
+    msg = ChatMessage(
+        session_id=session_id,
+        role=role,
+        text=text,
+        trace_id=trace_id,
+        tone_meta=tone_meta,
+        speaker_id=metadata.speaker_id,
+        speaker_label=metadata.speaker_label,
+        speaker_source=metadata.speaker_source,
+        speaker_confidence=metadata.speaker_confidence,
+        identity_evidence_json=metadata.identity_evidence_json,
+        dataset_source=metadata.dataset_source,
+        dataset_eligible=metadata.dataset_eligible,
+        dataset_tags_json=metadata.dataset_tags_json,
+        input_mode=input_mode,
+        voice_transcript_original=voice_transcript_original,
+        edit_distance_pct=edit_distance_pct,
+        output_mode=output_mode,
+        tts_fragments=tts_fragments,
+        source_channel=source_channel,
     )
+    session.add(msg)
 
     chat_session = session.get(ChatSession, session_id)
     if chat_session:
@@ -86,6 +85,8 @@ def save_chat_message(
         session.add(chat_session)
 
     session.commit()
+    session.refresh(msg)
+    return msg.id
 
 
 def get_recent_db_messages(session: Session, session_id: str, limit: int = 20) -> list[ChatMessage]:

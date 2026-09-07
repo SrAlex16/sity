@@ -139,12 +139,15 @@ async def chat_message(
         raise HTTPException(status_code=400, detail=err)
 
     # Persist uploaded images to disk and register in FileArtifact inventory.
+    # Collect IDs so we can link them to the user's ChatMessage once it's saved.
     # Non-blocking: a failure here must never prevent the chat turn from running.
+    image_artifact_ids: list[int] = []
     if request.images:
         user_id = current.user.id if current.user else None
         for img in request.images:
             try:
-                save_uploaded_image(img.data, img.media_type, db, user_id)
+                fa = save_uploaded_image(img.data, img.media_type, db, user_id)
+                image_artifact_ids.append(fa.id)
             except Exception:
                 pass  # best-effort; model still gets the image via base64 in request
 
@@ -163,7 +166,7 @@ async def chat_message(
     session_id = current.session_id
     is_admin = bool(current.user and current.user.role == "admin")
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_turn_in_background, request, turn_id, session_id, is_admin)
+    loop.run_in_executor(None, _run_turn_in_background, request, turn_id, session_id, is_admin, image_artifact_ids)
 
     # Return dict (not JSONResponse) so FastAPI merges dependency-set cookies
     # (e.g. sity_guest_session from get_current_user) into the actual 202 response.

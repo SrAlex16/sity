@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import base64
 import logging
 from dataclasses import dataclass
 from typing import Callable
 
 from sqlalchemy import text as sa_text
-from sqlmodel import Session
+from sqlmodel import Session, select as _select
 
 from app.api.schemas import ChatHistoryItem
 from app.chat.time_context import build_time_context, render_time_context
 
 log = logging.getLogger(__name__)
+
+# Max number of history turns (user messages) from which images are included.
+# Images from turns older than this are silently dropped to cap token cost.
+_IMAGE_HISTORY_TURNS_MAX = 2
 
 
 def is_operational_guard_message(text: str) -> bool:
@@ -23,16 +28,84 @@ def is_operational_guard_message(text: str) -> bool:
     )
 
 
-def _history_to_messages(items: list[ChatHistoryItem]) -> list[dict]:
-    """Convert history items to structured API messages, merging consecutive same-role turns."""
+def _history_to_messages(items: list[ChatHistoryItem], include_images: bool = True) -> list[dict]:
+    """Convert history items to structured API messages, merging consecutive same-role turns.
+
+    When include_images=True (default), items with attached images produce content-block
+    messages ([{type: image}, {type: text}]) per the Anthropic multi-modal API.
+    Image turns are never merged with adjacent turns.
+    """
     result: list[dict] = []
     for item in items:
         role = "user" if item.role == "user" else "assistant"
-        if result and result[-1]["role"] == role:
-            result[-1]["content"] += "\n" + item.text
+        if include_images and item.images:
+            blocks: list[dict] = [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": img["media_type"], "data": img["data"]},
+                }
+                for img in item.images
+            ]
+            blocks.append({"type": "text", "text": item.text})
+            result.append({"role": role, "content": blocks})
         else:
-            result.append({"role": role, "content": item.text})
+            # Merge consecutive same-role text-only messages
+            if result and result[-1]["role"] == role and isinstance(result[-1]["content"], str):
+                result[-1]["content"] += "\n" + item.text
+            else:
+                result.append({"role": role, "content": item.text})
     return result
+
+
+def _attach_history_images(session: Session, raw_rows: list, items: list[ChatHistoryItem]) -> None:
+    """Load FileArtifact image data for user history items (up to _IMAGE_HISTORY_TURNS_MAX turns).
+
+    Mutates `items` in-place by replacing entries that have linked images with
+    new ChatHistoryItem instances that carry the base64 data.
+    Errors (missing file, DB error) are silently swallowed per-image.
+    """
+    if session is None:
+        return
+    from app.chat.file_artifact import PROJECT_ROOT
+    from app.memory.models import FileArtifact
+
+    image_turns_included = 0
+    for i in range(len(raw_rows) - 1, -1, -1):
+        if image_turns_included >= _IMAGE_HISTORY_TURNS_MAX:
+            break
+        row = raw_rows[i]
+        if row.role != "user":
+            continue
+        row_id = getattr(row, "id", None)
+        if row_id is None:
+            continue
+
+        try:
+            artifacts = session.exec(
+                _select(FileArtifact).where(
+                    FileArtifact.chat_message_id == row_id,
+                    FileArtifact.artifact_type == "image",
+                )
+            ).all()
+        except Exception:
+            continue
+
+        if not artifacts:
+            continue
+
+        images: list[dict] = []
+        for art in artifacts:
+            try:
+                img_path = PROJECT_ROOT / art.rel_path
+                img_bytes = img_path.read_bytes()
+                img_b64 = base64.b64encode(img_bytes).decode()
+                images.append({"media_type": art.mime_type or "image/jpeg", "data": img_b64})
+            except Exception:
+                log.warning("history_image_load_failed rel_path=%s", art.rel_path)
+
+        if images:
+            items[i] = ChatHistoryItem(role=items[i].role, text=items[i].text, images=images)
+            image_turns_included += 1
 
 
 def _count_total_messages(session_id: str = "") -> int:
@@ -189,7 +262,7 @@ class PromptContextBuilder:
         task_context: dict[str, str] | None = None,
         session_id: str = "",
     ) -> PromptContext:
-        recent_history = self._load_history(session=session, limit=history_limit, skip_last=skip_last_turns)
+        recent_history = self._load_history(session=session, limit=history_limit, skip_last=skip_last_turns, attach_images=True)
         planner_history = self._load_history(session=session, limit=planner_history_limit, skip_last=skip_last_turns)
 
         # Time context uses the raw DB rows (need created_at).
@@ -219,7 +292,7 @@ class PromptContextBuilder:
         user_message_with_time = "\n\n".join(parts)
 
         prior_messages = _history_to_messages(recent_history)
-        planner_prior_messages = _history_to_messages(planner_history)
+        planner_prior_messages = _history_to_messages(planner_history, include_images=False)
 
         planner_mem_ctx = _build_planner_memory_ctx(
             n_total=n_total,
@@ -246,12 +319,18 @@ class PromptContextBuilder:
             planner_prior_messages=planner_prior_messages,
         )
 
-    def _load_history(self, *, session, limit: int, skip_last: int = 0) -> list[ChatHistoryItem]:
-        rows = [
-            ChatHistoryItem(role=row.role, text=row.text)
+    def _load_history(self, *, session, limit: int, skip_last: int = 0, attach_images: bool = False) -> list[ChatHistoryItem]:
+        raw_rows = [
+            row
             for row in self.get_recent_messages(session, limit=limit + skip_last)
             if not (row.role == "sity" and is_operational_guard_message(row.text))
         ]
         if skip_last > 0:
-            rows = rows[:-skip_last] if len(rows) > skip_last else []
-        return rows
+            raw_rows = raw_rows[:-skip_last] if len(raw_rows) > skip_last else []
+        items = [ChatHistoryItem(role=row.role, text=row.text) for row in raw_rows]
+        if attach_images:
+            try:
+                _attach_history_images(session, raw_rows, items)
+            except Exception:
+                pass
+        return items

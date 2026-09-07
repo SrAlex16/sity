@@ -66,6 +66,7 @@ def build_ai_turn_prep(
     persona_prompt: str,  # noqa: ARG001
     persona_decision: PersonaDecision,
     forced_tools: list[dict] | None = None,
+    image_artifact_ids: list[int] | None = None,
 ) -> AITurnPrep:
     runtime_config = get_runtime_config()
 
@@ -140,7 +141,7 @@ def build_ai_turn_prep(
     # On model-upgrade re-runs (skip_history_turns > 0) the original message is
     # already in DB from the Haiku turn — skip to avoid a duplicate entry.
     if not skip_history_turns:
-        ctx.persistence.save(
+        _user_msg_id = ctx.persistence.save(
             role="user",
             text=request.message,
             trace_id=ctx.trace_id,
@@ -149,6 +150,12 @@ def build_ai_turn_prep(
             edit_distance_pct=_voice_edit_pct,
             source_channel=request.source_channel,
         )
+        if image_artifact_ids and _user_msg_id is not None:
+            from app.chat.file_artifact import wire_uploaded_images_to_message
+            try:
+                wire_uploaded_images_to_message(session, image_artifact_ids, _user_msg_id)
+            except Exception:
+                pass
         if ctx.session_id.startswith("user:"):
             from app.initiative.open_loop_hook import schedule_open_loop_detection
             schedule_open_loop_detection(

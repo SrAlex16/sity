@@ -60,10 +60,10 @@ class ChatTurnPersistence:
         output_mode: str = "text",
         tts_fragments: Optional[int] = None,
         source_channel: str = "web",
-    ) -> None:
+    ) -> int:
         if metadata is None:
             metadata = self._sity_metadata if role == "sity" else self._user_metadata
-        save_chat_message(
+        return save_chat_message(
             self._session,
             session_id=self._session_id,
             role=role,

@@ -133,7 +133,7 @@ def _maybe_dispatch_chat_response(
         )
 
 
-def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID, is_admin: bool = False) -> None:
+def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID, is_admin: bool = False, image_artifact_ids: list[int] | None = None) -> None:
     """Worker that runs the full chat turn in a thread pool and publishes
     the result (or error) as SSE events before closing with 'done'."""
     from app.memory.db import engine
@@ -145,7 +145,7 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
 
     with Session(engine) as session:
         try:
-            result = _chat_message_inner(request=request, session=session, _session_id=session_id, _is_admin=is_admin)
+            result = _chat_message_inner(request=request, session=session, _session_id=session_id, _is_admin=is_admin, _image_artifact_ids=image_artifact_ids)
             if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
                 original_message = result.original_message
                 strong_model = result.strong_model
@@ -251,6 +251,7 @@ def _chat_message_inner(
     _session_id: str = DEFAULT_CHAT_SESSION_ID,
     _forced_tools: list[dict] | None = None,
     _is_admin: bool = False,
+    _image_artifact_ids: list[int] | None = None,
 ):
     from app.chat.turn_context import build_turn_context
     from app.chat.pre_ai_flow import ChatPreAIFlow
@@ -361,7 +362,7 @@ def _chat_message_inner(
             trace_id=ctx.trace_id,
             recent_history=_recent_history or None,
         )
-        ctx.persistence.save(
+        _user_msg_id = ctx.persistence.save(
             role="user",
             text=request.message,
             trace_id=ctx.trace_id,
@@ -369,6 +370,12 @@ def _chat_message_inner(
             voice_transcript_original=request.voice_transcript_original,
             source_channel=request.source_channel,
         )
+        if _image_artifact_ids and _user_msg_id is not None:
+            from app.chat.file_artifact import wire_uploaded_images_to_message
+            try:
+                wire_uploaded_images_to_message(session, _image_artifact_ids, _user_msg_id)
+            except Exception:
+                pass
         ctx.persistence.save(
             role="sity",
             text=refusal_text,
@@ -444,6 +451,7 @@ def _chat_message_inner(
         persona_prompt=persona_prompt,
         persona_decision=persona_decision,
         forced_tools=_forced_tools,
+        image_artifact_ids=_image_artifact_ids,
     )
 
     orchestrator = ChatAIOrchestrator(
