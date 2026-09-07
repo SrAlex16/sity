@@ -231,3 +231,29 @@ def test_structural_refusal_no_audio_when_voice_never(monkeypatch: pytest.Monkey
 
     assert data.get("provider") == "haiku_refusal"
     assert data.get("artifacts", []) == [], "voice_response_mode=never must produce no audio artifacts"
+
+
+def test_structural_refusal_saves_tone_meta(monkeypatch: pytest.MonkeyPatch):
+    """Structural refusal must persist tone_meta on the Sity ChatMessage row."""
+    import json as _json
+    from sqlmodel import Session, select
+    from app.memory.db import engine
+    from app.memory.models import ChatMessage
+    _force_refusal_mode(monkeypatch)
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True) as client:
+        client.cookies.set("sity_token", token)
+        chat_post_and_drain(client, "dime algo interesante")
+
+    with Session(engine) as db:
+        sity_msg = db.exec(
+            select(ChatMessage)
+            .where(ChatMessage.role == "sity")
+            .order_by(ChatMessage.id.desc())  # type: ignore[attr-defined]
+        ).first()
+
+    assert sity_msg is not None
+    assert sity_msg.tone_meta is not None, "structural refusal must save tone_meta"
+    parsed = _json.loads(sity_msg.tone_meta)
+    assert isinstance(parsed, dict)
+    assert "sarcasm" in parsed

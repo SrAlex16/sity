@@ -7,6 +7,8 @@ _chat_message_inner: builds turn context, applies refusal gate, invokes orchestr
 """
 from __future__ import annotations
 
+import json
+
 from sqlmodel import Session
 
 from app.api.schemas import ChatMessageRequest, ChatMessageResponse
@@ -381,6 +383,7 @@ def _chat_message_inner(
             text=refusal_text,
             trace_id=ctx.trace_id,
             source_channel=request.source_channel,
+            tone_meta=json.dumps(persona_decision.tone_snapshot),
         )
         set_last_refusal(
             session_id=ctx.session_id,

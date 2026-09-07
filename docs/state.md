@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-07 (reorganización Mejoras pendientes + Operación Remake).
+Última actualización: 2026-09-07 (Gestión de archivos Paso 3 + fix CI tone_meta + docs).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -57,7 +57,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2449 tests en verde (pytest, 1 xfailed; 1 flaky conocido — ver Bugs conocidos activos)
+- 2503 tests en verde (pytest, 1 xfailed; CI verde tras fix de tone_meta)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -81,6 +81,124 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-07)
+
+- **Bug: notificaciones de logros repetidas al entrar — fix completo (commit `262f06f`).**
+  Race condition en `useAchievements` cuando el JWT (72 h) expira entre sesiones. Flujo
+  del bug: `fetchData(true)` se ejecuta como guest → `prevUnlocked = {}` → tras el login
+  automático, el poll de 30 s compara contra `{}` y todos los logros aparecen como nuevos.
+  Fix: `userId?: number` añadido como parámetro a `useAchievements`; counter de generación
+  `genRef` que se incrementa en cada cambio de `userId`; cada fetch captura `gen` al inicio
+  y lo compara al finalizar para descartar fetchs obsoletos; `prevUnlocked` se resetea en
+  cada cambio de `userId`. 3 imports muertos eliminados del hook. 2310+ tests.
+
+- **Bug: alucinación "no tengo acceso a datos meteorológicos" con API del tiempo activa
+  (commit `988d9e0`).** La tool `get_weather` estaba en `BASE_TOOLSET` pero el planner
+  (Haiku) afirmaba sistemáticamente no tener acceso al tiempo cuando el usuario preguntaba.
+  Causa raíz: conflicto entre la tool disponible y texto hardcodeado en `persona_system.md`
+  que decía "no tengo acceso a información del tiempo en tiempo real". Fix: dos líneas del
+  prompt eliminadas. Verificado en conversación real: Sity ahora llama la tool correctamente.
+  Test de invariante añadido en `test_persona_prompt.py`. 2310+ tests.
+
+- **Gestión de archivos — Paso 1: inventario FileArtifact en disco + DB (commit `c3eed8d`,
+  2026-09-07).** Toda imagen o audio que entra al sistema ahora se persiste en disco y se
+  registra en la tabla `FileArtifact`. Dos puntos de entrada:
+
+  *Chat upload (source="chat_upload"):* `save_uploaded_image()` en `file_artifact.py` —
+  decodifica base64, escribe en `PROJECT_ROOT/uploads/images/<uuid>.ext`, inserta fila
+  FileArtifact con `chat_message_id=None` inicialmente. `routes_chat.py POST /chat/message`
+  colecta los IDs y los pasa al worker de background. Tras guardar el `ChatMessage` del
+  usuario en `ai_turn_prep.py`, `wire_uploaded_images_to_message()` rellena `chat_message_id`.
+  Endpoint `GET /uploads/images/{filename}` en `routes_uploads.py`.
+
+  *Captura de sensor (source="camera_capture"):* `register_capture_artifact()` llamado desde
+  `ai_orchestrator._execute_tool_branch()` (sensor_path y normal_path) y
+  `pending_action_runner.run()`. `save_chat_message()` extendido para retornar `int` (id del
+  nuevo ChatMessage) — necesario para el wiring. 14 tests en `test_file_artifact.py`.
+
+- **Gestión de archivos — Paso 2: contexto visual multi-turno (commits `8ddf02b` + `e667837`
+  + `113ca0f`, 2026-09-07).** El modelo puede ahora ver imágenes subidas en turnos anteriores.
+
+  *Backend:* `ChatHistoryItem.images: list[dict] = []` con `{media_type, data}` base64.
+  `_load_history(attach_images=True)` consulta `FileArtifact WHERE chat_message_id = row.id
+  AND artifact_type = "image"`, lee bytes de disco, los codifica en base64. Solo los 2 turnos
+  de usuario más recientes con imágenes reciben datos (`_IMAGE_HISTORY_TURNS_MAX=2`).
+  `_history_to_messages()` genera bloques `[{type:"image",...},{type:"text",...}]`. El planner
+  (routing model) nunca recibe imágenes: `planner_prior_messages` usa `include_images=False`.
+  15 tests nuevos en `test_history_images.py` (aislamiento, límite de 2 turnos, codificación
+  base64, verificación de que el planner no recibe imágenes).
+
+  *Frontend (`e667837`):* tab "Chat" perdía el estado del tab activo al volver — variable
+  `activeTab` no se compartía entre renders. Fix: `activeTab` movido a estado React (`useState`).
+  `chat.activeTab` añadido a `i18n/translations.ts` en es/en/ja.
+
+  *Caddyfile (`113ca0f`):* `handle /uploads* { reverse_proxy localhost:8000 }` añadido a ambos
+  bloques (`:443` y `:80`) de `deploy/caddy/Caddyfile.example`. Aplicado también en
+  `/etc/caddy/Caddyfile` (fuera del repo) antes del commit. Regla de proceso establecida: cualquier
+  fix directo sobre `/etc/caddy/Caddyfile` debe replicarse en `deploy/caddy/Caddyfile.example`
+  en el mismo commit.
+
+  Nota operativa: el deploy del commit `8ddf02b` generó una ventana de ~1 min con 502 en las
+  imágenes ya servidas vía `/uploads/images/` — la regla de Caddy aún no estaba en el servidor
+  antes de que el código que las referenciaba estuviera vivo. No había bug de código; la causa
+  era el desfase en el despliegue del Caddyfile. Corregido en `113ca0f`.
+
+- **Gestión de archivos — Paso 3: file manager completo (commit `b398ef8`, 2026-09-07).**
+  Sección "Gestión de archivos" completada en los tres componentes:
+
+  *Backend (`backend/app/api/routes_files.py`):*
+  - `GET /files?page=1&size=20` — lista paginada de FileArtifact del usuario (max 100/página).
+    Total calculado con `func.count()` para no cargar todas las filas. Returns `{ok, total, page,
+    size, files: [{id, artifact_type, filename, url, mime_type, source, size_bytes, created_at}]}`.
+  - `GET /files/export` — zip de todos los archivos del usuario; descarga como `sity-archivos.zip`.
+    Declarado ANTES de `DELETE /files/{file_id}` para evitar ambigüedad en routing FastAPI.
+  - `DELETE /files/{id}` — borra disco + DB. Returns 404 para IDs inexistentes o de otro usuario
+    (nunca revela si el ID existe). Autenticación requerida; guests reciben 401 (user_id=None
+    compartido → imposible aislar).
+  - `DELETE /files` — borra todos los archivos del usuario (disco + DB).
+
+  *Retención (`backend/app/chat/file_retention.py`):* 7 días fijo. `delete_old_file_artifacts()`
+  idempotente (archivos faltantes en disco ignorados). Loop async `file_retention_loop()` cada
+  6 horas, mismo patrón que `initiative/runner.py`. Arrancado desde `main.py on_startup`.
+
+  *Frontend (`mobile/src/screens/VoiceScreen.tsx`):* lista con miniaturas (imágenes) o icono de
+  audio, nombre de archivo, fecha y tamaño. Botón de borrado por archivo. "Exportar archivos (.zip)"
+  y "Eliminar todos" con confirmación inline. Solo visible para usuarios no-guest.
+
+  *i18n:* 8 claves nuevas en `mobile/src/i18n/translations.ts` (es/en/ja): `filesLoading`,
+  `filesEmpty`, `filesDelete`, `filesDeleteAll`, `filesDeleteAllConfirm`, `filesDeleteAllYes`,
+  `filesExport`, `filesExporting`. `filesHint` actualizado de "Próximamente…" a descripción real.
+
+  *Caddy:* `handle /files* { reverse_proxy localhost:8000 }` en ambos bloques de
+  `deploy/caddy/Caddyfile.example`; también aplicado en `/etc/caddy/Caddyfile`.
+
+  *Tests:* 31 nuevos (24 en `test_files_routes.py` + 7 en `test_file_retention.py`). Fixture
+  `upload_dir` parchea `routes_files.PROJECT_ROOT` a `tmp_path` para que las operaciones de disco
+  sean seguras en tests. Suite completa: 2502 passed.
+
+- **Fix CI: tone_meta faltante en ruta de refusal estructural (commit actual, 2026-09-07).**
+  `test_chat_capture_sity_tone_meta_preserved` fallaba en CI con ordering-dependent probability:
+  la ruta de refusal estructural en `turn_runner.py` guardaba el mensaje de Sity SIN `tone_meta`,
+  aunque `persona_decision.tone_snapshot` ya estaba calculado. Cuando `refusal_mode=True` (15%
+  de probabilidad por `refusal_chance` default), el ChatMessage quedaba con `tone_meta=None`.
+  Fix: `tone_meta=json.dumps(persona_decision.tone_snapshot)` añadido al `ctx.persistence.save()`
+  de la ruta de refusal estructural. Test de regresión añadido en `test_structural_refusal.py`.
+  `import json` añadido a `turn_runner.py`.
+
+## Operación Remake — estado de prioridades
+
+**Los 4 items prioritarios acordados están CERRADOS:**
+
+1. ✅ Bug notificaciones de logros repetidas — `262f06f`
+2. ✅ Bug sección "Ubicación" en Ajustes no visible — verificado en `e667837` (tab state fix)
+3. ✅ Gestión de archivos subidos — Pasos 1+2+3 completados en `c3eed8d`, `8ddf02b`, `b398ef8`
+4. ✅ Navegación web activa — `read_webpage(url)` implementado; navegación con interacción
+   pospuesta (requiere sandbox Docker aislado) — acuerdo explícito previo
+
+**La Operación Remake puede arrancar en la próxima sesión.**
+
+---
 
 ## Completado recientemente (2026-09-03)
 
@@ -855,6 +973,8 @@ Ver .env.example para la lista completa.
 
 ## Operación Remake — rediseño de personalidad/memoria/relación (planificación)
 
+**Estado: LISTA PARA ARRANCAR** — los 4 items prioritarios están cerrados (2026-09-07).
+
 Documento de referencia original: `docs/remake/SITY_VNEXT_ARQUITECTURA_MENTE_COMPLETA.md`
 *(pendiente de añadir el archivo — solicitar a Alex el documento de la sesión 2026-09-07)*
 
@@ -898,41 +1018,21 @@ luego arrancar con Remake.
 
 ## Mejoras pendientes
 
-### Prioritarios — cerrar antes de Operación Remake
+### Prioritarios — TODOS CERRADOS (2026-09-07). La Operación Remake puede arrancar.
 
-1. **Bug: notificaciones de logros repetidas al entrar a la app** — diagnóstico
-   confirmado: race condition en `useAchievements` cuando el JWT (72 h) expira. En el
-   montaje inicial, `fetchData(true)` corre como guest → `prevUnlocked = {}` → tras el
-   login, el poll de 30 s compara contra `{}` y todos los logros aparecen como nuevos.
-   Fix pendiente de aprobación: añadir `userId?: number` a `useAchievements`, generation
-   counter para descartar fetches iniciales obsoletos, y reset de `prevUnlocked` en cada
-   cambio de auth. Ver `mobile/src/hooks/useAchievements.ts`.
+1. ✅ **Bug: notificaciones de logros repetidas** — resuelto en `262f06f`. Ver "Completado
+   recientemente (2026-09-07)".
 
-2. **Bug: sección "Ubicación" en Ajustes no visible** — diagnóstico pendiente. El
-   código existe con guard `role !== 'guest'` en `VoiceScreen.tsx`. Requiere hard-refresh
-   (Ctrl+Shift+R) y revisión de consola F12 para confirmar causa raíz.
+2. ✅ **Bug: sección "Ubicación" no visible** — resuelto como efecto colateral de `e667837`
+   (fix de tab state en VoiceScreen). `activeTab` era variable local sin persistencia entre
+   renders; la sección existía pero no se mostraba porque el tab activo se reiniciaba a "ajustes"
+   en cada render. Con `useState` el tab seleccionado se mantiene.
 
-3. **Gestión de archivos subidos** — desde 2026-08-11 hay un placeholder visible en
-   la pantalla Ajustes ("gestión de archivos"), pero no hay implementación ni diseño
-   formal. Lo que existe: la tabla `ChatMessage` puede llevar `audio_filename` (STT
-   y TTS), y hay capturas de cámara en `data/captures/`. Lo que falta inventariar y
-   diseñar antes de implementar: (a) **inventario completo de artefactos** — qué tipos
-   de archivo genera Sity (capturas, audio de voz, audio TTS, posibles adjuntos futuros),
-   dónde se almacenan, y qué metadatos existen en DB para cada uno; (b) **frontend de
-   listado y borrado** — pantalla o sección en Ajustes que permita ver los archivos del
-   usuario y eliminarlos individualmente o en bloque; (c) **política de retención** —
-   `audio_cleanup_days` ya existe en config para audios, pero no hay limpieza automática
-   ni UI para configurarla; (d) **privacidad**: si se permite exportar el historial de
-   conversación (ya existe `GET /chat/export`), ¿se incluyen o excluyen los archivos
-   binarios asociados? No bloquea ningún flujo actual; pendiente de sesión dedicada de
-   diseño antes de picar código.
+3. ✅ **Gestión de archivos subidos** — completado en Pasos 1+2+3 (commits `c3eed8d`,
+   `8ddf02b` + `e667837` + `113ca0f`, `b398ef8`). Ver "Completado recientemente (2026-09-07)".
 
-4. **Navegación web activa (completa)** — `read_webpage(url)` de solo lectura ya
-   implementado (scraping sin JS, con SSRF guard, timeout 10s, truncado a 5k chars,
-   wrapper de contenido no confiable). Lo que queda pospuesto es la navegación con
-   interacción real (clics, formularios): requiere sandboxing Docker aislado de la red
-   interna de la Pi como prerrequisito no negociable.
-   Ver `docs/web-navigation-risk-analysis.md`.
+4. ✅ **Navegación web activa** — `read_webpage(url)` implementado. Navegación con interacción
+   (clics, formularios) pospuesta explícitamente hasta sandbox Docker aislado. Acuerdo previo.
 
 ### Otros pendientes activos
 
