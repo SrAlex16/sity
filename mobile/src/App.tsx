@@ -101,7 +101,7 @@ export default function App() {
   const { uiLang, setUiLang } = useUiLanguage();
   const tl = TRANSLATIONS[uiLang];
   const auth = useAuth();
-  const { data: achievData, isLoading: achievLoading, notification: achievNotif, dismissNotification: dismissAchievNotif } = useAchievements();
+  const { data: achievData, isLoading: achievLoading, notification: achievNotif, dismissNotification: dismissAchievNotif } = useAchievements(auth.currentUser?.id);
 
   // Detect /reset-password?token=XXX on first load. Clean the URL immediately so
   // the token never lingers in the address bar, history, or clipboard.
