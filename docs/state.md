@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-03 (ronda de seguridad + bugs personalidad + TTS + i18n — 11 commits; 2449 tests).
+Última actualización: 2026-09-07 (reorganización Mejoras pendientes + Operación Remake).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -853,13 +853,88 @@ Ver .env.example para la lista completa.
   `https://sity.aletm.com/auth/integrations/spotify/callback`.
   Documentado en `docs/auth-system.md`.
 
+## Operación Remake — rediseño de personalidad/memoria/relación (planificación)
+
+Documento de referencia original: `docs/remake/SITY_VNEXT_ARQUITECTURA_MENTE_COMPLETA.md`
+*(pendiente de añadir el archivo — solicitar a Alex el documento de la sesión 2026-09-07)*
+
+### Priorización acordada con Alex
+
+**PRIORIDAD ALTA:**
+- Personalidad: reducción de 14 a 12 rasgos ortogonales
+- `refusal_chance` → decisión emergente (Action Policy)
+- Relación multidimensional
+- Memoria episódica con salience
+- Memoria autobiográfica
+
+**PRIORIDAD MEDIA-ALTA:**
+- Action Policy completo (Perception→Appraisal→Decision→Expression) — después de personalidad y refusal_chance
+
+**PRIORIDAD MEDIA/BAJA — FASE FUTURA EXPLÍCITA:**
+*(No descartadas, solo pospuestas hasta tener más usuarios reales o más madurez del núcleo)*
+- Memoria procedimental
+- Teoría de la mente
+- Memoria prospectiva (generalizar OpenLoop)
+- Consolidación semántica
+- Self-model / valores / conflictos internos / metacognición
+
+**Fusión confirmada:** "Sistema de perfiles personales por hablante" se incorpora dentro
+del diseño de Relación multidimensional/User Model de Remake — no vive como idea aparte.
+
+### Regla de proceso (aplica a toda la Operación Remake)
+
+- Documentar cada decisión y cada commit (documento de diseño propio por fase, actualización
+  de `state.md` en cada commit relevante)
+- Respetar arquitectura por capas mediante interfaces claras (cada sistema nuevo separado,
+  sin mezclar responsabilidades)
+- Logs y tests donde haga falta, CI en verde
+- Limpieza de código continua durante todo el proceso
+
+No hay presión de tiempo — el criterio de decisión es "esfuerzo extra vs. mejora real
+perceptible", no velocidad.
+
+**Orden de arranque:** cerrar primero el trabajo pendiente real (lista prioritaria más abajo),
+luego arrancar con Remake.
+
 ## Mejoras pendientes
 
-- **Geolocalización real del usuario** — Sity no tiene acceso a la ubicación
-  aproximada del usuario (a diferencia de Claude.ai, que recibe esta señal de
-  la plataforma). Verificado 2026-09-03: el único campo `location` existente en
-  el código es de dispositivos de Home Assistant (`ai_request_builder.py`), no
-  del usuario. Idea para el futuro, sin diseño técnico aún.
+### Prioritarios — cerrar antes de Operación Remake
+
+1. **Bug: notificaciones de logros repetidas al entrar a la app** — diagnóstico
+   confirmado: race condition en `useAchievements` cuando el JWT (72 h) expira. En el
+   montaje inicial, `fetchData(true)` corre como guest → `prevUnlocked = {}` → tras el
+   login, el poll de 30 s compara contra `{}` y todos los logros aparecen como nuevos.
+   Fix pendiente de aprobación: añadir `userId?: number` a `useAchievements`, generation
+   counter para descartar fetches iniciales obsoletos, y reset de `prevUnlocked` en cada
+   cambio de auth. Ver `mobile/src/hooks/useAchievements.ts`.
+
+2. **Bug: sección "Ubicación" en Ajustes no visible** — diagnóstico pendiente. El
+   código existe con guard `role !== 'guest'` en `VoiceScreen.tsx`. Requiere hard-refresh
+   (Ctrl+Shift+R) y revisión de consola F12 para confirmar causa raíz.
+
+3. **Gestión de archivos subidos** — desde 2026-08-11 hay un placeholder visible en
+   la pantalla Ajustes ("gestión de archivos"), pero no hay implementación ni diseño
+   formal. Lo que existe: la tabla `ChatMessage` puede llevar `audio_filename` (STT
+   y TTS), y hay capturas de cámara en `data/captures/`. Lo que falta inventariar y
+   diseñar antes de implementar: (a) **inventario completo de artefactos** — qué tipos
+   de archivo genera Sity (capturas, audio de voz, audio TTS, posibles adjuntos futuros),
+   dónde se almacenan, y qué metadatos existen en DB para cada uno; (b) **frontend de
+   listado y borrado** — pantalla o sección en Ajustes que permita ver los archivos del
+   usuario y eliminarlos individualmente o en bloque; (c) **política de retención** —
+   `audio_cleanup_days` ya existe en config para audios, pero no hay limpieza automática
+   ni UI para configurarla; (d) **privacidad**: si se permite exportar el historial de
+   conversación (ya existe `GET /chat/export`), ¿se incluyen o excluyen los archivos
+   binarios asociados? No bloquea ningún flujo actual; pendiente de sesión dedicada de
+   diseño antes de picar código.
+
+4. **Navegación web activa (completa)** — `read_webpage(url)` de solo lectura ya
+   implementado (scraping sin JS, con SSRF guard, timeout 10s, truncado a 5k chars,
+   wrapper de contenido no confiable). Lo que queda pospuesto es la navegación con
+   interacción real (clics, formularios): requiere sandboxing Docker aislado de la red
+   interna de la Pi como prerrequisito no negociable.
+   Ver `docs/web-navigation-risk-analysis.md`.
+
+### Otros pendientes activos
 
 - **Sistema de eventos/vigías genéricos** — capacidad de que Sity ejecute
   tareas en background activadas por condiciones externas, más allá de los
@@ -874,20 +949,11 @@ Ver .env.example para la lista completa.
   datos genérico (`NotificationRule` con tipo, parámetros, condición de
   disparo). El sistema de Web Push que lo entregará sigue adelante
   independientemente (ver entrada de Web Push API).
-- **Gestión de archivos subidos** — desde 2026-08-11 hay un placeholder visible en
-  la pantalla Ajustes ("gestión de archivos"), pero no hay implementación ni diseño
-  formal. Lo que existe: la tabla `ChatMessage` puede llevar `audio_filename` (STT
-  y TTS), y hay capturas de cámara en `data/captures/`. Lo que falta inventariar y
-  diseñar antes de implementar: (a) **inventario completo de artefactos** — qué tipos
-  de archivo genera Sity (capturas, audio de voz, audio TTS, posibles adjuntos futuros),
-  dónde se almacenan, y qué metadatos existen en DB para cada uno; (b) **frontend de
-  listado y borrado** — pantalla o sección en Ajustes que permita ver los archivos del
-  usuario y eliminarlos individualmente o en bloque; (c) **política de retención** —
-  `audio_cleanup_days` ya existe en config para audios, pero no hay limpieza automática
-  ni UI para configurarla; (d) **privacidad**: si se permite exportar el historial de
-  conversación (ya existe `GET /chat/export`), ¿se incluyen o excluyen los archivos
-  binarios asociados? No bloquea ningún flujo actual; pendiente de sesión dedicada de
-  diseño antes de picar código.
+
+### Investigación / futuro sin urgencia
+
+*(No descartadas — revisar en el futuro, tras Remake si aplica)*
+
 - **Google Analytics / GTM** — integrar métricas de uso de la PWA (sesiones,
   pantallas visitadas, acciones de voz, errores de red). Tensión no resuelta
   con privacidad/RGPD: la PWA es un asistente personal con datos sensibles
@@ -911,10 +977,6 @@ Ver .env.example para la lista completa.
   estudiar el streaming bidireccional de audio sin turnos discretos
   de grabación-envío-respuesta, y valorar si el hardware de la Pi lo
   soportaría con la latencia necesaria.
-- **Limpieza de código continua** — a medida que crece el proyecto
-  se acumulan TODOs, dead code y abstracciones a medias. Revisión
-  periódica: eliminar lo que no se usa, consolidar patrones duplicados,
-  asegurar que los tests cubren los módulos nuevos.
 - **Más acceso al sistema para Sity** — ampliar el toolset de
   herramientas de sistema (procesos, archivos, red) más allá del
   subconjunto actual seguro. Caso concreto discutido (2026-08-05):
@@ -928,162 +990,8 @@ Ver .env.example para la lista completa.
 - **DSPy / optimización automática de prompts** — explorar DSPy para
   optimizar el prompt de sistema y los prompts de herramientas con
   datos reales del dataset v1. Requiere el dataset de evaluación
-  terminado.
-- **Navegación web activa (completa)** — `read_webpage(url)` de solo lectura
-  ya implementado (scraping sin JS, con SSRF guard, timeout 10s, truncado
-  a 5k chars, wrapper de contenido no confiable). Lo que queda pospuesto es
-  la navegación con interacción real (clics, formularios): requiere sandboxing
-  Docker aislado de la red interna de la Pi como prerrequisito no negociable.
-  Ver `docs/web-navigation-risk-analysis.md`.
-
-- **Pantalla "Logros" — COMPLETO** (commits `2cd013d`→`b651d1d`, 2026-08-28→2026-08-31).
-  Sistema completo: 42 logros en 6 categorías, frontend propio, notificaciones push al
-  desbloquear. Ver `docs/achievements-architecture.md` para catálogo y arquitectura.
-
-  **6 commits principales de la implementación completa:**
-  - `5e95ee8` — Fase 2b: triggers post-turno (distancia personalidad, trust, rachas, antigüedad cuenta)
-  - `fd7ee66` — Fase 2c: clasificador Haiku para `no_gods_no_masters`, `tsundere`, `you_win` + `curiosity_killed_the_cat` inline
-  - `1953534` — Paso 3: pantalla de logros en frontend (catálogo visual por categorías)
-  - `c41d34d` — catálogo limpio definitivo: 42 logros aprobados (retirados 4 no aprobados en revisión)
-  - `5877ceb` — UI: fuentes grandes, color rosa de desbloqueo, sonido
-  - `24761fa` — notificación global + push cuando la app está cerrada
-
-  **3 bugs encontrados durante verificación en producción:**
-  - `e88ce35` — `hello_world` mal categorizado en Memoria en lugar de Personalidad
-  - `f997c99` — Sity negaba tener sistema de logros ("No tengo visibilidad sobre eso")
-  - `135258c` — `chaos_head` nunca se desbloqueaba: `_check_personality` leía globals (chaos=0.84) en lugar de la sesión del usuario (chaos=1.0)
-
-  **Fórmula del "encabronamiento"** (confirmada en `mobile/src/screens/PersonalityScreen.tsx:13-19`):
-  ```
-  computeMoodLevel = round(
-    rudeness_level  × 0.4 +
-    sarcasm_level   × 0.3 +
-    contrarian_level × 0.2 +
-    dry_humor_level × 0.1
-  ) × 100
-  ```
-  Colores por rango: ≤25 → cian `#00f5ff`, ≤50 → verde `#00ff80`,
-  ≤75 → naranja `#ff8000`, >75 → magenta `#ff00ff`.
-
-  **6 pestañas/categorías del catálogo:**
-
-  1. **Personalidad** — logros relacionados con configuración de sliders: alcanzar
-     valores extremos, combinaciones específicas de parámetros, mantener el nivel
-     de encabronamiento en zonas concretas durante N sesiones, etc.
-
-  2. **Tools** — logros por uso de herramientas: primera búsqueda web, primera
-     acción de domótica, primer timer creado, primer mensaje de voz enviado,
-     uso acumulado de N herramientas distintas, etc.
-
-  3. **Memoria** — logros relacionados con la memoria de conversación y el sistema
-     social: primera búsqueda en historial (`search_conversation_history`), primera
-     reflexión narrativa generada (SocialReflection), milestones de mensajes totales
-     (100, 500, 1000, 5000), etc.
-
-  4. **Secretos** — logros ocultos que se desbloquean por comportamientos específicos
-     no documentados en la UI: frases especiales, combinaciones de personalidad,
-     patrones de interacción inusuales. La lista exacta es opaca por diseño.
-
-  5. **Domótica + Integraciones** — logros por uso de Home Assistant (primera bombilla
-     encendida, primera escena activada), Google Calendar (primer evento creado),
-     Gmail (primera búsqueda), Spotify (primera canción puesta, primer skip), etc.
-
-  6. **Tareas en background** — logros por uso del sistema de iniciativa y timers:
-     primer mensaje proactivo recibido, primer timer de larga duración, primer
-     background task completado, etc.
-
-  **Regla de arquitectura confirmada:** no encadenamiento automático de logros —
-  un logro desbloqueado no dispara automáticamente la comprobación de otros.
-  Cada logro tiene su propio trigger/evento; el sistema no evalúa el catálogo
-  completo en cada turno.
-
-  **Diseño cerrado — decisiones ya confirmadas con Alex (no volver a discutir desde cero):**
-
-  **1. "Who Am I?" — umbral de cambio de personalidad**
-  Distancia euclídea NORMALIZADA sobre el vector de 15 parámetros de personalidad.
-  La distancia cruda se divide entre el máximo teórico √15 ≈ 3.87, dando un rango
-  0–1. Umbral: `>= 0.5` (recorrer al menos la mitad del cambio máximo posible).
-  El umbral es deliberadamente exigente: 3 parámetros movidos 0.3 cada uno
-  producen distancia cruda √(0.09×3) ≈ 0.52, normalizada ≈ 0.13 — muy por debajo
-  del umbral, no cuenta. Se requiere un cambio global sustancial, no retoques menores.
-
-  **2. "Remember Me" — umbral de memoria social**
-  `trust >= 0.30` — mismo umbral que `initiative_min_trust`. Coherencia explícita:
-  si el sistema de iniciativa ya usa 0.30 como criterio de "relación estable",
-  este logro usa el mismo punto de corte.
-
-  **3. "The Memory Remains" — detección de búsqueda histórica**
-  Opción barata sin llamada extra a Haiku: comprobar que al menos un resultado
-  devuelto por `search_conversation_history` tiene antigüedad `>= reflection_min_age`
-  (configurable en `default_config.yaml`, valor orientativo 7 días — no hardcodeado).
-  Decisión explícita de Alex de mantenerlo simple dado que este logro se desbloquea
-  probablemente una sola vez.
-
-  **4. Clasificador genérico para logros de comportamiento sutil**
-  Función única `classify_behavior_pattern()` (o nombre equivalente) que en UNA
-  sola llamada por turno evalúa TODOS los patrones de comportamiento aún no
-  desbloqueados por el usuario: "No Gods No Masters" (contradicción sistemática),
-  "Tsundere" (patron tsundere), "You Win" (rendición ante Sity), y cualquier otro
-  que se añada en el futuro. Los patrones se describen en texto en la misma llamada;
-  Haiku devuelve cuáles aplican al turno actual. El coste se reduce automáticamente
-  con el tiempo: a medida que el usuario desbloquea logros, quedan menos patrones
-  por evaluar y la llamada se hace más barata — hasta que todos están desbloqueados
-  y la función deja de llamarse.
-
-  **5. "Achievement (Un)locked" — arquitectura de detección opaca (pieza más delicada)**
-  El conocimiento de qué patrones activan logros vive ÍNTEGRAMENTE en el BACKEND,
-  en una llamada separada a Haiku (mismo patrón que `open_loop_hook` — fuera del
-  flujo de conversación principal) que analiza el historial reciente buscando
-  "exploración sistemática de funcionalidades, patrón de comportamiento que sugiere
-  caza de logros".
-
-  **El modelo principal de conversación NUNCA sabe que este sistema existe.**
-  Motivo explícito (mismo aprendizaje que la odisea de refusal_mode/lie_mode):
-  cualquier información sensible dentro del prompt principal ("no reveles esto")
-  es vulnerable a filtrarse con insistencia o prompt injection; si el modelo ni
-  siquiera conoce el sistema, es estructuralmente imposible que lo revele.
-
-  Esto también resuelve limpiamente el caso de "Curiosity Killed the Cat" (usuario
-  pregunta cómo desbloquear un logro): el modelo principal responde sobre logros
-  en general con su propio criterio, sin revelar mecanismos concretos. La detección
-  de "caza sistemática" ocurre en un sistema completamente aparte que nunca interpreta
-  "preguntar una vez sobre logros" como señal sospechosa.
-
-  **Modelo de datos y presentación en UI:** pendientes de implementar (no diseñados
-  aún en detalle), pero el diseño de detección está cerrado. La implementación
-  en sí sigue aparcada hasta que se decida empezar a picar código.
-
-- **Sistema de perfiles personales por hablante** *(muy a futuro)* — idea de
-  roadmap que existía antes de julio 2026 y que conviene preservar documentada
-  para no redescubrirla desde cero. No está en el plan activo; se registra aquí
-  como contexto de diseño para cuando el momento sea el correcto.
-
-  Sity actualmente trata todas las interacciones como si vinieran del mismo
-  interlocutor por sesión. El sistema de perfiles personales añadiría:
-
-  - **Reconocimiento de personas** — identificar quién está hablando dentro de
-    una sesión compartida (familia, compañeros de trabajo). El mecanismo concreto
-    (voz, perfil activo seleccionado manualmente, señal contextual) queda sin
-    decidir hasta que el caso de uso se defina con más concreción.
-
-  - **Pseudo-opiniones por hablante** — el sistema de `opinion`/`trust` de
-    `SocialProfile` existe a nivel de `user_id`. Con perfiles por hablante, cada
-    persona reconocida tendría su propia trayectoria de `opinion`/`trust` y su
-    propia reflexión narrativa de `SocialReflection`.
-
-  - **Confianza diferenciada** — Sity podría mantener un registro de confianza
-    distinto para cada hablante: compartir información de la agenda con el dueño
-    de la cuenta pero no con un invitado reconocido como tal.
-
-  - **Privacidad por perfil** — decisión de diseño no resuelta: ¿quién puede
-    ver qué datos de qué perfil? ¿El dueño de la cuenta puede ver los datos de
-    otros perfiles? ¿Hay datos marcados como privados por hablante?
-
-  **Por qué es "muy a futuro":** requiere resolver el mecanismo de identificación
-  (voz → problema técnico no trivial en Pi; selección manual → fricción de UX),
-  el modelo de privacidad, y el aislamiento de datos entre perfiles en un sistema
-  que hoy asume un único propietario. No desbloquea ningún caso de uso bloqueante
-  en el estado actual del proyecto.
+  terminado. *Revisar después de tener la nueva arquitectura de Action
+  Policy de Remake — podría ser más relevante para optimizar esos prompts nuevos.*
 
 ## Bugs conocidos activos
 
