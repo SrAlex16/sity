@@ -22,7 +22,7 @@ class LocalFlowContext:
     message: str
     daily_budget: int
     warnings: list[str]
-    save_message: Callable[..., None]
+    save_message: Callable[..., Any]
     get_usage: Callable[[Session], int]
     language_override: str = field(default="auto")
     session_id: str = field(default="default")

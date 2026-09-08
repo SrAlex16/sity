@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Callable
+from typing import Any, Callable
 
 from sqlmodel import Session
 
@@ -35,7 +35,7 @@ class UserMessageGuardContext:
     is_admin: bool
     user_limit: int
     guest_limit: int
-    save_message: Callable[..., None]
+    save_message: Callable[..., Any]
     language_override: str = field(default="auto")
 
 

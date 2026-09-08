@@ -165,6 +165,7 @@ async def chat_message(
         for img in request.images:
             try:
                 fa = save_uploaded_image(img.data, img.media_type, db, user_id)
+                assert fa.id is not None  # id always set after DB commit
                 image_artifact_ids.append(fa.id)
             except Exception:
                 pass  # best-effort; model still gets the image via base64 in request

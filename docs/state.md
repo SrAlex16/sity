@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-07 (Gestión de archivos Paso 3 + fix CI tone_meta + docs).
+Última actualización: 2026-09-08 (Operación Remake Fase 1 — sistema de 13 rasgos de personalidad).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -10,6 +10,7 @@ sistema de cancelación de turnos ver docs/turn-cancellation.md. Para
 el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
 Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
 Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-memory.md.
+Para el nuevo sistema de personalidad (Remake Fase 1) ver docs/remake/fase-1-personalidad.md.
 
 ## Infraestructura activa
 
@@ -57,7 +58,7 @@ Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-me
 
 ## Tests y CI
 
-- 2503 tests en verde (pytest, 1 xfailed; CI verde tras fix de tone_meta)
+- 2504 tests en verde (pytest, 19 skipped; CI pendiente de fix mypy pre-existente)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -82,7 +83,17 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 
 Ver .env.example para la lista completa.
 
-## Completado recientemente (2026-09-07)
+## Completado recientemente (2026-09-08)
+
+- **Operación Remake Fase 1 — sistema de 13 rasgos de personalidad (commit `6205c6c`).**
+  Reemplaza los 14 parámetros anteriores por 13 rasgos ortogonales. Los cambios clave:
+  `verbosity` migrado a `CommunicationPreferences`; `melancholy` a `MentalState` (tabla
+  nueva); `refusal_chance` eliminado y sustituido por `refusal_propensity` derivada de
+  rasgos (pipeline de refusal_mode sin cambios); `chaos_head` actualizado a fórmula
+  confirmada. No hay migración de datos — reset a defaults confirmado por Alex.
+  2504 tests. Ver docs/remake/fase-1-personalidad.md para documentación completa.
+
+## Completado anteriormente (2026-09-07)
 
 - **Bug: notificaciones de logros repetidas al entrar — fix completo (commit `262f06f`).**
   Race condition en `useAchievements` cuando el JWT (72 h) expira entre sesiones. Flujo

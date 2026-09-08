@@ -86,6 +86,7 @@ def save_chat_message(
 
     session.commit()
     session.refresh(msg)
+    assert msg.id is not None  # SQLite AUTOINCREMENT always sets id after commit
     return msg.id
 
 

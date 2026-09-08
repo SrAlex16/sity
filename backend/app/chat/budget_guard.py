@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 from sqlmodel import Session
 
@@ -18,7 +18,7 @@ class BudgetGuardContext:
     message: str
     daily_budget: int
     runtime_config: RuntimeConfig
-    save_message: Callable[..., None]
+    save_message: Callable[..., Any]
     get_usage: Callable[[Session], int]
     language_override: str = field(default="auto")
 

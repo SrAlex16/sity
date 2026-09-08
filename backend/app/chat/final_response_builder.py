@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Any, Callable
 
 from sqlalchemy import text
 from sqlmodel import Session
@@ -129,7 +129,7 @@ def build_final_ai_response(
     warning_threshold: float,
     critical_threshold: float,
     get_today_token_usage: Callable[[Session], int],
-    save_message: Callable[..., None],
+    save_message: Callable[..., Any],
     refusal_mode: bool,
     user_message: str,
     updated_parameters: list[str],
