@@ -124,6 +124,34 @@ def resolve_expired_short_term_goals(
     return len(stale)
 
 
+def resolve_short_term_goals_on_logout(
+    session: Session,
+    user_id: int,
+) -> int:
+    """Mark all active short_term goals as 'abandoned' on explicit user logout.
+
+    Primary closure mechanism: fires immediately when the user logs out so goals
+    are closed without waiting for the 24-hour TTL. Status 'abandoned' (not
+    'expired') because a voluntary session end is semantically closer to
+    abandonment than time-based expiry — we don't know whether the goals were
+    achieved, so we do not mark them 'resolved'. Returns the count closed.
+    """
+    active = session.exec(
+        select(Goal).where(
+            Goal.user_id == user_id,
+            Goal.status == "active",
+            Goal.scope == "short_term",
+        )
+    ).all()
+    if not active:
+        return 0
+    for goal in active:
+        goal.status = "abandoned"
+        session.add(goal)
+    session.commit()
+    return len(active)
+
+
 def apply_milestone_updates(
     session: Session,
     user_id: int,

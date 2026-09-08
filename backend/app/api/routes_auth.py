@@ -220,7 +220,17 @@ def login(
 
 
 @router.post("/logout")
-def logout(response: Response, _: CurrentUser = Depends(get_current_user)):
+def logout(
+    response: Response,
+    current: CurrentUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if not current.is_guest and current.user_id is not None:
+        try:
+            from app.cognition.goal_service import resolve_short_term_goals_on_logout
+            resolve_short_term_goals_on_logout(session, current.user_id)
+        except Exception:
+            pass
     _clear_cookie(response)
     return {"ok": True}
 

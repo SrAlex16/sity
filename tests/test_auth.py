@@ -22,7 +22,8 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import PasswordResetToken, User
+from app.memory.models import Goal, PasswordResetToken, User
+from app.memory.models import utc_now
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +212,41 @@ def test_logout_guest_also_ok():
     with _client() as c:
         resp = c.post("/auth/logout")
     assert resp.status_code == 200
+
+
+def test_logout_closes_short_term_goals_immediately():
+    """Active short_term goals are marked 'abandoned' on explicit logout — no 24h wait."""
+    email = _email("logout_goals")
+    with _client() as c:
+        data = _register(c, email)
+        user_id = data["id"]
+
+        # Insert an active short_term goal directly into the DB
+        with Session(engine) as db:
+            goal = Goal(
+                user_id=user_id,
+                scope="short_term",
+                description="Test session goal",
+                origin="autonomous",
+                base_importance=0.5,
+                status="active",
+                is_wellbeing=False,
+                created_at=utc_now(),
+            )
+            db.add(goal)
+            db.commit()
+            db.refresh(goal)
+            goal_id = goal.id
+
+        # Logout — should close the goal immediately
+        resp = c.post("/auth/logout")
+        assert resp.status_code == 200
+
+    # Verify the goal was abandoned (not still active, not expired)
+    with Session(engine) as db:
+        closed = db.get(Goal, goal_id)
+        assert closed is not None
+        assert closed.status == "abandoned"
 
 
 # ---------------------------------------------------------------------------
