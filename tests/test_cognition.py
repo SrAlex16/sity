@@ -36,6 +36,28 @@ Paso 2 properties — Goal priority (structural, no model call needed):
 31. Appraisal zero() has empty goal_relevance list.
 32. run_appraisal with active_goals=None returns empty goal_relevance (backward compat).
 33. _parse_goal_relevance rejects invalid data gracefully.
+
+Paso 3 properties — GoalService, build_active_goals_block, run_cognition_turn:
+34. get_active_goals returns only active goals (not resolved/abandoned).
+35. get_active_goals scope_filter restricts by scope.
+36. get_active_goals isolates by user_id.
+37. create_goal_from_intent creates a Goal row with correct fields.
+38. apply_goal_intents creates multiple goals from a list of intents.
+39. build_active_goals_block returns empty string for empty goals list.
+40. build_active_goals_block excludes goals below priority threshold 0.5.
+41. build_active_goals_block includes qualifying goals in formatted block.
+42. build_active_goals_block caps output at 3 goals.
+43. build_active_goals_block marks wellbeing goals with [bienestar].
+44. build_active_goals_block shows correct scope label for long_term goals.
+45. build_active_goals_block sorts by priority descending.
+46. run_cognition_turn returns CognitionTurnResult with correct structure.
+47. run_cognition_turn persists MentalState changes to DB.
+48. run_cognition_turn creates Goal rows when appraisal returns goal intents.
+
+Initiative evaluator — goal injection:
+49. _build_user_message includes long-term goals when present.
+50. _build_user_message works without goals (backward compat).
+51. _get_active_long_term_goals returns empty list for non-user: session.
 """
 from __future__ import annotations
 
@@ -63,13 +85,21 @@ from app.cognition.goal_priority import (
     _irony_factor,
     compute_effective_priority,
 )
+from app.cognition.goal_service import (
+    apply_goal_intents,
+    build_active_goals_block,
+    create_goal_from_intent,
+    get_active_goals,
+)
 from app.cognition.perception import (
     PerceptionResult,
     _parse_perception,
     run_perception,
 )
+from app.cognition.turn_cognition import CognitionTurnResult, run_cognition_turn
+from app.initiative.evaluator import _build_user_message, _get_active_long_term_goals
 from app.memory.models import Goal, MentalState, utc_now
-from app.settings.settings_service import CANONICAL_PERSONALITY
+from app.settings.settings_service import CANONICAL_PERSONALITY, SettingsService
 
 
 # ---------------------------------------------------------------------------
@@ -873,3 +903,416 @@ class TestAppraisalGoalRelevance:
         assert isinstance(result, AppraisalResult)
         # Mock provider returns non-JSON → fallback AppraisalResult.zero()
         assert result.goal_relevance == []
+
+
+# ---------------------------------------------------------------------------
+# Paso 3 — GoalService DB tests
+# ---------------------------------------------------------------------------
+
+class TestGoalService:
+    _UID_A = 8901
+    _UID_B = 8902
+
+    def _cleanup(self, session: Session, *user_ids: int) -> None:
+        for uid in user_ids:
+            for row in session.exec(select(Goal).where(Goal.user_id == uid)).all():
+                session.delete(row)
+        session.commit()
+
+    def _make_intent(self, **kwargs) -> GoalUpdateIntent:
+        return GoalUpdateIntent(
+            action="create",
+            description=kwargs.get("description", "Test intent"),
+            scope=kwargs.get("scope", "short_term"),
+            base_importance=kwargs.get("base_importance", 0.5),
+            is_wellbeing=kwargs.get("is_wellbeing", False),
+        )
+
+    def test_get_active_goals_returns_only_active(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+
+        active = Goal(user_id=self._UID_A, scope="short_term", description="Active",
+                      origin="autonomous", status="active")
+        resolved = Goal(user_id=self._UID_A, scope="short_term", description="Resolved",
+                        origin="autonomous", status="resolved")
+        db_session.add(active)
+        db_session.add(resolved)
+        db_session.commit()
+
+        results = get_active_goals(db_session, self._UID_A)
+        assert len(results) == 1
+        assert results[0].description == "Active"
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_get_active_goals_scope_filter(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+
+        short = Goal(user_id=self._UID_A, scope="short_term", description="Short",
+                     origin="autonomous", status="active")
+        long_ = Goal(user_id=self._UID_A, scope="long_term", description="Long",
+                     origin="autonomous", status="active")
+        db_session.add(short)
+        db_session.add(long_)
+        db_session.commit()
+
+        long_only = get_active_goals(db_session, self._UID_A, scope_filter="long_term")
+        assert len(long_only) == 1
+        assert long_only[0].scope == "long_term"
+
+        short_only = get_active_goals(db_session, self._UID_A, scope_filter="short_term")
+        assert len(short_only) == 1
+        assert short_only[0].scope == "short_term"
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_get_active_goals_user_isolation(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+
+        db_session.add(Goal(user_id=self._UID_A, scope="short_term", description="A goal",
+                            origin="autonomous", status="active"))
+        db_session.add(Goal(user_id=self._UID_B, scope="short_term", description="B goal",
+                            origin="autonomous", status="active"))
+        db_session.commit()
+
+        goals_a = get_active_goals(db_session, self._UID_A)
+        goals_b = get_active_goals(db_session, self._UID_B)
+
+        assert all(g.user_id == self._UID_A for g in goals_a)
+        assert all(g.user_id == self._UID_B for g in goals_b)
+
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+
+    def test_create_goal_from_intent_creates_row(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+
+        intent = self._make_intent(
+            description="Aprender inglés",
+            scope="long_term",
+            base_importance=0.8,
+            is_wellbeing=False,
+        )
+        goal = create_goal_from_intent(db_session, self._UID_A, intent)
+
+        assert goal.id is not None
+        assert goal.user_id == self._UID_A
+        assert goal.description == "Aprender inglés"
+        assert goal.scope == "long_term"
+        assert goal.origin == "autonomous"
+        assert goal.base_importance == pytest.approx(0.8)
+        assert goal.status == "active"
+        assert goal.is_wellbeing is False
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_apply_goal_intents_creates_multiple(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+
+        intents = [
+            self._make_intent(description="Meta 1", scope="short_term"),
+            self._make_intent(description="Meta 2", scope="long_term", is_wellbeing=True),
+        ]
+        apply_goal_intents(db_session, self._UID_A, intents)
+
+        goals = get_active_goals(db_session, self._UID_A)
+        assert len(goals) == 2
+        descriptions = {g.description for g in goals}
+        assert "Meta 1" in descriptions
+        assert "Meta 2" in descriptions
+
+        wellbeing_goals = [g for g in goals if g.is_wellbeing]
+        assert len(wellbeing_goals) == 1
+        assert wellbeing_goals[0].description == "Meta 2"
+
+        self._cleanup(db_session, self._UID_A)
+
+
+# ---------------------------------------------------------------------------
+# Paso 3 — build_active_goals_block (pure, no DB)
+# ---------------------------------------------------------------------------
+
+def _make_goal_obj(
+    goal_id: int,
+    base_importance: float,
+    scope: str = "short_term",
+    is_wellbeing: bool = False,
+    description: str = "Test goal",
+) -> Goal:
+    """Build an unsaved Goal object with a known id for unit tests."""
+    g = Goal(
+        user_id=99,
+        scope=scope,
+        description=description,
+        origin="autonomous",
+        base_importance=base_importance,
+        status="active",
+        is_wellbeing=is_wellbeing,
+    )
+    g.id = goal_id
+    return g
+
+
+class TestBuildActiveGoalsBlock:
+    def test_empty_list_returns_empty_string(self):
+        result = build_active_goals_block([], AppraisalResult.zero(), "neutral")
+        assert result == ""
+
+    def test_no_goals_meet_threshold(self):
+        # base_importance=0.5, no relevance_boost → priority = 0.6*0.5 + 0.4*0 = 0.30 < 0.5
+        goal = _make_goal_obj(1, base_importance=0.5)
+        result = build_active_goals_block([goal], AppraisalResult.zero(), "neutral")
+        assert result == ""
+
+    def test_qualifying_goal_included(self):
+        # base_importance=0.9 → priority = 0.6*0.9 + 0.4*0 = 0.54 >= 0.5
+        goal = _make_goal_obj(1, base_importance=0.9, description="Aprender guitarra")
+        result = build_active_goals_block([goal], AppraisalResult.zero(), "neutral")
+        assert "Aprender guitarra" in result
+        assert "METAS ACTIVAS" in result
+
+    def test_max_3_goals_capped(self):
+        # Create 5 goals all with high base_importance
+        goals = [
+            _make_goal_obj(i, base_importance=0.9, description=f"Meta {i}")
+            for i in range(1, 6)
+        ]
+        result = build_active_goals_block(goals, AppraisalResult.zero(), "neutral")
+        # Count the bullet lines (each starts with "- [")
+        bullet_count = result.count("- [")
+        assert bullet_count == 3
+
+    def test_wellbeing_goal_marked(self):
+        goal = _make_goal_obj(1, base_importance=0.9, is_wellbeing=True,
+                              description="Gestionar ansiedad")
+        result = build_active_goals_block([goal], AppraisalResult.zero(), "neutral")
+        assert "[bienestar]" in result
+
+    def test_long_term_scope_label(self):
+        goal = _make_goal_obj(1, base_importance=0.9, scope="long_term",
+                              description="Objetivo largo")
+        result = build_active_goals_block([goal], AppraisalResult.zero(), "neutral")
+        assert "largo plazo" in result
+
+    def test_short_term_scope_label(self):
+        goal = _make_goal_obj(1, base_importance=0.9, scope="short_term",
+                              description="Objetivo corto")
+        result = build_active_goals_block([goal], AppraisalResult.zero(), "neutral")
+        assert "corto plazo" in result
+
+    def test_sorted_by_priority_descending(self):
+        low = _make_goal_obj(1, base_importance=0.6, description="Low priority")
+        high = _make_goal_obj(2, base_importance=0.95, description="High priority")
+        result = build_active_goals_block([low, high], AppraisalResult.zero(), "neutral")
+        lines = result.splitlines()
+        # First bullet should be the high-priority goal
+        first_bullet = next(l for l in lines if l.startswith("- ["))
+        assert "High priority" in first_bullet
+
+    def test_relevance_boost_from_appraisal_applied(self):
+        # Goal with low base_importance but high relevance_boost should qualify
+        # base_importance=0.5 alone → priority 0.30 (excluded)
+        # with relevance_boost=1.0 → priority = 0.6*0.5 + 0.4*1.0 = 0.70 (included)
+        goal = _make_goal_obj(42, base_importance=0.5, description="Boosted goal")
+        appraisal = AppraisalResult(
+            interest_delta=0.0,
+            frustration_delta=0.0,
+            trust_evidence=0.0,
+            goal_relevance=[GoalRelevance(goal_id=42, relevance=1.0)],
+        )
+        result = build_active_goals_block([goal], appraisal, "neutral")
+        assert "Boosted goal" in result
+
+    def test_goals_without_id_skipped(self):
+        # Goal with id=None should not cause an error or appear in output
+        goal = Goal(
+            user_id=99, scope="short_term", description="No id goal",
+            origin="autonomous", base_importance=0.9, status="active",
+        )
+        # id is None by default (not persisted)
+        result = build_active_goals_block([goal], AppraisalResult.zero(), "neutral")
+        assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Paso 3 — run_cognition_turn (DB + mock provider)
+# ---------------------------------------------------------------------------
+
+class TestRunCognitionTurn:
+    _UID = 8950
+
+    def _cleanup(self, session: Session) -> None:
+        for row in session.exec(select(Goal).where(Goal.user_id == self._UID)).all():
+            session.delete(row)
+        for row in session.exec(
+            select(MentalState).where(MentalState.user_id == self._UID)
+        ).all():
+            session.delete(row)
+        session.commit()
+
+    def test_returns_cognition_turn_result(self, db_session: Session):
+        self._cleanup(db_session)
+        svc = SettingsService(db_session)
+
+        result = run_cognition_turn(
+            session=db_session,
+            user_id=self._UID,
+            user_message="Hola, ¿cómo estás?",
+            settings_service=svc,
+            personality=CANONICAL_PERSONALITY,
+            trace_id="t-ctr-001",
+        )
+
+        assert isinstance(result, CognitionTurnResult)
+        assert isinstance(result.perception, PerceptionResult)
+        assert isinstance(result.appraisal, AppraisalResult)
+        assert isinstance(result.active_goals, list)
+
+        self._cleanup(db_session)
+
+    def test_mental_state_row_created_in_db(self, db_session: Session):
+        self._cleanup(db_session)
+        svc = SettingsService(db_session)
+
+        run_cognition_turn(
+            session=db_session,
+            user_id=self._UID,
+            user_message="Hola",
+            settings_service=svc,
+            personality=CANONICAL_PERSONALITY,
+            trace_id="t-ctr-002",
+        )
+
+        row = db_session.exec(
+            select(MentalState).where(MentalState.user_id == self._UID)
+        ).first()
+        assert row is not None
+
+        self._cleanup(db_session)
+
+    def test_creates_goal_when_appraisal_returns_intent(self, db_session: Session):
+        self._cleanup(db_session)
+        svc = SettingsService(db_session)
+
+        fake_appraisal = AppraisalResult(
+            interest_delta=0.1,
+            frustration_delta=0.0,
+            trust_evidence=0.02,
+            goal_updates=[
+                GoalUpdateIntent(
+                    action="create",
+                    description="Practicar meditación",
+                    scope="long_term",
+                    base_importance=0.7,
+                    is_wellbeing=True,
+                )
+            ],
+            goal_relevance=[],
+        )
+
+        with patch("app.cognition.turn_cognition.run_appraisal", return_value=fake_appraisal):
+            run_cognition_turn(
+                session=db_session,
+                user_id=self._UID,
+                user_message="Quiero empezar a meditar",
+                settings_service=svc,
+                personality=CANONICAL_PERSONALITY,
+                trace_id="t-ctr-003",
+            )
+
+        goals = get_active_goals(db_session, self._UID)
+        assert len(goals) == 1
+        assert goals[0].description == "Practicar meditación"
+        assert goals[0].is_wellbeing is True
+        assert goals[0].scope == "long_term"
+
+        self._cleanup(db_session)
+
+    def test_no_goals_created_when_goal_updates_empty(self, db_session: Session):
+        self._cleanup(db_session)
+        svc = SettingsService(db_session)
+
+        run_cognition_turn(
+            session=db_session,
+            user_id=self._UID,
+            user_message="¿Qué hora es?",
+            settings_service=svc,
+            personality=CANONICAL_PERSONALITY,
+            trace_id="t-ctr-004",
+        )
+        # Mock provider returns non-JSON → appraisal zero → no goal_updates
+        goals = get_active_goals(db_session, self._UID)
+        assert goals == []
+
+        self._cleanup(db_session)
+
+
+# ---------------------------------------------------------------------------
+# Paso 3 — Initiative evaluator goal injection
+# ---------------------------------------------------------------------------
+
+class TestEvaluatorGoalInjection:
+    """Tests for _build_user_message and _get_active_long_term_goals in evaluator.py."""
+
+    _UID = 8960
+
+    def _cleanup(self, session: Session) -> None:
+        for row in session.exec(select(Goal).where(Goal.user_id == self._UID)).all():
+            session.delete(row)
+        session.commit()
+
+    def _make_candidate(self) -> object:
+        from app.initiative.detector import TriggerCandidate
+        return TriggerCandidate(
+            session_id=f"user:{self._UID}",
+            trigger_type="long_inactivity",
+            context={"days_since_last_message": 5, "last_message_role": "user",
+                     "last_message_text": "hasta mañana"},
+            open_loop_id=None,
+        )
+
+    def test_build_user_message_includes_goals(self):
+        goal1 = Goal(id=1, user_id=self._UID, scope="long_term", description="Aprender piano",
+                     origin="autonomous", status="active", base_importance=0.8)
+        goal2 = Goal(id=2, user_id=self._UID, scope="long_term", description="Correr 5km",
+                     origin="autonomous", status="active", base_importance=0.7)
+        goal1.id = 1
+        goal2.id = 2
+
+        candidate = self._make_candidate()
+        msg = _build_user_message(candidate, None, [goal1, goal2])
+
+        assert "Aprender piano" in msg
+        assert "Correr 5km" in msg
+        assert "Metas a largo plazo" in msg
+
+    def test_build_user_message_no_goals_backward_compat(self):
+        candidate = self._make_candidate()
+        msg = _build_user_message(candidate, None, [])
+        assert "Metas" not in msg
+        assert "Días sin actividad" in msg
+
+    def test_build_user_message_none_goals_backward_compat(self):
+        candidate = self._make_candidate()
+        msg = _build_user_message(candidate, None, None)
+        assert "Metas" not in msg
+
+    def test_get_active_long_term_goals_returns_empty_for_non_user_session(
+        self, db_session: Session
+    ):
+        result = _get_active_long_term_goals("default", db_session)
+        assert result == []
+
+    def test_get_active_long_term_goals_returns_long_term_only(self, db_session: Session):
+        self._cleanup(db_session)
+
+        db_session.add(Goal(user_id=self._UID, scope="long_term", description="LT goal",
+                            origin="autonomous", status="active"))
+        db_session.add(Goal(user_id=self._UID, scope="short_term", description="ST goal",
+                            origin="autonomous", status="active"))
+        db_session.commit()
+
+        results = _get_active_long_term_goals(f"user:{self._UID}", db_session)
+        assert len(results) == 1
+        assert results[0].scope == "long_term"
+
+        self._cleanup(db_session)

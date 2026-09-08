@@ -269,6 +269,22 @@ def _chat_message_inner(
             trace_id=ctx.trace_id,
         )
 
+    _cognition_result = None
+    if _session_id.startswith("user:"):
+        try:
+            _cog_uid = int(_session_id.split(":", 1)[1])
+            from app.cognition.turn_cognition import run_cognition_turn
+            _cognition_result = run_cognition_turn(
+                session=session,
+                user_id=_cog_uid,
+                user_message=request.message,
+                settings_service=ctx.settings_service,
+                personality=ctx.personality,
+                trace_id=ctx.trace_id,
+            )
+        except Exception:
+            pass
+
     persona_decision = PersonaEngine().build_persona_prompt(
         ctx.personality, request.message,
         comm_prefs=ctx.comm_prefs,
@@ -457,6 +473,16 @@ def _chat_message_inner(
     # does not receive stale "last was refusal" context.
     clear_last_refusal(ctx.session_id)
     reset_consecutive_refusals(ctx.session_id)
+
+    if _cognition_result is not None:
+        from app.cognition.goal_service import build_active_goals_block
+        _goals_block = build_active_goals_block(
+            _cognition_result.active_goals,
+            _cognition_result.appraisal,
+            _cognition_result.perception.tone,
+        )
+        if _goals_block:
+            persona_prompt += f"\n\n{_goals_block}"
 
     prep = build_ai_turn_prep(
         session=session,

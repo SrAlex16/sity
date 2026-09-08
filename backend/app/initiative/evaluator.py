@@ -26,7 +26,7 @@ from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
 from app.initiative._json_utils import strip_json_fences
 from app.initiative.detector import TriggerCandidate
-from app.memory.models import InitiativeEvalLog, NotificationLog, OpenLoop, SocialProfile
+from app.memory.models import Goal, InitiativeEvalLog, NotificationLog, OpenLoop, SocialProfile
 from app.settings.config_loader import load_default_config
 from app.trace.logger import write_log
 
@@ -67,6 +67,7 @@ def evaluate(candidate: TriggerCandidate, db: Session) -> EvalResult:
         return result
 
     social = _get_social_profile(candidate.session_id, db)
+    long_term_goals = _get_active_long_term_goals(candidate.session_id, db)
 
     write_log(
         level="INFO",
@@ -76,7 +77,7 @@ def evaluate(candidate: TriggerCandidate, db: Session) -> EvalResult:
         payload={"trigger_type": candidate.trigger_type},
     )
     try:
-        haiku_result = _call_haiku(candidate, social)
+        haiku_result = _call_haiku(candidate, social, long_term_goals)
     except Exception as exc:
         write_log(
             level="WARN",
@@ -175,7 +176,7 @@ def _check_rate_limits(session_id: str, db: Session, cfg: dict) -> Optional[str]
 
 
 # ---------------------------------------------------------------------------
-# SocialProfile helper
+# SocialProfile and Goal helpers
 # ---------------------------------------------------------------------------
 
 def _get_social_profile(session_id: str, db: Session) -> Optional[SocialProfile]:
@@ -184,6 +185,20 @@ def _get_social_profile(session_id: str, db: Session) -> Optional[SocialProfile]
     except (IndexError, ValueError):
         return None
     return db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
+
+
+def _get_active_long_term_goals(session_id: str, db: Session) -> list[Goal]:
+    try:
+        user_id = int(session_id.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return []
+    return list(db.exec(
+        select(Goal).where(
+            Goal.user_id == user_id,
+            Goal.status == "active",
+            Goal.scope == "long_term",
+        )
+    ).all())
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +231,11 @@ Responde ÚNICAMENTE en JSON:
 {"decision": "send" | "skip", "open_loop_resolved": true | false, "message": "...", "reasoning": "..."}"""
 
 
-def _build_user_message(candidate: TriggerCandidate, social: Optional[SocialProfile]) -> str:
+def _build_user_message(
+    candidate: TriggerCandidate,
+    social: Optional[SocialProfile],
+    active_long_term_goals: list[Goal] | None = None,
+) -> str:
     opinion_str = f"{social.opinion:.2f}" if social else "0.00"
     trust_str = f"{social.trust:.2f}" if social else "0.00"
     lines: list[str] = [
@@ -224,6 +243,11 @@ def _build_user_message(candidate: TriggerCandidate, social: Optional[SocialProf
         f"Perfil social: opinion={opinion_str}, trust={trust_str}",
         "",
     ]
+
+    if active_long_term_goals:
+        goals_summary = " | ".join(g.description for g in active_long_term_goals[:5])
+        lines.append(f"Metas a largo plazo: {goals_summary}")
+        lines.append("")
 
     ctx = candidate.context
     if candidate.trigger_type == "conversation_abandoned":
@@ -251,7 +275,11 @@ def _build_user_message(candidate: TriggerCandidate, social: Optional[SocialProf
     return "\n".join(lines)
 
 
-def _call_haiku(candidate: TriggerCandidate, social: Optional[SocialProfile]) -> dict:
+def _call_haiku(
+    candidate: TriggerCandidate,
+    social: Optional[SocialProfile],
+    active_long_term_goals: list[Goal] | None = None,
+) -> dict:
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
 
@@ -260,7 +288,7 @@ def _call_haiku(candidate: TriggerCandidate, social: Optional[SocialProfile]) ->
         trace_id="",
         task_type="initiative_evaluation",
         system_prompt=system,
-        user_message=_build_user_message(candidate, social),
+        user_message=_build_user_message(candidate, social, active_long_term_goals),
         max_tokens=200,
         tools_enabled=False,
     )
