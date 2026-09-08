@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
-from app.cognition.goal_service import apply_goal_intents, get_active_goals
+from app.cognition.goal_service import apply_goal_intents, apply_goal_state_changes, get_active_goals
 from app.cognition.perception import PerceptionResult, run_perception
 from app.memory.models import Goal
 from app.settings.settings_service import SettingsService
@@ -92,6 +92,9 @@ def run_cognition_turn(
 
     if appraisal.goal_updates:
         apply_goal_intents(session, user_id, appraisal.goal_updates)
+
+    if appraisal.goal_state_changes:
+        apply_goal_state_changes(session, user_id, appraisal.goal_state_changes)
 
     return CognitionTurnResult(
         perception=perception,

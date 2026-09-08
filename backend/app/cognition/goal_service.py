@@ -15,7 +15,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from app.cognition.appraisal import AppraisalResult, GoalUpdateIntent
+from app.cognition.appraisal import AppraisalResult, GoalStateChange, GoalUpdateIntent
 from app.cognition.goal_priority import compute_effective_priority
 from app.memory.models import Goal, utc_now
 
@@ -69,6 +69,34 @@ def apply_goal_intents(
     """Create Goal rows for each intent in the list."""
     for intent in intents:
         create_goal_from_intent(session, user_id, intent)
+
+
+def apply_goal_state_changes(
+    session: Session,
+    user_id: int,
+    changes: list[GoalStateChange],
+) -> None:
+    """Apply Appraisal-suggested status transitions to active Goal rows.
+
+    Only goals currently in "active" status are affected — this guards against
+    double-resolving a goal that was already closed in the same turn or previously.
+    Goals belonging to a different user_id are silently ignored (user isolation).
+    resolved_at is set only for "resolved" transitions; abandoned goals leave it None.
+    """
+    changed = False
+    for change in changes:
+        goal = session.exec(
+            select(Goal).where(Goal.id == change.goal_id, Goal.user_id == user_id)
+        ).first()
+        if goal is None or goal.status != "active":
+            continue
+        goal.status = change.new_status
+        if change.new_status == "resolved":
+            goal.resolved_at = utc_now()
+        session.add(goal)
+        changed = True
+    if changed:
+        session.commit()
 
 
 def build_active_goals_block(

@@ -463,3 +463,22 @@ class Goal(SQLModel, table=True):
     is_wellbeing: bool = Field(default=False)                  # security exception — see docstring
     created_at: datetime = Field(default_factory=utc_now)
     resolved_at: Optional[datetime] = Field(default=None)
+
+
+class GoalMilestone(SQLModel, table=True):
+    """Discrete sub-step of a Goal, generated incrementally by Appraisal.
+
+    A Goal may have zero milestones (simple goal) or several (complex goal
+    decomposed progressively across turns). Progress is tracked by counting
+    completed milestones; no numeric percentage is stored.
+
+    order_index preserves the logical sequence Appraisal intended when adding
+    milestones across different turns.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    goal_id: int = Field(index=True)                           # FK to Goal.id
+    description: str
+    status: str = Field(default="pending")                     # "pending" | "completed"
+    order_index: int = Field(default=0)                        # ordering within the goal
+    created_at: datetime = Field(default_factory=utc_now)
+    completed_at: Optional[datetime] = Field(default=None)

@@ -58,6 +58,20 @@ Initiative evaluator — goal injection:
 49. _build_user_message includes long-term goals when present.
 50. _build_user_message works without goals (backward compat).
 51. _get_active_long_term_goals returns empty list for non-user: session.
+
+Paso 4 Part 1 — state machine (GoalStateChange):
+52. _parse_goal_state_change parses valid "resolved".
+53. _parse_goal_state_change parses valid "abandoned".
+54. _parse_goal_state_change rejects non-dict.
+55. _parse_goal_state_change rejects invalid new_status.
+56. _parse_goal_state_change rejects missing goal_id.
+57. _parse_appraisal includes goal_state_changes when present.
+58. AppraisalResult.zero() has empty goal_state_changes.
+59. apply_goal_state_changes: active → resolved sets status and resolved_at.
+60. apply_goal_state_changes: active → abandoned sets status, resolved_at stays None.
+61. apply_goal_state_changes: ignores non-active goals.
+62. apply_goal_state_changes: ignores goals belonging to another user.
+63. run_cognition_turn applies goal_state_changes from Appraisal to DB.
 """
 from __future__ import annotations
 
@@ -71,9 +85,11 @@ from sqlmodel import Session, select
 from app.cognition.appraisal import (
     AppraisalResult,
     GoalRelevance,
+    GoalStateChange,
     GoalUpdateIntent,
     _parse_appraisal,
     _parse_goal_relevance,
+    _parse_goal_state_change,
     _parse_goal_update,
     apply_appraisal_to_mental_state,
     run_appraisal,
@@ -87,6 +103,7 @@ from app.cognition.goal_priority import (
 )
 from app.cognition.goal_service import (
     apply_goal_intents,
+    apply_goal_state_changes,
     build_active_goals_block,
     create_goal_from_intent,
     get_active_goals,
@@ -1316,3 +1333,212 @@ class TestEvaluatorGoalInjection:
         assert results[0].scope == "long_term"
 
         self._cleanup(db_session)
+
+
+# ---------------------------------------------------------------------------
+# Paso 4 Part 1 — GoalStateChange: parse unit tests + apply_goal_state_changes
+# ---------------------------------------------------------------------------
+
+class TestParseGoalStateChange:
+    def test_parses_resolved(self):
+        gsc = _parse_goal_state_change({"goal_id": 5, "new_status": "resolved"})
+        assert gsc is not None
+        assert gsc.goal_id == 5
+        assert gsc.new_status == "resolved"
+
+    def test_parses_abandoned(self):
+        gsc = _parse_goal_state_change({"goal_id": 12, "new_status": "abandoned"})
+        assert gsc is not None
+        assert gsc.goal_id == 12
+        assert gsc.new_status == "abandoned"
+
+    def test_rejects_non_dict(self):
+        assert _parse_goal_state_change("resolved") is None
+        assert _parse_goal_state_change(None) is None
+        assert _parse_goal_state_change(42) is None
+
+    def test_rejects_invalid_status(self):
+        assert _parse_goal_state_change({"goal_id": 1, "new_status": "active"}) is None
+        assert _parse_goal_state_change({"goal_id": 1, "new_status": "expired"}) is None
+        assert _parse_goal_state_change({"goal_id": 1, "new_status": ""}) is None
+
+    def test_rejects_missing_goal_id(self):
+        assert _parse_goal_state_change({"new_status": "resolved"}) is None
+
+    def test_parse_appraisal_includes_state_changes(self):
+        raw = json.dumps({
+            "interest_delta": 0.1,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.01,
+            "goal_updates": [],
+            "goal_relevance": [],
+            "goal_state_changes": [
+                {"goal_id": 7, "new_status": "resolved"},
+                {"goal_id": 9, "new_status": "abandoned"},
+            ],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert len(result.goal_state_changes) == 2
+        assert result.goal_state_changes[0].goal_id == 7
+        assert result.goal_state_changes[0].new_status == "resolved"
+        assert result.goal_state_changes[1].goal_id == 9
+        assert result.goal_state_changes[1].new_status == "abandoned"
+
+    def test_parse_appraisal_filters_invalid_state_changes(self):
+        raw = json.dumps({
+            "interest_delta": 0.0,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.0,
+            "goal_updates": [],
+            "goal_relevance": [],
+            "goal_state_changes": [
+                {"goal_id": 1, "new_status": "active"},   # invalid — filtered
+                {"goal_id": 2, "new_status": "resolved"},  # valid
+                "not-a-dict",                              # invalid — filtered
+            ],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert len(result.goal_state_changes) == 1
+        assert result.goal_state_changes[0].goal_id == 2
+
+    def test_parse_appraisal_missing_field_returns_empty(self):
+        # Old Appraisal response without goal_state_changes — backward compat
+        raw = json.dumps({
+            "interest_delta": 0.0,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.0,
+            "goal_updates": [],
+            "goal_relevance": [],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert result.goal_state_changes == []
+
+    def test_zero_has_empty_goal_state_changes(self):
+        z = AppraisalResult.zero()
+        assert z.goal_state_changes == []
+
+
+class TestApplyGoalStateChanges:
+    _UID_A = 8970
+    _UID_B = 8971
+
+    def _cleanup(self, session: Session, *user_ids: int) -> None:
+        for uid in user_ids:
+            for row in session.exec(select(Goal).where(Goal.user_id == uid)).all():
+                session.delete(row)
+        session.commit()
+
+    def _make_active_goal(self, session: Session, user_id: int, description: str = "Goal") -> Goal:
+        g = Goal(user_id=user_id, scope="short_term", description=description,
+                 origin="autonomous", status="active")
+        session.add(g)
+        session.commit()
+        session.refresh(g)
+        return g
+
+    def test_resolved_sets_status_and_resolved_at(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_active_goal(db_session, self._UID_A, "Finish the book")
+
+        changes = [GoalStateChange(goal_id=goal.id, new_status="resolved")]
+        apply_goal_state_changes(db_session, self._UID_A, changes)
+
+        db_session.refresh(goal)
+        assert goal.status == "resolved"
+        assert goal.resolved_at is not None
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_abandoned_sets_status_resolved_at_stays_none(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_active_goal(db_session, self._UID_A, "Abandoned goal")
+
+        changes = [GoalStateChange(goal_id=goal.id, new_status="abandoned")]
+        apply_goal_state_changes(db_session, self._UID_A, changes)
+
+        db_session.refresh(goal)
+        assert goal.status == "abandoned"
+        assert goal.resolved_at is None
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_ignores_already_resolved_goal(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = Goal(user_id=self._UID_A, scope="short_term", description="Already done",
+                    origin="autonomous", status="resolved", resolved_at=utc_now())
+        db_session.add(goal)
+        db_session.commit()
+        db_session.refresh(goal)
+
+        original_resolved_at = goal.resolved_at
+        changes = [GoalStateChange(goal_id=goal.id, new_status="abandoned")]
+        apply_goal_state_changes(db_session, self._UID_A, changes)
+
+        db_session.refresh(goal)
+        # Status must not change — already resolved
+        assert goal.status == "resolved"
+        assert goal.resolved_at == original_resolved_at
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_ignores_goal_belonging_to_other_user(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+        goal_b = self._make_active_goal(db_session, self._UID_B, "User B goal")
+
+        # Try to resolve UID_B's goal as UID_A — must be ignored
+        changes = [GoalStateChange(goal_id=goal_b.id, new_status="resolved")]
+        apply_goal_state_changes(db_session, self._UID_A, changes)
+
+        db_session.refresh(goal_b)
+        assert goal_b.status == "active"
+
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+
+    def test_run_cognition_turn_applies_state_changes(self, db_session: Session):
+        _UID = 8972
+        # Cleanup
+        for row in db_session.exec(select(Goal).where(Goal.user_id == _UID)).all():
+            db_session.delete(row)
+        from app.memory.models import MentalState as _MS
+        for row in db_session.exec(select(_MS).where(_MS.user_id == _UID)).all():
+            db_session.delete(row)
+        db_session.commit()
+
+        # Create an active goal
+        goal = Goal(user_id=_UID, scope="short_term", description="Learn Python",
+                    origin="autonomous", status="active")
+        db_session.add(goal)
+        db_session.commit()
+        db_session.refresh(goal)
+
+        svc = SettingsService(db_session)
+        fake_appraisal = AppraisalResult(
+            interest_delta=0.0,
+            frustration_delta=0.0,
+            trust_evidence=0.0,
+            goal_state_changes=[GoalStateChange(goal_id=goal.id, new_status="resolved")],
+        )
+
+        with patch("app.cognition.turn_cognition.run_appraisal", return_value=fake_appraisal):
+            run_cognition_turn(
+                session=db_session,
+                user_id=_UID,
+                user_message="Ya aprendí Python!",
+                settings_service=svc,
+                personality=CANONICAL_PERSONALITY,
+                trace_id="t-sc-001",
+            )
+
+        db_session.refresh(goal)
+        assert goal.status == "resolved"
+        assert goal.resolved_at is not None
+
+        # Cleanup
+        for row in db_session.exec(select(Goal).where(Goal.user_id == _UID)).all():
+            db_session.delete(row)
+        for row in db_session.exec(select(_MS).where(_MS.user_id == _UID)).all():
+            db_session.delete(row)
+        db_session.commit()
