@@ -22,7 +22,14 @@ from dataclasses import dataclass, field
 from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
-from app.cognition.goal_service import apply_goal_intents, apply_goal_state_changes, get_active_goals
+from app.cognition.goal_service import (
+    apply_goal_intents,
+    apply_goal_state_changes,
+    apply_milestone_updates,
+    get_active_goals,
+    get_milestones_for_goal,
+    resolve_expired_short_term_goals,
+)
 from app.cognition.perception import PerceptionResult, run_perception
 from app.memory.models import Goal
 from app.settings.settings_service import SettingsService
@@ -51,17 +58,24 @@ def run_cognition_turn(
     deltas are applied here to the SQLModel row and persisted — the updated values
     take effect starting from the NEXT turn. This is intentional.
     """
-    # Load goals before Perception so Appraisal can score per-goal relevance
+    # Expire stale short_term goals before loading — keeps context clean
+    resolve_expired_short_term_goals(session, user_id)
+
+    # Load goals + their milestones before Perception so Appraisal can reference milestone IDs
     active_goals = get_active_goals(session, user_id)
-    active_goals_dicts = [
-        {
+    active_goals_dicts = []
+    for g in active_goals:
+        milestones = get_milestones_for_goal(session, g.id) if g.id is not None else []
+        active_goals_dicts.append({
             "id": g.id,
             "description": g.description,
             "scope": g.scope,
             "is_wellbeing": g.is_wellbeing,
-        }
-        for g in active_goals
-    ]
+            "milestones": [
+                {"id": m.id, "description": m.description, "status": m.status}
+                for m in milestones
+            ],
+        })
 
     perception = run_perception(user_message, trace_id=trace_id)
 
@@ -95,6 +109,9 @@ def run_cognition_turn(
 
     if appraisal.goal_state_changes:
         apply_goal_state_changes(session, user_id, appraisal.goal_state_changes)
+
+    if appraisal.milestone_updates:
+        apply_milestone_updates(session, user_id, appraisal.milestone_updates)
 
     return CognitionTurnResult(
         perception=perception,

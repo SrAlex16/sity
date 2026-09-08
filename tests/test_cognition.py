@@ -72,11 +72,45 @@ Paso 4 Part 1 — state machine (GoalStateChange):
 61. apply_goal_state_changes: ignores non-active goals.
 62. apply_goal_state_changes: ignores goals belonging to another user.
 63. run_cognition_turn applies goal_state_changes from Appraisal to DB.
+
+Paso 4 Part 2 — milestone system (MilestoneIntent, GoalMilestone):
+64. _parse_milestone_intent: add_milestone with valid fields.
+65. _parse_milestone_intent: complete with valid milestone_id.
+66. _parse_milestone_intent: rejects non-dict.
+67. _parse_milestone_intent: add_milestone rejects missing goal_id.
+68. _parse_milestone_intent: add_milestone rejects empty description.
+69. _parse_milestone_intent: complete rejects missing milestone_id.
+70. _parse_milestone_intent: rejects unknown action.
+71. _parse_appraisal includes milestone_updates when present.
+72. _parse_appraisal filters invalid milestone_updates.
+73. _parse_appraisal backward compat: missing field returns empty list.
+74. AppraisalResult.zero() has empty milestone_updates.
+75. _parse_goal_update parses initial_milestones list.
+76. _parse_goal_update: initial_milestones defaults to [] when absent.
+77. get_milestones_for_goal returns milestones ordered by order_index.
+78. create_goal_from_intent creates initial milestones when provided.
+79. create_goal_from_intent creates goal without milestones (simple goal).
+80. apply_milestone_updates add_milestone appends new GoalMilestone.
+81. apply_milestone_updates add_milestone order_index continues from existing.
+82. apply_milestone_updates add_milestone ignores goals of other users.
+83. apply_milestone_updates complete sets status and completed_at.
+84. apply_milestone_updates complete ignores milestones of other users.
+85. GoalMilestone user isolation: milestone cannot be completed via other user.
+86. run_cognition_turn applies milestone_updates from Appraisal to DB.
+
+Paso 4 Part 4 — short_term auto-expiry:
+87. resolve_expired_short_term_goals: active short_term goal older than threshold → expired.
+88. resolve_expired_short_term_goals: long_term goal older than threshold → NOT expired.
+89. resolve_expired_short_term_goals: short_term goal within threshold → NOT expired.
+90. resolve_expired_short_term_goals: already-resolved goal → NOT changed.
+91. resolve_expired_short_term_goals: user isolation — other user's goals not affected.
+92. resolve_expired_short_term_goals: returns count of expired goals.
+93. run_cognition_turn expires stale short_term goals before building context.
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -87,10 +121,12 @@ from app.cognition.appraisal import (
     GoalRelevance,
     GoalStateChange,
     GoalUpdateIntent,
+    MilestoneIntent,
     _parse_appraisal,
     _parse_goal_relevance,
     _parse_goal_state_change,
     _parse_goal_update,
+    _parse_milestone_intent,
     apply_appraisal_to_mental_state,
     run_appraisal,
 )
@@ -104,10 +140,14 @@ from app.cognition.goal_priority import (
 from app.cognition.goal_service import (
     apply_goal_intents,
     apply_goal_state_changes,
+    apply_milestone_updates,
     build_active_goals_block,
     create_goal_from_intent,
     get_active_goals,
+    get_milestones_for_goal,
+    resolve_expired_short_term_goals,
 )
+from app.memory.models import Goal, GoalMilestone, MentalState, utc_now
 from app.cognition.perception import (
     PerceptionResult,
     _parse_perception,
@@ -115,7 +155,6 @@ from app.cognition.perception import (
 )
 from app.cognition.turn_cognition import CognitionTurnResult, run_cognition_turn
 from app.initiative.evaluator import _build_user_message, _get_active_long_term_goals
-from app.memory.models import Goal, MentalState, utc_now
 from app.settings.settings_service import CANONICAL_PERSONALITY, SettingsService
 
 
@@ -1540,5 +1579,523 @@ class TestApplyGoalStateChanges:
         for row in db_session.exec(select(Goal).where(Goal.user_id == _UID)).all():
             db_session.delete(row)
         for row in db_session.exec(select(_MS).where(_MS.user_id == _UID)).all():
+            db_session.delete(row)
+        db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Paso 4 Part 2 — MilestoneIntent: parse unit tests
+# ---------------------------------------------------------------------------
+
+class TestParseMilestoneIntent:
+    def test_add_milestone_valid(self):
+        mi = _parse_milestone_intent({
+            "action": "add_milestone",
+            "goal_id": 3,
+            "description": "Buscar un profesor",
+        })
+        assert mi is not None
+        assert mi.action == "add_milestone"
+        assert mi.goal_id == 3
+        assert mi.description == "Buscar un profesor"
+        assert mi.milestone_id is None
+
+    def test_complete_valid(self):
+        mi = _parse_milestone_intent({"action": "complete", "milestone_id": 17})
+        assert mi is not None
+        assert mi.action == "complete"
+        assert mi.milestone_id == 17
+        assert mi.goal_id is None
+
+    def test_rejects_non_dict(self):
+        assert _parse_milestone_intent("add_milestone") is None
+        assert _parse_milestone_intent(None) is None
+
+    def test_add_milestone_rejects_missing_goal_id(self):
+        assert _parse_milestone_intent({
+            "action": "add_milestone", "description": "Step 1"
+        }) is None
+
+    def test_add_milestone_rejects_empty_description(self):
+        assert _parse_milestone_intent({
+            "action": "add_milestone", "goal_id": 1, "description": "  "
+        }) is None
+
+    def test_complete_rejects_missing_milestone_id(self):
+        assert _parse_milestone_intent({"action": "complete"}) is None
+
+    def test_rejects_unknown_action(self):
+        assert _parse_milestone_intent({
+            "action": "update", "goal_id": 1, "description": "X"
+        }) is None
+
+    def test_parse_appraisal_includes_milestone_updates(self):
+        raw = json.dumps({
+            "interest_delta": 0.0,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.0,
+            "goal_updates": [],
+            "goal_relevance": [],
+            "goal_state_changes": [],
+            "milestone_updates": [
+                {"action": "add_milestone", "goal_id": 5, "description": "Primer hito"},
+                {"action": "complete", "milestone_id": 12},
+            ],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert len(result.milestone_updates) == 2
+        assert result.milestone_updates[0].action == "add_milestone"
+        assert result.milestone_updates[0].goal_id == 5
+        assert result.milestone_updates[1].action == "complete"
+        assert result.milestone_updates[1].milestone_id == 12
+
+    def test_parse_appraisal_filters_invalid_milestone_updates(self):
+        raw = json.dumps({
+            "interest_delta": 0.0,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.0,
+            "goal_updates": [],
+            "goal_relevance": [],
+            "goal_state_changes": [],
+            "milestone_updates": [
+                {"action": "add_milestone", "goal_id": 1, "description": "Valid"},
+                {"action": "add_milestone", "description": "No goal_id"},   # invalid
+                "not-a-dict",                                                # invalid
+            ],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert len(result.milestone_updates) == 1
+
+    def test_parse_appraisal_missing_milestone_field_returns_empty(self):
+        raw = json.dumps({
+            "interest_delta": 0.0,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.0,
+            "goal_updates": [],
+            "goal_relevance": [],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert result.milestone_updates == []
+
+    def test_zero_has_empty_milestone_updates(self):
+        z = AppraisalResult.zero()
+        assert z.milestone_updates == []
+
+    def test_parse_goal_update_with_initial_milestones(self):
+        raw = {
+            "action": "create",
+            "description": "Leer Don Quijote",
+            "scope": "long_term",
+            "base_importance": 0.6,
+            "is_wellbeing": False,
+            "initial_milestones": ["Conseguir el libro", "Leer la primera parte"],
+        }
+        gu = _parse_goal_update(raw)
+        assert gu is not None
+        assert gu.initial_milestones == ["Conseguir el libro", "Leer la primera parte"]
+
+    def test_parse_goal_update_initial_milestones_defaults_to_empty(self):
+        raw = {
+            "action": "create",
+            "description": "Meta simple",
+            "scope": "short_term",
+            "base_importance": 0.5,
+            "is_wellbeing": False,
+        }
+        gu = _parse_goal_update(raw)
+        assert gu is not None
+        assert gu.initial_milestones == []
+
+
+# ---------------------------------------------------------------------------
+# Paso 4 Part 2 — GoalMilestone DB operations
+# ---------------------------------------------------------------------------
+
+class TestMilestoneOperations:
+    _UID_A = 8980
+    _UID_B = 8981
+
+    def _cleanup(self, session: Session, *user_ids: int) -> None:
+        for uid in user_ids:
+            for g in session.exec(select(Goal).where(Goal.user_id == uid)).all():
+                for m in session.exec(
+                    select(GoalMilestone).where(GoalMilestone.goal_id == g.id)
+                ).all():
+                    session.delete(m)
+                session.delete(g)
+        session.commit()
+
+    def _make_goal(self, session: Session, user_id: int, description: str = "Goal") -> Goal:
+        g = Goal(user_id=user_id, scope="short_term", description=description,
+                 origin="autonomous", status="active")
+        session.add(g)
+        session.commit()
+        session.refresh(g)
+        return g
+
+    def test_get_milestones_ordered_by_order_index(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A)
+
+        for i, desc in enumerate(["Tercero", "Primero", "Segundo"]):
+            db_session.add(GoalMilestone(
+                goal_id=goal.id, description=desc, status="pending", order_index=i
+            ))
+        db_session.commit()
+
+        milestones = get_milestones_for_goal(db_session, goal.id)
+        assert [m.description for m in milestones] == ["Tercero", "Primero", "Segundo"]
+        assert [m.order_index for m in milestones] == [0, 1, 2]
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_create_goal_from_intent_creates_initial_milestones(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+
+        intent = GoalUpdateIntent(
+            action="create",
+            description="Aprender cocina italiana",
+            scope="long_term",
+            base_importance=0.7,
+            is_wellbeing=False,
+            initial_milestones=["Comprar ingredientes", "Hacer pasta casera"],
+        )
+        goal = create_goal_from_intent(db_session, self._UID_A, intent)
+
+        milestones = get_milestones_for_goal(db_session, goal.id)
+        assert len(milestones) == 2
+        assert milestones[0].description == "Comprar ingredientes"
+        assert milestones[0].order_index == 0
+        assert milestones[0].status == "pending"
+        assert milestones[1].description == "Hacer pasta casera"
+        assert milestones[1].order_index == 1
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_create_goal_from_intent_no_milestones(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+
+        intent = GoalUpdateIntent(
+            action="create", description="Meta simple", scope="short_term",
+            base_importance=0.5, is_wellbeing=False,
+        )
+        goal = create_goal_from_intent(db_session, self._UID_A, intent)
+        assert get_milestones_for_goal(db_session, goal.id) == []
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_apply_milestone_updates_add_appends_milestone(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A, "Goal with milestones")
+
+        updates = [MilestoneIntent(action="add_milestone", goal_id=goal.id,
+                                   description="Nuevo hito")]
+        apply_milestone_updates(db_session, self._UID_A, updates)
+
+        milestones = get_milestones_for_goal(db_session, goal.id)
+        assert len(milestones) == 1
+        assert milestones[0].description == "Nuevo hito"
+        assert milestones[0].status == "pending"
+        assert milestones[0].order_index == 0
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_apply_milestone_updates_add_order_continues_from_existing(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A)
+
+        # Add two initial milestones
+        db_session.add(GoalMilestone(goal_id=goal.id, description="Hito 0",
+                                     status="pending", order_index=0))
+        db_session.add(GoalMilestone(goal_id=goal.id, description="Hito 1",
+                                     status="pending", order_index=1))
+        db_session.commit()
+
+        # Add a third via apply_milestone_updates
+        apply_milestone_updates(
+            db_session, self._UID_A,
+            [MilestoneIntent(action="add_milestone", goal_id=goal.id, description="Hito 2")]
+        )
+
+        milestones = get_milestones_for_goal(db_session, goal.id)
+        assert len(milestones) == 3
+        assert milestones[2].order_index == 2
+        assert milestones[2].description == "Hito 2"
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_apply_milestone_updates_add_ignores_other_users_goal(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+        goal_b = self._make_goal(db_session, self._UID_B)
+
+        # UID_A tries to add a milestone to UID_B's goal — must be ignored
+        apply_milestone_updates(
+            db_session, self._UID_A,
+            [MilestoneIntent(action="add_milestone", goal_id=goal_b.id, description="Intruso")]
+        )
+
+        assert get_milestones_for_goal(db_session, goal_b.id) == []
+
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+
+    def test_apply_milestone_updates_complete_sets_status_and_completed_at(
+        self, db_session: Session
+    ):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A)
+        ms = GoalMilestone(goal_id=goal.id, description="Hito completable",
+                           status="pending", order_index=0)
+        db_session.add(ms)
+        db_session.commit()
+        db_session.refresh(ms)
+
+        apply_milestone_updates(
+            db_session, self._UID_A,
+            [MilestoneIntent(action="complete", milestone_id=ms.id)]
+        )
+
+        db_session.refresh(ms)
+        assert ms.status == "completed"
+        assert ms.completed_at is not None
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_apply_milestone_updates_complete_ignores_other_users_milestone(
+        self, db_session: Session
+    ):
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+        goal_b = self._make_goal(db_session, self._UID_B)
+        ms = GoalMilestone(goal_id=goal_b.id, description="Hito de B",
+                           status="pending", order_index=0)
+        db_session.add(ms)
+        db_session.commit()
+        db_session.refresh(ms)
+
+        # UID_A tries to complete UID_B's milestone — must be ignored
+        apply_milestone_updates(
+            db_session, self._UID_A,
+            [MilestoneIntent(action="complete", milestone_id=ms.id)]
+        )
+
+        db_session.refresh(ms)
+        assert ms.status == "pending"
+        assert ms.completed_at is None
+
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+
+    def test_run_cognition_turn_applies_milestone_add(self, db_session: Session):
+        _UID = 8982
+        for g in db_session.exec(select(Goal).where(Goal.user_id == _UID)).all():
+            for m in db_session.exec(
+                select(GoalMilestone).where(GoalMilestone.goal_id == g.id)
+            ).all():
+                db_session.delete(m)
+            db_session.delete(g)
+        for row in db_session.exec(
+            select(MentalState).where(MentalState.user_id == _UID)
+        ).all():
+            db_session.delete(row)
+        db_session.commit()
+
+        goal = Goal(user_id=_UID, scope="long_term", description="Correr maratón",
+                    origin="autonomous", status="active")
+        db_session.add(goal)
+        db_session.commit()
+        db_session.refresh(goal)
+
+        svc = SettingsService(db_session)
+        fake_appraisal = AppraisalResult(
+            interest_delta=0.1,
+            frustration_delta=0.0,
+            trust_evidence=0.0,
+            milestone_updates=[
+                MilestoneIntent(action="add_milestone", goal_id=goal.id,
+                                description="Empezar a correr 5km")
+            ],
+        )
+
+        with patch("app.cognition.turn_cognition.run_appraisal", return_value=fake_appraisal):
+            run_cognition_turn(
+                session=db_session,
+                user_id=_UID,
+                user_message="Quiero preparar una maratón este año",
+                settings_service=svc,
+                personality=CANONICAL_PERSONALITY,
+                trace_id="t-ms-001",
+            )
+
+        milestones = get_milestones_for_goal(db_session, goal.id)
+        assert len(milestones) == 1
+        assert milestones[0].description == "Empezar a correr 5km"
+        assert milestones[0].status == "pending"
+
+        # Cleanup
+        for m in db_session.exec(
+            select(GoalMilestone).where(GoalMilestone.goal_id == goal.id)
+        ).all():
+            db_session.delete(m)
+        db_session.delete(goal)
+        for row in db_session.exec(
+            select(MentalState).where(MentalState.user_id == _UID)
+        ).all():
+            db_session.delete(row)
+        db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Paso 4 Part 4 — resolve_expired_short_term_goals
+# ---------------------------------------------------------------------------
+
+class TestResolveExpiredShortTermGoals:
+    _UID_A = 8990
+    _UID_B = 8991
+
+    def _cleanup(self, session: Session, *user_ids: int) -> None:
+        for uid in user_ids:
+            for row in session.exec(select(Goal).where(Goal.user_id == uid)).all():
+                session.delete(row)
+        session.commit()
+
+    def _make_goal(
+        self,
+        session: Session,
+        user_id: int,
+        scope: str = "short_term",
+        status: str = "active",
+        age_hours: float = 0.0,
+    ) -> Goal:
+        from datetime import timezone
+        created = utc_now() - timedelta(hours=age_hours)
+        g = Goal(
+            user_id=user_id, scope=scope, description=f"Goal uid={user_id}",
+            origin="autonomous", status=status, created_at=created,
+        )
+        session.add(g)
+        session.commit()
+        session.refresh(g)
+        return g
+
+    def test_active_short_term_older_than_threshold_is_expired(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A, scope="short_term", age_hours=25)
+
+        count = resolve_expired_short_term_goals(db_session, self._UID_A, max_age_hours=24)
+
+        db_session.refresh(goal)
+        assert goal.status == "expired"
+        assert count == 1
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_long_term_goal_older_than_threshold_not_expired(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A, scope="long_term", age_hours=48)
+
+        count = resolve_expired_short_term_goals(db_session, self._UID_A, max_age_hours=24)
+
+        db_session.refresh(goal)
+        assert goal.status == "active"
+        assert count == 0
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_short_term_within_threshold_not_expired(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(db_session, self._UID_A, scope="short_term", age_hours=1)
+
+        count = resolve_expired_short_term_goals(db_session, self._UID_A, max_age_hours=24)
+
+        db_session.refresh(goal)
+        assert goal.status == "active"
+        assert count == 0
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_already_resolved_goal_not_changed(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        goal = self._make_goal(
+            db_session, self._UID_A, scope="short_term", status="resolved", age_hours=48
+        )
+        goal.resolved_at = utc_now()
+        db_session.add(goal)
+        db_session.commit()
+
+        resolve_expired_short_term_goals(db_session, self._UID_A, max_age_hours=24)
+
+        db_session.refresh(goal)
+        assert goal.status == "resolved"
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_user_isolation_other_users_goals_not_affected(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+        goal_b = self._make_goal(db_session, self._UID_B, scope="short_term", age_hours=48)
+
+        # Expire UID_A's goals — must not touch UID_B's
+        resolve_expired_short_term_goals(db_session, self._UID_A, max_age_hours=24)
+
+        db_session.refresh(goal_b)
+        assert goal_b.status == "active"
+
+        self._cleanup(db_session, self._UID_A, self._UID_B)
+
+    def test_returns_count_of_expired_goals(self, db_session: Session):
+        self._cleanup(db_session, self._UID_A)
+        self._make_goal(db_session, self._UID_A, scope="short_term", age_hours=48)
+        self._make_goal(db_session, self._UID_A, scope="short_term", age_hours=36)
+        self._make_goal(db_session, self._UID_A, scope="short_term", age_hours=1)  # fresh
+
+        count = resolve_expired_short_term_goals(db_session, self._UID_A, max_age_hours=24)
+        assert count == 2
+
+        self._cleanup(db_session, self._UID_A)
+
+    def test_run_cognition_turn_expires_stale_short_term_before_building_context(
+        self, db_session: Session
+    ):
+        _UID = 8992
+        for row in db_session.exec(select(Goal).where(Goal.user_id == _UID)).all():
+            db_session.delete(row)
+        for row in db_session.exec(
+            select(MentalState).where(MentalState.user_id == _UID)
+        ).all():
+            db_session.delete(row)
+        db_session.commit()
+
+        # Stale short_term goal — 48h old
+        stale_created = utc_now() - timedelta(hours=48)
+        stale_goal = Goal(
+            user_id=_UID, scope="short_term", description="Stale goal",
+            origin="autonomous", status="active", created_at=stale_created,
+        )
+        db_session.add(stale_goal)
+        db_session.commit()
+        db_session.refresh(stale_goal)
+
+        svc = SettingsService(db_session)
+        result = run_cognition_turn(
+            session=db_session,
+            user_id=_UID,
+            user_message="Hola de nuevo",
+            settings_service=svc,
+            personality=CANONICAL_PERSONALITY,
+            trace_id="t-exp-001",
+        )
+
+        # Stale goal must be expired
+        db_session.refresh(stale_goal)
+        assert stale_goal.status == "expired"
+        # The active_goals returned should NOT include it
+        assert not any(g.id == stale_goal.id for g in result.active_goals)
+
+        # Cleanup
+        for row in db_session.exec(select(Goal).where(Goal.user_id == _UID)).all():
+            db_session.delete(row)
+        for row in db_session.exec(
+            select(MentalState).where(MentalState.user_id == _UID)
+        ).all():
             db_session.delete(row)
         db_session.commit()

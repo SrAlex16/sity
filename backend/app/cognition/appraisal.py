@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
@@ -50,7 +50,8 @@ _APPRAISAL_SYSTEM_BASE = (
     '  "trust_evidence": <float in [0.0, 0.05] — evidence of trust from this interaction>,\n'
     '  "goal_updates": <list of goal update objects, or empty []>,\n'
     '  "goal_relevance": <list of goal relevance objects for each active goal, or empty []>,\n'
-    '  "goal_state_changes": <list of goal state change objects, or empty []>\n'
+    '  "goal_state_changes": <list of goal state change objects, or empty []>,\n'
+    '  "milestone_updates": <list of milestone update objects, or empty []>\n'
     "}\n\n"
     "Goal update object (only include when a clear goal emerges from the conversation):\n"
     "{\n"
@@ -58,7 +59,8 @@ _APPRAISAL_SYSTEM_BASE = (
     '  "description": "<concise goal description>",\n'
     '  "scope": "short_term" | "long_term",\n'
     '  "base_importance": <float 0.0-1.0>,\n'
-    '  "is_wellbeing": <true if this goal relates to user mental health/wellbeing, else false>\n'
+    '  "is_wellbeing": <true if this goal relates to user mental health/wellbeing, else false>,\n'
+    '  "initial_milestones": ["<first sub-step>", ...]  // optional; omit or [] for simple goals\n'
     "}\n\n"
     "Goal relevance object (one per active goal listed in the context):\n"
     "{\n"
@@ -70,6 +72,9 @@ _APPRAISAL_SYSTEM_BASE = (
     '  "goal_id": <integer goal ID from the ACTIVE GOALS list>,\n'
     '  "new_status": "resolved" | "abandoned"\n'
     "}\n\n"
+    "Milestone update object — two forms:\n"
+    '{"goal_id": <integer>, "action": "add_milestone", "description": "<sub-step description>"}\n'
+    '{"milestone_id": <integer milestone ID from the milestones list>, "action": "complete"}\n\n'
     "Guidelines:\n"
     "- interest_delta: positive when the topic is interesting or novel; negative for routine/boring\n"
     "- frustration_delta: positive when the user is confrontational; negative when warm/cooperative\n"
@@ -78,12 +83,21 @@ _APPRAISAL_SYSTEM_BASE = (
     "Empty list is correct for most turns.\n"
     "- is_wellbeing: mark true ONLY when the goal directly relates to the user's mental health, "
     "emotional support, or personal wellbeing.\n"
+    "- initial_milestones: include only when the goal naturally decomposes into concrete sub-steps "
+    "already evident from the conversation. Omit or use [] for simple, single-step goals.\n"
     "- goal_relevance: for each active goal, score how much the current turn relates to it. "
     "0 = completely unrelated, 1 = directly and explicitly about this goal. "
     "If no active goals are listed, return empty [].\n"
     "- goal_state_changes: signal 'resolved' ONLY when there is clear evidence the goal was achieved "
     "(e.g. the user says they accomplished it). Signal 'abandoned' ONLY when the user explicitly gives "
-    "up or states the goal is no longer relevant. Empty list is correct for the vast majority of turns.\n\n"
+    "up or states the goal is no longer relevant. Empty list is correct for the vast majority of turns.\n"
+    "- milestone_updates: add milestones when the conversation reveals specific actionable sub-steps. "
+    "Complete a milestone when you have clear evidence it was accomplished. "
+    "Empty list is correct for most turns.\n"
+    "- similar goals: before creating a new goal, check the ACTIVE GOALS list. If a new goal is "
+    "semantically similar to an existing one (same domain, similar objective), prefer adding "
+    "milestones to the existing goal rather than creating a duplicate. Only create a new goal "
+    "when the objective is clearly distinct from all active goals.\n\n"
     "Output only valid JSON. Use 0 for all deltas if the message is neutral or routine."
 )
 
@@ -96,6 +110,7 @@ class GoalUpdateIntent:
     scope: str           # "short_term" | "long_term"
     base_importance: float
     is_wellbeing: bool = False
+    initial_milestones: list[str] = field(default_factory=list)  # optional initial sub-steps
 
 
 @dataclass
@@ -122,6 +137,21 @@ class GoalStateChange:
 
 
 @dataclass
+class MilestoneIntent:
+    """Intent to add a new milestone to a goal or complete an existing one.
+
+    action="add_milestone": requires goal_id + description.
+    action="complete":      requires milestone_id (from the milestones list in context).
+
+    The DB layer verifies goal/milestone ownership before applying any change.
+    """
+    action: str                   # "add_milestone" | "complete"
+    goal_id: Optional[int] = None          # for add_milestone
+    description: Optional[str] = None      # for add_milestone
+    milestone_id: Optional[int] = None     # for complete
+
+
+@dataclass
 class AppraisalResult:
     interest_delta: float
     frustration_delta: float
@@ -129,6 +159,7 @@ class AppraisalResult:
     goal_updates: list[GoalUpdateIntent] = field(default_factory=list)
     goal_relevance: list[GoalRelevance] = field(default_factory=list)
     goal_state_changes: list[GoalStateChange] = field(default_factory=list)
+    milestone_updates: list[MilestoneIntent] = field(default_factory=list)
 
     @classmethod
     def zero(cls) -> "AppraisalResult":
@@ -139,6 +170,7 @@ class AppraisalResult:
             goal_updates=[],
             goal_relevance=[],
             goal_state_changes=[],
+            milestone_updates=[],
         )
 
 
@@ -162,12 +194,19 @@ def _parse_goal_update(raw: Any) -> GoalUpdateIntent | None:
         base_importance = clamp_01(float(raw.get("base_importance", 0.5)))
     except (TypeError, ValueError):
         base_importance = 0.5
+    raw_milestones = raw.get("initial_milestones")
+    initial_milestones: list[str] = []
+    if isinstance(raw_milestones, list):
+        for item in raw_milestones:
+            if isinstance(item, str) and item.strip():
+                initial_milestones.append(item.strip())
     return GoalUpdateIntent(
         action=action,
         description=description,
         scope=scope,
         base_importance=base_importance,
         is_wellbeing=bool(raw.get("is_wellbeing", False)),
+        initial_milestones=initial_milestones,
     )
 
 
@@ -180,6 +219,32 @@ def _parse_goal_relevance(raw: Any) -> GoalRelevance | None:
         return GoalRelevance(goal_id=goal_id, relevance=relevance)
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _parse_milestone_intent(raw: Any) -> MilestoneIntent | None:
+    if not isinstance(raw, dict):
+        return None
+    action = str(raw.get("action", "")).strip().lower()
+    if action == "add_milestone":
+        goal_id_raw = raw.get("goal_id")
+        if goal_id_raw is None:
+            return None
+        description = str(raw.get("description", "")).strip()
+        if not description:
+            return None
+        try:
+            return MilestoneIntent(action="add_milestone", goal_id=int(goal_id_raw), description=description)
+        except (TypeError, ValueError):
+            return None
+    elif action == "complete":
+        milestone_id_raw = raw.get("milestone_id")
+        if milestone_id_raw is None:
+            return None
+        try:
+            return MilestoneIntent(action="complete", milestone_id=int(milestone_id_raw))
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def _parse_goal_state_change(raw: Any) -> GoalStateChange | None:
@@ -225,6 +290,13 @@ def _parse_appraisal(text: str) -> AppraisalResult | None:
             )
             if gsc is not None
         ]
+        milestone_updates = [
+            mi for mi in (
+                _parse_milestone_intent(item)
+                for item in (data.get("milestone_updates") or [])
+            )
+            if mi is not None
+        ]
         return AppraisalResult(
             interest_delta=_clamp_delta(data.get("interest_delta", 0.0)),
             frustration_delta=_clamp_delta(data.get("frustration_delta", 0.0)),
@@ -232,6 +304,7 @@ def _parse_appraisal(text: str) -> AppraisalResult | None:
             goal_updates=goal_updates,
             goal_relevance=goal_relevance,
             goal_state_changes=goal_state_changes,
+            milestone_updates=milestone_updates,
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
