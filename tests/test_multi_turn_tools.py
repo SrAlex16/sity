@@ -91,7 +91,9 @@ def _make_ctx(*, ai_config: dict | None = None) -> MagicMock:
     ctx = MagicMock(spec=TurnContext)
     ctx.trace_id = "trc_test"
     ctx.session_id = "default"
-    ctx.personality = {"verbosity_level": 0.5}
+    ctx.personality = {"warmth": 0.4}
+    ctx.comm_prefs = {"verbosity": 0.5}
+    ctx.mental_state = {}
     ctx.max_tokens = 1500
     ctx.daily_budget = 1_000_000
     ctx.warning_threshold = 0.80
@@ -102,7 +104,8 @@ def _make_ctx(*, ai_config: dict | None = None) -> MagicMock:
     persistence.tag_sity_with_model = MagicMock()
     ctx.persistence = persistence
     ctx.settings_service = MagicMock()
-    ctx.settings_service.get_personality.return_value = {"verbosity_level": 0.5}
+    ctx.settings_service.get_personality.return_value = {"warmth": 0.4}
+    ctx.settings_service.get_comm_prefs.return_value = {"verbosity": 0.5}
     return ctx
 
 

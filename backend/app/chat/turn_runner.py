@@ -269,7 +269,14 @@ def _chat_message_inner(
             trace_id=ctx.trace_id,
         )
 
-    persona_decision = PersonaEngine().build_persona_prompt(ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin)
+    persona_decision = PersonaEngine().build_persona_prompt(
+        ctx.personality, request.message,
+        comm_prefs=ctx.comm_prefs,
+        mental_state=ctx.mental_state,
+        session_id=ctx.session_id,
+        language_override=ctx.language_override,
+        is_admin=ctx.is_admin,
+    )
 
     # Classify the message when refusal_mode is active:
     # - trivial messages bypass refusal_mode entirely.
@@ -288,6 +295,8 @@ def _chat_message_inner(
             # Trivial message — reset refusal_mode.
             persona_decision = PersonaEngine().build_persona_prompt(
                 ctx.personality, request.message,
+                comm_prefs=ctx.comm_prefs,
+                mental_state=ctx.mental_state,
                 refusal_mode_override=False,
                 session_id=ctx.session_id,
                 language_override=ctx.language_override,
@@ -313,7 +322,11 @@ def _chat_message_inner(
     # Config query: inject verified parameter values so the model cannot hallucinate them.
     if _classification is not None and _classification.is_config_query:
         from app.core.message_classifier import build_verified_config_block
-        persona_prompt += build_verified_config_block(ctx.personality)
+        persona_prompt += build_verified_config_block(
+            ctx.personality,
+            comm_prefs=ctx.comm_prefs,
+            mental_state=ctx.mental_state,
+        )
 
     if _upgrade_context:
         persona_prompt += f"\n\n{_upgrade_context}"

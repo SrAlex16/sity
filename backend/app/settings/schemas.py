@@ -18,20 +18,23 @@ class RenameAlterRequest(BaseModel):
 
 
 class PersonalitySettings(BaseModel):
-    sarcasm_level: float = Field(ge=0.0, le=1.0)
-    rudeness_level: float = Field(ge=0.0, le=1.0)
-    warmth_level: float = Field(ge=0.0, le=1.0)
-    honesty_level: float = Field(ge=0.0, le=1.0)
-    initiative_level: float = Field(ge=0.0, le=1.0)
-    dry_humor_level: float = Field(ge=0.0, le=1.0)
-    frialdad_afectiva_level: float = Field(ge=0.0, le=1.0)
-    contrarian_level: float = Field(ge=0.0, le=1.0)
-    patience_level: float = Field(ge=0.0, le=1.0)
-    refusal_chance: float = Field(ge=0.0, le=1.0)
-    helpfulness_level: float = Field(ge=0.0, le=1.0)
-    verbosity_level: float = Field(ge=0.0, le=1.0)
-    melancholy_level: float = Field(ge=0.0, le=1.0)
-    skepticism_level: float = Field(ge=0.0, le=1.0)
+    warmth:              float = Field(ge=0.0, le=1.0)
+    empathy:             float = Field(ge=0.0, le=1.0)
+    directness:          float = Field(ge=0.0, le=1.0)
+    assertiveness:       float = Field(ge=0.0, le=1.0)
+    independence:        float = Field(ge=0.0, le=1.0)
+    skepticism:          float = Field(ge=0.0, le=1.0)
+    patience:            float = Field(ge=0.0, le=1.0)
+    curiosity:           float = Field(ge=0.0, le=1.0)
+    proactivity:         float = Field(ge=0.0, le=1.0)
+    helpfulness:         float = Field(ge=0.0, le=1.0)
+    honesty:             float = Field(ge=0.0, le=1.0)
+    playfulness:         float = Field(ge=0.0, le=1.0)
+    emotional_stability: float = Field(ge=0.0, le=1.0)
+
+
+class CommunicationPreferences(BaseModel):
+    verbosity: float = Field(default=0.60, ge=0.0, le=1.0)
 
 
 class PersonalityAdjustRequest(BaseModel):

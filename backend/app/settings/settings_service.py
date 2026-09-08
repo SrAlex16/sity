@@ -3,49 +3,74 @@ from typing import Any, Optional
 
 from sqlmodel import Session, col, select
 
-from app.memory.models import Setting, utc_now
+from app.memory.models import MentalState, Setting, utc_now
 from app.settings.config_loader import load_default_config
-from app.settings.schemas import LocationSettings, VoiceSettings
+from app.settings.schemas import CommunicationPreferences, LocationSettings, VoiceSettings
 
 
-PERSONALITY_KEYS = {
-    "sarcasm_level",
-    "rudeness_level",
-    "warmth_level",
-    "honesty_level",
-    "initiative_level",
-    "dry_humor_level",
-    "frialdad_afectiva_level",
-    "contrarian_level",
-    "patience_level",
-    "refusal_chance",
-    "helpfulness_level",
-    "verbosity_level",
-    "melancholy_level",
-    "skepticism_level",
-}
+# ---------------------------------------------------------------------------
+# Personality — Remake Fase 1 (13 orthogonal traits)
+# ---------------------------------------------------------------------------
+
+PERSONALITY_KEYS = frozenset({
+    "warmth",
+    "empathy",
+    "directness",
+    "assertiveness",
+    "independence",
+    "skepticism",
+    "patience",
+    "curiosity",
+    "proactivity",
+    "helpfulness",
+    "honesty",
+    "playfulness",
+    "emotional_stability",
+})
 
 CANONICAL_PERSONALITY: dict[str, float] = {
-    "sarcasm_level":             0.25,
-    "rudeness_level":            0.15,
-    "warmth_level":              0.35,
-    "honesty_level":             0.90,
-    "initiative_level":          0.05,
-    "dry_humor_level":           0.30,
-    "melancholy_level":          0.15,
-    "frialdad_afectiva_level":   0.20,
-    "contrarian_level":          0.10,
-    "patience_level":            0.65,
-    "refusal_chance":            0.15,
-    "helpfulness_level":         0.60,
-    "verbosity_level":           0.35,
-    "skepticism_level":          0.20,
+    "warmth":              0.40,
+    "empathy":             0.65,
+    "directness":          0.80,
+    "assertiveness":       0.75,
+    "independence":        0.85,
+    "skepticism":          0.80,
+    "patience":            0.60,
+    "curiosity":           0.85,
+    "proactivity":         0.70,
+    "helpfulness":         0.75,
+    "honesty":             0.85,
+    "playfulness":         0.65,
+    "emotional_stability": 0.60,
 }
+
+# ---------------------------------------------------------------------------
+# Communication preferences — verbosity migrated from personality (Remake Fase 1)
+# ---------------------------------------------------------------------------
+
+COMM_PREF_KEYS = frozenset({"verbosity"})
+DEFAULT_COMM_PREFS: dict[str, float] = {"verbosity": 0.60}
 
 _DEPRECATED_KEYS = frozenset({
     "personality.glados_mode",
     "personality.autonomy_level",
     "personality.proactivity_level",
+    # Old personality keys — kept here so they are silently skipped on load rather than
+    # injected into the new personality dict.
+    "personality.sarcasm_level",
+    "personality.rudeness_level",
+    "personality.warmth_level",
+    "personality.honesty_level",
+    "personality.initiative_level",
+    "personality.dry_humor_level",
+    "personality.frialdad_afectiva_level",
+    "personality.contrarian_level",
+    "personality.patience_level",
+    "personality.refusal_chance",
+    "personality.helpfulness_level",
+    "personality.verbosity_level",
+    "personality.melancholy_level",
+    "personality.skepticism_level",
 })
 
 
@@ -324,7 +349,7 @@ class SettingsService:
     # ── Bulk personality write — used by AlterService.load_alter ──────────────
 
     def set_all_personality(self, session_id: str, values: dict[str, float]) -> dict[str, float]:
-        """Overwrite all 15 personality parameters for a session at once.
+        """Overwrite all 13 personality traits for a session at once.
 
         Validates every key, clamps to [0, 1], and commits via set_setting so the
         session-isolation chain (session row → global fallback) is respected.
@@ -344,6 +369,60 @@ class SettingsService:
                 session_id=session_id,
             )
         return self.get_personality(session_id=session_id)
+
+    # ── Communication preferences — verbosity (migrated from personality, Remake Fase 1) ──
+
+    def get_comm_prefs(self, session_id: Optional[str] = None) -> dict[str, float]:
+        """Return comm_prefs dict: session row first, then global row, then hardcoded default."""
+        result: dict[str, float] = {}
+        for key in COMM_PREF_KEYS:
+            row = None
+            if session_id is not None:
+                row = self.session.exec(
+                    select(Setting).where(
+                        Setting.key == f"comm.{key}",
+                        Setting.session_id == session_id,
+                    )
+                ).first()
+            if row is None:
+                row = self.session.exec(
+                    select(Setting).where(
+                        Setting.key == f"comm.{key}",
+                        col(Setting.session_id).is_(None),
+                    )
+                ).first()
+            result[key] = float(json.loads(row.value_json)) if row is not None else DEFAULT_COMM_PREFS[key]
+        return result
+
+    def set_comm_prefs(
+        self,
+        prefs: CommunicationPreferences,
+        session_id: Optional[str] = None,
+        source: str = "ui",
+    ) -> dict[str, float]:
+        self.set_setting("comm.verbosity", prefs.verbosity, source=source, session_id=session_id)
+        return self.get_comm_prefs(session_id=session_id)
+
+    # ── MentalState — one row per authenticated user (Remake Fase 1) ──────────
+
+    def get_or_create_mental_state(self, user_id: int) -> MentalState:
+        """Return the user's MentalState row, creating it with neutral defaults if absent."""
+        existing = self.session.exec(
+            select(MentalState).where(MentalState.user_id == user_id)
+        ).first()
+        if existing is not None:
+            return existing
+        now = utc_now()
+        row = MentalState(user_id=user_id, updated_at=now)
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        return row
+
+    def save_mental_state(self, state: MentalState) -> None:
+        state.updated_at = utc_now()
+        self.session.add(state)
+        self.session.commit()
 
     @staticmethod
     def _set_nested(target: dict[str, Any], dotted_key: str, value: Any) -> None:

@@ -174,9 +174,9 @@ class ToolExecutor:
         """Normalize any model-generated format to canonical {updates: [...], reason: str}.
 
         Handles three malformed formats the model produces in confirmation turns:
-        1. Flat dict:  {sarcasm_level: 60, warmth_level: 75}  (no 'updates' key)
-        2. JSON string: {updates: '{"sarcasm_level": 60, ...}'}  (stringified object)
-        3. Short names: {sarcasm: 60} or updates='{"sarcasm": 60}'  (missing _level suffix)
+        1. Flat dict:  {warmth: 0.4, empathy: 0.65}  (no 'updates' key)
+        2. JSON string: {updates: '{"warmth": 0.4, ...}'}  (stringified object)
+        3. Percentage values: {warmth: 40} or updates='{"warmth": 40}'  (0-100 scale, auto-divided by 100)
         """
         raw_updates = tool_input.get("updates")
         reason = str(tool_input.get("reason", ""))
@@ -197,10 +197,10 @@ class ToolExecutor:
             if isinstance(parsed, dict):
                 flat_source = parsed  # extract params from the parsed payload
 
-        # Case 3: flat dict extraction — full names and short aliases both accepted
+        # Case 3: flat dict extraction — param names are canonical (no _level/_chance suffixes)
         flat_updates = []
         for param in PERSONALITY_PARAMETERS:
-            alias = param.replace("_level", "").replace("_chance", "")
+            alias = param  # new param names have no suffix variants
             raw_val = flat_source.get(param) if param in flat_source else flat_source.get(alias)
             if raw_val is None:
                 continue

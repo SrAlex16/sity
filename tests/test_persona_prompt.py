@@ -114,41 +114,41 @@ def test_refusal_override_true(engine: PersonaEngine) -> None:
 
 
 def test_refusal_override_false_suppresses_refusal(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt(
-        {"refusal_chance": 1.0}, "hola trivial", refusal_mode_override=False
-    )
+    result = engine.build_persona_prompt({}, "hola trivial", refusal_mode_override=False)
     assert result.refusal_mode is False
     assert "refusal_mode está DESACTIVADO" in result.system_prompt
 
 
-def test_refusal_override_none_delegates_to_should_refuse_true(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt({"refusal_chance": 1.0}, "cuéntame algo trivial")
-    assert result.refusal_mode is True
-
-
-def test_refusal_override_none_delegates_to_should_refuse_false(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt({"refusal_chance": 0.0}, "hola")
+def test_refusal_override_none_uses_derived_propensity_zero(engine: PersonaEngine) -> None:
+    # helpfulness=1.0, assertiveness=0.0, independence=0.0 →
+    # propensity = 0.20*0 + 0.15*0 - 0.40*1.0 + 0.20 = -0.20 → clamped to 0 → never refuses
+    traits = {"helpfulness": 1.0, "assertiveness": 0.0, "independence": 0.0}
+    result = engine.build_persona_prompt(traits, "cuéntame algo")
     assert result.refusal_mode is False
 
 
-def test_refusal_chance_one_always_activates(engine: PersonaEngine) -> None:
-    """refusal_chance=1.0 must always produce refusal_mode=True — deterministic."""
+def test_refusal_override_true_always_activates(engine: PersonaEngine) -> None:
+    """refusal_mode_override=True must always produce refusal_mode=True — deterministic."""
     for _ in range(20):
-        result = engine.build_persona_prompt({"refusal_chance": 1.0}, "dime algo trivial")
+        result = engine.build_persona_prompt({}, "dime algo trivial", refusal_mode_override=True)
         assert result.refusal_mode is True
 
 
-def test_refusal_chance_zero_never_activates(engine: PersonaEngine) -> None:
-    """refusal_chance=0.0 must always produce refusal_mode=False — deterministic."""
+def test_refusal_override_false_never_activates(engine: PersonaEngine) -> None:
+    """refusal_mode_override=False must always produce refusal_mode=False — deterministic."""
     for _ in range(20):
-        result = engine.build_persona_prompt({"refusal_chance": 0.0}, "hola")
+        result = engine.build_persona_prompt({}, "hola", refusal_mode_override=False)
         assert result.refusal_mode is False
 
 
-def test_refusal_chance_half_is_probabilistic(engine: PersonaEngine) -> None:
-    """refusal_chance=0.5 should produce ~50% True over many trials."""
+def test_refusal_propensity_probabilistic_from_traits(engine: PersonaEngine) -> None:
+    """Traits that give ~50% propensity produce ~50% refusal_mode over many trials.
+    Formula: 0.20*assertiveness + 0.15*independence - 0.40*helpfulness + 0.20
+    With assertiveness=1.0, independence=1.0, helpfulness=0.125: propensity = 0.50
+    """
+    traits = {"assertiveness": 1.0, "independence": 1.0, "helpfulness": 0.125}
     results = [
-        engine.build_persona_prompt({"refusal_chance": 0.5}, "dime algo").refusal_mode
+        engine.build_persona_prompt(traits, "dime algo").refusal_mode
         for _ in range(1000)
     ]
     ratio = sum(results) / len(results)
@@ -250,7 +250,7 @@ def test_no_vosotros_rule_present(default_prompt: str) -> None:
 ])
 def test_verbosity_directive_ranges_admin(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
     """Admin sessions use full verbosity range — no cap applied."""
-    result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=True)
+    result = engine.build_persona_prompt({}, "hola", comm_prefs={"verbosity": verbosity}, is_admin=True)
     assert expected_fragment in result.system_prompt, (
         f"Expected {expected_fragment!r} in prompt for verbosity={verbosity} (admin)"
     )
@@ -264,7 +264,7 @@ def test_verbosity_directive_ranges_admin(engine: PersonaEngine, verbosity: floa
 ])
 def test_verbosity_directive_ranges_non_admin(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
     """Non-admin sessions cap effective verbosity at 0.15 → always band 1."""
-    result = engine.build_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=False)
+    result = engine.build_persona_prompt({}, "hola", comm_prefs={"verbosity": verbosity}, is_admin=False)
     assert expected_fragment in result.system_prompt, (
         f"Expected {expected_fragment!r} in prompt for verbosity={verbosity} (non-admin)"
     )
@@ -282,14 +282,14 @@ def test_verbosity_directive_ranges_non_admin(engine: PersonaEngine, verbosity: 
     (1.0,  "cuestiona sistemáticamente"),          # very_high (>0.80)
 ])
 def test_skepticism_directive_ranges(engine: PersonaEngine, skepticism: float, expected_fragment: str) -> None:
-    result = engine.build_persona_prompt({"skepticism_level": skepticism}, "hola")
+    result = engine.build_persona_prompt({"skepticism": skepticism}, "hola")
     assert expected_fragment in result.system_prompt, (
         f"Expected {expected_fragment!r} in prompt for skepticism={skepticism}"
     )
 
 
 def test_skepticism_mid_range_moderate_directive(engine: PersonaEngine) -> None:
-    result = engine.build_persona_prompt({"skepticism_level": 0.5}, "hola")
+    result = engine.build_persona_prompt({"skepticism": 0.5}, "hola")
     assert "cuestiona activamente" not in result.system_prompt
     assert "beneficio de la duda por defecto" not in result.system_prompt
     assert "moderado" in result.system_prompt or "sentido común" in result.system_prompt
@@ -300,25 +300,24 @@ def test_skepticism_mid_range_moderate_directive(engine: PersonaEngine) -> None:
 # ------------------------------------------------------------------ #
 
 @pytest.mark.parametrize("param,very_low_fragment,very_high_fragment", [
-    ("sarcasm_level",           "Sarcasmo muy bajo",          "Sarcasmo muy alto"),
-    ("rudeness_level",          "Mala leche muy baja",        "Mala leche muy alta"),
-    ("warmth_level",            "Calidez muy baja",           "Calidez muy alta"),
-    ("honesty_level",           "Honestidad muy baja",        "Honestidad muy alta"),
-    ("initiative_level",        "Iniciativa muy baja",        "Iniciativa muy alta"),
-    ("dry_humor_level",         "Humor seco muy bajo",        "Humor seco muy alto"),
-    ("frialdad_afectiva_level", "Frialdad afectiva muy baja", "Frialdad afectiva muy alta"),
-    ("contrarian_level",        "Contradicción muy baja",     "Contradicción muy alta"),
-    ("patience_level",          "Paciencia muy baja",         "Paciencia muy alta"),
-    ("helpfulness_level",       "Ayuda muy baja",             "Ayuda muy alta"),
-    ("verbosity_level",         "máximo 2 frases",            "Verbosidad muy alta"),
-    ("melancholy_level",        "Melancolía muy baja",        "Melancolía muy alta"),
-    ("skepticism_level",        "Escepticismo muy bajo",      "Escepticismo muy alto"),
+    ("warmth",              "Calidez muy baja",              "Calidez muy alta"),
+    ("empathy",             "Empatía muy baja",              "Empatía muy alta"),
+    ("directness",          "Directness muy baja",           "Directness muy alta"),
+    ("assertiveness",       "Assertiveness muy baja",        "Assertiveness muy alta"),
+    ("independence",        "Independencia muy baja",        "Independencia muy alta"),
+    ("skepticism",          "Escepticismo muy bajo",         "Escepticismo muy alto"),
+    ("patience",            "Paciencia muy baja",            "Paciencia muy alta"),
+    ("curiosity",           "Curiosidad muy baja",           "Curiosidad muy alta"),
+    ("proactivity",         "Proactividad muy baja",         "Proactividad muy alta"),
+    ("helpfulness",         "Ayuda muy baja",                "Ayuda muy alta"),
+    ("honesty",             "Honestidad muy baja",           "Honestidad muy alta"),
+    ("playfulness",         "Playfulness muy baja",          "Playfulness muy alta"),
+    ("emotional_stability", "Estabilidad emocional muy baja","Estabilidad emocional muy alta"),
 ])
 def test_five_level_directive_extremes(
     engine: PersonaEngine, param: str, very_low_fragment: str, very_high_fragment: str
 ) -> None:
-    """Each parameter injects distinct directive text at very_low (0.0) and very_high (1.0).
-    Admin sessions used here to bypass verbosity cap and test full range for verbosity_level."""
+    """Each of the 13 personality traits injects distinct directive text at 0.0 and 1.0."""
     low_result = engine.build_persona_prompt({param: 0.0}, "hola", is_admin=True)
     high_result = engine.build_persona_prompt({param: 1.0}, "hola", is_admin=True)
     assert very_low_fragment in low_result.system_prompt, (
@@ -329,13 +328,20 @@ def test_five_level_directive_extremes(
     )
 
 
-def test_refusal_high_directive_injected(engine: PersonaEngine) -> None:
-    """refusal_chance ≥ 0.80 injects a Negativa directive; low values do not."""
-    high = engine.build_persona_prompt({"refusal_chance": 1.0}, "hola")
-    assert "Negativa" in high.system_prompt
-    low = engine.build_persona_prompt({"refusal_chance": 0.0}, "hola")
-    assert "Negativa muy alta" not in low.system_prompt
-    assert "Negativa alta" not in low.system_prompt
+def test_verbosity_extremes_via_comm_prefs(engine: PersonaEngine) -> None:
+    """Verbosity lives in comm_prefs; test extreme directives there."""
+    low = engine.build_persona_prompt({}, "hola", comm_prefs={"verbosity": 0.0}, is_admin=True)
+    high = engine.build_persona_prompt({}, "hola", comm_prefs={"verbosity": 1.0}, is_admin=True)
+    assert "máximo 2 frases" in low.system_prompt
+    assert "Verbosidad muy alta" in high.system_prompt
+
+
+def test_melancholy_extremes_via_mental_state(engine: PersonaEngine) -> None:
+    """Melancholy lives in mental_state; test extreme directives there."""
+    low = engine.build_persona_prompt({}, "hola", mental_state={"melancholy": 0.0})
+    high = engine.build_persona_prompt({}, "hola", mental_state={"melancholy": 1.0})
+    assert "Melancolía muy baja" in low.system_prompt
+    assert "Melancolía muy alta" in high.system_prompt
 
 
 # ------------------------------------------------------------------ #
@@ -343,10 +349,10 @@ def test_refusal_high_directive_injected(engine: PersonaEngine) -> None:
 # ------------------------------------------------------------------ #
 
 def test_canonical_personality_includes_skepticism() -> None:
-    assert "skepticism_level" in CANONICAL_PERSONALITY, (
-        "skepticism_level missing from CANONICAL_PERSONALITY — restore defaults will not apply it"
+    assert "skepticism" in CANONICAL_PERSONALITY, (
+        "skepticism missing from CANONICAL_PERSONALITY — restore defaults will not apply it"
     )
-    assert CANONICAL_PERSONALITY["skepticism_level"] == 0.2
+    assert CANONICAL_PERSONALITY["skepticism"] == pytest.approx(0.80)
 
 
 # ------------------------------------------------------------------ #
@@ -452,7 +458,7 @@ def test_verbosity_cap_non_admin_clamps_to_lowest_band(engine: PersonaEngine) ->
 
 def test_verbosity_cap_admin_full_range(engine: PersonaEngine) -> None:
     """Admin with verbosity=1.0 should get highest verbosity directive (no cap)."""
-    result = engine.build_persona_prompt({"verbosity_level": 1.0}, "hola", is_admin=True)
+    result = engine.build_persona_prompt({}, "hola", comm_prefs={"verbosity": 1.0}, is_admin=True)
     assert "Verbosidad muy alta" in result.system_prompt, (
         "Admin with verbosity=1.0 must get highest-band directive — full range applies"
     )
@@ -460,14 +466,14 @@ def test_verbosity_cap_admin_full_range(engine: PersonaEngine) -> None:
 
 def test_verbosity_cap_non_admin_mid_verbosity(engine: PersonaEngine) -> None:
     """Non-admin with verbosity=0.50 (above cap) → same band as 0.15."""
-    result = engine.build_persona_prompt({"verbosity_level": 0.50}, "hola", is_admin=False)
+    result = engine.build_persona_prompt({}, "hola", comm_prefs={"verbosity": 0.50}, is_admin=False)
     assert "máximo 2 frases" in result.system_prompt
 
 
 def test_verbosity_cap_does_not_affect_other_params(engine: PersonaEngine) -> None:
     """Verbosity cap must not bleed into other personality parameters."""
     result = engine.build_persona_prompt(
-        {"verbosity_level": 1.0, "sarcasm_level": 1.0}, "hola", is_admin=False
+        {"playfulness": 1.0}, "hola", comm_prefs={"verbosity": 1.0}, is_admin=False
     )
-    # Sarcasm should still be at max despite verbosity being capped
-    assert "Sarcasmo muy alto" in result.system_prompt
+    # Playfulness should still be at max despite verbosity being capped
+    assert "Playfulness muy alta" in result.system_prompt

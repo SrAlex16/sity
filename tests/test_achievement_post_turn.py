@@ -111,10 +111,10 @@ def test_fase2b_slug_in_catalog(slug: str) -> None:
 
 def test_who_am_i_unlocks_when_distance_above_threshold() -> None:
     uid = _uid()
-    # Six sliders at 1.0 → normalized euclidean distance ≈ 0.548 > threshold 0.5
+    # Six high-canonical traits at 0.0 → normalized euclidean distance ≈ 0.55 > threshold 0.5
     p = _personality({
-        "sarcasm_level": 1.0, "rudeness_level": 1.0, "contrarian_level": 1.0,
-        "initiative_level": 1.0, "dry_humor_level": 1.0, "melancholy_level": 1.0,
+        "independence": 0.0, "skepticism": 0.0, "curiosity": 0.0,
+        "honesty": 0.0, "directness": 0.0, "helpfulness": 0.0,
     })
     with Session(engine) as db:
         with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
@@ -136,7 +136,9 @@ def test_who_am_i_no_unlock_at_canonical() -> None:
 
 def test_chaos_head_unlocks_at_max_values() -> None:
     uid = _uid()
-    p = _personality({"rudeness_level": 1.0, "sarcasm_level": 1.0, "contrarian_level": 1.0, "dry_humor_level": 1.0})
+    # playfulness*0.35 + (1-warmth)*0.30 + assertiveness*0.20 + independence*0.15
+    # = 1.0*0.35 + 1.0*0.30 + 1.0*0.20 + 1.0*0.15 = 1.0 >= 0.95
+    p = _personality({"playfulness": 1.0, "warmth": 0.0, "assertiveness": 1.0, "independence": 1.0})
     with Session(engine) as db:
         with patch("app.settings.settings_service.SettingsService.get_personality", return_value=p):
             _check_personality(db, uid, _cfg(), _unlock)
@@ -454,7 +456,8 @@ def test_chaos_head_uses_session_settings_not_global_defaults() -> None:
 
     uid = _uid()
     session_id = f"user:{uid}"
-    chaos_params = ["rudeness_level", "sarcasm_level", "contrarian_level", "dry_humor_level"]
+    # Params used by the Remake Fase 1 chaos formula
+    chaos_params = ["playfulness", "warmth", "assertiveness", "independence"]
 
     with Session(engine) as db:
         svc = SettingsService(db)
@@ -463,24 +466,24 @@ def test_chaos_head_uses_session_settings_not_global_defaults() -> None:
         orig_globals = {p: CANONICAL_PERSONALITY[p] for p in chaos_params}
 
         try:
-            # Global settings: low values that do NOT cross the 0.95 chaos threshold
-            # chaos = 0.2*0.4 + 0.2*0.3 + 0.1*0.2 + 0.1*0.1 = 0.17
+            # Global settings: values that do NOT cross the 0.95 chaos threshold
+            # chaos = 0.2*0.35 + (1-0.8)*0.30 + 0.1*0.20 + 0.1*0.15 ≈ 0.165
             for param, val in [
-                ("rudeness_level", 0.2),
-                ("sarcasm_level", 0.2),
-                ("contrarian_level", 0.1),
-                ("dry_humor_level", 0.1),
+                ("playfulness", 0.2),
+                ("warmth", 0.8),
+                ("assertiveness", 0.1),
+                ("independence", 0.1),
             ]:
                 svc.set_setting(f"personality.{param}", val, source="test", session_id=None)
             db.commit()
 
-            # Session settings: max values that DO cross the 0.95 chaos threshold
-            # chaos = 1.0*0.4 + 1.0*0.3 + 1.0*0.2 + 1.0*0.1 = 1.0
+            # Session settings: values that DO cross the 0.95 chaos threshold
+            # chaos = 1.0*0.35 + (1-0.0)*0.30 + 1.0*0.20 + 1.0*0.15 = 1.0
             for param, val in [
-                ("rudeness_level", 1.0),
-                ("sarcasm_level", 1.0),
-                ("contrarian_level", 1.0),
-                ("dry_humor_level", 1.0),
+                ("playfulness", 1.0),
+                ("warmth", 0.0),
+                ("assertiveness", 1.0),
+                ("independence", 1.0),
             ]:
                 svc.set_setting(f"personality.{param}", val, source="test", session_id=session_id)
             db.commit()

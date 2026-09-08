@@ -84,7 +84,7 @@ def test_classify_trivial_when_provider_says_trivial() -> None:
 
 def test_classify_config_query_when_provider_says_config_query() -> None:
     with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("config_query")):
-        result = classify_message("¿cuál es el valor de sarcasm_level?")
+        result = classify_message("¿cuál es el valor de la calidez?")
     assert result.kind == "config_query"
     assert result.is_real_request
     assert result.is_config_query
@@ -155,31 +155,31 @@ def test_config_block_header_present() -> None:
     assert "CONFIGURACIÓN ACTUAL — VALORES VERIFICADOS" in block
 
 
-def test_config_block_refusal_chance_full() -> None:
-    block = build_verified_config_block({"refusal_chance": 1.0})
+def test_config_block_param_full_value() -> None:
+    block = build_verified_config_block({"honesty": 1.0})
     assert "100%" in block
-    assert "Probabilidad de negación" in block
+    assert "Honestidad" in block
 
 
-def test_config_block_refusal_chance_half() -> None:
-    block = build_verified_config_block({"refusal_chance": 0.5})
+def test_config_block_param_half_value() -> None:
+    block = build_verified_config_block({"honesty": 0.5})
     assert "50%" in block
 
 
-def test_config_block_refusal_chance_zero() -> None:
-    block = build_verified_config_block({"refusal_chance": 0.0})
+def test_config_block_param_zero_value() -> None:
+    block = build_verified_config_block({"honesty": 0.0})
     assert "0%" in block
 
 
-def test_config_block_uses_canonical_label_for_refusal() -> None:
-    block = build_verified_config_block({"refusal_chance": 0.75})
-    assert "Probabilidad de negación: 75%" in block
+def test_config_block_uses_canonical_label_for_param() -> None:
+    block = build_verified_config_block({"playfulness": 0.75})
+    assert "Humor/juguetería: 75%" in block
 
 
 def test_config_block_omits_missing_keys() -> None:
-    block = build_verified_config_block({"sarcasm_level": 0.6})
+    block = build_verified_config_block({"playfulness": 0.6})
     # Only one param was provided — others should not appear.
-    assert "Mala leche" not in block
+    assert "Empatía" not in block
     assert "Calidez" not in block
 
 
@@ -190,7 +190,7 @@ def test_config_block_empty_personality_has_no_params() -> None:
 
 
 def test_config_block_rounds_to_nearest_integer() -> None:
-    block = build_verified_config_block({"warmth_level": 0.333})
+    block = build_verified_config_block({"warmth": 0.333})
     assert "33%" in block
 
 
@@ -202,13 +202,13 @@ def test_config_block_all_labels_covered() -> None:
 
 
 def test_config_block_backend_verified_instruction() -> None:
-    block = build_verified_config_block({"sarcasm_level": 0.8})
+    block = build_verified_config_block({"playfulness": 0.8})
     assert "backend verificó" in block
 
 
 def test_config_block_historical_priority_instruction() -> None:
     # Must explicitly state that this block takes priority over history search results.
-    block = build_verified_config_block({"refusal_chance": 1.0})
+    block = build_verified_config_block({"honesty": 1.0})
     assert "historial" in block or "histórico" in block
     assert "prioridad" in block
 
@@ -357,8 +357,8 @@ def test_generate_refusal_prompt_time_matches_real_clock() -> None:
 
 def test_generate_refusal_with_personality_returns_string() -> None:
     personality = {
-        "sarcasm_level": 1.0, "rudeness_level": 1.0, "warmth_level": 0.0,
-        "dry_humor_level": 0.9, "patience_level": 0.1,
+        "warmth": 0.0, "directness": 1.0, "playfulness": 1.0,
+        "assertiveness": 0.9, "patience": 0.1,
     }
     result = generate_refusal_response(personality, "me dices tu nombre?")
     assert isinstance(result, str)
@@ -370,20 +370,21 @@ def test_generate_refusal_with_personality_returns_string() -> None:
 # ------------------------------------------------------------------ #
 
 @pytest.mark.parametrize("key", [
-    "sarcasm_level",
-    "rudeness_level",
-    "warmth_level",
-    "honesty_level",
-    "initiative_level",
-    "dry_humor_level",
-    "frialdad_afectiva_level",
-    "contrarian_level",
-    "patience_level",
-    "verbosity_level",
-    "helpfulness_level",
-    "refusal_chance",
-    "melancholy_level",
-    "skepticism_level",
+    "warmth",
+    "empathy",
+    "directness",
+    "assertiveness",
+    "independence",
+    "skepticism",
+    "patience",
+    "curiosity",
+    "proactivity",
+    "helpfulness",
+    "honesty",
+    "playfulness",
+    "emotional_stability",
+    "verbosity",
+    "melancholy",
 ])
 def test_personality_labels_contains_key(key: str) -> None:
     assert key in _PERSONALITY_LABELS, f"Key {key!r} missing from _PERSONALITY_LABELS"
@@ -396,14 +397,12 @@ def test_personality_labels_contains_key(key: str) -> None:
 from app.core.message_classifier import _CLASSIFY_SYSTEM  # noqa: E402
 
 
-def test_classify_system_lists_all_14_personality_params() -> None:
-    """config_query must enumerate the exact 14 personality parameters."""
+def test_classify_system_lists_all_15_personality_params() -> None:
+    """config_query must enumerate all 15 personality parameters (13 traits + verbosity + melancholy)."""
     expected_params = [
-        "sarcasm_level", "rudeness_level", "warmth_level", "honesty_level",
-        "initiative_level", "dry_humor_level", "frialdad_afectiva_level",
-        "contrarian_level", "patience_level", "verbosity_level",
-        "helpfulness_level", "refusal_chance", "melancholy_level",
-        "skepticism_level",
+        "warmth", "empathy", "directness", "assertiveness", "independence",
+        "skepticism", "patience", "curiosity", "proactivity", "helpfulness",
+        "honesty", "playfulness", "emotional_stability", "verbosity", "melancholy",
     ]
     for param in expected_params:
         assert param in _CLASSIFY_SYSTEM, (
@@ -775,17 +774,17 @@ def test_personality_override_system_prompt_mentions_key_examples() -> None:
 def test_build_personality_integrity_block_contains_key_values() -> None:
     from app.core.message_classifier import _build_personality_integrity_block
     personality = {
-        "sarcasm_level": 0.0,
-        "rudeness_level": 0.0,
-        "warmth_level": 1.0,
-        "refusal_chance": 1.0,
-        "contrarian_level": 0.5,
-        "initiative_level": 0.8,
+        "warmth": 1.0,       # 100%
+        "directness": 0.0,   # 0%
+        "assertiveness": 0.5,
+        "honesty": 0.5,
+        "skepticism": 0.5,
+        "playfulness": 0.5,
     }
     block = _build_personality_integrity_block(personality)
     assert "PRIORIDAD ABSOLUTA" in block
-    assert "0%" in block   # sarcasm=0%, rudeness=0%
-    assert "100%" in block  # warmth=100%, refusal=100%
+    assert "0%" in block    # directness=0%
+    assert "100%" in block  # warmth=100%
 
 
 def test_refusal_generator_system_prohibits_no_history_claims() -> None:

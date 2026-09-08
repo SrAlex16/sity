@@ -1,20 +1,20 @@
 from app.cortex.tool_schemas.actions import NO_ACTION_REQUIRED_TOOL
 
+# Remake Fase 1 — 13 orthogonal personality traits (replaces the old 14-parameter system).
 PERSONALITY_PARAMETERS = [
-    "sarcasm_level",
-    "rudeness_level",
-    "warmth_level",
-    "honesty_level",
-    "initiative_level",
-    "dry_humor_level",
-    "frialdad_afectiva_level",
-    "contrarian_level",
-    "patience_level",
-    "refusal_chance",
-    "helpfulness_level",
-    "verbosity_level",
-    "melancholy_level",
-    "skepticism_level",
+    "warmth",
+    "empathy",
+    "directness",
+    "assertiveness",
+    "independence",
+    "skepticism",
+    "patience",
+    "curiosity",
+    "proactivity",
+    "helpfulness",
+    "honesty",
+    "playfulness",
+    "emotional_stability",
 ]
 
 _ALL_PERSONALITY_PARAMETERS_TEXT = ", ".join(PERSONALITY_PARAMETERS)
@@ -23,8 +23,8 @@ _ALL_PERSONALITY_PARAMETERS_TEXT = ", ".join(PERSONALITY_PARAMETERS)
 UPDATE_PERSONALITY_SETTINGS_TOOL = {
     "name": "update_personality_settings",
     "description": (
-        "Actualiza uno o varios parámetros de personalidad de Sity. "
-        f"Parámetros permitidos: {_ALL_PERSONALITY_PARAMETERS_TEXT}. "
+        "Actualiza uno o varios rasgos de personalidad de Sity. "
+        f"Rasgos permitidos: {_ALL_PERSONALITY_PARAMETERS_TEXT}. "
         "DEBES incluir siempre el campo 'updates' con al menos un elemento. "
         "Cada item de 'updates' debe tener parameter, operation y value. "
         "Never call this tool with an empty updates array. "
@@ -39,7 +39,7 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
                 "type": "array",
                 "description": (
                     "Lista OBLIGATORIA de cambios. Nunca la omitas. "
-                    f"Para 'todo al 50%' incluye los {len(PERSONALITY_PARAMETERS)} parámetros permitidos."
+                    f"Para 'todo al 50%' incluye los {len(PERSONALITY_PARAMETERS)} rasgos permitidos."
                 ),
                 "minItems": 1,
                 "maxItems": len(PERSONALITY_PARAMETERS),
@@ -50,7 +50,7 @@ UPDATE_PERSONALITY_SETTINGS_TOOL = {
                         "parameter": {
                             "type": "string",
                             "enum": PERSONALITY_PARAMETERS,
-                            "description": "Parámetro exacto a modificar.",
+                            "description": "Rasgo exacto a modificar.",
                         },
                         "operation": {
                             "type": "string",

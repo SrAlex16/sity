@@ -45,12 +45,12 @@ def _check_personality(db: Any, user_id: int, cfg: dict, unlock) -> None:
         if dist >= float(cfg.get("who_am_i_distance_threshold", 0.5)):
             unlock(db, user_id, "who_am_i")
 
-        # chaos_head: encabronamiento formula ≥ threshold
+        # chaos_head: confirmed formula (Remake Fase 1)
         chaos = (
-            personality.get("rudeness_level", 0.0) * 0.4
-            + personality.get("sarcasm_level", 0.0) * 0.3
-            + personality.get("contrarian_level", 0.0) * 0.2
-            + personality.get("dry_humor_level", 0.0) * 0.1
+            personality.get("playfulness", 0.0) * 0.35
+            + (1.0 - personality.get("warmth", 1.0)) * 0.30
+            + personality.get("assertiveness", 0.0) * 0.20
+            + personality.get("independence", 0.0) * 0.15
         )
         if chaos >= float(cfg.get("chaos_head_threshold", 0.95)):
             unlock(db, user_id, "chaos_head")

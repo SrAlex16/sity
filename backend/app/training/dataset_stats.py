@@ -4,9 +4,10 @@ Pure computation module for dataset statistics over the single Sity timeline.
 No DB access, no side effects.  Receives a flat ordered list of ChatMessage-like
 objects and returns a stats dict suitable for JSON serialisation.
 
-tone_meta field names (from persona_engine.py tone_snapshot):
-  sarcasm, mala_leche, warmth, honesty, initiative, dry_humor,
-  frialdad_afectiva, contrarian, patience, verbosity, helpfulness, melancholy
+tone_meta field names (from persona_engine.py tone_snapshot, Remake Fase 1+):
+  warmth, empathy, directness, assertiveness, independence, skepticism,
+  patience, curiosity, proactivity, helpfulness, honesty, playfulness,
+  emotional_stability, verbosity, melancholy
 """
 from __future__ import annotations
 
@@ -19,32 +20,34 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-#: Numeric base vector, keyed by tone_snapshot field names.
+#: Numeric base vector, keyed by tone_snapshot field names (matches default_config.yaml defaults).
 BASE_VECTOR: dict[str, float] = {
-    "sarcasm":     0.25,
-    "mala_leche":  0.15,
-    "warmth":      0.35,
-    "honesty":     0.90,
-    "initiative":  0.05,
-    "dry_humor":   0.30,
-    "frialdad_afectiva": 0.20,
-    "contrarian":  0.10,
-    "patience":    0.65,
-    "verbosity":   0.35,
-    "helpfulness": 0.60,
-    "melancholy":  0.15,
+    "warmth":              0.40,
+    "empathy":             0.65,
+    "directness":          0.80,
+    "assertiveness":       0.75,
+    "independence":        0.85,
+    "skepticism":          0.80,
+    "patience":            0.60,
+    "curiosity":           0.85,
+    "proactivity":         0.70,
+    "helpfulness":         0.75,
+    "honesty":             0.85,
+    "playfulness":         0.65,
+    "emotional_stability": 0.60,
+    "verbosity":           0.60,
+    "melancholy":          0.10,
 }
 
 #: How many usable pairs each bucket needs for LoRA v1.
 TARGETS: dict[str, int] = {
-    "canon_base":             650,
-    "variation_sarcasm_high":  60,
-    "variation_rudeness_high": 60,
-    "variation_warm":          60,
-    "variation_brief":         60,
-    "variation_melancholy":    40,
-    "variation_frialdad_afectiva": 40,
-    "multi_persona":           50,
+    "canon_base":                  650,
+    "variation_playfulness_high":   60,
+    "variation_directness_high":    60,
+    "variation_warmth_high":        60,
+    "variation_brief":              60,
+    "variation_melancholy":         40,
+    "multi_persona":                50,
 }
 
 #: L2-distance to BASE_VECTOR below which a pair is classified as canon_base.
@@ -52,12 +55,11 @@ _CANON_THRESHOLD = 0.20
 
 #: Variation tag → primary bucket, in priority order (first match wins).
 _TAG_TO_BUCKET: list[tuple[str, str]] = [
-    ("sarcasm_high",    "variation_sarcasm_high"),
-    ("rudeness_high",   "variation_rudeness_high"),
-    ("warmth_high",     "variation_warm"),
-    ("brief",           "variation_brief"),
-    ("melancholy_high", "variation_melancholy"),
-    ("frialdad_afectiva_high", "variation_frialdad_afectiva"),
+    ("playfulness_high", "variation_playfulness_high"),
+    ("directness_high",  "variation_directness_high"),
+    ("warmth_high",      "variation_warmth_high"),
+    ("brief",            "variation_brief"),
+    ("melancholy_high",  "variation_melancholy"),
 ]
 
 #: Sity texts that are operational guards, not training data.
@@ -105,20 +107,16 @@ def _compute_tags(
 ) -> list[str]:
     tags: list[str] = []
 
-    if tone.get("sarcasm", 0.0) >= 0.60:
-        tags.append("sarcasm_high")
-    if tone.get("mala_leche", 0.0) >= 0.50:
-        tags.append("rudeness_high")
-    if tone.get("warmth", 0.0) >= 0.60:
+    if tone.get("playfulness", 0.0) >= 0.80:
+        tags.append("playfulness_high")
+    if tone.get("directness", 0.0) >= 0.90:
+        tags.append("directness_high")
+    if tone.get("warmth", 0.0) >= 0.65:
         tags.append("warmth_high")
     if tone.get("verbosity", 1.0) <= 0.20:
         tags.append("brief")
     if tone.get("melancholy", 0.0) >= 0.50:
         tags.append("melancholy_high")
-    if tone.get("frialdad_afectiva", 0.0) >= 0.50:
-        tags.append("frialdad_afectiva_high")
-    if tone.get("contrarian", 0.0) >= 0.50:
-        tags.append("contrarian_high")
 
     # multi_persona: from dataset_source or dataset_tags_json
     is_multi = dataset_source == "synthetic_claude_user"

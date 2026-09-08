@@ -384,6 +384,37 @@ class FileArtifact(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class MentalState(SQLModel, table=True):
+    """Transient emotional/cognitive state for an authenticated user.
+
+    One row per user (unique on user_id). Initialized to neutral baseline values on first
+    access. Guest sessions never persist MentalState — the engine uses hardcoded defaults.
+    Fields:
+      valence           — overall affective valence, -1 to +1 compressed to 0-1 (0.5 = neutral)
+      arousal           — activation level: 0 = very calm, 1 = highly activated
+      frustration       — accumulated frustration from negative interactions
+      current_curiosity — momentary curiosity state (≠ curiosity trait; §15 doc)
+      interest          — interest level in the current topic/interaction
+      boredom           — opposite pole of interest; high boredom + low interest → disengagement
+      melancholy        — migrated from Personality (Remake Fase 1); low-energy / emo tone
+      defensiveness     — guard level; rises when boundaries are repeatedly tested
+      social_comfort    — comfort level in the current social interaction
+    Dynamic evolution (appraisal, decay, baselines) is Fase 2; Fase 1 stores the model only.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True, unique=True)
+    valence:          float = Field(default=0.10)
+    arousal:          float = Field(default=0.40)
+    frustration:      float = Field(default=0.20)
+    current_curiosity: float = Field(default=0.65)
+    interest:         float = Field(default=0.75)
+    boredom:          float = Field(default=0.05)
+    melancholy:       float = Field(default=0.10)
+    defensiveness:    float = Field(default=0.08)
+    social_comfort:   float = Field(default=0.60)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class InitiativeEvalLog(SQLModel, table=True):
     """Audit record for every initiative evaluation — both send and skip decisions.
 

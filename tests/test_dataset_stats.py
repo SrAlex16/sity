@@ -141,16 +141,16 @@ def test_empty_messages_no_pairs() -> None:
 # _compute_tags
 # ---------------------------------------------------------------------------
 
-def test_sarcasm_high_tag() -> None:
-    tone = dict(BASE_VECTOR, sarcasm=0.65)
+def test_playfulness_high_tag() -> None:
+    tone = dict(BASE_VECTOR, playfulness=0.81)
     tags = _compute_tags(tone, "normal_use", None)
-    assert "sarcasm_high" in tags
+    assert "playfulness_high" in tags
 
 
-def test_rudeness_high_tag() -> None:
-    tone = dict(BASE_VECTOR, mala_leche=0.55)
+def test_directness_high_tag() -> None:
+    tone = dict(BASE_VECTOR, directness=0.91)
     tags = _compute_tags(tone, "normal_use", None)
-    assert "rudeness_high" in tags
+    assert "directness_high" in tags
 
 
 def test_warmth_high_tag() -> None:
@@ -171,16 +171,16 @@ def test_melancholy_high_tag() -> None:
     assert "melancholy_high" in tags
 
 
-def test_frialdad_afectiva_high_tag() -> None:
-    tone = dict(BASE_VECTOR, frialdad_afectiva=0.60)
+def test_playfulness_below_threshold_no_tag() -> None:
+    tone = dict(BASE_VECTOR, playfulness=0.79)
     tags = _compute_tags(tone, "normal_use", None)
-    assert "frialdad_afectiva_high" in tags
+    assert "playfulness_high" not in tags
 
 
-def test_contrarian_high_tag() -> None:
-    tone = dict(BASE_VECTOR, contrarian=0.55)
+def test_directness_below_threshold_no_tag() -> None:
+    tone = dict(BASE_VECTOR, directness=0.89)
     tags = _compute_tags(tone, "normal_use", None)
-    assert "contrarian_high" in tags
+    assert "directness_high" not in tags
 
 
 def test_multi_persona_from_dataset_source() -> None:
@@ -196,9 +196,8 @@ def test_multi_persona_from_dataset_tags_json() -> None:
 
 def test_base_vector_no_variation_tags() -> None:
     tags = _compute_tags(BASE_VECTOR, "normal_use", None)
-    variation_tags = {"sarcasm_high", "rudeness_high", "warmth_high",
-                      "brief", "melancholy_high", "frialdad_afectiva_high",
-                      "contrarian_high", "multi_persona"}
+    variation_tags = {"playfulness_high", "directness_high", "warmth_high",
+                      "brief", "melancholy_high", "multi_persona"}
     assert not variation_tags.intersection(tags)
 
 
@@ -211,7 +210,7 @@ def test_l2_distance_base_vector_is_zero() -> None:
 
 
 def test_l2_distance_increases_with_deviation() -> None:
-    tone = dict(BASE_VECTOR, sarcasm=0.80)  # +0.55 from base 0.25
+    tone = dict(BASE_VECTOR, playfulness=0.05)  # -0.60 from base 0.65
     assert _l2_distance(tone) > 0.40
 
 
@@ -221,29 +220,32 @@ def test_primary_bucket_canon_base() -> None:
 
 
 def test_primary_bucket_multi_persona_wins() -> None:
-    bucket = _primary_bucket(["multi_persona", "sarcasm_high"], BASE_VECTOR)
+    bucket = _primary_bucket(["multi_persona", "playfulness_high"], BASE_VECTOR)
     assert bucket == "multi_persona"
 
 
-def test_primary_bucket_sarcasm_high() -> None:
-    tone = dict(BASE_VECTOR, sarcasm=0.70)
+def test_primary_bucket_playfulness_high() -> None:
+    # playfulness=0.90 → deviation 0.25 from base 0.65 → L2=0.25 > _CANON_THRESHOLD=0.20
+    tone = dict(BASE_VECTOR, playfulness=0.90)
     tags = _compute_tags(tone, "normal_use", None)
     bucket = _primary_bucket(tags, tone)
-    assert bucket == "variation_sarcasm_high"
+    assert bucket == "variation_playfulness_high"
 
 
-def test_primary_bucket_rudeness_high() -> None:
-    tone = dict(BASE_VECTOR, mala_leche=0.60)
+def test_primary_bucket_directness_high() -> None:
+    # directness=1.0 + warmth=0.0 → L2=sqrt(0.04+0.16)=0.447 > _CANON_THRESHOLD=0.20
+    # warmth=0.0 does not trigger warmth_high (threshold 0.65); only directness_high fires
+    tone = dict(BASE_VECTOR, directness=1.0, warmth=0.0)
     tags = _compute_tags(tone, "normal_use", None)
     bucket = _primary_bucket(tags, tone)
-    assert bucket == "variation_rudeness_high"
+    assert bucket == "variation_directness_high"
 
 
-def test_primary_bucket_warm() -> None:
+def test_primary_bucket_warmth_high() -> None:
     tone = dict(BASE_VECTOR, warmth=0.75)
     tags = _compute_tags(tone, "normal_use", None)
     bucket = _primary_bucket(tags, tone)
-    assert bucket == "variation_warm"
+    assert bucket == "variation_warmth_high"
 
 
 def test_primary_bucket_brief() -> None:
@@ -319,25 +321,25 @@ def test_by_primary_bucket_canon_base() -> None:
     assert stats["by_primary_bucket"].get("canon_base", 0) == 1
 
 
-def test_by_primary_bucket_sarcasm_high() -> None:
-    tone = _base_tone(sarcasm=0.70)
+def test_by_primary_bucket_playfulness_high() -> None:
+    tone = _base_tone(playfulness=0.90)
     msgs = [_msg("user"), _msg("sity", tone_meta=tone)]
     stats = compute_dataset_stats(msgs)
-    assert stats["by_primary_bucket"].get("variation_sarcasm_high", 0) == 1
+    assert stats["by_primary_bucket"].get("variation_playfulness_high", 0) == 1
 
 
-def test_by_primary_bucket_rudeness_high() -> None:
-    tone = _base_tone(mala_leche=0.60)
+def test_by_primary_bucket_directness_high() -> None:
+    tone = _base_tone(directness=1.0, warmth=0.0)
     msgs = [_msg("user"), _msg("sity", tone_meta=tone)]
     stats = compute_dataset_stats(msgs)
-    assert stats["by_primary_bucket"].get("variation_rudeness_high", 0) == 1
+    assert stats["by_primary_bucket"].get("variation_directness_high", 0) == 1
 
 
-def test_by_primary_bucket_warm() -> None:
+def test_by_primary_bucket_warmth_high() -> None:
     tone = _base_tone(warmth=0.75)
     msgs = [_msg("user"), _msg("sity", tone_meta=tone)]
     stats = compute_dataset_stats(msgs)
-    assert stats["by_primary_bucket"].get("variation_warm", 0) == 1
+    assert stats["by_primary_bucket"].get("variation_warmth_high", 0) == 1
 
 
 def test_by_primary_bucket_brief() -> None:
@@ -348,10 +350,10 @@ def test_by_primary_bucket_brief() -> None:
 
 
 def test_by_tag_multi_label() -> None:
-    tone = _base_tone(sarcasm=0.70, warmth=0.70)
+    tone = _base_tone(playfulness=0.81, warmth=0.70)
     msgs = [_msg("user"), _msg("sity", tone_meta=tone)]
     stats = compute_dataset_stats(msgs)
-    assert stats["by_tag"].get("sarcasm_high", 0) >= 1
+    assert stats["by_tag"].get("playfulness_high", 0) >= 1
     assert stats["by_tag"].get("warmth_high", 0) >= 1
 
 
@@ -396,7 +398,7 @@ def test_empty_messages() -> None:
 
 
 def test_sity_tone_meta_preserved_in_pair() -> None:
-    snap = _base_tone(sarcasm=0.40)
+    snap = _base_tone(playfulness=0.70)
     msgs = [_msg("user"), _msg("sity", tone_meta=snap)]
     stats = compute_dataset_stats(msgs)
     assert stats["usable_pairs"] == 1

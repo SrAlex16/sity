@@ -28,14 +28,12 @@ def build_micro_reaction_prompt(
     style_context = {
         k: personality.get(k)
         for k in (
-            "sarcasm_level",
-            "rudeness_level",
-            "warmth_level",
-            "honesty_level",
-            "dry_humor_level",
-            "melancholy_level",
-            "verbosity_level",
-            "helpfulness_level",
+            "warmth",
+            "directness",
+            "playfulness",
+            "honesty",
+            "patience",
+            "helpfulness",
         )
     }
 

@@ -221,7 +221,10 @@ class ChatAIOrchestrator:
         ctx = self.ctx
         request = self.request
         local_persona_prompt = PersonaEngine().build_local_persona_prompt(
-            ctx.personality, request.message, is_admin=ctx.is_admin
+            ctx.personality, request.message,
+            comm_prefs=ctx.comm_prefs,
+            mental_state=ctx.mental_state,
+            is_admin=ctx.is_admin,
         )
         return self.prep.runner.run_local_chat(
             build_chat_ai_request(
@@ -261,7 +264,7 @@ class ChatAIOrchestrator:
                 "model": prep.runner._gateway.provider.model,
                 "task_type": "action_planner",
                 "max_tokens": _planner_max_tokens,
-                "verbosity_level": float(ctx.personality.get("verbosity_level", 0.45)),
+                "verbosity": float(ctx.comm_prefs.get("verbosity", 0.60)),
                 "session_id": ctx.session_id,
             },
         )
@@ -631,8 +634,14 @@ class ChatAIOrchestrator:
         )
 
         ctx.personality = ctx.settings_service.get_personality()
+        ctx.comm_prefs = ctx.settings_service.get_comm_prefs()
         updated_persona_decision = PersonaEngine().build_persona_prompt(
-            ctx.personality, request.message, session_id=ctx.session_id, language_override=ctx.language_override, is_admin=ctx.is_admin
+            ctx.personality, request.message,
+            comm_prefs=ctx.comm_prefs,
+            mental_state=ctx.mental_state,
+            session_id=ctx.session_id,
+            language_override=ctx.language_override,
+            is_admin=ctx.is_admin,
         )
 
         # Register normal-path tool artifacts (camera/audio captures) in FileArtifact inventory.

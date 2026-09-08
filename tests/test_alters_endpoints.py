@@ -121,7 +121,7 @@ def test_save_alter_returns_slot_with_name() -> None:
     assert body["slot"] == 2
     assert body["name"] == "Modo noche"
     assert body["is_empty"] is False
-    assert len(body["parameters"]) == 14
+    assert len(body["parameters"]) == 13
 
 
 def test_save_alter_appears_in_list() -> None:
@@ -153,7 +153,7 @@ def test_load_alter_success() -> None:
         cookie = _register(c)
         # Adjust one parameter, then save
         c.post("/settings/personality/adjust",
-               json={"parameter": "sarcasm_level", "operation": "set_absolute", "amount": 0.88},
+               json={"parameter": "playfulness", "operation": "set_absolute", "amount": 0.88},
                cookies=_auth(cookie))
         c.post("/settings/alters/1/save", json={"name": "Sarcástica"}, cookies=_auth(cookie))
 
@@ -164,7 +164,7 @@ def test_load_alter_success() -> None:
     assert r.status_code == 200
     body = r.json()
     assert "personality" in body
-    assert body["personality"]["sarcasm_level"] == pytest.approx(0.88, abs=1e-4)
+    assert body["personality"]["playfulness"] == pytest.approx(0.88, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------

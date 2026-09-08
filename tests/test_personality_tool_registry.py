@@ -22,7 +22,7 @@ def test_update_personality_settings_dispatch(db_session: Session) -> None:
         tool_input={
             "updates": [
                 {
-                    "parameter": "verbosity_level",
+                    "parameter": "warmth",
                     "operation": "set_absolute",
                     "value": 0.73,  # deliberately non-default; 0.5 was causing prod-DB pollution
                 }
@@ -36,5 +36,5 @@ def test_update_personality_settings_dispatch(db_session: Session) -> None:
     result = dispatch_tool(ctx)
 
     assert result.ok is True, result
-    assert "verbosity_level" in result.updated_parameters, result.updated_parameters
+    assert "warmth" in result.updated_parameters, result.updated_parameters
     assert result.raw_result.get("success") is True, result.raw_result

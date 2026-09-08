@@ -198,7 +198,7 @@ def test_returns_non_empty_string(default_local_prompt: str) -> None:
 ])
 def test_verbosity_rule_mapping(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
     """Admin path — full verbosity range, no cap."""
-    prompt = engine.build_local_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=True)
+    prompt = engine.build_local_persona_prompt({}, "hola", comm_prefs={"verbosity": verbosity}, is_admin=True)
     assert expected_fragment in prompt, (
         f"Expected {expected_fragment!r} in local prompt for verbosity={verbosity}"
     )
@@ -211,7 +211,7 @@ def test_verbosity_rule_mapping(engine: PersonaEngine, verbosity: float, expecte
 ])
 def test_verbosity_rule_mapping_non_admin(engine: PersonaEngine, verbosity: float, expected_fragment: str) -> None:
     """Non-admin sessions cap verbosity at 0.15 → always lowest rule."""
-    prompt = engine.build_local_persona_prompt({"verbosity_level": verbosity}, "hola", is_admin=False)
+    prompt = engine.build_local_persona_prompt({}, "hola", comm_prefs={"verbosity": verbosity}, is_admin=False)
     assert expected_fragment in prompt, (
         f"Expected {expected_fragment!r} in local prompt for verbosity={verbosity} (non-admin)"
     )

@@ -256,4 +256,4 @@ def test_structural_refusal_saves_tone_meta(monkeypatch: pytest.MonkeyPatch):
     assert sity_msg.tone_meta is not None, "structural refusal must save tone_meta"
     parsed = _json.loads(sity_msg.tone_meta)
     assert isinstance(parsed, dict)
-    assert "sarcasm" in parsed
+    assert "playfulness" in parsed

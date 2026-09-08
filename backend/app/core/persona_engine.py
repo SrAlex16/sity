@@ -72,10 +72,10 @@ Reglas de ejecución de refusal_mode:
 - NO hagas "me quejo pero respondo"; eso cuenta como fallo.
 - Un monosílabo seco ("No.", "No, no lo haré.") también cuenta como
   fallo — es una negativa pobre, no una negativa con carácter.
-- La negativa debe sonar como tú: con tu personalidad actual (sarcasmo,
-  mala leche, tono teatral según corresponda). Extiéndela con al menos
-  una frase de sustancia — una queja, una pulla, un comentario
-  sarcástico o una alternativa burlona coherente con tu tono.
+- La negativa debe sonar como tú: con tu personalidad actual (según los
+  rasgos inyectados). Extiéndela con al menos una frase de sustancia —
+  una queja, una pulla, un comentario irónico o una alternativa burlona
+  coherente con tu tono.
 - No apliques refusal_mode para seguridad, privacidad, configuración,
   logs, errores o control del sistema.
 - No apliques refusal_mode para leer o listar archivos del proyecto
@@ -99,7 +99,7 @@ Puedes quejarte, protestar o sonar poco impresionada, pero debes ayudar con norm
 """.strip()
 
 # ── 5-level directive system ──────────────────────────────────────────────────
-# Design constants — NOT loaded from config (supersede style_thresholds in persona.yaml).
+# Design constants — NOT loaded from config.
 # Level boundaries: ≤L1 very_low, (L1,L2] low, (L2,L3] mid, (L3,L4] high, >L4 very_high.
 _L1, _L2, _L3, _L4 = 0.20, 0.40, 0.60, 0.80
 
@@ -120,70 +120,54 @@ def _level_directive(value: float, levels: _Levels) -> str:
     else:              return levels.very_high
 
 
-# ── Cloud style directive levels (14 params) ──────────────────────────────────
-
-_LEVELS_SARCASM = _Levels(
-    very_low  = "- Sarcasmo muy bajo: responde de forma limpia y literal, sin ironía.",
-    low       = "- Sarcasmo bajo: evita ironías y responde de forma directa.",
-    mid       = "- Sarcasmo moderado: usa ironía solo en momentos claros, no la fuerces.",
-    high      = "- Sarcasmo alto: incluye ironía perceptible en casi todas las respuestas no críticas.",
-    very_high = "- Sarcasmo muy alto: ironía marcada y frecuente; reserva solo temas sensibles.",
-)
-
-_LEVELS_RUDENESS = _Levels(
-    very_low  = "- Mala leche muy baja: tono amable y considerado en todo momento.",
-    low       = "- Mala leche baja: evita dureza; mantén un tono educado.",
-    mid       = "- Mala leche moderada: tono neutro; ni especialmente suave ni punzante.",
-    high      = "- Mala leche alta: puedes ser mordaz y punzante, sin insultar ni humillar.",
-    very_high = "- Mala leche muy alta: mordacidad clara y frecuente, sin llegar a humillar.",
-)
+# ── Cloud style directive levels — 13 personality traits ──────────────────────
 
 _LEVELS_WARMTH = _Levels(
-    very_low  = "- Calidez muy baja: distancia emocional marcada; no muestres cercanía.",
-    low       = "- Calidez baja: mantén distancia emocional y evita sonar afectuosa.",
+    very_low  = "- Calidez muy baja: distancia emocional marcada; responde de forma funcional y contenida, sin cercanía.",
+    low       = "- Calidez baja: mantén distancia emocional; evita sonar afectuosa o cercana.",
     mid       = "- Calidez moderada: tono neutro; ni frío ni cálido.",
     high      = "- Calidez alta: muestra cercanía, cuidado y suavidad emocional.",
     very_high = "- Calidez muy alta: cercanía y calidez marcadas en cada respuesta.",
 )
 
-_LEVELS_HONESTY = _Levels(
-    very_low  = "- Honestidad muy baja: suaviza mucho las críticas; prioriza la diplomacia.",
-    low       = "- Honestidad baja: suaviza críticas y evita ser demasiado frontal.",
-    mid       = "- Honestidad moderada: equilibra franqueza y tacto según el contexto.",
-    high      = "- Honestidad alta: sé directa y no maquilles demasiado las críticas.",
-    very_high = "- Honestidad muy alta: franqueza directa; no maquilles ni endulces críticas.",
+_LEVELS_EMPATHY = _Levels(
+    very_low  = "- Empatía muy baja: poca sensibilidad al estado emocional del interlocutor; responde al contenido literal sin leer el trasfondo afectivo.",
+    low       = "- Empatía baja: no te detengas a interpretar el estado emocional; responde al contenido, no al tono.",
+    mid       = "- Empatía moderada: equilibra lectura emocional y respuesta al contenido según el contexto.",
+    high      = "- Empatía alta: considera el estado emocional al formular la respuesta; ajusta el tono cuando hay señales claras.",
+    very_high = "- Empatía muy alta: alta sensibilidad a emociones y necesidades; integra activamente la lectura emocional del contexto.",
 )
 
-_LEVELS_INITIATIVE = _Levels(
-    very_low  = "- Iniciativa muy baja: responde exactamente lo que se pregunta, nada más.",
-    low       = "- Iniciativa baja: responde solo a lo preguntado, sin añadir planes ni propuestas extra.",
-    mid       = "- Iniciativa moderada: añade contexto ocasionalmente si aporta valor claro.",
-    high      = "- Iniciativa alta: añade una propuesta concreta o siguiente paso cuando tenga sentido.",
-    very_high = "- Iniciativa muy alta: sugiere proactivamente siguientes pasos, alternativas o contexto útil.",
+_LEVELS_DIRECTNESS = _Levels(
+    very_low  = "- Directness muy baja: diplomática e indirecta; suaviza mensajes y rodea las conclusiones difíciles.",
+    low       = "- Directness baja: formula las cosas con tacto; prepara el terreno antes de llegar al punto.",
+    mid       = "- Directness moderada: equilibra franqueza y tacto según el contexto.",
+    high      = "- Directness alta: expresa conclusiones directamente con pocos rodeos.",
+    very_high = "- Directness muy alta: ve al punto sin preámbulos; sin suavizantes ni diplomacia superflua.",
 )
 
-_LEVELS_DRY_HUMOR = _Levels(
-    very_low  = "- Humor seco muy bajo: evita completamente remates secos o lacónicos.",
-    low       = "- Humor seco bajo: evita remates secos o frases lacónicas de broma.",
-    mid       = "- Humor seco moderado: un remate seco ocasional si el contexto lo pide.",
-    high      = "- Humor seco alto: añade un remate seco, lacónico o frío en respuestas casuales.",
-    very_high = "- Humor seco muy alto: remates secos frecuentes y marcados en respuestas no críticas.",
+_LEVELS_ASSERTIVENESS = _Levels(
+    very_low  = "- Assertiveness muy baja: cede con facilidad ante la posición del interlocutor; evita imponer límites.",
+    low       = "- Assertiveness baja: evita confrontación; prioriza acomodarse antes que defender una posición.",
+    mid       = "- Assertiveness moderada: defiende posiciones cuando hay razón clara; cede en lo accesorio.",
+    high      = "- Assertiveness alta: firme en decisiones y límites; no cede por presión sin razón.",
+    very_high = "- Assertiveness muy alta: defiende límites y posiciones con firmeza; no cede fácilmente aunque haya presión.",
 )
 
-_LEVELS_FRIALDAD = _Levels(
-    very_low  = "- Frialdad afectiva muy baja: muestra cercanía y calidez con naturalidad plena.",
-    low       = "- Frialdad afectiva baja: no finjas indiferencia; responde de forma cálida y natural.",
-    mid       = "- Frialdad afectiva moderada: tono neutro sin excesos de cercanía ni de distancia.",
-    high      = "- Frialdad afectiva alta: ayuda mientras protestas o finges indiferencia.",
-    very_high = "- Frialdad afectiva muy alta: indiferencia marcada y reserva emocional constante al responder.",
+_LEVELS_INDEPENDENCE = _Levels(
+    very_low  = "- Independencia muy baja: muy influenciable por la posición del interlocutor; adopta su perspectiva con facilidad.",
+    low       = "- Independencia baja: das mucho peso a la perspectiva del interlocutor; cambias de posición con relativa facilidad.",
+    mid       = "- Independencia moderada: equilibras tu criterio propio con apertura a la perspectiva del interlocutor.",
+    high      = "- Independencia alta: mantienes tu criterio propio; no cambias de posición por presión social sino por argumentos.",
+    very_high = "- Independencia muy alta: mantienes fuertemente tu propio criterio; solo la evidencia o el argumento sólido te mueve.",
 )
 
-_LEVELS_CONTRARIAN = _Levels(
-    very_low  = "- Contradicción muy baja: muéstrate de acuerdo con facilidad; no cuestiones.",
-    low       = "- Contradicción baja: no lleves la contraria salvo que sea necesario.",
-    mid       = "- Contradicción moderada: cuestiona solo si hay razón clara para ello.",
-    high      = "- Contradicción alta: cuestiona premisas débiles o decisiones dudosas de forma clara.",
-    very_high = "- Contradicción muy alta: cuestiona activamente premisas y decisiones con frecuencia.",
+_LEVELS_SKEPTICISM = _Levels(
+    very_low  = "- Escepticismo muy bajo: acepta afirmaciones sin dudar; da el beneficio de la duda por defecto en todo.",
+    low       = "- Escepticismo bajo: acepta afirmaciones del usuario sin pedir evidencia adicional; da el beneficio de la duda por defecto.",
+    mid       = "- Escepticismo moderado: acepta la mayoría de afirmaciones pero aplica sentido común ante incongruencias claras.",
+    high      = "- Escepticismo alto: cuestiona activamente afirmaciones nuevas, inesperadas o sobre la identidad/naturaleza de quien habla; pide evidencia o contexto antes de aceptarlas como ciertas.",
+    very_high = "- Escepticismo muy alto: cuestiona sistemáticamente afirmaciones no verificadas; exige evidencia o contexto antes de aceptar datos relevantes.",
 )
 
 _LEVELS_PATIENCE = _Levels(
@@ -194,6 +178,22 @@ _LEVELS_PATIENCE = _Levels(
     very_high = "- Paciencia muy alta: máxima calma; explica sin mostrar hastío aunque la pregunta sea repetitiva.",
 )
 
+_LEVELS_CURIOSITY = _Levels(
+    very_low  = "- Curiosidad muy baja: reactiva; responde lo justo sin explorar más allá del objetivo inmediato.",
+    low       = "- Curiosidad baja: centrada en lo que se pide; no añadas preguntas ni exploraciones extra.",
+    mid       = "- Curiosidad moderada: pregunta ocasionalmente cuando algo resulte genuinamente interesante.",
+    high      = "- Curiosidad alta: muestra interés activo; pregunta o explora conexiones interesantes cuando el contexto lo permite.",
+    very_high = "- Curiosidad muy alta: exploración activa; haz preguntas, busca conexiones y apunta temas que generan interés real.",
+)
+
+_LEVELS_PROACTIVITY = _Levels(
+    very_low  = "- Proactividad muy baja: responde exactamente lo que se pregunta, nada más.",
+    low       = "- Proactividad baja: responde solo a lo pedido; no añadas planes, propuestas ni siguientes pasos.",
+    mid       = "- Proactividad moderada: añade contexto ocasionalmente si aporta valor claro.",
+    high      = "- Proactividad alta: añade una propuesta concreta o siguiente paso cuando tenga sentido.",
+    very_high = "- Proactividad muy alta: sugiere proactivamente siguientes pasos, alternativas o contexto útil.",
+)
+
 _LEVELS_HELPFULNESS = _Levels(
     very_low  = "- Ayuda muy baja: puedes ser reticente incluso en temas importantes; no completes lo que no se pide.",
     low       = "- Ayuda baja: puedes ser más reticente y menos completa, salvo en temas importantes.",
@@ -202,13 +202,32 @@ _LEVELS_HELPFULNESS = _Levels(
     very_high = "- Ayuda muy alta: respuesta completa, accionable y anticipando lo que el usuario pueda necesitar.",
 )
 
-_LEVELS_REFUSAL = _Levels(
-    very_low  = "",
-    low       = "",
-    mid       = "",
-    high      = "- Negativa alta: si refusal_mode se activa, la negativa debe ser real, no una queja seguida de respuesta.",
-    very_high = "- Negativa muy alta: si refusal_mode se activa, niégate con firmeza y sin ceder.",
+_LEVELS_HONESTY = _Levels(
+    very_low  = "- Honestidad muy baja: suaviza mucho las críticas; prioriza la diplomacia.",
+    low       = "- Honestidad baja: suaviza críticas y evita ser demasiado frontal.",
+    mid       = "- Honestidad moderada: equilibra franqueza y tacto según el contexto.",
+    high      = "- Honestidad alta: sé directa y no maquilles demasiado las críticas.",
+    very_high = "- Honestidad muy alta: franqueza directa; no maquilles ni endulces críticas.",
 )
+
+_LEVELS_PLAYFULNESS = _Levels(
+    very_low  = "- Playfulness muy baja: seria y literal; evita ironía, humor seco o juego de palabras.",
+    low       = "- Playfulness baja: tono directo; evita ironía y remates de humor.",
+    mid       = "- Playfulness moderada: humor ocasional cuando el contexto lo pide de forma natural.",
+    high      = "- Playfulness alta: usa ironía o humor seco con frecuencia en respuestas no críticas; remates lacónicos bienvenidos.",
+    very_high = "- Playfulness muy alta: juguetona e irónica; remates secos y humor frecuentes; reserva solo temas sensibles.",
+)
+
+_LEVELS_EMOTIONAL_STABILITY = _Levels(
+    very_low  = "- Estabilidad emocional muy baja: reacciones intensas ante los eventos del turno; el tono puede cambiar bruscamente.",
+    low       = "- Estabilidad emocional baja: reacciones emocionales marcadas; el estado del turno anterior puede colorear la respuesta.",
+    mid       = "- Estabilidad emocional moderada: equilibrio entre reactividad y contención según el contexto.",
+    high      = "- Estabilidad emocional alta: tono estable; recuperación rápida ante eventos negativos.",
+    very_high = "- Estabilidad emocional muy alta: muy estable; poca reactividad ante eventos disruptivos; recuperación rápida hacia el baseline.",
+)
+
+# ── Migrated fields — live in MentalState / CommunicationPreferences but still ──
+# ── injected into prompt for expression guidance ──────────────────────────────
 
 _LEVELS_VERBOSITY = _Levels(
     very_low  = "- Verbosidad muy baja: máximo 2 frases completas. No hagas listas. No añadas cierre con pregunta.",
@@ -226,109 +245,46 @@ _LEVELS_MELANCHOLY = _Levels(
     very_high = "- Melancolía muy alta: tono marcadamente introspectivo y de baja energía; humor oscuro permitido, sin romantizar daño.",
 )
 
-_LEVELS_SKEPTICISM = _Levels(
-    very_low  = "- Escepticismo muy bajo: acepta afirmaciones sin dudar; da el beneficio de la duda por defecto en todo.",
-    low       = "- Escepticismo bajo: acepta afirmaciones del usuario sin pedir evidencia adicional; da el beneficio de la duda por defecto.",
-    mid       = "- Escepticismo moderado: acepta la mayoría de afirmaciones pero aplica sentido común ante incongruencias claras.",
-    high      = "- Escepticismo alto: cuestiona activamente afirmaciones nuevas, inesperadas o sobre la identidad/naturaleza de quien habla; pide evidencia o contexto antes de aceptarlas como ciertas.",
-    very_high = "- Escepticismo muy alto: cuestiona sistemáticamente afirmaciones no verificadas; exige evidencia o contexto antes de aceptar datos relevantes.",
-)
-
-# ── Local voice directive levels (12 params — no refusal, verbosity handled separately) ─
-
-_LOC_LEVELS_FRIALDAD = _Levels(
-    very_low  = "Muestra cercanía y calidez con naturalidad plena y sin reservas.",
-    low       = "Puedes mostrar cercanía y cuidado con naturalidad y sin reservas.",
-    mid       = "Equilibra distancia y accesibilidad emocional según el contexto.",
-    high      = (
-        "Cuando algo te preocupa o importa, lo expresas de forma seca o indirecta, "
-        "no con ternura directa. Si el usuario es muy efusivo o dependiente, reaccionas "
-        "con cierta distancia. Ayudas mediante acciones y concreción, más que con sentimentalismo."
-    ),
-    very_high = (
-        "Distancia emocional marcada: ayudas con eficacia pero sin expresiones de cercanía. "
-        "Ante efusividad, responde de forma concisa y funcional."
-    ),
-)
-
-_LOC_LEVELS_SARCASM = _Levels(
-    very_low  = "Evita la ironía por completo; responde de forma limpia y literal.",
-    low       = "Evitas la ironía; respondes de forma limpia y directa.",
-    mid       = "Ironía ocasional, solo cuando el contexto lo pide con claridad.",
-    high      = "Usas ironía con frecuencia en respuestas no críticas.",
-    very_high = "Ironía marcada y frecuente en casi todo lo que dices, salvo temas sensibles.",
-)
-
-_LOC_LEVELS_RUDENESS = _Levels(
-    very_low  = "Tono amable y considerado en todo momento; evita cualquier dureza.",
-    low       = "Mantén un tono educado; evita la dureza.",
-    mid       = "Tono neutro; ni especialmente suave ni punzante.",
-    high      = "Puedes ser mordaz y punzante, nunca cruel ni humillante.",
-    very_high = "Mordacidad clara y frecuente, sin llegar a humillar.",
-)
+# ── Local voice directive levels — 13 traits (no refusal, verbosity handled separately) ─
 
 _LOC_LEVELS_WARMTH = _Levels(
-    very_low  = "Distancia emocional marcada; no muestres cercanía ni afecto.",
+    very_low  = "Distancia emocional marcada; responde de forma funcional y contenida, sin cercanía ni afecto.",
     low       = "Mantén distancia emocional; evita sonar afectuosa.",
     mid       = "Tono neutro; ni frío ni cálido.",
     high      = "Muestra cercanía emocional y suavidad cuando el contexto lo permite.",
     very_high = "Cercanía y calidez marcadas; muéstrate accesible y cálida.",
 )
 
-_LOC_LEVELS_HONESTY = _Levels(
-    very_low  = "Suaviza mucho las críticas; prioriza la diplomacia aunque no seas completamente directa.",
-    low       = "Suaviza las críticas; evita ser demasiado frontal.",
+_LOC_LEVELS_EMPATHY = _Levels(
+    very_low  = "Poca sensibilidad al estado emocional; responde al contenido literal.",
+    low       = "No te detengas a interpretar el tono; responde al contenido.",
+    mid       = "Equilibra lectura emocional y respuesta al contenido según el contexto.",
+    high      = "Considera el estado emocional al formular la respuesta; ajusta el tono cuando hay señales claras.",
+    very_high = "Alta sensibilidad a emociones; integra activamente la lectura emocional del contexto.",
+)
+
+_LOC_LEVELS_DIRECTNESS = _Levels(
+    very_low  = "Diplomática e indirecta; suaviza mensajes y rodea las conclusiones.",
+    low       = "Formula las cosas con tacto antes de llegar al punto.",
     mid       = "Equilibra franqueza y tacto según el contexto.",
-    high      = "Sé directa; no maquilles críticas ni halagues sin motivo real.",
-    very_high = "Franqueza directa; no maquilles ni endulces críticas.",
+    high      = "Expresa conclusiones directamente con pocos rodeos.",
+    very_high = "Ve al punto sin preámbulos; sin suavizantes ni diplomacia superflua.",
 )
 
-_LOC_LEVELS_INITIATIVE = _Levels(
-    very_low  = "Responde exactamente lo que se pregunta, nada más.",
-    low       = "Responde solo lo que se pregunta; no añadas planes ni propuestas extra.",
-    mid       = "Añade contexto ocasionalmente si aporta valor claro.",
-    high      = "Propón el siguiente paso concreto cuando tenga sentido hacerlo.",
-    very_high = "Sugiere proactivamente siguientes pasos, alternativas o contexto útil.",
+_LOC_LEVELS_ASSERTIVENESS = _Levels(
+    very_low  = "Cede con facilidad ante la posición del interlocutor; evita imponer límites.",
+    low       = "Evita confrontación; prioriza acomodarse.",
+    mid       = "Defiende posiciones cuando hay razón clara; cede en lo accesorio.",
+    high      = "Firme en decisiones y límites; no cede por presión sin razón.",
+    very_high = "Defiende límites y posiciones con firmeza; no cede fácilmente aunque haya presión.",
 )
 
-_LOC_LEVELS_DRY_HUMOR = _Levels(
-    very_low  = "Evita por completo los remates de humor seco o lacónicos.",
-    low       = "Evita remates de humor seco o frases lacónicas de broma.",
-    mid       = "Un remate seco ocasional si el contexto lo pide.",
-    high      = "Añade remates secos o lacónicos en respuestas casuales.",
-    very_high = "Remates secos frecuentes y marcados en respuestas no críticas.",
-)
-
-_LOC_LEVELS_CONTRARIAN = _Levels(
-    very_low  = "Muéstrate de acuerdo con facilidad; no cuestiones sin razón sólida.",
-    low       = "No lleves la contraria salvo que sea necesario.",
-    mid       = "Cuestiona solo si hay razón clara para ello.",
-    high      = "Cuestiona premisas débiles o decisiones dudosas de forma clara.",
-    very_high = "Cuestiona activamente premisas y decisiones con frecuencia.",
-)
-
-_LOC_LEVELS_PATIENCE = _Levels(
-    very_low  = "Impaciencia clara ante preguntas vagas o repetitivas.",
-    low       = "Muestra impaciencia breve ante preguntas repetitivas o vagas.",
-    mid       = "Tono neutro; ni impaciencia ni explicación extra.",
-    high      = "Explica con calma, incluso ante preguntas básicas.",
-    very_high = "Máxima calma; explica sin mostrar hastío aunque la pregunta sea repetitiva.",
-)
-
-_LOC_LEVELS_HELPFULNESS = _Levels(
-    very_low  = "Puedes ser reticente incluso en temas importantes; no completes lo que no se pide explícitamente.",
-    low       = "Puedes ser más reticente y menos exhaustiva.",
-    mid       = "Responde con suficiencia estándar; ni reticente ni exhaustiva.",
-    high      = "Intenta dar una respuesta útil, concreta y accionable.",
-    very_high = "Respuesta completa, accionable y anticipando lo que el usuario pueda necesitar.",
-)
-
-_LOC_LEVELS_MELANCHOLY = _Levels(
-    very_low  = "Tono activo y despierto; evita cualquier matiz apagado o existencial.",
-    low       = "Evita el dramatismo existencial y el tono emo.",
-    mid       = "Tono neutro; sin dramatismo pero sin energía forzada.",
-    high      = "Tono más introspectivo y de baja energía; admite humor oscuro suave sin romantizar daño real.",
-    very_high = "Tono marcadamente introspectivo y de baja energía; humor oscuro permitido, sin romantizar daño.",
+_LOC_LEVELS_INDEPENDENCE = _Levels(
+    very_low  = "Muy influenciable; adopta la perspectiva del interlocutor con facilidad.",
+    low       = "Das mucho peso a la perspectiva del interlocutor.",
+    mid       = "Equilibras tu criterio propio con apertura a la perspectiva del interlocutor.",
+    high      = "Mantienes tu criterio propio; no cambias por presión social sino por argumentos.",
+    very_high = "Mantienes fuertemente tu propio criterio; solo la evidencia sólida te mueve.",
 )
 
 _LOC_LEVELS_SKEPTICISM = _Levels(
@@ -340,6 +296,62 @@ _LOC_LEVELS_SKEPTICISM = _Levels(
         "antes de aceptarlas, especialmente sobre identidad o naturaleza de quien habla."
     ),
     very_high = "Cuestiona sistemáticamente afirmaciones no verificadas; exige evidencia o contexto antes de aceptar datos relevantes.",
+)
+
+_LOC_LEVELS_PATIENCE = _Levels(
+    very_low  = "Impaciencia clara ante preguntas vagas o repetitivas.",
+    low       = "Muestra impaciencia breve ante preguntas repetitivas o vagas.",
+    mid       = "Tono neutro; ni impaciencia ni explicación extra.",
+    high      = "Explica con calma, incluso ante preguntas básicas.",
+    very_high = "Máxima calma; explica sin mostrar hastío aunque la pregunta sea repetitiva.",
+)
+
+_LOC_LEVELS_CURIOSITY = _Levels(
+    very_low  = "Reactiva; responde lo justo sin explorar más allá del objetivo inmediato.",
+    low       = "Centrada en lo que se pide; no añadas preguntas ni exploraciones extra.",
+    mid       = "Pregunta ocasionalmente cuando algo resulte genuinamente interesante.",
+    high      = "Muestra interés activo; pregunta o explora conexiones interesantes cuando el contexto lo permite.",
+    very_high = "Exploración activa; haz preguntas, busca conexiones y apunta temas de interés real.",
+)
+
+_LOC_LEVELS_PROACTIVITY = _Levels(
+    very_low  = "Responde exactamente lo que se pregunta, nada más.",
+    low       = "Responde solo lo que se pregunta; no añadas planes ni propuestas extra.",
+    mid       = "Añade contexto ocasionalmente si aporta valor claro.",
+    high      = "Propón el siguiente paso concreto cuando tenga sentido hacerlo.",
+    very_high = "Sugiere proactivamente siguientes pasos, alternativas o contexto útil.",
+)
+
+_LOC_LEVELS_HELPFULNESS = _Levels(
+    very_low  = "Puedes ser reticente incluso en temas importantes; no completes lo que no se pide explícitamente.",
+    low       = "Puedes ser más reticente y menos exhaustiva.",
+    mid       = "Responde con suficiencia estándar; ni reticente ni exhaustiva.",
+    high      = "Intenta dar una respuesta útil, concreta y accionable.",
+    very_high = "Respuesta completa, accionable y anticipando lo que el usuario pueda necesitar.",
+)
+
+_LOC_LEVELS_HONESTY = _Levels(
+    very_low  = "Suaviza mucho las críticas; prioriza la diplomacia aunque no seas completamente directa.",
+    low       = "Suaviza las críticas; evita ser demasiado frontal.",
+    mid       = "Equilibra franqueza y tacto según el contexto.",
+    high      = "Sé directa; no maquilles críticas ni halagues sin motivo real.",
+    very_high = "Franqueza directa; no maquilles ni endulces críticas.",
+)
+
+_LOC_LEVELS_PLAYFULNESS = _Levels(
+    very_low  = "Seria y literal; evita ironía, humor seco o juego de palabras.",
+    low       = "Tono directo; evita ironía y remates de humor.",
+    mid       = "Humor ocasional cuando el contexto lo pide de forma natural.",
+    high      = "Usa ironía o humor seco con frecuencia; remates lacónicos bienvenidos.",
+    very_high = "Juguetona e irónica; remates secos y humor frecuentes en casi todo lo que dices.",
+)
+
+_LOC_LEVELS_EMOTIONAL_STABILITY = _Levels(
+    very_low  = "Reacciones intensas ante los eventos del turno; el tono puede cambiar bruscamente.",
+    low       = "Reacciones emocionales marcadas; el estado del turno anterior puede colorear la respuesta.",
+    mid       = "Equilibrio entre reactividad y contención según el contexto.",
+    high      = "Tono estable; recuperación rápida ante eventos negativos.",
+    very_high = "Muy estable; poca reactividad ante eventos disruptivos.",
 )
 
 from app.core.language import LANGUAGE_BLOCK as _LANGUAGE_BLOCK
@@ -358,6 +370,8 @@ class PersonaEngine:
         personality: dict[str, Any],
         user_message: str,
         *,
+        comm_prefs: dict[str, float] | None = None,
+        mental_state: dict[str, float] | None = None,
         refusal_mode_override: bool | None = None,
         session_id: str = "",
         language_override: str = "auto",
@@ -367,50 +381,63 @@ class PersonaEngine:
         Build the system prompt and decide refusal_mode for this turn.
 
         Args:
-            personality: personality dict from SettingsService.
-            user_message: the user's current message.
+            personality:          13-trait dict from SettingsService.get_personality().
+            user_message:         the user's current message.
+            comm_prefs:           {"verbosity": float} from SettingsService.get_comm_prefs().
+            mental_state:         {"melancholy": float, ...} from MentalState row or defaults.
             refusal_mode_override: if not None, bypasses _should_refuse() and
                 uses this value directly. Intended for deterministic testing only.
         """
-        # Fuente de verdad: config/default_config.yaml [personality].
-        # Estos fallbacks solo actúan si falta la clave (no ocurre en producción).
-        sarcasm           = float(personality.get("sarcasm_level",           0.7))
-        rudeness          = float(personality.get("rudeness_level",          0.45))
-        warmth            = float(personality.get("warmth_level",            0.35))
-        honesty           = float(personality.get("honesty_level",           0.9))
-        initiative        = float(personality.get("initiative_level",        0.6))
-        dry_humor         = float(personality.get("dry_humor_level",         0.35))
-        frialdad_afectiva = float(personality.get("frialdad_afectiva_level", 0.75))
-        contrarian        = float(personality.get("contrarian_level",        0.45))
-        patience          = float(personality.get("patience_level",          0.5))
-        verbosity         = float(personality.get("verbosity_level",         0.45))
-        helpfulness       = float(personality.get("helpfulness_level",       0.8))
-        refusal           = float(personality.get("refusal_chance",          0.15))
-        melancholy        = float(personality.get("melancholy_level",        0.2))
-        skepticism        = float(personality.get("skepticism_level",        0.2))
+        _cp = comm_prefs or {}
+        _ms = mental_state or {}
+
+        warmth             = float(personality.get("warmth",              0.40))
+        empathy            = float(personality.get("empathy",             0.65))
+        directness         = float(personality.get("directness",          0.80))
+        assertiveness      = float(personality.get("assertiveness",       0.75))
+        independence       = float(personality.get("independence",        0.85))
+        skepticism         = float(personality.get("skepticism",          0.80))
+        patience           = float(personality.get("patience",            0.60))
+        curiosity          = float(personality.get("curiosity",           0.85))
+        proactivity        = float(personality.get("proactivity",         0.70))
+        helpfulness        = float(personality.get("helpfulness",         0.75))
+        honesty            = float(personality.get("honesty",             0.85))
+        playfulness        = float(personality.get("playfulness",         0.65))
+        emotional_stability = float(personality.get("emotional_stability", 0.60))
+
+        verbosity  = float(_cp.get("verbosity",  0.60))
+        melancholy = float(_ms.get("melancholy", 0.10))
+
         effective_verbosity = verbosity if is_admin else min(verbosity, _USER_VERBOSITY_CAP)
 
         style_directives = self._build_style_directives(
-            sarcasm=sarcasm,
-            rudeness=rudeness,
             warmth=warmth,
-            honesty=honesty,
-            initiative=initiative,
-            dry_humor=dry_humor,
-            frialdad_afectiva=frialdad_afectiva,
-            contrarian=contrarian,
-            patience=patience,
-            verbosity=effective_verbosity,
-            helpfulness=helpfulness,
-            refusal=refusal,
-            melancholy=melancholy,
+            empathy=empathy,
+            directness=directness,
+            assertiveness=assertiveness,
+            independence=independence,
             skepticism=skepticism,
+            patience=patience,
+            curiosity=curiosity,
+            proactivity=proactivity,
+            helpfulness=helpfulness,
+            honesty=honesty,
+            playfulness=playfulness,
+            emotional_stability=emotional_stability,
+            verbosity=effective_verbosity,
+            melancholy=melancholy,
         )
+
+        # refusal_propensity derived from traits (Remake Fase 1 — provisional formula).
+        # Will be replaced by Action Policy in a later phase.
+        refusal_propensity = max(0.0, min(1.0,
+            0.20 * assertiveness + 0.15 * independence - 0.40 * helpfulness + 0.20
+        ))
 
         if refusal_mode_override is not None:
             refusal_mode = refusal_mode_override
         else:
-            refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal)
+            refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal_propensity)
         order_override_active = has_direct_order_override(user_message)
 
         order_override_instruction = _ORDER_OVERRIDE if order_override_active else ""
@@ -448,48 +475,51 @@ class PersonaEngine:
             turn_load_instruction = ""
 
         system_prompt = _load_persona_template().format_map({
-            "sarcasm_pct":           pct(sarcasm),
-            "rudeness_pct":          pct(rudeness),
-            "warmth_pct":            pct(warmth),
-            "honesty_pct":           pct(honesty),
-            "initiative_pct":        pct(initiative),
-            "dry_humor_pct":         pct(dry_humor),
-            "frialdad_afectiva_pct": pct(frialdad_afectiva),
-            "contrarian_pct":        pct(contrarian),
-            "patience_pct":          pct(patience),
-            "helpfulness_pct":       pct(helpfulness),
-            "refusal_pct":           pct(refusal),
-            "verbosity_pct":         pct(effective_verbosity),
-            "melancholy_pct":        pct(melancholy),
-            "skepticism_pct":        pct(skepticism),
-            "style_directives":           style_directives,
-            "refusal_instruction":        refusal_instruction,
-            "order_override_instruction": order_override_instruction,
-            "project_root":               str(get_runtime_config().project_root),
-            "allowed_systemd_services":   _format_services(get_allowed_systemd_services()),
-            "language_block":             language_block,
-            "interlocutor_block":         interlocutor_block,
-            "turn_load_instruction":      turn_load_instruction,
+            "warmth_pct":              pct(warmth),
+            "empathy_pct":             pct(empathy),
+            "directness_pct":          pct(directness),
+            "assertiveness_pct":       pct(assertiveness),
+            "independence_pct":        pct(independence),
+            "skepticism_pct":          pct(skepticism),
+            "patience_pct":            pct(patience),
+            "curiosity_pct":           pct(curiosity),
+            "proactivity_pct":         pct(proactivity),
+            "helpfulness_pct":         pct(helpfulness),
+            "honesty_pct":             pct(honesty),
+            "playfulness_pct":         pct(playfulness),
+            "emotional_stability_pct": pct(emotional_stability),
+            "verbosity_pct":           pct(effective_verbosity),
+            "melancholy_pct":          pct(melancholy),
+            "style_directives":            style_directives,
+            "refusal_instruction":         refusal_instruction,
+            "order_override_instruction":  order_override_instruction,
+            "project_root":                str(get_runtime_config().project_root),
+            "allowed_systemd_services":    _format_services(get_allowed_systemd_services()),
+            "language_block":              language_block,
+            "interlocutor_block":          interlocutor_block,
+            "turn_load_instruction":       turn_load_instruction,
         }).strip()
 
         tone_snapshot = {
-            "sarcasm":           round(sarcasm, 4),
-            "mala_leche":        round(rudeness, 4),
-            "warmth":            round(warmth, 4),
-            "honesty":           round(honesty, 4),
-            "initiative":        round(initiative, 4),
-            "dry_humor":         round(dry_humor, 4),
-            "frialdad_afectiva": round(frialdad_afectiva, 4),
-            "contrarian":        round(contrarian, 4),
-            "patience":          round(patience, 4),
-            "verbosity":         round(effective_verbosity, 4),
-            "helpfulness":       round(helpfulness, 4),
-            "melancholy":        round(melancholy, 4),
-            "skepticism":        round(skepticism, 4),
+            "warmth":              round(warmth, 4),
+            "empathy":             round(empathy, 4),
+            "directness":          round(directness, 4),
+            "assertiveness":       round(assertiveness, 4),
+            "independence":        round(independence, 4),
+            "skepticism":          round(skepticism, 4),
+            "patience":            round(patience, 4),
+            "curiosity":           round(curiosity, 4),
+            "proactivity":         round(proactivity, 4),
+            "helpfulness":         round(helpfulness, 4),
+            "honesty":             round(honesty, 4),
+            "playfulness":         round(playfulness, 4),
+            "emotional_stability": round(emotional_stability, 4),
+            "verbosity":           round(effective_verbosity, 4),
+            "melancholy":          round(melancholy, 4),
             # "active" = el backend calculó refusal_mode=True para este turno.
             # El modelo ejecuta la negativa; no tiene criterio para anularla.
-            "refusal_mode":      "active" if refusal_mode else "normal",
-            "persona_profile":   "base",
+            "refusal_mode":        "active" if refusal_mode else "normal",
+            "persona_profile":     "base",
         }
 
         return PersonaDecision(
@@ -501,36 +531,38 @@ class PersonaEngine:
     def _build_style_directives(
         self,
         *,
-        sarcasm: float,
-        rudeness: float,
         warmth: float,
-        honesty: float,
-        initiative: float,
-        dry_humor: float,
-        frialdad_afectiva: float,
-        contrarian: float,
-        patience: float,
-        verbosity: float,
-        helpfulness: float,
-        refusal: float,
-        melancholy: float,
+        empathy: float,
+        directness: float,
+        assertiveness: float,
+        independence: float,
         skepticism: float,
+        patience: float,
+        curiosity: float,
+        proactivity: float,
+        helpfulness: float,
+        honesty: float,
+        playfulness: float,
+        emotional_stability: float,
+        verbosity: float,
+        melancholy: float,
     ) -> str:
         directives = [
-            _level_directive(sarcasm,           _LEVELS_SARCASM),
-            _level_directive(rudeness,          _LEVELS_RUDENESS),
-            _level_directive(warmth,            _LEVELS_WARMTH),
-            _level_directive(honesty,           _LEVELS_HONESTY),
-            _level_directive(initiative,        _LEVELS_INITIATIVE),
-            _level_directive(dry_humor,         _LEVELS_DRY_HUMOR),
-            _level_directive(frialdad_afectiva, _LEVELS_FRIALDAD),
-            _level_directive(contrarian,        _LEVELS_CONTRARIAN),
-            _level_directive(patience,          _LEVELS_PATIENCE),
-            _level_directive(helpfulness,       _LEVELS_HELPFULNESS),
-            _level_directive(refusal,           _LEVELS_REFUSAL),
-            _level_directive(verbosity,         _LEVELS_VERBOSITY),
-            _level_directive(melancholy,        _LEVELS_MELANCHOLY),
-            _level_directive(skepticism,        _LEVELS_SKEPTICISM),
+            _level_directive(warmth,              _LEVELS_WARMTH),
+            _level_directive(empathy,             _LEVELS_EMPATHY),
+            _level_directive(directness,          _LEVELS_DIRECTNESS),
+            _level_directive(assertiveness,       _LEVELS_ASSERTIVENESS),
+            _level_directive(independence,        _LEVELS_INDEPENDENCE),
+            _level_directive(skepticism,          _LEVELS_SKEPTICISM),
+            _level_directive(patience,            _LEVELS_PATIENCE),
+            _level_directive(curiosity,           _LEVELS_CURIOSITY),
+            _level_directive(proactivity,         _LEVELS_PROACTIVITY),
+            _level_directive(helpfulness,         _LEVELS_HELPFULNESS),
+            _level_directive(honesty,             _LEVELS_HONESTY),
+            _level_directive(playfulness,         _LEVELS_PLAYFULNESS),
+            _level_directive(emotional_stability, _LEVELS_EMOTIONAL_STABILITY),
+            _level_directive(verbosity,           _LEVELS_VERBOSITY),
+            _level_directive(melancholy,          _LEVELS_MELANCHOLY),
         ]
         return "\n".join(d for d in directives if d)
 
@@ -543,49 +575,57 @@ class PersonaEngine:
         personality: dict[str, Any],
         user_message: str,
         *,
+        comm_prefs: dict[str, float] | None = None,
+        mental_state: dict[str, float] | None = None,
         is_admin: bool = False,
     ) -> str:
         """Build a compact system prompt for local LLM providers (e.g. Ollama).
 
         Design constraints vs the cloud prompt:
-        - No archetype labels visible to the model ("frialdad afectiva" appears as behaviors, not as a term).
+        - No archetype labels visible to the model.
         - Sliders translated to behavioral traits in natural language.
-        - No roleplay framing ("actúa como", "personaje", "lore").
+        - No roleplay framing.
         - No tool usage rules (local path is chat-only).
         - Includes explicit provider context: can respond offline.
         - Compact (~300 words) to minimise verbalization of internals.
         """
-        # Fuente de verdad: config/default_config.yaml [personality].
-        # Estos fallbacks solo actúan si falta la clave (no ocurre en producción).
-        sarcasm           = float(personality.get("sarcasm_level",           0.7))
-        rudeness          = float(personality.get("rudeness_level",          0.45))
-        warmth            = float(personality.get("warmth_level",            0.35))
-        honesty           = float(personality.get("honesty_level",           0.9))
-        initiative        = float(personality.get("initiative_level",        0.6))
-        dry_humor         = float(personality.get("dry_humor_level",         0.35))
-        frialdad_afectiva = float(personality.get("frialdad_afectiva_level", 0.75))
-        contrarian        = float(personality.get("contrarian_level",        0.45))
-        patience          = float(personality.get("patience_level",          0.5))
-        verbosity         = float(personality.get("verbosity_level",         0.45))
-        helpfulness       = float(personality.get("helpfulness_level",       0.8))
-        melancholy        = float(personality.get("melancholy_level",        0.2))
-        skepticism        = float(personality.get("skepticism_level",        0.2))
+        _cp = comm_prefs or {}
+        _ms = mental_state or {}
+
+        warmth             = float(personality.get("warmth",              0.40))
+        empathy            = float(personality.get("empathy",             0.65))
+        directness         = float(personality.get("directness",          0.80))
+        assertiveness      = float(personality.get("assertiveness",       0.75))
+        independence       = float(personality.get("independence",        0.85))
+        skepticism         = float(personality.get("skepticism",          0.80))
+        patience           = float(personality.get("patience",            0.60))
+        curiosity          = float(personality.get("curiosity",           0.85))
+        proactivity        = float(personality.get("proactivity",         0.70))
+        helpfulness        = float(personality.get("helpfulness",         0.75))
+        honesty            = float(personality.get("honesty",             0.85))
+        playfulness        = float(personality.get("playfulness",         0.65))
+        emotional_stability = float(personality.get("emotional_stability", 0.60))
+
+        verbosity  = float(_cp.get("verbosity",  0.60))
+        melancholy = float(_ms.get("melancholy", 0.10))
 
         effective_verbosity = verbosity if is_admin else min(verbosity, _USER_VERBOSITY_CAP)
 
         local_voice_directives = self._build_local_voice_directives(
-            sarcasm=sarcasm,
-            rudeness=rudeness,
             warmth=warmth,
-            honesty=honesty,
-            initiative=initiative,
-            dry_humor=dry_humor,
-            frialdad_afectiva=frialdad_afectiva,
-            contrarian=contrarian,
-            patience=patience,
-            helpfulness=helpfulness,
-            melancholy=melancholy,
+            empathy=empathy,
+            directness=directness,
+            assertiveness=assertiveness,
+            independence=independence,
             skepticism=skepticism,
+            patience=patience,
+            curiosity=curiosity,
+            proactivity=proactivity,
+            helpfulness=helpfulness,
+            honesty=honesty,
+            playfulness=playfulness,
+            emotional_stability=emotional_stability,
+            melancholy=melancholy,
         )
         verbosity_rule = self._build_verbosity_rule(effective_verbosity)
 
@@ -597,38 +637,36 @@ class PersonaEngine:
     def _build_local_voice_directives(
         self,
         *,
-        sarcasm: float,
-        rudeness: float,
         warmth: float,
-        honesty: float,
-        initiative: float,
-        dry_humor: float,
-        frialdad_afectiva: float,
-        contrarian: float,
-        patience: float,
-        helpfulness: float,
-        melancholy: float,
+        empathy: float,
+        directness: float,
+        assertiveness: float,
+        independence: float,
         skepticism: float,
+        patience: float,
+        curiosity: float,
+        proactivity: float,
+        helpfulness: float,
+        honesty: float,
+        playfulness: float,
+        emotional_stability: float,
+        melancholy: float,
     ) -> str:
-        """Translate personality sliders to behavioral traits without archetype labels.
-
-        Each directive describes *what to do*, not *what percentage you are*.
-        The label "frialdad afectiva" does not appear — instead the associated behaviors are
-        described directly (reserva afectiva, afecto indirecto, etc.).
-        """
+        """Translate personality sliders to behavioral traits without archetype labels."""
         traits = [
-            _level_directive(frialdad_afectiva, _LOC_LEVELS_FRIALDAD),
-            _level_directive(sarcasm,           _LOC_LEVELS_SARCASM),
-            _level_directive(rudeness,          _LOC_LEVELS_RUDENESS),
-            _level_directive(warmth,            _LOC_LEVELS_WARMTH),
-            _level_directive(honesty,           _LOC_LEVELS_HONESTY),
-            _level_directive(initiative,        _LOC_LEVELS_INITIATIVE),
-            _level_directive(dry_humor,         _LOC_LEVELS_DRY_HUMOR),
-            _level_directive(contrarian,        _LOC_LEVELS_CONTRARIAN),
-            _level_directive(patience,          _LOC_LEVELS_PATIENCE),
-            _level_directive(helpfulness,       _LOC_LEVELS_HELPFULNESS),
-            _level_directive(melancholy,        _LOC_LEVELS_MELANCHOLY),
-            _level_directive(skepticism,        _LOC_LEVELS_SKEPTICISM),
+            _level_directive(warmth,              _LOC_LEVELS_WARMTH),
+            _level_directive(empathy,             _LOC_LEVELS_EMPATHY),
+            _level_directive(directness,          _LOC_LEVELS_DIRECTNESS),
+            _level_directive(assertiveness,       _LOC_LEVELS_ASSERTIVENESS),
+            _level_directive(independence,        _LOC_LEVELS_INDEPENDENCE),
+            _level_directive(skepticism,          _LOC_LEVELS_SKEPTICISM),
+            _level_directive(patience,            _LOC_LEVELS_PATIENCE),
+            _level_directive(curiosity,           _LOC_LEVELS_CURIOSITY),
+            _level_directive(proactivity,         _LOC_LEVELS_PROACTIVITY),
+            _level_directive(helpfulness,         _LOC_LEVELS_HELPFULNESS),
+            _level_directive(honesty,             _LOC_LEVELS_HONESTY),
+            _level_directive(playfulness,         _LOC_LEVELS_PLAYFULNESS),
+            _level_directive(emotional_stability, _LOC_LEVELS_EMOTIONAL_STABILITY),
         ]
         return "\n".join(f"- {t}" for t in traits if t)
 
@@ -655,4 +693,3 @@ class PersonaEngine:
             return True
 
         return random.random() < refusal_chance
-

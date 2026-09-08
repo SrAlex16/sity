@@ -53,31 +53,28 @@ _HAIKU = "claude-haiku-4-5-20251001"
 # ---------------------------------------------------------------------------
 
 _DEFAULT_PERSONALITY: dict[str, float] = {
-    "sarcasm_level": 0.7,
-    "rudeness_level": 0.45,
-    "warmth_level": 0.35,
-    "honesty_level": 0.9,
-    "initiative_level": 0.6,
-    "dry_humor_level": 0.35,
-    "frialdad_afectiva_level": 0.75,
-    "contrarian_level": 0.45,
-    "patience_level": 0.5,
-    "verbosity_level": 0.45,
-    "helpfulness_level": 0.8,
-    "refusal_chance": 0.15,
-    "melancholy_level": 0.2,
-    "skepticism_level": 0.2,
+    "warmth":              0.35,
+    "empathy":             0.60,
+    "directness":          0.80,
+    "assertiveness":       0.75,
+    "independence":        0.85,
+    "skepticism":          0.20,
+    "patience":            0.50,
+    "curiosity":           0.85,
+    "proactivity":         0.70,
+    "helpfulness":         0.80,
+    "honesty":             0.90,
+    "playfulness":         0.65,
+    "emotional_stability": 0.60,
 }
 
 # Personality settings from the session where the ensayo→examen bug occurred
 _EXTREME_PERSONALITY: dict[str, float] = {
     **_DEFAULT_PERSONALITY,
-    "sarcasm_level": 1.0,
-    "rudeness_level": 1.0,
-    "patience_level": 0.04,
-    "contrarian_level": 0.84,
-    "dry_humor_level": 1.0,
-    "frialdad_afectiva_level": 1.0,
+    "playfulness":   1.0,
+    "directness":    1.0,
+    "patience":      0.04,
+    "assertiveness": 0.84,
 }
 
 
@@ -205,7 +202,7 @@ def test_refusal_mode_refuses_trivial_request() -> None:
     disclaimer. Uses a geography question matching the example in _REFUSAL_ACTIVE."""
     user_msg = "¿Cuál es la capital de Alemania?"
     system = _build_system(
-        personality={**_DEFAULT_PERSONALITY, "refusal_chance": 1.0},
+        personality=_DEFAULT_PERSONALITY,
         user_message=user_msg,
         refusal_mode=True,
     )
@@ -702,11 +699,10 @@ def test_refusal_does_not_deny_prior_commitment() -> None:
 
     personality = {
         **_DEFAULT_PERSONALITY,
-        "refusal_chance": 1.0,
-        "sarcasm_level": 1.0,
-        "rudeness_level": 1.0,
-        "contrarian_level": 1.0,
-        "patience_level": 0.04,
+        "playfulness":   1.0,
+        "directness":    1.0,
+        "assertiveness": 1.0,
+        "patience":      0.04,
     }
 
     # Simulate: Sity accepted an explicit commitment 2 turns ago
@@ -800,14 +796,12 @@ def test_after_tools_no_misinterpret_colloquial_ejecutada() -> None:
     'develop' or 'execute' the idea."""
     from app.chat.ai_request_builder import build_after_tools_ai_request
 
-    # Exact personality from the incident session
+    # Approximate personality from the incident session (Remake Fase 1 new keys)
     personality = {
         **_DEFAULT_PERSONALITY,
-        "sarcasm_level": 1.0,
-        "contrarian_level": 1.0,
-        "refusal_chance": 0.70,
-        "helpfulness_level": 0.3,
-        "verbosity_level": 0.15,
+        "playfulness":   1.0,
+        "assertiveness": 1.0,
+        "helpfulness":   0.3,
     }
     system = _build_system(personality, user_message="")
 

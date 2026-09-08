@@ -278,7 +278,7 @@ class TestUpdatePersonalitySettings:
     def test_invalid_operation_skipped(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "explode", "value": 0.73}]},
+            tool_input={"updates": [{"parameter": "playfulness", "operation": "explode", "value": 0.73}]},
             trace_id="trc",
         )
         assert result.ok is False
@@ -288,7 +288,7 @@ class TestUpdatePersonalitySettings:
     def test_non_numeric_value_skipped(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": "alto"}]},
+            tool_input={"updates": [{"parameter": "playfulness", "operation": "set_absolute", "value": "alto"}]},
             trace_id="trc",
         )
         assert result.ok is False
@@ -298,7 +298,7 @@ class TestUpdatePersonalitySettings:
     def test_value_above_range_skipped(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 1.5}]},
+            tool_input={"updates": [{"parameter": "playfulness", "operation": "set_absolute", "value": 1.5}]},
             trace_id="trc",
         )
         assert result.ok is False
@@ -308,7 +308,7 @@ class TestUpdatePersonalitySettings:
     def test_value_below_range_skipped(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": -0.1}]},
+            tool_input={"updates": [{"parameter": "playfulness", "operation": "set_absolute", "value": -0.1}]},
             trace_id="trc",
         )
         assert result.ok is False
@@ -317,8 +317,8 @@ class TestUpdatePersonalitySettings:
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
             tool_input={"updates": [
-                {"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.3},
-                {"parameter": "warmth_level", "operation": "set_absolute", "value": 0.7},
+                {"parameter": "playfulness", "operation": "set_absolute", "value": 0.3},
+                {"parameter": "warmth", "operation": "set_absolute", "value": 0.7},
             ]},
             trace_id="trc",
         )
@@ -328,11 +328,11 @@ class TestUpdatePersonalitySettings:
     def test_valid_single_update_success(self, db_session: Session):
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.73}]},
+            tool_input={"updates": [{"parameter": "playfulness", "operation": "set_absolute", "value": 0.73}]},
             trace_id="trc",
         )
         assert result.ok is True
-        assert "sarcasm_level" in result.updated_parameters
+        assert "playfulness" in result.updated_parameters
 
 
 # ---------------------------------------------------------------------------
@@ -343,72 +343,72 @@ class TestCoercePersonalityToolInput:
     """The model sometimes sends {param: value} flat dicts instead of {updates:[...]}."""
 
     def test_already_structured_passthrough(self):
-        structured = {"updates": [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.6}], "reason": "ok"}
+        structured = {"updates": [{"parameter": "playfulness", "operation": "set_absolute", "value": 0.6}], "reason": "ok"}
         assert ToolExecutor._coerce_personality_tool_input(structured) is structured
 
     def test_flat_dict_0_100_scale_converted(self):
-        """Values in 0-100 scale (as sent during the real bug) are normalized to 0-1."""
+        """Values in 0-100 scale are normalized to 0-1 using new canonical param names."""
         result = ToolExecutor._coerce_personality_tool_input({
-            "sarcasm_level": "60",
-            "warmth_level": "75",
-            "helpfulness_level": "50",
+            "playfulness": "60",
+            "warmth": "75",
+            "helpfulness": "50",
         })
         assert "updates" in result
         params = {u["parameter"]: u["value"] for u in result["updates"]}
-        assert abs(params["sarcasm_level"] - 0.6) < 1e-9
-        assert abs(params["warmth_level"] - 0.75) < 1e-9
-        assert abs(params["helpfulness_level"] - 0.5) < 1e-9
+        assert abs(params["playfulness"] - 0.6) < 1e-9
+        assert abs(params["warmth"] - 0.75) < 1e-9
+        assert abs(params["helpfulness"] - 0.5) < 1e-9
         assert all(u["operation"] == "set_absolute" for u in result["updates"])
 
     def test_updates_as_json_string_with_full_names(self):
-        """Regression trc_946f91700bb9: updates is a JSON-encoded string of a dict."""
+        """Regression: updates is a JSON-encoded string of a dict with canonical param names."""
         result = ToolExecutor._coerce_personality_tool_input({
-            "updates": '{\n  "sarcasm_level": 60,\n  "warmth_level": 75,\n  "helpfulness_level": 50\n}',
+            "updates": '{\n  "playfulness": 60,\n  "warmth": 75,\n  "helpfulness": 50\n}',
         })
         assert "updates" in result
         params = {u["parameter"]: u["value"] for u in result["updates"]}
-        assert abs(params["sarcasm_level"] - 0.6) < 1e-9
-        assert abs(params["warmth_level"] - 0.75) < 1e-9
-        assert abs(params["helpfulness_level"] - 0.5) < 1e-9
+        assert abs(params["playfulness"] - 0.6) < 1e-9
+        assert abs(params["warmth"] - 0.75) < 1e-9
+        assert abs(params["helpfulness"] - 0.5) < 1e-9
 
-    def test_updates_as_json_string_with_short_names(self):
-        """Regression trc_1dcaadfca792: updates is a JSON string with short param names."""
+    def test_updates_as_json_string_with_canonical_names(self):
+        """JSON string updates using canonical new param names (no _level suffix) must succeed."""
         result = ToolExecutor._coerce_personality_tool_input({
-            "updates": '{"sarcasm": 60, "warmth": 75, "helpfulness": 50}',
+            "updates": '{"playfulness": 60, "warmth": 75, "helpfulness": 50}',
         })
         assert "updates" in result
         params = {u["parameter"]: u["value"] for u in result["updates"]}
-        assert abs(params["sarcasm_level"] - 0.6) < 1e-9
-        assert abs(params["warmth_level"] - 0.75) < 1e-9
-        assert abs(params["helpfulness_level"] - 0.5) < 1e-9
+        assert abs(params["playfulness"] - 0.6) < 1e-9
+        assert abs(params["warmth"] - 0.75) < 1e-9
+        assert abs(params["helpfulness"] - 0.5) < 1e-9
 
     def test_updates_as_json_string_list_passthrough(self):
         """If the JSON string parses to a list, use it directly."""
-        canonical = [{"parameter": "sarcasm_level", "operation": "set_absolute", "value": 0.6}]
+        canonical = [{"parameter": "playfulness", "operation": "set_absolute", "value": 0.6}]
         import json
         result = ToolExecutor._coerce_personality_tool_input({"updates": json.dumps(canonical)})
         assert result["updates"] == canonical
 
-    def test_short_name_aliases_in_flat_dict(self):
-        """Flat dict with short names (sarcasm, warmth) resolves to full param names."""
-        result = ToolExecutor._coerce_personality_tool_input({"sarcasm": 0.6, "warmth": 0.75})
+    def test_flat_dict_canonical_param_names(self):
+        """Flat dict with canonical param names (no suffix) produces correct update entries."""
+        result = ToolExecutor._coerce_personality_tool_input({"playfulness": 0.6, "warmth": 0.75})
         params = {u["parameter"] for u in result["updates"]}
-        assert "sarcasm_level" in params
-        assert "warmth_level" in params
+        assert "playfulness" in params
+        assert "warmth" in params
 
     def test_flat_dict_0_1_scale_not_divided(self):
         """Values already in 0-1 range are NOT divided by 100."""
-        result = ToolExecutor._coerce_personality_tool_input({"sarcasm_level": 0.6})
+        result = ToolExecutor._coerce_personality_tool_input({"playfulness": 0.6})
         assert "updates" in result
         assert abs(result["updates"][0]["value"] - 0.6) < 1e-9
 
     def test_flat_dict_ignores_unknown_keys(self):
         result = ToolExecutor._coerce_personality_tool_input({
-            "sarcasm_level": 0.5,
+            "playfulness": 0.5,
             "nonexistent_field": 99,
         })
         params = [u["parameter"] for u in result["updates"]]
-        assert "sarcasm_level" in params
+        assert "playfulness" in params
         assert "nonexistent_field" not in params
 
     def test_no_valid_params_returns_unchanged(self):
@@ -417,42 +417,42 @@ class TestCoercePersonalityToolInput:
         assert result is bad
 
     def test_real_bug_flat_dict_executes_successfully(self, db_session: Session):
-        """Regression trc_820089cba3da: flat dict with string values must succeed."""
+        """Flat dict with canonical param names and string values must succeed end-to-end."""
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
             tool_input={
-                "sarcasm_level": "60",
-                "warmth_level": "75",
-                "helpfulness_level": "50",
+                "playfulness": "60",
+                "warmth": "75",
+                "helpfulness": "50",
             },
             trace_id="trc_regression",
         )
         assert result.ok is True
-        assert "sarcasm_level" in result.updated_parameters
-        assert "warmth_level" in result.updated_parameters
-        assert "helpfulness_level" in result.updated_parameters
+        assert "playfulness" in result.updated_parameters
+        assert "warmth" in result.updated_parameters
+        assert "helpfulness" in result.updated_parameters
 
     def test_real_bug_json_string_updates_executes_successfully(self, db_session: Session):
-        """Regression trc_946f91700bb9: updates as JSON string dict must succeed."""
+        """updates as JSON string dict with canonical names must succeed end-to-end."""
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": '{\n  "sarcasm_level": 60,\n  "warmth_level": 75,\n  "helpfulness_level": 50\n}'},
-            trace_id="trc_946f91700bb9_regression",
+            tool_input={"updates": '{\n  "playfulness": 60,\n  "warmth": 75,\n  "helpfulness": 50\n}'},
+            trace_id="trc_regression_json_string",
         )
         assert result.ok is True
-        assert "sarcasm_level" in result.updated_parameters
+        assert "playfulness" in result.updated_parameters
 
-    def test_real_bug_json_string_short_names_executes_successfully(self, db_session: Session):
-        """Regression trc_1dcaadfca792: JSON string with short names must succeed."""
+    def test_real_bug_json_string_canonical_names_executes_successfully(self, db_session: Session):
+        """JSON string with canonical param names (no suffix) must succeed end-to-end."""
         executor = ToolExecutor(db_session)
         result = executor._update_personality_settings(
-            tool_input={"updates": '{"sarcasm": 60, "warmth": 75, "helpfulness": 50}'},
-            trace_id="trc_1dcaadfca792_regression",
+            tool_input={"updates": '{"playfulness": 60, "warmth": 75, "helpfulness": 50}'},
+            trace_id="trc_regression_canonical",
         )
         assert result.ok is True
-        assert "sarcasm_level" in result.updated_parameters
-        assert "warmth_level" in result.updated_parameters
-        assert "helpfulness_level" in result.updated_parameters
+        assert "playfulness" in result.updated_parameters
+        assert "warmth" in result.updated_parameters
+        assert "helpfulness" in result.updated_parameters
 
 
 # ---------------------------------------------------------------------------

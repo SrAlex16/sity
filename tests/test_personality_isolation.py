@@ -22,19 +22,22 @@ from helpers import make_admin_token, make_user_token
 # Helpers
 # ---------------------------------------------------------------------------
 
-_ADJUST_SARCASM = {
-    "parameter": "sarcasm_level",
+_ADJUST_PLAYFULNESS = {
+    "parameter": "playfulness",
     "operation": "set_absolute",
     "amount": 0.77,
     "source": "test",
 }
 
 _ADJUST_WARMTH = {
-    "parameter": "warmth_level",
+    "parameter": "warmth",
     "operation": "set_absolute",
     "amount": 0.88,
     "source": "test",
 }
+
+# Alias for backward compat within this test module
+_ADJUST_SARCASM = _ADJUST_PLAYFULNESS
 
 
 def _fresh_guest_cookie() -> str:
@@ -67,16 +70,16 @@ def test_two_guest_sessions_are_isolated() -> None:
     cookie_b = _fresh_guest_cookie()
 
     with _guest_client(cookie_a) as a, _guest_client(cookie_b) as b:
-        baseline = b.get("/settings/personality").json()["sarcasm_level"]
+        baseline = b.get("/settings/personality").json()["playfulness"]
 
         r = a.post("/settings/personality/adjust", json=_ADJUST_SARCASM)
         assert r.status_code == 200
         assert r.json()["new_value"] == pytest.approx(0.77)
 
         # A sees its own value
-        assert a.get("/settings/personality").json()["sarcasm_level"] == pytest.approx(0.77)
+        assert a.get("/settings/personality").json()["playfulness"] == pytest.approx(0.77)
         # B still sees the original global value
-        assert b.get("/settings/personality").json()["sarcasm_level"] == pytest.approx(baseline)
+        assert b.get("/settings/personality").json()["playfulness"] == pytest.approx(baseline)
 
 
 def test_user_and_guest_sessions_are_isolated() -> None:
@@ -84,13 +87,13 @@ def test_user_and_guest_sessions_are_isolated() -> None:
     cookie_g = _fresh_guest_cookie()
 
     with _user_client() as u, _guest_client(cookie_g) as g:
-        baseline = g.get("/settings/personality").json()["warmth_level"]
+        baseline = g.get("/settings/personality").json()["warmth"]
 
         r = u.post("/settings/personality/adjust", json=_ADJUST_WARMTH)
         assert r.status_code == 200
 
-        assert u.get("/settings/personality").json()["warmth_level"] == pytest.approx(0.88)
-        assert g.get("/settings/personality").json()["warmth_level"] == pytest.approx(baseline)
+        assert u.get("/settings/personality").json()["warmth"] == pytest.approx(0.88)
+        assert g.get("/settings/personality").json()["warmth"] == pytest.approx(baseline)
 
 
 # ---------------------------------------------------------------------------
@@ -119,15 +122,15 @@ def test_reset_removes_session_overrides() -> None:
     from app.settings.settings_service import CANONICAL_PERSONALITY
 
     cookie = _fresh_guest_cookie()
-    global_sarcasm = CANONICAL_PERSONALITY["sarcasm_level"]
+    global_sarcasm = CANONICAL_PERSONALITY["playfulness"]
 
     with _guest_client(cookie) as c:
         c.post("/settings/personality/adjust", json=_ADJUST_SARCASM)
-        assert c.get("/settings/personality").json()["sarcasm_level"] == pytest.approx(0.77)
+        assert c.get("/settings/personality").json()["playfulness"] == pytest.approx(0.77)
 
         r = c.post("/settings/personality/reset")
         assert r.status_code == 200
-        assert c.get("/settings/personality").json()["sarcasm_level"] == pytest.approx(global_sarcasm)
+        assert c.get("/settings/personality").json()["playfulness"] == pytest.approx(global_sarcasm)
 
 
 def test_reset_does_not_affect_other_sessions() -> None:
@@ -143,11 +146,11 @@ def test_reset_does_not_affect_other_sessions() -> None:
 
         # A is back to global
         from app.settings.settings_service import CANONICAL_PERSONALITY
-        assert a.get("/settings/personality").json()["sarcasm_level"] == pytest.approx(
-            CANONICAL_PERSONALITY["sarcasm_level"]
+        assert a.get("/settings/personality").json()["playfulness"] == pytest.approx(
+            CANONICAL_PERSONALITY["playfulness"]
         )
         # B retains its override
-        assert b.get("/settings/personality").json()["sarcasm_level"] == pytest.approx(0.77)
+        assert b.get("/settings/personality").json()["playfulness"] == pytest.approx(0.77)
 
 
 # ---------------------------------------------------------------------------

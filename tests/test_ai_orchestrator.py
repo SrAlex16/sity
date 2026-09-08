@@ -101,7 +101,9 @@ def _make_ctx(*, ai_config: dict | None = None) -> MagicMock:
     ctx = MagicMock(spec=TurnContext)
     ctx.trace_id = "trc_test"
     ctx.session_id = "default"
-    ctx.personality = {"verbosity_level": 0.5}
+    ctx.personality = {"warmth": 0.4}
+    ctx.comm_prefs = {"verbosity": 0.5}
+    ctx.mental_state = {}
     ctx.max_tokens = 1500
     ctx.daily_budget = 1_000_000
     ctx.warning_threshold = 0.80
@@ -113,7 +115,8 @@ def _make_ctx(*, ai_config: dict | None = None) -> MagicMock:
     persistence.tag_sity_with_model = MagicMock()
     ctx.persistence = persistence
     ctx.settings_service = MagicMock()
-    ctx.settings_service.get_personality.return_value = {"verbosity_level": 0.5}
+    ctx.settings_service.get_personality.return_value = {"warmth": 0.4}
+    ctx.settings_service.get_comm_prefs.return_value = {"verbosity": 0.5}
     return ctx
 
 
@@ -422,11 +425,11 @@ def test_after_tools_config_block_takes_priority_over_historical_data() -> None:
     take priority over any historical data found in search results.
 
     Regression for the '50%' hallucination: model found 80 historical fragments
-    with stale refusal_chance=0.5 and trusted those over the current config.
+    with a stale parameter value and trusted those over the current config.
     """
     from app.core.message_classifier import build_verified_config_block
 
-    block = build_verified_config_block({"refusal_chance": 1.0})
+    block = build_verified_config_block({"playfulness": 1.0})
     full_prompt = "sys\n" + block
 
     assert "historial" in full_prompt or "histórico" in full_prompt, (
