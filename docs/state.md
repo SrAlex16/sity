@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-08 (Operación Remake Fase 1 — sistema de 13 rasgos de personalidad).
+Última actualización: 2026-09-09 (Operación Remake Fase 2 — cognición por turno, sistema de metas con ciclo de vida completo).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -11,6 +11,7 @@ el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
 Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
 Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-memory.md.
 Para el nuevo sistema de personalidad (Remake Fase 1) ver docs/remake/fase-1-personalidad.md.
+Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/fase-2-appraisal-goals.md.
 
 ## Infraestructura activa
 
@@ -82,6 +83,20 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-09)
+
+- **Operación Remake Fase 2 — cognición por turno y sistema de metas (commits `6027689`–`3d1f527`).**
+  Dos Haiku calls por turno (Perception + Appraisal) para sesiones `user:`. Perception clasifica
+  el mensaje en 5 dimensiones (`user_intent`, `tone`, `challenge`, `social_signal`, `novelty`).
+  Appraisal produce deltas de MentalState + operaciones sobre metas. Sistema de metas persistente
+  con tablas `Goal` + `GoalMilestone`, priorización dinámica (`effective_priority = 0.6*base + 0.4*boost*irony`),
+  excepción de seguridad `is_wellbeing` (código, no prompt), y tres mecanismos de cierre:
+  Appraisal explícito (`resolved`/`abandoned`), logout explícito (`abandoned` inmediato vía
+  `resolve_short_term_goals_on_logout()`), y auto-expiración a 24h (`expired`, red de seguridad).
+  Metas de alta prioridad (≥ 0.5, top 3) inyectadas en Expression. Metas long_term en contexto
+  de Initiative. 137 tests en `test_cognition.py` + regresión en `test_auth.py`. CI verde en HEAD.
+  Ver `docs/remake/fase-2-appraisal-goals.md` para documentación completa.
 
 ## Completado recientemente (2026-09-08)
 

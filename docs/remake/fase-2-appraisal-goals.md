@@ -144,21 +144,31 @@ Transiciones válidas desde `"active"`:
 
 ```
 active → resolved   (Appraisal detecta logro claro; sets resolved_at)
-active → abandoned  (Appraisal detecta renuncia explícita del usuario)
-active → expired    (auto-expiración de short_term al inicio del siguiente turno)
+active → abandoned  (Appraisal detecta renuncia explícita, o logout explícito del usuario)
+active → expired    (auto-expiración de short_term al inicio del siguiente turno — red de seguridad)
 ```
 
 Ninguna transición devuelve a `"active"`. La capa DB lo garantiza: `apply_goal_state_changes`
 solo actúa sobre goals con `status == "active"`.
 
-### Resolución automática de short_term
+### Cierre por logout explícito (mecanismo primario para short_term)
+
+`resolve_short_term_goals_on_logout(session, user_id)` en `goal_service.py` se llama desde
+`POST /auth/logout` (routes_auth.py) inmediatamente antes de limpiar la cookie. Marca como
+`"abandoned"` todas las metas `short_term` con `status == "active"` del usuario.
+
+Se usa `"abandoned"` (no `"resolved"`) porque el cierre de sesión no confirma que las metas
+se cumplieron — solo que la sesión terminó. `"expired"` queda reservado para expiración
+automática por tiempo (mecanismo secundario).
+
+### Resolución automática de short_term (red de seguridad)
 
 `resolve_expired_short_term_goals(session, user_id, *, max_age_hours=24)` se llama al inicio
 de cada `run_cognition_turn`, antes de cargar los goals activos. Marca como `"expired"` las
-metas `short_term` con `created_at < utc_now() - max_age_hours`. Esto cierra automáticamente
-metas de sesión que Appraisal no cerró explícitamente.
+metas `short_term` con `created_at < utc_now() - max_age_hours`. Cubre el caso de sesiones
+que terminan sin logout explícito (JWT expirado, pestaña cerrada).
 
-`"expired"` es distinto de `"abandoned"`: indica expiración automática, no renuncia del usuario.
+`"expired"` es distinto de `"abandoned"`: indica expiración automática, no acción del usuario.
 
 ---
 
@@ -225,17 +235,20 @@ corto plazo son demasiado efímeras para influir en si Sity debe iniciar convers
 | `backend/app/cognition/turn_cognition.py` | creado                                                  |
 | `backend/app/chat/turn_runner.py`         | +run_cognition_turn, +goals block injection             |
 | `backend/app/initiative/evaluator.py`     | +_get_active_long_term_goals, +goals en contexto Haiku  |
+| `backend/app/api/routes_auth.py`          | logout() llama resolve_short_term_goals_on_logout()     |
 | `tests/test_cognition.py`                 | creado — 137 tests                                      |
+| `tests/test_auth.py`                      | +test_logout_closes_short_term_goals_immediately        |
 | `tests/test_behavior_regression.py`       | +test_security_wellbeing_priority_not_reduced_by_irony  |
 
 ---
 
 ## 10. Commits
 
-| Hash      | Descripción                                                |
-|-----------|------------------------------------------------------------|
-| `6027689` | Paso 1 — Goal table + Perception + Appraisal + 41 tests   |
-| `f7c4a2a` | Paso 2 — Priorización dinámica + excepción is_wellbeing   |
-| `b1efc1c` | Paso 3 — GoalService + pipeline + Expression/Initiative   |
-| `5811080` | Paso 4 Part 1 — GoalMilestone table + state machine       |
-| `(actual)`| Paso 4 Parts 2-4 — hitos + expiración + documentación     |
+| Hash      | Descripción                                                          |
+|-----------|----------------------------------------------------------------------|
+| `6027689` | Paso 1 — Goal table + Perception + Appraisal + 41 tests             |
+| `f7c4a2a` | Paso 2 — Priorización dinámica + excepción is_wellbeing             |
+| `b1efc1c` | Paso 3 — GoalService + pipeline + Expression/Initiative             |
+| `5811080` | Paso 4 Part 1 — GoalMilestone table + state machine                 |
+| `279784c` | Paso 4 Parts 2-4 — hitos + auto-expiración 24h + documentación     |
+| `3d1f527` | Ajuste — cierre primario por logout (resolve_short_term_on_logout)  |
