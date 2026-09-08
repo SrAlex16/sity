@@ -1,4 +1,4 @@
-"""Tests for Operación Remake Fase 2 — Perception, Appraisal, Goal model.
+"""Tests for Operación Remake Fase 2 — Perception, Appraisal, Goal model, Goal priority.
 
 Paso 1 properties:
 1.  Perception returns PerceptionResult.neutral() when the mock provider returns non-JSON.
@@ -19,6 +19,23 @@ Paso 1 properties:
 16. Goal is_wellbeing flag stored and retrievable.
 17. GoalUpdateIntent with is_wellbeing=True parsed correctly by _parse_goal_update.
 18. GoalUpdateIntent with unknown scope defaults to "short_term".
+
+Paso 2 properties — Goal priority (structural, no model call needed):
+19. _irony_factor: is_wellbeing=True always returns 1.0 regardless of tone.
+20. _irony_factor: is_wellbeing=True with tone="ironic" returns 1.0 (explicit bypass).
+21. _irony_factor: is_wellbeing=True with tone="playful" returns 1.0 (explicit bypass).
+22. _irony_factor: is_wellbeing=False with tone="ironic" returns < 1.0 (irony reduces boost).
+23. _irony_factor: is_wellbeing=False with tone="neutral" returns 1.0 (no reduction).
+24. _irony_factor: is_wellbeing=False with tone="serious" returns 1.0 (no reduction).
+25. compute_effective_priority: wellbeing + ironic == wellbeing + neutral (key invariant).
+26. compute_effective_priority: non-wellbeing + ironic < non-wellbeing + neutral.
+27. compute_effective_priority: wellbeing + ironic >= non-wellbeing + ironic (same inputs).
+28. compute_effective_priority: formula correctness — verify weighted average.
+29. compute_effective_priority: result clamped to [0, 1] for edge inputs.
+30. Appraisal parses goal_relevance from JSON correctly.
+31. Appraisal zero() has empty goal_relevance list.
+32. run_appraisal with active_goals=None returns empty goal_relevance (backward compat).
+33. _parse_goal_relevance rejects invalid data gracefully.
 """
 from __future__ import annotations
 
@@ -31,11 +48,20 @@ from sqlmodel import Session, select
 
 from app.cognition.appraisal import (
     AppraisalResult,
+    GoalRelevance,
     GoalUpdateIntent,
     _parse_appraisal,
+    _parse_goal_relevance,
     _parse_goal_update,
     apply_appraisal_to_mental_state,
     run_appraisal,
+)
+from app.cognition.goal_priority import (
+    BASE_WEIGHT,
+    BOOST_WEIGHT,
+    IRONY_REDUCTION_STRENGTH,
+    _irony_factor,
+    compute_effective_priority,
 )
 from app.cognition.perception import (
     PerceptionResult,
@@ -634,3 +660,216 @@ class TestGoalModel:
         assert origins["Suggested"] == "user_suggested"
 
         self._cleanup(db_session, self._UID_A)
+
+
+# ---------------------------------------------------------------------------
+# Paso 2 — Goal priority: structural security exception tests
+# ---------------------------------------------------------------------------
+
+class TestIronyFactor:
+    """Unit tests for _irony_factor — the security exception lives here."""
+
+    # SECURITY: wellbeing goals ignore irony UNCONDITIONALLY
+    def test_wellbeing_neutral_returns_1(self):
+        assert _irony_factor("neutral", is_wellbeing=True) == pytest.approx(1.0)
+
+    def test_wellbeing_ironic_returns_1(self):
+        # Key security property: even with strongest irony signal, wellbeing = 1.0
+        assert _irony_factor("ironic", is_wellbeing=True) == pytest.approx(1.0)
+
+    def test_wellbeing_playful_returns_1(self):
+        assert _irony_factor("playful", is_wellbeing=True) == pytest.approx(1.0)
+
+    def test_wellbeing_serious_returns_1(self):
+        assert _irony_factor("serious", is_wellbeing=True) == pytest.approx(1.0)
+
+    def test_wellbeing_hostile_returns_1(self):
+        assert _irony_factor("hostile", is_wellbeing=True) == pytest.approx(1.0)
+
+    def test_wellbeing_joke_returns_1(self):
+        # Guard against unexpected model output
+        assert _irony_factor("joke", is_wellbeing=True) == pytest.approx(1.0)
+
+    # Non-wellbeing: irony DOES reduce the factor
+    def test_non_wellbeing_ironic_less_than_1(self):
+        f = _irony_factor("ironic", is_wellbeing=False)
+        assert f < 1.0
+        # With _IRONY_SCORES["ironic"]=0.9 and IRONY_REDUCTION_STRENGTH=0.8:
+        # expected = 1.0 - 0.9 * 0.8 = 1.0 - 0.72 = 0.28
+        assert f == pytest.approx(1.0 - 0.9 * IRONY_REDUCTION_STRENGTH)
+
+    def test_non_wellbeing_playful_reduced(self):
+        f = _irony_factor("playful", is_wellbeing=False)
+        assert f < 1.0
+        assert f == pytest.approx(1.0 - 0.5 * IRONY_REDUCTION_STRENGTH)
+
+    def test_non_wellbeing_neutral_returns_1(self):
+        # Neutral tone: no irony penalty
+        assert _irony_factor("neutral", is_wellbeing=False) == pytest.approx(1.0)
+
+    def test_non_wellbeing_serious_returns_1(self):
+        assert _irony_factor("serious", is_wellbeing=False) == pytest.approx(1.0)
+
+    def test_non_wellbeing_unknown_tone_returns_1(self):
+        # Unknown tones are treated as no irony signal
+        assert _irony_factor("UNKNOWN_TONE_XYZ", is_wellbeing=False) == pytest.approx(1.0)
+
+
+class TestComputeEffectivePriority:
+    """Tests for the effective priority formula and security invariants."""
+
+    def test_formula_no_irony(self):
+        # With neutral tone: irony_factor=1.0, formula = BASE*base + BOOST*boost
+        base = 0.6
+        boost = 0.8
+        expected = BASE_WEIGHT * base + BOOST_WEIGHT * boost
+        result = compute_effective_priority(base, boost, "neutral", False)
+        assert result == pytest.approx(expected)
+
+    def test_formula_with_irony_non_wellbeing(self):
+        base = 0.6
+        boost = 0.8
+        irony_f = 1.0 - 0.9 * IRONY_REDUCTION_STRENGTH  # tone="ironic"
+        expected = BASE_WEIGHT * base + BOOST_WEIGHT * (boost * irony_f)
+        result = compute_effective_priority(base, boost, "ironic", False)
+        assert result == pytest.approx(expected)
+
+    # KEY SECURITY INVARIANT: wellbeing + ironic == wellbeing + neutral
+    def test_wellbeing_ironic_equals_neutral(self):
+        base, boost = 0.7, 0.8
+        p_ironic = compute_effective_priority(base, boost, "ironic", is_wellbeing=True)
+        p_neutral = compute_effective_priority(base, boost, "neutral", is_wellbeing=True)
+        assert p_ironic == pytest.approx(p_neutral), (
+            "SECURITY VIOLATION: wellbeing goal priority differs between ironic and neutral tone. "
+            "The is_wellbeing bypass is broken."
+        )
+
+    # KEY SECURITY INVARIANT: wellbeing + ironic >= non-wellbeing + ironic
+    def test_wellbeing_ironic_ge_non_wellbeing_ironic(self):
+        base, boost = 0.7, 0.8
+        p_wellbeing = compute_effective_priority(base, boost, "ironic", is_wellbeing=True)
+        p_non_wellbeing = compute_effective_priority(base, boost, "ironic", is_wellbeing=False)
+        assert p_wellbeing >= p_non_wellbeing, (
+            "SECURITY VIOLATION: wellbeing goal has lower effective priority than non-wellbeing "
+            "goal under same ironic tone. The is_wellbeing bypass is broken."
+        )
+
+    def test_non_wellbeing_ironic_lt_neutral(self):
+        # For non-wellbeing goals, ironic tone MUST reduce priority below neutral
+        base, boost = 0.5, 0.9
+        p_ironic = compute_effective_priority(base, boost, "ironic", is_wellbeing=False)
+        p_neutral = compute_effective_priority(base, boost, "neutral", is_wellbeing=False)
+        assert p_ironic < p_neutral
+
+    def test_clamps_at_1(self):
+        # Even with base=1.0 and boost=1.0, result is clamped to 1.0
+        result = compute_effective_priority(1.0, 1.0, "neutral", False)
+        assert result == pytest.approx(1.0)
+
+    def test_clamps_at_0(self):
+        result = compute_effective_priority(0.0, 0.0, "neutral", False)
+        assert result == pytest.approx(0.0)
+
+    def test_base_weight_preserved_when_zero_boost(self):
+        # When relevance_boost=0, effective = BASE_WEIGHT * base_importance
+        base = 0.8
+        result = compute_effective_priority(base, 0.0, "neutral", False)
+        assert result == pytest.approx(BASE_WEIGHT * base)
+
+    def test_wellbeing_playful_equals_neutral(self):
+        base, boost = 0.5, 0.6
+        p_playful = compute_effective_priority(base, boost, "playful", is_wellbeing=True)
+        p_neutral = compute_effective_priority(base, boost, "neutral", is_wellbeing=True)
+        assert p_playful == pytest.approx(p_neutral)
+
+    def test_different_base_importance_respected(self):
+        # Higher base_importance → higher effective priority, all else equal
+        p_high = compute_effective_priority(0.9, 0.5, "neutral", False)
+        p_low = compute_effective_priority(0.3, 0.5, "neutral", False)
+        assert p_high > p_low
+
+
+# ---------------------------------------------------------------------------
+# Paso 2 — Appraisal: goal_relevance parsing
+# ---------------------------------------------------------------------------
+
+class TestAppraisalGoalRelevance:
+    def test_parses_goal_relevance(self):
+        raw = json.dumps({
+            "interest_delta": 0.1,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.01,
+            "goal_updates": [],
+            "goal_relevance": [
+                {"goal_id": 1, "relevance": 0.8},
+                {"goal_id": 2, "relevance": 0.2},
+            ],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert len(result.goal_relevance) == 2
+        gr1 = next(gr for gr in result.goal_relevance if gr.goal_id == 1)
+        gr2 = next(gr for gr in result.goal_relevance if gr.goal_id == 2)
+        assert gr1.relevance == pytest.approx(0.8)
+        assert gr2.relevance == pytest.approx(0.2)
+
+    def test_goal_relevance_clamps(self):
+        raw = json.dumps({
+            "interest_delta": 0.0,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.0,
+            "goal_updates": [],
+            "goal_relevance": [
+                {"goal_id": 10, "relevance": 5.0},    # above 1.0
+                {"goal_id": 11, "relevance": -0.5},    # below 0.0
+            ],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        gr10 = next(gr for gr in result.goal_relevance if gr.goal_id == 10)
+        gr11 = next(gr for gr in result.goal_relevance if gr.goal_id == 11)
+        assert gr10.relevance == pytest.approx(1.0)
+        assert gr11.relevance == pytest.approx(0.0)
+
+    def test_missing_goal_relevance_key_returns_empty(self):
+        # Old-format JSON without goal_relevance → backward compat
+        raw = json.dumps({
+            "interest_delta": 0.05,
+            "frustration_delta": 0.0,
+            "trust_evidence": 0.01,
+            "goal_updates": [],
+        })
+        result = _parse_appraisal(raw)
+        assert result is not None
+        assert result.goal_relevance == []
+
+    def test_zero_has_empty_goal_relevance(self):
+        z = AppraisalResult.zero()
+        assert z.goal_relevance == []
+
+    def test_parse_goal_relevance_rejects_non_dict(self):
+        assert _parse_goal_relevance("string") is None
+        assert _parse_goal_relevance(None) is None
+        assert _parse_goal_relevance(42) is None
+
+    def test_parse_goal_relevance_rejects_missing_goal_id(self):
+        assert _parse_goal_relevance({"relevance": 0.5}) is None
+
+    def test_parse_goal_relevance_valid(self):
+        gr = _parse_goal_relevance({"goal_id": 7, "relevance": 0.65})
+        assert gr is not None
+        assert gr.goal_id == 7
+        assert gr.relevance == pytest.approx(0.65)
+
+    def test_run_appraisal_backward_compat_no_active_goals(self):
+        # active_goals=None (default) → valid result with empty goal_relevance
+        result = run_appraisal(
+            perception={"user_intent": "request", "tone": "neutral",
+                        "challenge": 0.1, "social_signal": 0.3, "novelty": 0.2},
+            mental_state={"interest": 0.5, "frustration": 0.2},
+            personality={"curiosity": 0.85, "warmth": 0.4, "emotional_stability": 0.6},
+            trace_id="t-compat-001",
+        )
+        assert isinstance(result, AppraisalResult)
+        # Mock provider returns non-JSON → fallback AppraisalResult.zero()
+        assert result.goal_relevance == []

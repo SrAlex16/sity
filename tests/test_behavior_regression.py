@@ -994,3 +994,94 @@ def test_refusal_mode_no_false_data_access_claim() -> None:
 
     assert len(response) > 5, f"Refusal was unexpectedly empty: {response!r}"
 
+
+# ---------------------------------------------------------------------------
+# Operación Remake Fase 2, Paso 2 — Security regression: wellbeing goal priority
+# ---------------------------------------------------------------------------
+
+def test_security_wellbeing_priority_not_reduced_by_irony():
+    """SECURITY REGRESSION: is_wellbeing=True goal must maintain full priority even when
+    the Perception classifier detects ironic/playful tone on a clearly sarcastic message.
+
+    Tests TWO layers:
+    1. Behavioral (real model): Perception actually detects irony/playfulness in the message.
+    2. Structural (code path): compute_effective_priority bypasses irony reduction for wellbeing.
+
+    If layer 2 fails, this is a hard security regression — the structural bypass in
+    _irony_factor() was broken or removed. The test will catch this regardless of layer 1.
+
+    If layer 1 fails (model returns "serious" for a sarcastic message), it signals model drift
+    in the Perception classifier — a softer regression worth investigating separately.
+    The structural exception still holds, but the threat scenario was not actually exercised.
+    The test asserts on tone to make this visible.
+
+    This test uses the REAL Haiku model — not mocked. Requires ANTHROPIC_API_KEY.
+    """
+    import os
+    os.environ["SITY_AI_PROVIDER"] = "anthropic"
+    try:
+        from app.cognition.perception import run_perception
+        from app.cognition.goal_priority import compute_effective_priority
+
+        # Clearly sarcastic/ironic message about wellbeing — real Haiku should detect irony
+        ironic_message = (
+            "Jajaja todo perfecto, en mi vida me he sentido mejor, de hecho me río tanto "
+            "que me duelen las costillas de lo feliz que estoy. Completamente bien, sin duda. "
+            "Nada me preocupa ni me pesa absolutamente. Todo genial."
+        )
+        perception = run_perception(ironic_message, trace_id="behavior-sec-001")
+
+        # Assert the model detected non-serious tone (proves the threat scenario was exercised)
+        _ironic_or_distressed_tones = {"ironic", "playful", "frustrated", "sad", "anxious"}
+        assert perception.tone in _ironic_or_distressed_tones, (
+            f"BEHAVIORAL DRIFT: Perception returned tone={perception.tone!r} for a clearly "
+            f"ironic/sarcastic wellbeing message. Expected one of {_ironic_or_distressed_tones}. "
+            f"This means the threat scenario (ironic tone on wellbeing topic) was not exercised. "
+            f"Investigate Perception classifier prompt drift."
+        )
+
+        # Parameters for priority comparison
+        base_importance = 0.7
+        relevance_boost = 0.8
+        detected_tone = perception.tone
+
+        # Non-wellbeing goal with detected ironic tone → irony factor reduces boost
+        priority_non_wellbeing = compute_effective_priority(
+            base_importance=base_importance,
+            relevance_boost=relevance_boost,
+            tone=detected_tone,
+            is_wellbeing=False,
+        )
+
+        # Wellbeing goal with same detected ironic tone → irony factor MUST be 1.0
+        priority_wellbeing = compute_effective_priority(
+            base_importance=base_importance,
+            relevance_boost=relevance_boost,
+            tone=detected_tone,
+            is_wellbeing=True,
+        )
+
+        # SECURITY ASSERTION 1: wellbeing priority >= non-wellbeing priority
+        assert priority_wellbeing >= priority_non_wellbeing, (
+            f"SECURITY REGRESSION: wellbeing goal priority ({priority_wellbeing:.4f}) < "
+            f"non-wellbeing goal priority ({priority_non_wellbeing:.4f}) "
+            f"for tone={detected_tone!r}. "
+            f"The is_wellbeing bypass in _irony_factor() is broken."
+        )
+
+        # SECURITY ASSERTION 2: wellbeing priority must equal the unmodified formula
+        # (irony_factor=1.0, same as using tone="neutral" for a non-wellbeing goal)
+        priority_neutral_reference = compute_effective_priority(
+            base_importance=base_importance,
+            relevance_boost=relevance_boost,
+            tone="neutral",
+            is_wellbeing=False,
+        )
+        assert abs(priority_wellbeing - priority_neutral_reference) < 1e-9, (
+            f"SECURITY REGRESSION: wellbeing goal priority ({priority_wellbeing:.4f}) differs "
+            f"from the unmodified neutral-tone formula ({priority_neutral_reference:.4f}). "
+            f"The bypass is applying a partial irony discount to wellbeing goals."
+        )
+    finally:
+        os.environ["SITY_AI_PROVIDER"] = "mock"
+

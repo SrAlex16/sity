@@ -18,6 +18,8 @@ Contracts (Section 12):
                      via social update, not directly into MentalState
   goal_updates     : list[GoalUpdateIntent] — goal creation intents (applied
                      to DB when integrated in Paso 3)
+  goal_relevance   : list[GoalRelevance] — per-active-goal relevance_boost [0,1]
+                     used by compute_effective_priority in goal_priority.py
 
 On any error, returns AppraisalResult.zero() — never blocks the pipeline.
 """
@@ -36,16 +38,18 @@ from app.trace.logger import write_log
 
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
-_APPRAISAL_SYSTEM = (
+_APPRAISAL_SYSTEM_BASE = (
     "You are an appraisal module for an AI assistant's internal emotional state.\n"
-    "Given the perception of the user's message and the current emotional state, "
-    "compute emotional delta values and suggest any goal updates.\n\n"
+    "Given the perception of the user's message, the current emotional state, and "
+    "optionally a list of active goals, compute emotional delta values, goal updates, "
+    "and per-goal relevance scores.\n\n"
     "Return a JSON object with exactly these fields. No explanation, no markdown — only raw JSON.\n\n"
     "{\n"
     '  "interest_delta": <float in [-0.3, 0.3] — change in interest level>,\n'
     '  "frustration_delta": <float in [-0.3, 0.3] — change in frustration (positive = more frustrated)>,\n'
     '  "trust_evidence": <float in [0.0, 0.05] — evidence of trust from this interaction>,\n'
-    '  "goal_updates": <list of goal update objects, or empty []>\n'
+    '  "goal_updates": <list of goal update objects, or empty []>,\n'
+    '  "goal_relevance": <list of goal relevance objects for each active goal, or empty []>\n'
     "}\n\n"
     "Goal update object (only include when a clear goal emerges from the conversation):\n"
     "{\n"
@@ -55,6 +59,11 @@ _APPRAISAL_SYSTEM = (
     '  "base_importance": <float 0.0-1.0>,\n'
     '  "is_wellbeing": <true if this goal relates to user mental health/wellbeing, else false>\n'
     "}\n\n"
+    "Goal relevance object (one per active goal listed in the context):\n"
+    "{\n"
+    '  "goal_id": <integer goal ID from the ACTIVE GOALS list>,\n'
+    '  "relevance": <float 0.0-1.0 — how relevant the current turn is to this goal>\n'
+    "}\n\n"
     "Guidelines:\n"
     "- interest_delta: positive when the topic is interesting or novel; negative for routine/boring\n"
     "- frustration_delta: positive when the user is confrontational; negative when warm/cooperative\n"
@@ -62,7 +71,10 @@ _APPRAISAL_SYSTEM = (
     "- goal_updates: suggest a goal only when a clear, actionable objective emerges. "
     "Empty list is correct for most turns.\n"
     "- is_wellbeing: mark true ONLY when the goal directly relates to the user's mental health, "
-    "emotional support, or personal wellbeing.\n\n"
+    "emotional support, or personal wellbeing.\n"
+    "- goal_relevance: for each active goal, score how much the current turn relates to it. "
+    "0 = completely unrelated, 1 = directly and explicitly about this goal. "
+    "If no active goals are listed, return empty [].\n\n"
     "Output only valid JSON. Use 0 for all deltas if the message is neutral or routine."
 )
 
@@ -78,11 +90,23 @@ class GoalUpdateIntent:
 
 
 @dataclass
+class GoalRelevance:
+    """Per-turn relevance score for an active goal, produced by Appraisal.
+
+    Used by compute_effective_priority() in goal_priority.py to compute the
+    adjusted priority for the goal in this turn's context.
+    """
+    goal_id: int
+    relevance: float     # [0, 1] — 0 = unrelated, 1 = directly about this goal
+
+
+@dataclass
 class AppraisalResult:
     interest_delta: float
     frustration_delta: float
     trust_evidence: float
     goal_updates: list[GoalUpdateIntent] = field(default_factory=list)
+    goal_relevance: list[GoalRelevance] = field(default_factory=list)
 
     @classmethod
     def zero(cls) -> "AppraisalResult":
@@ -91,6 +115,7 @@ class AppraisalResult:
             frustration_delta=0.0,
             trust_evidence=0.0,
             goal_updates=[],
+            goal_relevance=[],
         )
 
 
@@ -123,6 +148,17 @@ def _parse_goal_update(raw: Any) -> GoalUpdateIntent | None:
     )
 
 
+def _parse_goal_relevance(raw: Any) -> GoalRelevance | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        goal_id = int(raw["goal_id"])
+        relevance = max(0.0, min(1.0, float(raw.get("relevance", 0.0))))
+        return GoalRelevance(goal_id=goal_id, relevance=relevance)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _parse_appraisal(text: str) -> AppraisalResult | None:
     try:
         stripped = text.strip()
@@ -139,11 +175,19 @@ def _parse_appraisal(text: str) -> AppraisalResult | None:
             )
             if gu is not None
         ]
+        goal_relevance = [
+            gr for gr in (
+                _parse_goal_relevance(item)
+                for item in (data.get("goal_relevance") or [])
+            )
+            if gr is not None
+        ]
         return AppraisalResult(
             interest_delta=_clamp_delta(data.get("interest_delta", 0.0)),
             frustration_delta=_clamp_delta(data.get("frustration_delta", 0.0)),
             trust_evidence=max(0.0, min(0.05, float(data.get("trust_evidence", 0.0)))),
             goal_updates=goal_updates,
+            goal_relevance=goal_relevance,
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
@@ -153,15 +197,24 @@ def _build_appraisal_context(
     perception: dict[str, Any],
     mental_state: dict[str, float],
     personality: dict[str, float],
+    active_goals: list[dict[str, Any]],
 ) -> str:
-    return (
-        f"PERCEPTION:\n{json.dumps(perception, ensure_ascii=False)}\n\n"
-        f"CURRENT MENTAL STATE:\n{json.dumps(mental_state, ensure_ascii=False)}\n\n"
-        "PERSONALITY (key traits, 0-1 scale):\n"
-        f"  curiosity={personality.get('curiosity', 0.5):.2f}, "
-        f"warmth={personality.get('warmth', 0.4):.2f}, "
-        f"emotional_stability={personality.get('emotional_stability', 0.6):.2f}"
-    )
+    parts = [
+        f"PERCEPTION:\n{json.dumps(perception, ensure_ascii=False)}",
+        f"CURRENT MENTAL STATE:\n{json.dumps(mental_state, ensure_ascii=False)}",
+        (
+            "PERSONALITY (key traits, 0-1 scale):\n"
+            f"  curiosity={personality.get('curiosity', 0.5):.2f}, "
+            f"warmth={personality.get('warmth', 0.4):.2f}, "
+            f"emotional_stability={personality.get('emotional_stability', 0.6):.2f}"
+        ),
+    ]
+    if active_goals:
+        goals_repr = json.dumps(active_goals, ensure_ascii=False)
+        parts.append(f"ACTIVE GOALS (score relevance for each):\n{goals_repr}")
+    else:
+        parts.append("ACTIVE GOALS: none — return empty goal_relevance []")
+    return "\n\n".join(parts)
 
 
 def apply_appraisal_to_mental_state(
@@ -187,22 +240,27 @@ def run_appraisal(
     perception: dict[str, Any],
     mental_state: dict[str, float],
     personality: dict[str, float],
+    active_goals: list[dict[str, Any]] | None = None,
     trace_id: str = "",
 ) -> AppraisalResult:
     """Run Appraisal on the current turn context.
 
+    active_goals: list of active Goal dicts, each with at least {id, description, scope}.
+        Used to compute per-goal relevance_boost scores (goal_relevance in the result).
+        Pass None or [] when no active goals exist for this user/session.
+
     Returns AppraisalResult.zero() on any provider error — never raises.
     """
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
-    context = _build_appraisal_context(perception, mental_state, personality)
+    context = _build_appraisal_context(perception, mental_state, personality, active_goals or [])
     try:
         provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
         request = AIRequest(
             trace_id=trace_id,
             task_type="appraisal",
-            system_prompt=_APPRAISAL_SYSTEM,
+            system_prompt=_APPRAISAL_SYSTEM_BASE,
             user_message=context,
-            max_tokens=200,
+            max_tokens=300,
             tools_enabled=False,
         )
         response = provider.generate(request)
