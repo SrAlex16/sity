@@ -1,4 +1,4 @@
-"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2 Paso 3, Fase 3 Paso 1).
+"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2 Paso 3, Fase 3 Paso 1, Fase 4).
 
 run_cognition_turn is the single entry point for the complete cognition pass:
   1. Expire stale short_term goals
@@ -10,7 +10,8 @@ run_cognition_turn is the single entry point for the complete cognition pass:
   7. Load SocialProfile row
   8. Apply Appraisal + Perception signals to SocialProfile and persist
   9. Apply GoalUpdateIntents, GoalStateChanges, MilestoneUpdates to DB
- 10. Return CognitionTurnResult
+ 10. Evaluate salience and maybe persist an Episode (Haiku, conditional)
+ 11. Return CognitionTurnResult
 
 Never raises — Perception and Appraisal return neutral/zero fallbacks on any error.
 The MentalState/SocialProfile commits are the only DB writes that could fail; they are
@@ -27,6 +28,8 @@ from dataclasses import dataclass, field
 from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
+from app.cognition.episode_service import maybe_create_episode
+from app.trace.logger import write_log
 from app.cognition.goal_service import (
     apply_goal_intents,
     apply_goal_state_changes,
@@ -126,6 +129,26 @@ def run_cognition_turn(
 
     if appraisal.milestone_updates:
         apply_milestone_updates(session, user_id, appraisal.milestone_updates)
+
+    # Step 10: episodic memory — conditional Haiku call only when salience ≥ 0.25
+    try:
+        maybe_create_episode(
+            session=session,
+            user_id=user_id,
+            user_message=user_message,
+            perception=perception,
+            appraisal=appraisal,
+            source_message_ids=[],
+            trace_id=trace_id,
+        )
+    except Exception as ep_exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="episode_creation_failed",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(ep_exc)[:200]},
+        )
 
     return CognitionTurnResult(
         perception=perception,

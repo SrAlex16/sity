@@ -53,7 +53,9 @@ _APPRAISAL_SYSTEM_BASE = (
     '  "goal_updates": <list of goal update objects, or empty []>,\n'
     '  "goal_relevance": <list of goal relevance objects for each active goal, or empty []>,\n'
     '  "goal_state_changes": <list of goal state change objects, or empty []>,\n'
-    '  "milestone_updates": <list of milestone update objects, or empty []>\n'
+    '  "milestone_updates": <list of milestone update objects, or empty []>,\n'
+    '  "surprise": <float 0.0-1.0 — how unexpected or surprising this event was>,\n'
+    '  "explicit_importance": <float 0.0-1.0 — user explicitly marked something as important>\n'
     "}\n\n"
     "Goal update object (only include when a clear goal emerges from the conversation):\n"
     "{\n"
@@ -99,7 +101,11 @@ _APPRAISAL_SYSTEM_BASE = (
     "- similar goals: before creating a new goal, check the ACTIVE GOALS list. If a new goal is "
     "semantically similar to an existing one (same domain, similar objective), prefer adding "
     "milestones to the existing goal rather than creating a duplicate. Only create a new goal "
-    "when the objective is clearly distinct from all active goals.\n\n"
+    "when the objective is clearly distinct from all active goals.\n"
+    "- surprise: 0 for routine, expected events; higher when the user says something unexpected, "
+    "reveals a surprising fact, or takes an unexpected conversational turn. Max 1.0.\n"
+    "- explicit_importance: 0 by default; raise toward 1.0 when the user explicitly signals "
+    'something matters to them (e.g. "this is important", "remember this", "I need you to know").\n\n'
     "Output only valid JSON. Use 0 for all deltas if the message is neutral or routine."
 )
 
@@ -162,6 +168,8 @@ class AppraisalResult:
     goal_relevance: list[GoalRelevance] = field(default_factory=list)
     goal_state_changes: list[GoalStateChange] = field(default_factory=list)
     milestone_updates: list[MilestoneIntent] = field(default_factory=list)
+    surprise: float = 0.0
+    explicit_importance: float = 0.0
 
     @classmethod
     def zero(cls) -> "AppraisalResult":
@@ -173,6 +181,8 @@ class AppraisalResult:
             goal_relevance=[],
             goal_state_changes=[],
             milestone_updates=[],
+            surprise=0.0,
+            explicit_importance=0.0,
         )
 
 
@@ -307,6 +317,8 @@ def _parse_appraisal(text: str) -> AppraisalResult | None:
             goal_relevance=goal_relevance,
             goal_state_changes=goal_state_changes,
             milestone_updates=milestone_updates,
+            surprise=max(0.0, min(1.0, float(data.get("surprise", 0.0)))),
+            explicit_importance=max(0.0, min(1.0, float(data.get("explicit_importance", 0.0)))),
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
@@ -379,7 +391,7 @@ def run_appraisal(
             task_type="appraisal",
             system_prompt=_APPRAISAL_SYSTEM_BASE,
             user_message=context,
-            max_tokens=300,
+            max_tokens=350,
             tools_enabled=False,
         )
         response = provider.generate(request)
