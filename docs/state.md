@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-09 (Operación Remake Fase 3 — relación multidimensional, SocialProfile 11 dimensiones).
+Última actualización: 2026-09-09 (Operación Remake Fase 4 — memoria episódica y autobiográfica, Partes 2-3).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -12,6 +12,7 @@ Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
 Para el sistema de memoria social (Remake Fase 3, 11 dimensiones) ver docs/remake/fase-3-relacion-multidimensional.md.
 Para el nuevo sistema de personalidad (Remake Fase 1) ver docs/remake/fase-1-personalidad.md.
 Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/fase-2-appraisal-goals.md.
+Para la memoria episódica y autobiográfica (Remake Fase 4) ver docs/remake/fase-4-memoria-episodica-autobiografica.md.
 
 ## Infraestructura activa
 
@@ -59,7 +60,7 @@ Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/
 
 ## Tests y CI
 
-- 2655 tests en verde (pytest, 20 skipped)
+- 2700+ tests en verde (pytest, ~20 skipped) — Fase 4 Partes 2-3 añaden 46 tests nuevos
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -85,6 +86,16 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 Ver .env.example para la lista completa.
 
 ## Completado recientemente (2026-09-09, continuación)
+
+- **Operación Remake Fase 4 Partes 2-3 — Memoria episódica y autobiográfica (commits `1fd142d` + `56803a0`).**
+  Parte 2: `Episode` + `AutobiographicalNarrative` en `models.py`; `AppraisalResult` extendido con
+  `surprise` + `explicit_importance`; `episode_service.py` con `compute_salience()` (7 componentes,
+  sin I/O) y `maybe_create_episode()` (Haiku condicional max_tokens=150 solo cuando salience ≥ 0.25,
+  coste cero en turnos rutinarios); `turn_cognition.py` paso 10. 29 tests en `test_episode_service.py`.
+  Parte 3: `_maybe_generate_narrative()` en `social/update.py` — trigger por episodios `muy_alta`
+  (≥ 3 nuevos) y age gate ≥ 7 días; Haiku max_tokens=200; supersede anterior; 3 claves nuevas en
+  `default_config.yaml`. 17 tests en `test_autobiographical_narrative.py`.
+  Ver docs/remake/fase-4-memoria-episodica-autobiografica.md.
 
 - **Operación Remake Fase 3 — SocialProfile 11 dimensiones (commits `bbaf94f` + `2fd58fe`).**
   Reemplaza el modelo binario `opinion`/`trust` por 11 dimensiones independientes [0,1]:
