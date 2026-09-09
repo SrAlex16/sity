@@ -129,26 +129,34 @@ def _build_task_context_block(ctx: dict[str, str] | None) -> str:
     return f"Contexto de tarea activa (datos ya resueltos en este hilo):\n{lines}"
 
 
-def _opinion_label(v: float) -> str:
-    if v <= -0.5:
-        return "bastante negativa"
-    if v <= -0.1:
-        return "algo negativa"
-    if v < 0.1:
-        return "neutra"
-    if v < 0.5:
-        return "positiva"
-    return "muy positiva"
+def _affinity_label(v: float) -> str:
+    if v >= 0.7:
+        return "alta"
+    if v >= 0.4:
+        return "moderada"
+    if v >= 0.15:
+        return "baja"
+    return "muy baja"
 
 
-def _trust_label(v: float) -> str:
-    if v < 0.2:
-        return "inicial (poca historia compartida)"
-    if v < 0.4:
-        return "en desarrollo"
-    if v < 0.7:
+def _trust_avg_label(v: float) -> str:
+    if v >= 0.75:
         return "consolidada"
-    return "alta"
+    if v >= 0.55:
+        return "establecida"
+    if v >= 0.35:
+        return "en construcción"
+    return "incipiente"
+
+
+def _familiarity_label(v: float) -> str:
+    if v >= 0.5:
+        return "muy conocida"
+    if v >= 0.2:
+        return "conocida"
+    if v >= 0.05:
+        return "en proceso de conocerse"
+    return "primera interacción"
 
 
 def _build_social_context_block(session: Session, session_id: str) -> str:
@@ -165,7 +173,12 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
         return ""
     try:
         row = session.execute(
-            sa_text("SELECT id, opinion, trust FROM socialprofile WHERE user_id = :uid"),
+            sa_text(
+                "SELECT id, familiarity, affinity,"
+                " trust_honesty, trust_intentions, trust_competence, trust_reliability,"
+                " comfort, conflict"
+                " FROM socialprofile WHERE user_id = :uid"
+            ),
             {"uid": user_id},
         ).fetchone()
     except Exception:
@@ -173,7 +186,8 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
         return ""
     if row is None:
         return ""
-    profile_id, opinion, trust = row[0], row[1], row[2]
+    profile_id, familiarity, affinity, th, ti, tc, tr, comfort, conflict = row
+    trust_avg = (th + ti + tc + tr) / 4.0
 
     # Fetch active narrative reflection (if any)
     reflection_content: str | None = None
@@ -197,9 +211,12 @@ def _build_social_context_block(session: Session, session_id: str) -> str:
 
     lines = [
         "Contexto de relación (uso interno — informa tono y disposición, no citar):",
-        f"- Disposición hacia este interlocutor: {_opinion_label(opinion)}",
-        f"- Confianza acumulada: {_trust_label(trust)}",
+        f"- Familiaridad: {_familiarity_label(familiarity)}",
+        f"- Afinidad: {_affinity_label(affinity)}",
+        f"- Confianza: {_trust_avg_label(trust_avg)}",
     ]
+    if conflict >= 0.4:
+        lines.append(f"- Tensión acumulada: presente (nivel {conflict:.2f})")
     if reflection_content:
         lines.append(f"- Patrón observado: {reflection_content}")
     lines.append(

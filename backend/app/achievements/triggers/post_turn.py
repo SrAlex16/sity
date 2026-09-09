@@ -63,52 +63,11 @@ def _check_personality(db: Any, user_id: int, cfg: dict, unlock) -> None:
 
 
 def _check_social(db: Any, user_id: int, cfg: dict, unlock) -> None:
-    try:
-        from sqlmodel import col, select
-        from app.memory.models import SocialProfile, OpinionSnapshot
-
-        profile = db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
-        if profile is None:
-            return
-
-        if profile.trust >= float(cfg.get("remember_me_trust_threshold", 0.30)):
-            unlock(db, user_id, "remember_me")
-
-        neg_threshold = float(cfg.get("opinion_negative_threshold", -0.5))
-        ext_threshold = float(cfg.get("opinion_extreme_threshold", -1.5))
-        if profile.opinion <= neg_threshold:
-            unlock(db, user_id, "love_is_war")
-        if profile.opinion <= ext_threshold:
-            unlock(db, user_id, "its_over_9000")
-
-        snapshots = db.exec(
-            select(OpinionSnapshot)
-            .where(OpinionSnapshot.profile_id == profile.id)
-            .order_by(col(OpinionSnapshot.computed_at).desc())
-        ).all()
-        if not snapshots:
-            return
-
-        # redemption: most recent snapshot negative + current opinion positive
-        if snapshots[0].opinion_value < 0 and profile.opinion > 0:
-            unlock(db, user_id, "redemption")
-
-        # schizophrenia: ≥ N sign changes across full snapshot history
-        min_flips = int(cfg.get("schizophrenia_min_flips", 3))
-        opinions = [s.opinion_value for s in snapshots]
-        flips = sum(
-            1
-            for i in range(len(opinions) - 1)
-            if (opinions[i] >= 0) != (opinions[i + 1] >= 0)
-        )
-        if flips >= min_flips:
-            unlock(db, user_id, "schizophrenia")
-    except Exception as exc:
-        write_log(
-            level="WARN", module="achievements",
-            event="post_turn_social_check_error",
-            payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
-        )
+    # Fase 3 Paso 2: fórmulas de logros pendientes de confirmación explícita.
+    # Las 5 fórmulas (remember_me, love_is_war, its_over_9000, redemption,
+    # schizophrenia) se reimplementarán con las dimensiones nuevas de SocialProfile
+    # una vez aprobadas en Paso 2.
+    return
 
 
 def check_curiosity_achievement(db: Any, user_id: int, user_message: str) -> None:

@@ -236,11 +236,18 @@ def _build_user_message(
     social: Optional[SocialProfile],
     active_long_term_goals: list[Goal] | None = None,
 ) -> str:
-    opinion_str = f"{social.opinion:.2f}" if social else "0.00"
-    trust_str = f"{social.trust:.2f}" if social else "0.00"
+    if social:
+        ta = (social.trust_honesty + social.trust_intentions
+              + social.trust_competence + social.trust_reliability) / 4.0
+        social_str = (
+            f"familiaridad={social.familiarity:.2f}, afinidad={social.affinity:.2f},"
+            f" confianza={ta:.2f}, conflicto={social.conflict:.2f}"
+        )
+    else:
+        social_str = "familiaridad=0.00, afinidad=0.00, confianza=0.50, conflicto=0.00"
     lines: list[str] = [
         f"Trigger: {candidate.trigger_type}",
-        f"Perfil social: opinion={opinion_str}, trust={trust_str}",
+        f"Perfil social: {social_str}",
         "",
     ]
 

@@ -29,7 +29,7 @@ from app.core.refusal_tracker import (
     reset_consecutive_refusals,
 )
 from app.memory.db import engine
-from app.memory.models import OpinionSnapshot, SocialProfile, User
+from app.memory.models import SocialProfile, User
 from app.settings.settings_service import CANONICAL_PERSONALITY
 
 
@@ -65,18 +65,13 @@ def _personality(overrides: dict) -> dict:
     return {**CANONICAL_PERSONALITY, **overrides}
 
 
-def _create_profile(db: Session, user_id: int, opinion: float, trust: float) -> SocialProfile:
-    profile = SocialProfile(user_id=user_id, opinion=opinion, trust=trust)
+def _create_profile(db: Session, user_id: int) -> SocialProfile:
+    """Create a SocialProfile with new multidimensional defaults."""
+    profile = SocialProfile(user_id=user_id)
     db.add(profile)
     db.commit()
     db.refresh(profile)
     return profile
-
-
-def _add_snapshot(db: Session, profile_id: int, opinion_value: float, days_ago: int = 0) -> None:
-    ts = datetime.utcnow() - timedelta(days=days_ago)
-    db.add(OpinionSnapshot(profile_id=profile_id, opinion_value=opinion_value, trust_value=0.0, computed_at=ts))
-    db.commit()
 
 
 def _create_user(db: Session, days_old: int) -> int:
@@ -154,163 +149,33 @@ def test_chaos_head_no_unlock_below_threshold() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Social — remember_me
+# Social — Fase 3 Paso 2: fórmulas pendientes de confirmación explícita
+#
+# _check_social() is currently a no-op (returns early) — formulas for the 5
+# social achievements (remember_me, love_is_war, its_over_9000, redemption,
+# schizophrenia) will be reimplemented with the new SocialProfile dimensions
+# once the user explicitly confirms them in Paso 2.
 # ---------------------------------------------------------------------------
 
-def test_remember_me_unlocks_at_trust_threshold() -> None:
+def test_check_social_is_noop_unlocks_nothing() -> None:
+    """_check_social must be a no-op: it should not unlock any social achievement."""
+    uid = _uid()
+    social_slugs = {"remember_me", "love_is_war", "its_over_9000", "redemption", "schizophrenia"}
+    with Session(engine) as db:
+        _create_profile(db, uid)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert _unlocked(db, uid).isdisjoint(social_slugs), (
+            "_check_social must not unlock social achievements until Paso 2 formulas are confirmed"
+        )
+
+
+def test_check_social_does_not_raise() -> None:
+    """_check_social must never raise regardless of profile state."""
     uid = _uid()
     with Session(engine) as db:
-        _create_profile(db, uid, opinion=0.0, trust=0.30)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "remember_me" in _unlocked(db, uid)
-
-
-def test_remember_me_no_unlock_below_threshold() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=0.0, trust=0.29)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "remember_me" not in _unlocked(db, uid)
-
-
-def test_remember_me_no_profile_no_unlock() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "remember_me" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Social — love_is_war
-# ---------------------------------------------------------------------------
-
-def test_love_is_war_unlocks_at_threshold() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=-0.5, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "love_is_war" in _unlocked(db, uid)
-
-
-def test_love_is_war_unlocks_below_threshold() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=-1.0, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "love_is_war" in _unlocked(db, uid)
-
-
-def test_love_is_war_no_unlock_above_threshold() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=-0.4, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "love_is_war" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Social — its_over_9000
-# ---------------------------------------------------------------------------
-
-def test_its_over_9000_unlocks_at_extreme_threshold() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=-1.5, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "its_over_9000" in _unlocked(db, uid)
-
-
-def test_its_over_9000_no_unlock_above_extreme_threshold() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=-0.5, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "its_over_9000" not in _unlocked(db, uid)
-
-
-def test_its_over_9000_also_unlocks_love_is_war() -> None:
-    """opinion ≤ -1.5 satisfies both love_is_war and its_over_9000."""
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=-2.0, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        slugs = _unlocked(db, uid)
-        assert "love_is_war" in slugs
-        assert "its_over_9000" in slugs
-
-
-# ---------------------------------------------------------------------------
-# Social — redemption
-# ---------------------------------------------------------------------------
-
-def test_redemption_unlocks_when_snapshot_negative_and_current_positive() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        profile = _create_profile(db, uid, opinion=0.3, trust=0.0)
-        _add_snapshot(db, profile.id, opinion_value=-0.5)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "redemption" in _unlocked(db, uid)
-
-
-def test_redemption_no_unlock_when_snapshot_positive() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        profile = _create_profile(db, uid, opinion=0.3, trust=0.0)
-        _add_snapshot(db, profile.id, opinion_value=0.5)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "redemption" not in _unlocked(db, uid)
-
-
-def test_redemption_no_unlock_with_no_snapshots() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        _create_profile(db, uid, opinion=0.3, trust=0.0)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "redemption" not in _unlocked(db, uid)
-
-
-def test_redemption_no_unlock_when_current_still_negative() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        profile = _create_profile(db, uid, opinion=-0.1, trust=0.0)
-        _add_snapshot(db, profile.id, opinion_value=-0.5)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "redemption" not in _unlocked(db, uid)
-
-
-# ---------------------------------------------------------------------------
-# Social — schizophrenia
-# ---------------------------------------------------------------------------
-
-def test_schizophrenia_unlocks_with_three_sign_flips() -> None:
-    uid = _uid()
-    # DESC order (newest first): [+0.5, -0.5, +0.5, -0.5] → 3 flips
-    with Session(engine) as db:
-        profile = _create_profile(db, uid, opinion=0.0, trust=0.0)
-        for days_ago, val in enumerate([0.5, -0.5, 0.5, -0.5]):
-            _add_snapshot(db, profile.id, opinion_value=val, days_ago=days_ago)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "schizophrenia" in _unlocked(db, uid)
-
-
-def test_schizophrenia_no_unlock_with_two_flips() -> None:
-    uid = _uid()
-    # DESC order: [+0.5, -0.5, +0.5] → 2 flips — below threshold
-    with Session(engine) as db:
-        profile = _create_profile(db, uid, opinion=0.0, trust=0.0)
-        for days_ago, val in enumerate([0.5, -0.5, 0.5]):
-            _add_snapshot(db, profile.id, opinion_value=val, days_ago=days_ago)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "schizophrenia" not in _unlocked(db, uid)
-
-
-def test_schizophrenia_no_unlock_with_single_snapshot() -> None:
-    uid = _uid()
-    with Session(engine) as db:
-        profile = _create_profile(db, uid, opinion=0.0, trust=0.0)
-        _add_snapshot(db, profile.id, opinion_value=0.5)
-        _check_social(db, uid, _cfg(), _unlock)
-        assert "schizophrenia" not in _unlocked(db, uid)
+        _check_social(db, uid, _cfg(), _unlock)  # no profile — must not raise
+        _create_profile(db, uid)
+        _check_social(db, uid, _cfg(), _unlock)  # with profile — must not raise
 
 
 # ---------------------------------------------------------------------------

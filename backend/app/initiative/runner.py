@@ -89,7 +89,7 @@ def _is_now_a_good_time(
     session_id: str,
     db: Session,
     silence_hours: int,
-    min_trust: float,
+    min_familiarity: float,
     max_per_day: int,
 ) -> Optional[str]:
     """Returns skip reason string if this session should be skipped, else None.
@@ -120,7 +120,7 @@ def _is_now_a_good_time(
         return "invalid_session_id"
 
     social = db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
-    if social is not None and social.trust < min_trust:
+    if social is not None and social.familiarity < min_familiarity:
         return "trust_too_low"
 
     today_count = len(db.exec(
@@ -237,7 +237,7 @@ def _run_cycle_sync() -> None:
     notif_cfg = cfg.get("notifications", {})
 
     silence_hours = int(notif_cfg.get("initiative_silence_hours", 4))
-    min_trust = float(notif_cfg.get("initiative_min_trust", 0.30))
+    min_familiarity = float(notif_cfg.get("initiative_min_familiarity", 0.05))
     max_per_day = int(notif_cfg.get("max_proactive_per_day_user", 1))
 
     try:
@@ -258,7 +258,7 @@ def _run_cycle_sync() -> None:
 
             for sid in session_ids:
                 try:
-                    skip_reason = _is_now_a_good_time(sid, db, silence_hours, min_trust, max_per_day)
+                    skip_reason = _is_now_a_good_time(sid, db, silence_hours, min_familiarity, max_per_day)
                     if skip_reason:
                         write_log(
                             level="INFO",

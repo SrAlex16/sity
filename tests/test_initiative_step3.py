@@ -62,10 +62,23 @@ def _add_notification_log(db: Session, session_id: str, age_hours: float = 0) ->
     db.commit()
 
 
-def _add_social_profile(db: Session, session_id: str, opinion: float = 0.5, trust: float = 0.7) -> None:
+def _add_social_profile(
+    db: Session, session_id: str,
+    familiarity: float = 0.30, affinity: float = 0.50,
+    trust_avg: float = 0.70, conflict: float = 0.10,
+) -> None:
     from app.memory.models import SocialProfile
     user_id = int(session_id.split(":", 1)[1])
-    db.add(SocialProfile(user_id=user_id, opinion=opinion, trust=trust))
+    db.add(SocialProfile(
+        user_id=user_id,
+        familiarity=familiarity,
+        affinity=affinity,
+        trust_honesty=trust_avg,
+        trust_intentions=trust_avg,
+        trust_competence=trust_avg,
+        trust_reliability=trust_avg,
+        conflict=conflict,
+    ))
     db.commit()
 
 
@@ -464,20 +477,22 @@ class TestEvaluatorOpenLoopResolved:
 
 class TestEvaluatorSocialProfile:
     def test_social_profile_values_in_prompt(self):
-        """The build_user_message must include opinion and trust from SocialProfile."""
+        """The build_user_message must include new social dimensions from SocialProfile."""
         from app.initiative.evaluator import _build_user_message, _get_social_profile
         db = _make_db()
         sid = "user:60"
-        _add_social_profile(db, sid, opinion=1.23, trust=0.85)
+        _add_social_profile(db, sid, familiarity=0.35, affinity=0.60, trust_avg=0.75, conflict=0.05)
 
         cand = _candidate(session_id=sid)
         social = _get_social_profile(sid, db)
         msg = _build_user_message(cand, social)
 
-        assert "opinion=1.23" in msg
-        assert "trust=0.85" in msg
+        assert "familiaridad=0.35" in msg
+        assert "afinidad=0.60" in msg
+        assert "confianza=0.75" in msg
+        assert "conflicto=0.05" in msg
 
-    def test_no_social_profile_uses_zero_defaults(self):
+    def test_no_social_profile_uses_defaults(self):
         from app.initiative.evaluator import _build_user_message, _get_social_profile
         db = _make_db()
         sid = "user:61"
@@ -485,15 +500,17 @@ class TestEvaluatorSocialProfile:
         cand = _candidate(session_id=sid)
         msg = _build_user_message(cand, social)
 
-        assert "opinion=0.00" in msg
-        assert "trust=0.00" in msg
+        assert "familiaridad=0.00" in msg
+        assert "afinidad=0.00" in msg
+        assert "confianza=0.50" in msg
+        assert "conflicto=0.00" in msg
 
     def test_social_profile_fetched_before_haiku(self):
         """evaluate() calls build_ai_provider (Haiku) — social profile should be in the prompt."""
         from app.initiative.evaluator import evaluate
         db = _make_db()
         sid = "user:62"
-        _add_social_profile(db, sid, opinion=-0.5, trust=0.4)
+        _add_social_profile(db, sid, familiarity=0.20, affinity=0.40, trust_avg=0.60, conflict=0.15)
         cand = _candidate(session_id=sid)
 
         captured_request: list = []
@@ -513,8 +530,9 @@ class TestEvaluatorSocialProfile:
             evaluate(cand, db)
 
         assert len(captured_request) == 1
-        assert "opinion=-0.50" in captured_request[0].user_message
-        assert "trust=0.40" in captured_request[0].user_message
+        assert "familiaridad=0.20" in captured_request[0].user_message
+        assert "afinidad=0.40" in captured_request[0].user_message
+        assert "confianza=0.60" in captured_request[0].user_message
 
 
 # ---------------------------------------------------------------------------

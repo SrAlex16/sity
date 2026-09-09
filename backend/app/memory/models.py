@@ -175,20 +175,42 @@ class PendingAction(SQLModel, table=True):
 
 
 class SocialProfile(SQLModel, table=True):
+    """11-dimensional relationship state per user (Remake Fase 3).
+
+    Flat fields with trust_ prefix (consistent with rest of model).
+    trust_competence and trust_reliability are near-stable in v1
+    (no per-turn signal yet; update paths added in future iterations).
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True, unique=True)  # FK to User.id
-    opinion: float = Field(default=0.0)             # weighted EMA opinion score (~[-2, +2])
-    trust: float = Field(default=0.0)               # trust score in [0, 1]
-    pending_loads_json: str = Field(default="[]")   # JSON list[int] awaiting background job
+    user_id: int = Field(index=True, unique=True)
+    familiarity:        float = Field(default=0.0)   # [0,1] — cumulative knowledge of user
+    trust_honesty:      float = Field(default=0.5)   # [0,1] — truthfulness in conversation
+    trust_intentions:   float = Field(default=0.5)   # [0,1] — good intent in conversation
+    trust_competence:   float = Field(default=0.5)   # [0,1] — near-stable in v1
+    trust_reliability:  float = Field(default=0.5)   # [0,1] — near-stable in v1
+    affinity:           float = Field(default=0.0)   # [0,1] — interest/attraction toward user
+    comfort:            float = Field(default=0.5)   # [0,1] — relational ease (persistent, ≠ MentalState.social_comfort)
+    respect:            float = Field(default=0.5)   # [0,1] — sense that user treats Sity with respect
+    attachment:         float = Field(default=0.0)   # [0,1] — deep emotional bond; grows slowly
+    conflict:           float = Field(default=0.0)   # [0,1] — accumulated tension/friction
+    uncertainty:        float = Field(default=0.5)   # [0,1] — decreases as familiarity/trust grow
+    pending_loads_json: str = Field(default="[]")    # JSON list[int] — turn counter for snapshot/reflection trigger
     last_updated_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now)
 
 
-class OpinionSnapshot(SQLModel, table=True):
+class RelationshipSnapshot(SQLModel, table=True):
+    """Per-batch snapshot of the 3 most snapshot-relevant dimensions.
+
+    Inserted by the background social update job each time pending_loads
+    crosses the threshold. Used by achievement checks (redemption, schizophrenia)
+    to detect sign changes and recovery patterns across relationship history.
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
-    profile_id: int = Field(index=True)             # FK to SocialProfile.id
-    opinion_value: float
-    trust_value: float
+    profile_id: int = Field(index=True)
+    affinity:   float
+    conflict:   float
+    trust_avg:  float   # avg(trust_honesty, trust_intentions, trust_competence, trust_reliability)
     computed_at: datetime = Field(default_factory=utc_now)
 
 
@@ -205,8 +227,10 @@ class SocialReflection(SQLModel, table=True):
     category: str = Field(default="general")          # "general" in v1
     content: str                                       # 2-4 sentences, natural language
     evidence_json: str = Field(default="[]")           # JSON list[int]: ChatMessage IDs
-    opinion_at_gen: float                              # SocialProfile.opinion at generation time
-    trust_at_gen: float                                # SocialProfile.trust at generation time
+    affinity_at_gen:    float                          # SocialProfile.affinity at generation time
+    conflict_at_gen:    float                          # SocialProfile.conflict at generation time
+    trust_avg_at_gen:   float                          # avg(trust_*) at generation time
+    attachment_at_gen:  float                          # SocialProfile.attachment at generation time
     created_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime                               # created_at + reflection_max_age_days
     superseded_at: Optional[datetime] = Field(default=None)  # None = active for its category

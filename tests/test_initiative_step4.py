@@ -59,10 +59,10 @@ def _add_msg(db: Session, session_id: str, role: str, age_hours: float) -> None:
     db.commit()
 
 
-def _add_social(db: Session, session_id: str, trust: float = 0.8) -> None:
+def _add_social(db: Session, session_id: str, familiarity: float = 0.8) -> None:
     from app.memory.models import SocialProfile
     user_id = int(session_id.split(":", 1)[1])
-    db.add(SocialProfile(user_id=user_id, trust=trust))
+    db.add(SocialProfile(user_id=user_id, familiarity=familiarity))
     db.commit()
 
 
@@ -179,10 +179,10 @@ class TestGCExpiredOpenLoops:
 # ---------------------------------------------------------------------------
 
 class TestIsNowAGoodTime:
-    def _check(self, db, session_id="user:1", silence_hours=4, min_trust=0.3, max_per_day=1):
+    def _check(self, db, session_id="user:1", silence_hours=4, min_familiarity=0.03, max_per_day=1):
         from app.initiative.runner import _is_now_a_good_time
         return _is_now_a_good_time(db=db, session_id=session_id,
-                                   silence_hours=silence_hours, min_trust=min_trust,
+                                   silence_hours=silence_hours, min_familiarity=min_familiarity,
                                    max_per_day=max_per_day)
 
     def test_recent_message_returns_silence_recent(self):
@@ -199,14 +199,14 @@ class TestIsNowAGoodTime:
         db = _make_db()
         assert self._check(db) is None
 
-    def test_low_trust_returns_trust_too_low(self):
+    def test_low_familiarity_returns_trust_too_low(self):
         db = _make_db()
-        _add_social(db, "user:1", trust=0.1)
+        _add_social(db, "user:1", familiarity=0.01)  # below min_familiarity=0.03
         assert self._check(db) == "trust_too_low"
 
-    def test_sufficient_trust_passes(self):
+    def test_sufficient_familiarity_passes(self):
         db = _make_db()
-        _add_social(db, "user:1", trust=0.5)
+        _add_social(db, "user:1", familiarity=0.5)
         assert self._check(db) is None
 
     def test_no_social_profile_passes_trust(self):
@@ -354,7 +354,7 @@ class TestRunCycleSync:
         sid = f"user:{user_id}"
         _add_user(db, user_id=user_id)
         _add_msg(db, sid, "user", age_hours=10)  # old enough for silence
-        _add_social(db, sid, trust=0.8)
+        _add_social(db, sid, familiarity=0.8)
         return db
 
     def test_send_candidate_reaches_dispatcher(self):
@@ -414,7 +414,7 @@ class TestRunCycleSync:
         sid1, sid2 = "user:1", "user:2"
         for sid in [sid1, sid2]:
             _add_msg(db, sid, "user", age_hours=10)
-            _add_social(db, sid, trust=0.8)
+            _add_social(db, sid, familiarity=0.8)
             _add_open_loop(db, sid, age_days=5)
 
         call_count = 0
@@ -482,7 +482,7 @@ class TestRunnerIntegration:
         _add_user(db, user_id=1)
         sid = "user:1"
         _add_msg(db, sid, "user", age_hours=8)   # old enough (>4h silence)
-        _add_social(db, sid, trust=0.7)
+        _add_social(db, sid, familiarity=0.7)
         lid = _add_open_loop(db, sid, age_days=5)
 
         haiku_resp = json.dumps({
@@ -530,7 +530,7 @@ class TestRunnerIntegration:
         sid = "user:2"
         _add_msg(db, sid, "user", age_hours=50)
         _add_msg(db, sid, "sity", age_hours=30)  # last msg is sity, 30h old → abandoned trigger
-        _add_social(db, sid, trust=0.6)
+        _add_social(db, sid, familiarity=0.6)
 
         haiku_resp = json.dumps({
             "decision": "send",
@@ -562,7 +562,7 @@ class TestRunnerIntegration:
         _add_user(db, user_id=3)
         sid = "user:3"
         _add_msg(db, sid, "user", age_hours=8)
-        _add_social(db, sid, trust=0.7)
+        _add_social(db, sid, familiarity=0.7)
         _add_open_loop(db, sid, age_days=5)
 
         haiku_resp = json.dumps({"decision": "skip", "reasoning": "not a good time"})

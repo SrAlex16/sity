@@ -178,6 +178,171 @@ def _migrate_social_reflection() -> None:
     # Table exists — nothing to migrate
 
 
+def _migrate_social_profile_fase3() -> None:
+    """Add Fase 3 multidimensional columns to socialprofile and fix NOT NULL on old cols.
+
+    Old columns (opinion, trust) are kept as dead weight.  If they were originally
+    NOT NULL without a DEFAULT value, new INSERTs that omit them would fail.
+    SQLite cannot ALTER an existing column's constraints, so we do a full table
+    rebuild (the approved SQLite approach) to restore INTEGER PRIMARY KEY
+    auto-increment and relax the old constraints.
+
+    After the rebuild, new Fase 3 columns are added via ALTER TABLE ADD COLUMN
+    for any that are still missing.
+    """
+    _NEW_COLS = [
+        ("familiarity",        "FLOAT NOT NULL DEFAULT 0.0"),
+        ("trust_honesty",      "FLOAT NOT NULL DEFAULT 0.5"),
+        ("trust_intentions",   "FLOAT NOT NULL DEFAULT 0.5"),
+        ("trust_competence",   "FLOAT NOT NULL DEFAULT 0.5"),
+        ("trust_reliability",  "FLOAT NOT NULL DEFAULT 0.5"),
+        ("affinity",           "FLOAT NOT NULL DEFAULT 0.0"),
+        ("comfort",            "FLOAT NOT NULL DEFAULT 0.5"),
+        ("respect",            "FLOAT NOT NULL DEFAULT 0.5"),
+        ("attachment",         "FLOAT NOT NULL DEFAULT 0.0"),
+        ("conflict",           "FLOAT NOT NULL DEFAULT 0.0"),
+        ("uncertainty",        "FLOAT NOT NULL DEFAULT 0.5"),
+    ]
+
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(socialprofile)"))
+        rows = result.fetchall()
+        if not rows:
+            return  # table not yet created; create_all handles full schema
+
+        col_info = {row[1]: row for row in rows}  # col_name → (cid, name, type, notnull, dflt, pk)
+
+        # Check if PRIMARY KEY is intact (pk field > 0 for the id column).
+        id_row = col_info.get("id")
+        pk_broken = id_row is not None and id_row[5] == 0
+
+        # Check if old NOT-NULL-no-DEFAULT columns would break new INSERTs.
+        old_notnull = any(
+            col in col_info and col_info[col][3] == 1 and col_info[col][4] is None
+            for col in ("opinion", "trust")
+        )
+
+        if pk_broken or old_notnull:
+            # Full table rebuild: new table preserves existing data, fixes constraints.
+            # Collect all existing column names so we copy every column.
+            existing_cols = list(col_info.keys())
+            cols_csv = ", ".join(existing_cols)
+
+            conn.execute(text("PRAGMA foreign_keys = OFF"))
+            conn.execute(text(
+                "CREATE TABLE _sp_rebuild ("
+                " id INTEGER PRIMARY KEY,"
+                " user_id INTEGER NOT NULL,"
+                " opinion FLOAT,"                 # relaxed: no longer NOT NULL
+                " trust FLOAT,"                   # relaxed: no longer NOT NULL
+                " pending_loads_json VARCHAR,"
+                " last_updated_at DATETIME,"
+                " created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
+                ")"
+            ))
+            # Copy only the columns that exist in both old and new table
+            _base_cols = [c for c in
+                          ["id", "user_id", "opinion", "trust",
+                           "pending_loads_json", "last_updated_at", "created_at"]
+                          if c in col_info]
+            base_csv = ", ".join(_base_cols)
+            conn.execute(text(
+                f"INSERT INTO _sp_rebuild ({base_csv}) SELECT {base_csv} FROM socialprofile"
+            ))
+            conn.execute(text("DROP TABLE socialprofile"))
+            conn.execute(text("ALTER TABLE _sp_rebuild RENAME TO socialprofile"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_socialprofile_user_id"
+                " ON socialprofile(user_id)"
+            ))
+            conn.execute(text("PRAGMA foreign_keys = ON"))
+            conn.commit()
+
+            # Re-read column info after rebuild
+            result2 = conn.execute(text("PRAGMA table_info(socialprofile)"))
+            col_info = {row[1]: row for row in result2.fetchall()}
+
+        for col, typedef in _NEW_COLS:
+            if col not in col_info:
+                conn.execute(text(f"ALTER TABLE socialprofile ADD COLUMN {col} {typedef}"))
+        conn.commit()
+
+
+def _migrate_social_reflection_fase3() -> None:
+    """Add Fase 3 combined-delta reference columns to socialreflection.
+
+    Old columns (opinion_at_gen, trust_at_gen) are kept as dead weight but their
+    NOT NULL constraints must be relaxed — new INSERTs omit those fields.
+    SQLite cannot ALTER column constraints, so we do a full table rebuild first
+    (same pattern as _migrate_social_profile_fase3), then ADD COLUMN for new cols.
+    """
+    _NEW_COLS = [
+        ("affinity_at_gen",    "FLOAT NOT NULL DEFAULT 0.0"),
+        ("conflict_at_gen",    "FLOAT NOT NULL DEFAULT 0.0"),
+        ("trust_avg_at_gen",   "FLOAT NOT NULL DEFAULT 0.5"),
+        ("attachment_at_gen",  "FLOAT NOT NULL DEFAULT 0.0"),
+    ]
+
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(socialreflection)"))
+        rows = result.fetchall()
+        if not rows:
+            return  # table not yet created; create_all handles full schema
+
+        col_info = {row[1]: row for row in rows}
+
+        # Check if old at_gen columns are NOT NULL without a DEFAULT (row[3]=notnull, row[4]=dflt).
+        old_notnull = any(
+            col in col_info and col_info[col][3] == 1 and col_info[col][4] is None
+            for col in ("opinion_at_gen", "trust_at_gen")
+        )
+
+        if old_notnull:
+            # Full table rebuild to relax NOT NULL on dead-weight columns.
+            _base_cols = [c for c in
+                          ["id", "profile_id", "category", "content", "evidence_json",
+                           "opinion_at_gen", "trust_at_gen", "created_at",
+                           "expires_at", "superseded_at"]
+                          if c in col_info]
+            base_csv = ", ".join(_base_cols)
+
+            conn.execute(text("PRAGMA foreign_keys = OFF"))
+            conn.execute(text("""
+                CREATE TABLE _sr_rebuild (
+                    id            INTEGER PRIMARY KEY,
+                    profile_id    INTEGER NOT NULL,
+                    category      TEXT    NOT NULL,
+                    content       TEXT    NOT NULL,
+                    evidence_json TEXT    NOT NULL DEFAULT '[]',
+                    opinion_at_gen  FLOAT,
+                    trust_at_gen    FLOAT,
+                    created_at    DATETIME NOT NULL,
+                    expires_at    DATETIME,
+                    superseded_at DATETIME
+                )
+            """))
+            conn.execute(text(
+                f"INSERT INTO _sr_rebuild ({base_csv}) SELECT {base_csv} FROM socialreflection"
+            ))
+            conn.execute(text("DROP TABLE socialreflection"))
+            conn.execute(text("ALTER TABLE _sr_rebuild RENAME TO socialreflection"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_socialreflection_profile_id"
+                " ON socialreflection(profile_id)"
+            ))
+            conn.execute(text("PRAGMA foreign_keys = ON"))
+            conn.commit()
+
+            # Re-read column info after rebuild
+            result2 = conn.execute(text("PRAGMA table_info(socialreflection)"))
+            col_info = {row[1]: row for row in result2.fetchall()}
+
+        for col, typedef in _NEW_COLS:
+            if col not in col_info:
+                conn.execute(text(f"ALTER TABLE socialreflection ADD COLUMN {col} {typedef}"))
+        conn.commit()
+
+
 def _verify_encryption_key(session: Session) -> None:
     """Fail fast at startup if SITY_ENCRYPTION_KEY cannot decrypt existing UserIntegration rows.
 
@@ -211,6 +376,8 @@ def init_db() -> None:
         _migrate_setting()
         _migrate_pendingaction()
         _migrate_social_reflection()
+        _migrate_social_profile_fase3()
+        _migrate_social_reflection_fase3()
         _migrate_userachievement()
         _migrate_fileartifact()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.

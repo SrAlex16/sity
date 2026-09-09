@@ -1,4 +1,4 @@
-"""social_tools.py — social_recall_impression handler.
+"""social_tools.py — social_recall_impression handler (Remake Fase 3).
 
 Returns Sity's qualitative impression of a third-party user (B) when
 the current interlocutor (A) asks about them by display_name.
@@ -10,27 +10,28 @@ All filtering happens here in the handler, never in the prompt.
   A = current session (session_id must be "user:N")
   B = target user, resolved by display_name (case-insensitive, exact)
 
-Disclosure level = trust_A × trust_B
-  < 0.05  → LOW   : only the opinion label, no further detail
+Disclosure level = trust_avg_A × trust_avg_B
+  < 0.05  → LOW   : only the affinity label, no further detail
   0.05–0.20→ MEDIUM: label + one-line about Sity's familiarity with B
   ≥ 0.20  → HIGH  : label + familiarity + one extra qualitative line
+
+trust_avg = (trust_honesty + trust_intentions + trust_competence + trust_reliability) / 4
+
+The formula trust_avg_A × trust_avg_B acts as a double gate:
+  • A must have earned Sity's trust (established relationship) AND
+  • Sity must actually know B (not just a few turns of history)
+  before any nuance is shared.
 
 Absolute limit (enforced at every level):
   NEVER include content from B's messages, specific facts, or any
   concrete/verifiable information about B — only qualitative impressions
-  derived from opinion/trust values.
-
-The formula trust_A × trust_B acts as a double gate:
-  • A must have earned Sity's trust (long, stable relationship) AND
-  • Sity must actually know B (not just a few turns of history)
-  before any nuance is shared. When either party is new, disclosure stays
-  at the generic floor regardless of what A claims about their own trust.
+  derived from affinity/trust values.
 """
 from __future__ import annotations
 
 from sqlalchemy import text as sa_text
 
-from app.chat.prompt_context import _opinion_label, _trust_label
+from app.chat.prompt_context import _affinity_label, _familiarity_label, _trust_avg_label
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 
@@ -59,36 +60,37 @@ def _err(text: str, tool_name: str = "social_recall_impression") -> ToolExecutio
 
 def _build_impression(
     display_name: str,
-    opinion_b: float,
-    trust_b: float,
+    affinity_b: float,
+    familiarity_b: float,
+    trust_avg_b: float,
     disclosure: float,
 ) -> str:
-    label = _opinion_label(opinion_b)
+    label = _affinity_label(affinity_b)
 
     if disclosure < 0.05:
         return (
-            f"Tengo una impresión {label} de esa persona, "
+            f"Tengo una impresión de afinidad {label} de esa persona, "
             "pero no tenemos suficiente historia compartida para que me extienda más."
         )
 
-    familiarity_b = _trust_label(trust_b)
+    familiarity_label = _familiarity_label(familiarity_b)
     if disclosure < 0.20:
         return (
-            f"Tengo una impresión {label} de {display_name}. "
-            f"Mi nivel de conocimiento de esa persona es: {familiarity_b}."
+            f"Tengo una impresión de afinidad {label} de {display_name}. "
+            f"Mi nivel de conocimiento de esa persona es: {familiarity_label}."
         )
 
-    # HIGH — one extra qualitative line based on trust_b stability signal
-    if trust_b >= 0.50:
+    # HIGH — one extra qualitative line based on trust_avg_b
+    if trust_avg_b >= 0.65:
         extra = "Tenemos una relación bastante estable."
-    elif trust_b >= 0.20:
+    elif trust_avg_b >= 0.45:
         extra = "Nos conocemos, aunque hay margen para que la relación madure."
     else:
         extra = "Aún estoy formándome una impresión más completa."
 
     return (
-        f"Tengo una impresión {label} de {display_name}. "
-        f"Mi nivel de conocimiento de esa persona es: {familiarity_b}. "
+        f"Tengo una impresión de afinidad {label} de {display_name}. "
+        f"Mi nivel de conocimiento de esa persona es: {familiarity_label}. "
         f"{extra}"
     )
 
@@ -97,7 +99,7 @@ def _build_impression(
 def handle_social_recall_impression(ctx: ToolContext) -> ToolExecutionResult:
     session_id: str = ctx.executor.session_id
 
-    # Guest check — no SocialProfile, no trust, no disclosure.
+    # Guest check — no SocialProfile, no impression available.
     if not session_id.startswith("user:"):
         return _ok("No tengo memoria de relaciones en esta sesión.")
 
@@ -112,14 +114,17 @@ def handle_social_recall_impression(ctx: ToolContext) -> ToolExecutionResult:
 
     session = ctx.executor.session
 
-    # Resolve A's profile (trust_A).
+    # Resolve A's trust_avg
     row_a = session.execute(
-        sa_text("SELECT opinion, trust FROM socialprofile WHERE user_id = :uid"),
+        sa_text(
+            "SELECT trust_honesty, trust_intentions, trust_competence, trust_reliability"
+            " FROM socialprofile WHERE user_id = :uid"
+        ),
         {"uid": user_id_a},
     ).fetchone()
-    trust_a: float = row_a[1] if row_a else 0.0
+    trust_avg_a: float = (sum(row_a) / 4.0) if row_a else 0.0
 
-    # Resolve B by display_name (case-insensitive exact match).
+    # Resolve B by display_name (case-insensitive exact match)
     row_user_b = session.execute(
         sa_text(
             "SELECT id FROM user"
@@ -134,22 +139,25 @@ def handle_social_recall_impression(ctx: ToolContext) -> ToolExecutionResult:
 
     user_id_b: int = row_user_b[0]
 
-    # A == B: someone asking about themselves.
     if user_id_b == user_id_a:
         return _ok("Estás preguntando por ti mismo.")
 
-    # B's profile.
     row_b = session.execute(
-        sa_text("SELECT opinion, trust FROM socialprofile WHERE user_id = :uid"),
+        sa_text(
+            "SELECT affinity, familiarity,"
+            " trust_honesty, trust_intentions, trust_competence, trust_reliability"
+            " FROM socialprofile WHERE user_id = :uid"
+        ),
         {"uid": user_id_b},
     ).fetchone()
 
     if row_b is None:
         return _ok(f"No tengo ninguna impresión formada sobre {username} todavía.")
 
-    opinion_b: float = row_b[0]
-    trust_b: float = row_b[1]
+    affinity_b: float = row_b[0]
+    familiarity_b: float = row_b[1]
+    trust_avg_b: float = (row_b[2] + row_b[3] + row_b[4] + row_b[5]) / 4.0
 
-    disclosure = trust_a * trust_b
-    text = _build_impression(username, opinion_b, trust_b, disclosure)
+    disclosure = trust_avg_a * trust_avg_b
+    text = _build_impression(username, affinity_b, familiarity_b, trust_avg_b, disclosure)
     return _ok(text)

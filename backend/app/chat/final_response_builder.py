@@ -110,8 +110,12 @@ def _append_pending_load(session: Session, session_id: str, load: int) -> None:
     now_str = datetime.now(timezone.utc).isoformat()
     session.execute(
         text(
-            "INSERT INTO socialprofile (user_id, opinion, trust, pending_loads_json, created_at)"
-            " VALUES (:uid, 0.0, 0.0, json_array(:load), :now)"
+            "INSERT INTO socialprofile"
+            " (user_id, familiarity, trust_honesty, trust_intentions, trust_competence,"
+            "  trust_reliability, affinity, comfort, respect, attachment, conflict, uncertainty,"
+            "  pending_loads_json, created_at)"
+            " VALUES (:uid, 0.0, 0.5, 0.5, 0.5, 0.5, 0.0, 0.5, 0.5, 0.0, 0.0, 0.5,"
+            "         json_array(:load), :now)"
             " ON CONFLICT(user_id) DO UPDATE"
             " SET pending_loads_json ="
             "   json_insert(COALESCE(socialprofile.pending_loads_json, '[]'), '$[#]', :load)"

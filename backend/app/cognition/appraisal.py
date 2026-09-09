@@ -15,7 +15,9 @@ Contracts (Section 12):
   interest_delta   : float — change to MentalState.interest
   frustration_delta: float — change to MentalState.frustration
   trust_evidence   : float — positive evidence of trust; fed into SocialProfile
-                     via social update, not directly into MentalState
+                     per-turn (trust_honesty + trust_intentions via
+                     apply_appraisal_to_social_profile) AND into MentalState.social_comfort
+                     as a small ephemeral nudge (×0.5)
   goal_updates     : list[GoalUpdateIntent] — goal creation intents (applied
                      to DB when integrated in Paso 3)
   goal_relevance   : list[GoalRelevance] — per-active-goal relevance_boost [0,1]

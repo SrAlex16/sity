@@ -1,19 +1,24 @@
-"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2, Paso 3).
+"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2 Paso 3, Fase 3 Paso 1).
 
 run_cognition_turn is the single entry point for the complete cognition pass:
-  1. Load active Goals from DB (before Perception, so Appraisal can score them)
-  2. Run Perception (Haiku classifier)
-  3. Load MentalState SQLModel row — needed for delta application (not the dict
-     already in TurnContext, which is a pre-turn snapshot for PersonaEngine)
-  4. Run Appraisal (Haiku — receives Perception + MentalState + Goals)
-  5. Apply Appraisal deltas to MentalState row and persist
-  6. Apply GoalUpdateIntents to DB (create new Goal rows)
-  7. Return CognitionTurnResult
+  1. Expire stale short_term goals
+  2. Load active Goals + their milestones
+  3. Run Perception (Haiku classifier)
+  4. Load MentalState SQLModel row
+  5. Run Appraisal (Haiku — Perception + MentalState + Goals)
+  6. Apply Appraisal deltas to MentalState row and persist
+  7. Load SocialProfile row
+  8. Apply Appraisal + Perception signals to SocialProfile and persist
+  9. Apply GoalUpdateIntents, GoalStateChanges, MilestoneUpdates to DB
+ 10. Return CognitionTurnResult
 
 Never raises — Perception and Appraisal return neutral/zero fallbacks on any error.
-The MentalState commit is the only DB write that could fail; it is wrapped in the
-SettingsService.save_mental_state contract (which does not swallow errors, so the
-caller's outer try/except in turn_runner.py guards this path).
+The MentalState/SocialProfile commits are the only DB writes that could fail; they are
+wrapped in a try/except at the call site in turn_runner.py.
+
+MentalState timing note: TurnContext.mental_state is a plain dict snapshot
+built before this function runs and already passed to PersonaEngine. Deltas
+are applied here to the SQLModel rows and persisted for the NEXT turn.
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ from app.cognition.goal_service import (
 from app.cognition.perception import PerceptionResult, run_perception
 from app.memory.models import Goal
 from app.settings.settings_service import SettingsService
+from app.social.social_service import apply_appraisal_to_social_profile, get_or_create_social_profile
 
 
 @dataclass
@@ -51,13 +57,7 @@ def run_cognition_turn(
     *,
     trace_id: str = "",
 ) -> CognitionTurnResult:
-    """Run the full cognition pipeline for one authenticated user turn.
-
-    MentalState timing note: TurnContext.mental_state is a plain dict snapshot
-    built before this function runs and already passed to PersonaEngine. Appraisal
-    deltas are applied here to the SQLModel row and persisted — the updated values
-    take effect starting from the NEXT turn. This is intentional.
-    """
+    """Run the full cognition pipeline for one authenticated user turn."""
     # Expire stale short_term goals before loading — keeps context clean
     resolve_expired_short_term_goals(session, user_id)
 
@@ -103,6 +103,20 @@ def run_cognition_turn(
 
     apply_appraisal_to_mental_state(ms_row, appraisal)
     settings_service.save_mental_state(ms_row)
+
+    # Per-turn SocialProfile update: Appraisal + Perception signals → 11 relationship dimensions
+    sp_row = get_or_create_social_profile(session, user_id)
+    apply_appraisal_to_social_profile(
+        profile=sp_row,
+        appraisal_trust_evidence=appraisal.trust_evidence,
+        appraisal_interest_delta=appraisal.interest_delta,
+        appraisal_frustration_delta=appraisal.frustration_delta,
+        perception_social_signal=perception.social_signal,
+        perception_challenge=perception.challenge,
+        personality=personality,
+    )
+    session.add(sp_row)
+    session.commit()
 
     if appraisal.goal_updates:
         apply_goal_intents(session, user_id, appraisal.goal_updates)

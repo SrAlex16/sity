@@ -1,4 +1,4 @@
-"""Tests for Social Memory — Fase 4, Pasos 2, 3 y 4.
+"""Tests for Social Memory — Fase 4 + Fase 3 Remake.
 
 Paso 2 properties:
 1. <R:N> tag is always stripped before save_message and before user delivery.
@@ -9,10 +9,10 @@ Paso 2 properties:
 6. Persona prompt includes turn_load_instruction for user: sessions only.
 7. _append_pending_load is safe under concurrent calls (atomic SQL upsert).
 
-Paso 3 properties:
-8. compute_batch_opinion formula correctness.
-9. compute_trust formula correctness (three reference cases).
-10. _run_social_update clears pending_loads and updates opinion/trust atomically.
+Paso 3 (Remake Fase 3 — multidimensional model) properties:
+8. _combined_delta formula correctness.
+9. apply_appraisal_to_social_profile updates dimensions correctly.
+10. _run_social_update clears pending_loads and inserts RelationshipSnapshot.
 11. Empty pending_loads → early return with no state change.
 12. Atomicity on failure: exception before commit leaves DB unchanged.
 13. Snapshot semantics: loads arriving while update runs are NOT consumed.
@@ -24,12 +24,11 @@ Paso 4 properties:
 17. _build_social_context_block is read-only — DB unchanged after call.
 18. PromptContextBuilder injects social block in user_message_with_history and planner_user_message.
 19. PromptContextBuilder omits social block for guest sessions.
-20. Anti-injection: user text claiming high opinion does not write to SocialProfile.opinion.
+20. Anti-injection: user text claiming high affinity does not write to SocialProfile.
 """
 from __future__ import annotations
 
 import json
-import statistics
 import time
 import threading
 from typing import Any
@@ -46,11 +45,11 @@ from app.chat.final_response_builder import (
 )
 from app.core.persona_engine import PersonaEngine
 from app.cortex.schemas import AIResponse, AIUsageData
-from app.memory.models import OpinionSnapshot, SocialProfile
+from app.memory.models import RelationshipSnapshot, SocialProfile
+from app.social.social_service import apply_appraisal_to_social_profile
 from app.social.update import (
+    _combined_delta,
     _run_social_update,
-    compute_batch_opinion,
-    compute_trust,
 )
 
 
@@ -85,7 +84,6 @@ def test_strip_no_match_returns_text_unchanged() -> None:
 
 
 def test_strip_tag_mid_sentence_not_matched() -> None:
-    # Tag NOT at end of string should not match
     original = "Texto <R:+1> más texto."
     text, raw = _strip_turn_load_tag(original)
     assert raw is None
@@ -93,7 +91,6 @@ def test_strip_tag_mid_sentence_not_matched() -> None:
 
 
 def test_strip_out_of_range_value_still_stripped() -> None:
-    # <R:99> is invalid but should still be stripped from text
     text, raw = _strip_turn_load_tag("Respuesta.<R:99>")
     assert raw == "99"
     assert "<R:" not in text
@@ -132,12 +129,10 @@ def test_append_accumulates_loads(db_session: Session) -> None:
 
 
 def test_append_invalid_session_id_is_silent(db_session: Session) -> None:
-    # Should not raise, should not create any row
     _append_pending_load(db_session, "guest:abc", 1)
     db_session.commit()
     _append_pending_load(db_session, "malformed", 0)
     db_session.commit()
-    # No SocialProfile created for these
     row = db_session.exec(select(SocialProfile).where(SocialProfile.user_id == 0)).first()
     assert row is None
 
@@ -164,7 +159,6 @@ def _run_build_final(
     session_id: str = "user:1",
     captured_saves: list[str] | None = None,
 ) -> tuple[Any, list[str]]:
-    """Call build_final_ai_response with a minimal mock context."""
     saved: list[str] = captured_saves if captured_saves is not None else []
 
     def _save(*, role: str, text: str, **_kwargs: Any) -> None:
@@ -196,7 +190,7 @@ def test_tag_stripped_from_returned_response_text(db_session: Session) -> None:
 
 def test_tag_stripped_from_saved_message(db_session: Session) -> None:
     _, saved = _run_build_final(db_session, "Texto guardado.<R:0>")
-    sity_text = saved[-1]  # last save is the sity message
+    sity_text = saved[-1]
     assert "<R:" not in sity_text
 
 
@@ -217,13 +211,9 @@ def test_valid_tag_creates_pending_load(db_session: Session) -> None:
 
 def test_guest_session_no_profile_created(db_session: Session) -> None:
     result, _ = _run_build_final(db_session, "Hola guest.<R:+1>", session_id="guest:abc123")
-    # Guest: tag is stripped but no SocialProfile created
     assert "<R:" not in result.text
-    # There should be no SocialProfile for any user matching guest session
-    # (guest: prefix → _append_pending_load bails early)
     all_profiles = db_session.exec(select(SocialProfile)).all()
     for p in all_profiles:
-        # Any existing profile should not correspond to a "guest:" session parse
         assert p.user_id > 0
 
 
@@ -272,18 +262,9 @@ def test_invalid_tag_value_logs_warning(db_session: Session) -> None:
 # ---------------------------------------------------------------------------
 
 def test_concurrent_writes_preserve_all_loads() -> None:
-    """Two threads writing to the same user_id must not lose each other's loads.
-
-    The old read-modify-write pattern (SELECT → json.loads → append → UPDATE)
-    would silently drop the first load if the second thread read before the
-    first committed.  The atomic INSERT...ON CONFLICT...DO UPDATE with
-    json_insert fixes this: each call is a single SQL statement that SQLite
-    executes as one serialised unit.
-    """
     from app.memory.db import engine
 
     uid = 9960
-    # Clean up any leftover state from previous runs
     with Session(engine) as setup_sess:
         existing = setup_sess.exec(
             select(SocialProfile).where(SocialProfile.user_id == uid)
@@ -347,115 +328,175 @@ def test_turn_load_instruction_absent_for_default_session() -> None:
 
 
 # ===========================================================================
-# Paso 3 — formula unit tests
+# Paso 3 — _combined_delta unit tests (Remake Fase 3)
 # ===========================================================================
 
-class TestComputeBatchOpinion:
-    def test_all_neutral(self) -> None:
-        assert compute_batch_opinion([0, 0, 0]) == 0.0
+class TestCombinedDelta:
+    def test_all_zero_returns_zero(self) -> None:
+        assert _combined_delta(0.3, 0.1, 0.5, 0.2, 0.3, 0.1, 0.5, 0.2) == pytest.approx(0.0)
 
-    def test_all_max_positive(self) -> None:
-        # load=+2, weight=3 → raw=2.0 → normalized=1.0
-        assert compute_batch_opinion([2, 2, 2]) == pytest.approx(1.0)
+    def test_affinity_only_change(self) -> None:
+        # Δaffinity=0.4 → 0.35 * 0.4 = 0.14
+        result = _combined_delta(0.7, 0.1, 0.5, 0.2, 0.3, 0.1, 0.5, 0.2)
+        assert result == pytest.approx(0.35 * 0.4, abs=1e-9)
 
-    def test_all_max_negative(self) -> None:
-        assert compute_batch_opinion([-2, -2, -2]) == pytest.approx(-1.0)
+    def test_conflict_only_change(self) -> None:
+        # Δconflict=0.3 → 0.30 * 0.3 = 0.09
+        result = _combined_delta(0.3, 0.4, 0.5, 0.2, 0.3, 0.1, 0.5, 0.2)
+        assert result == pytest.approx(0.30 * 0.3, abs=1e-9)
 
-    def test_symmetric_cancels(self) -> None:
-        # +2 and -2 have same weight → cancel out
-        assert compute_batch_opinion([2, -2]) == pytest.approx(0.0)
+    def test_trust_only_change(self) -> None:
+        # Δtrust_avg=0.2 → 0.25 * 0.2 = 0.05
+        result = _combined_delta(0.3, 0.1, 0.7, 0.2, 0.3, 0.1, 0.5, 0.2)
+        assert result == pytest.approx(0.25 * 0.2, abs=1e-9)
 
-    def test_asymmetric_positive(self) -> None:
-        # loads=[+2, 0]: w=[3,1], sum=6, total_w=4, raw=1.5, norm=0.75
-        assert compute_batch_opinion([2, 0]) == pytest.approx(0.75)
+    def test_attachment_only_change(self) -> None:
+        # Δattachment=0.5 → 0.10 * 0.5 = 0.05
+        result = _combined_delta(0.3, 0.1, 0.5, 0.7, 0.3, 0.1, 0.5, 0.2)
+        assert result == pytest.approx(0.10 * 0.5, abs=1e-9)
 
-    def test_single_positive_one(self) -> None:
-        # load=+1, weight=2 → raw=1.0 → norm=0.5
-        assert compute_batch_opinion([1]) == pytest.approx(0.5)
+    def test_combined_all_dimensions(self) -> None:
+        # Δaffinity=0.2, Δconflict=0.1, Δtrust=0.1, Δattachment=0.1
+        result = _combined_delta(0.5, 0.2, 0.6, 0.3, 0.3, 0.1, 0.5, 0.2)
+        expected = 0.35 * 0.2 + 0.30 * 0.1 + 0.25 * 0.1 + 0.10 * 0.1
+        assert result == pytest.approx(expected, abs=1e-9)
 
-    def test_empty_returns_zero(self) -> None:
-        assert compute_batch_opinion([]) == 0.0
+    def test_absolute_value_used(self) -> None:
+        # Negative change (current < reference) must still produce positive delta
+        result_neg = _combined_delta(0.1, 0.1, 0.5, 0.2, 0.5, 0.1, 0.5, 0.2)
+        result_pos = _combined_delta(0.9, 0.1, 0.5, 0.2, 0.5, 0.1, 0.5, 0.2)
+        assert result_neg == pytest.approx(result_pos, abs=1e-9)
 
-    def test_extremes_weighted_more(self) -> None:
-        # Extreme loads have more weight, so batch should skew toward them
-        # [+2, +1, 0] vs [+1, +1, +1]: the first should give higher opinion
-        opinion_with_extreme = compute_batch_opinion([2, 1, 0])
-        opinion_uniform = compute_batch_opinion([1, 1, 1])
-        assert opinion_with_extreme > opinion_uniform
+    def test_large_delta_threshold(self) -> None:
+        # Δaffinity=0.58 alone → 0.35 * 0.58 = 0.203 which is > 0.20
+        result = _combined_delta(0.88, 0.0, 0.5, 0.0, 0.30, 0.0, 0.5, 0.0)
+        assert result > 0.20
 
 
-class TestComputeTrust:
-    # Reference case 1: 1 year known, perfectly stable opinion history
-    def test_long_stable_yields_max_trust(self) -> None:
-        from datetime import timedelta
-        now = _utcnow()
-        created_at = (now - timedelta(days=365)).isoformat()
-        trust = compute_trust(
-            created_at_str=created_at,
-            snapshot_opinions=[0.5, 0.5, 0.5],
-            now=now,
+# ===========================================================================
+# Paso 3 — apply_appraisal_to_social_profile unit tests
+# ===========================================================================
+
+class TestApplyAppraisalToSocialProfile:
+    def _default_profile(self) -> SocialProfile:
+        return SocialProfile(
+            user_id=0,
+            familiarity=0.1,
+            trust_honesty=0.5,
+            trust_intentions=0.5,
+            trust_competence=0.5,
+            trust_reliability=0.5,
+            affinity=0.2,
+            comfort=0.5,
+            respect=0.5,
+            attachment=0.1,
+            conflict=0.1,
+            uncertainty=0.5,
         )
-        assert trust == pytest.approx(1.0, abs=1e-6)
 
-    # Reference case 2: 1 year, strong negative outlier but generally positive
-    def test_long_with_outlier_trust_reduced(self) -> None:
-        from datetime import timedelta
-        now = _utcnow()
-        created_at = (now - timedelta(days=365)).isoformat()
-        opinions = [0.5, 0.5, 0.5, 0.5, -0.8]
-        std_dev = statistics.pstdev(opinions)
-        stability_factor = max(0.0, 1.0 - std_dev)
-        expected_trust = 1.0 * (0.5 + 0.5 * stability_factor)
-        trust = compute_trust(
-            created_at_str=created_at,
-            snapshot_opinions=opinions,
-            now=now,
-        )
-        assert trust == pytest.approx(expected_trust, abs=1e-6)
-        # Trust is reduced compared to perfect stability, but still > 0.5
-        assert trust < 1.0
-        assert trust > 0.5
+    def _neutral_personality(self) -> dict:
+        return {
+            "skepticism": 0.5, "warmth": 0.5, "patience": 0.5,
+            "assertiveness": 0.5, "empathy": 0.5,
+        }
 
-    # Reference case 3: brand-new user (1 day), no history
-    def test_new_user_near_zero_trust(self) -> None:
-        from datetime import timedelta
-        now = _utcnow()
-        created_at = (now - timedelta(days=1)).isoformat()
-        trust = compute_trust(
-            created_at_str=created_at,
-            snapshot_opinions=[0.0],
-            now=now,
+    def test_familiarity_always_increases(self) -> None:
+        profile = self._default_profile()
+        before = profile.familiarity
+        apply_appraisal_to_social_profile(
+            profile, 0.0, 0.0, 0.0, 0.0, 0.0, self._neutral_personality()
         )
-        expected = (1.0 / 365.0) * 1.0  # time_factor × max_stability
-        assert trust == pytest.approx(expected, abs=1e-6)
-        assert trust < 0.01
+        assert profile.familiarity > before
 
-    def test_single_snapshot_full_stability(self) -> None:
-        # Only 1 snapshot → pstdev undefined, stability_factor = 1.0
-        from datetime import timedelta
-        now = _utcnow()
-        created_at = (now - timedelta(days=180)).isoformat()
-        trust = compute_trust(
-            created_at_str=created_at,
-            snapshot_opinions=[0.3],
-            now=now,
+    def test_positive_trust_evidence_raises_trust(self) -> None:
+        profile = self._default_profile()
+        before_h = profile.trust_honesty
+        before_i = profile.trust_intentions
+        apply_appraisal_to_social_profile(
+            profile, 0.05, 0.0, 0.0, 0.0, 0.0, self._neutral_personality()
         )
-        time_factor = min(1.0, 180 / 365)
-        assert trust == pytest.approx(time_factor * 1.0, abs=1e-6)
+        assert profile.trust_honesty > before_h
+        assert profile.trust_intentions > before_i
 
-    def test_very_volatile_caps_stability_at_zero(self) -> None:
-        # Extreme volatility: pstdev >= 1.0 → stability_factor = 0.0
-        from datetime import timedelta
-        now = _utcnow()
-        created_at = (now - timedelta(days=365)).isoformat()
-        opinions = [1.0, -1.0, 1.0, -1.0]  # pstdev = 1.0
-        trust = compute_trust(
-            created_at_str=created_at,
-            snapshot_opinions=opinions,
-            now=now,
+    def test_positive_interest_raises_affinity(self) -> None:
+        profile = self._default_profile()
+        before = profile.affinity
+        apply_appraisal_to_social_profile(
+            profile, 0.0, 0.3, 0.0, 0.0, 0.0, self._neutral_personality()
         )
-        # stability_factor = max(0, 1 - 1.0) = 0 → trust = 1.0 × 0.5 = 0.5
-        assert trust == pytest.approx(0.5, abs=1e-4)
+        assert profile.affinity > before
+
+    def test_frustration_raises_conflict(self) -> None:
+        profile = self._default_profile()
+        before = profile.conflict
+        apply_appraisal_to_social_profile(
+            profile, 0.0, 0.0, 0.3, 0.0, 0.0, self._neutral_personality()
+        )
+        assert profile.conflict > before
+
+    def test_social_signal_raises_attachment(self) -> None:
+        profile = self._default_profile()
+        before = profile.attachment
+        apply_appraisal_to_social_profile(
+            profile, 0.0, 0.0, 0.0, 1.0, 0.0, self._neutral_personality()
+        )
+        assert profile.attachment > before
+
+    def test_high_challenge_reduces_affinity(self) -> None:
+        profile = self._default_profile()
+        before = profile.affinity
+        apply_appraisal_to_social_profile(
+            profile, 0.0, 0.0, 0.0, 0.0, 1.0, self._neutral_personality()
+        )
+        assert profile.affinity < before
+
+    def test_skepticism_reduces_trust_update(self) -> None:
+        profile_low_sk = self._default_profile()
+        profile_high_sk = self._default_profile()
+        low_sk = dict(self._neutral_personality(), skepticism=0.0)
+        high_sk = dict(self._neutral_personality(), skepticism=1.0)
+        apply_appraisal_to_social_profile(profile_low_sk, 0.05, 0.0, 0.0, 0.0, 0.0, low_sk)
+        apply_appraisal_to_social_profile(profile_high_sk, 0.05, 0.0, 0.0, 0.0, 0.0, high_sk)
+        assert profile_low_sk.trust_honesty > profile_high_sk.trust_honesty
+
+    def test_patience_reduces_conflict_buildup(self) -> None:
+        profile_patient = self._default_profile()
+        profile_impatient = self._default_profile()
+        patient = dict(self._neutral_personality(), patience=1.0)
+        impatient = dict(self._neutral_personality(), patience=0.0)
+        apply_appraisal_to_social_profile(profile_patient, 0.0, 0.0, 0.3, 0.0, 1.0, patient)
+        apply_appraisal_to_social_profile(profile_impatient, 0.0, 0.0, 0.3, 0.0, 1.0, impatient)
+        assert profile_patient.conflict < profile_impatient.conflict
+
+    def test_warmth_amplifies_affinity_growth(self) -> None:
+        profile_warm = self._default_profile()
+        profile_cold = self._default_profile()
+        warm = dict(self._neutral_personality(), warmth=1.0)
+        cold = dict(self._neutral_personality(), warmth=0.0)
+        apply_appraisal_to_social_profile(profile_warm, 0.0, 0.3, 0.0, 0.0, 0.0, warm)
+        apply_appraisal_to_social_profile(profile_cold, 0.0, 0.3, 0.0, 0.0, 0.0, cold)
+        assert profile_warm.affinity > profile_cold.affinity
+
+    def test_all_values_clamped_to_0_1(self) -> None:
+        profile = self._default_profile()
+        profile.affinity = 0.99
+        profile.conflict = 0.0
+        apply_appraisal_to_social_profile(
+            profile, 0.05, 0.3, 0.0, 1.0, 0.0, self._neutral_personality()
+        )
+        for attr in ("familiarity", "trust_honesty", "trust_intentions",
+                     "affinity", "comfort", "respect", "attachment",
+                     "conflict", "uncertainty"):
+            val = getattr(profile, attr)
+            assert 0.0 <= val <= 1.0, f"{attr}={val} out of range"
+
+    def test_last_updated_at_set(self) -> None:
+        profile = self._default_profile()
+        assert profile.last_updated_at is None
+        apply_appraisal_to_social_profile(
+            profile, 0.0, 0.0, 0.0, 0.0, 0.0, self._neutral_personality()
+        )
+        assert profile.last_updated_at is not None
 
 
 def _utcnow() -> "datetime":
@@ -468,8 +509,9 @@ def _setup_profile_with_loads(engine: Any, uid: int, loads: list[int]) -> None:
     with Session(engine) as sess:
         existing = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
         if existing:
-            # Also delete associated snapshots
-            snaps = sess.exec(select(OpinionSnapshot).where(OpinionSnapshot.profile_id == existing.id)).all()
+            snaps = sess.exec(
+                select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == existing.id)
+            ).all()
             for s in snaps:
                 sess.delete(s)
             sess.delete(existing)
@@ -484,7 +526,7 @@ def _setup_profile_with_loads(engine: Any, uid: int, loads: list[int]) -> None:
 # ===========================================================================
 
 class TestRunSocialUpdate:
-    def test_basic_update_clears_loads_and_updates_opinion(self) -> None:
+    def test_basic_update_clears_loads_and_inserts_snapshot(self) -> None:
         from app.memory.db import engine
         uid = 9980
         _setup_profile_with_loads(engine, uid, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
@@ -494,19 +536,16 @@ class TestRunSocialUpdate:
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             assert profile is not None
-            assert json.loads(profile.pending_loads_json) == [], "pending_loads should be empty after update"
-            assert profile.opinion == pytest.approx(0.15, abs=1e-6), (
-                "10 loads of +1 → batch_norm=0.5, new_opinion=0.3×0.5+0.7×0.0=0.15"
-            )
-            assert profile.trust >= 0.0
+            assert json.loads(profile.pending_loads_json) == [], \
+                "pending_loads should be empty after update"
             assert profile.last_updated_at is not None
 
         with Session(engine) as sess:
-            snaps = sess.exec(select(OpinionSnapshot).where(
-                OpinionSnapshot.profile_id != 0
-            )).all()
-            matching = [s for s in snaps if abs(s.opinion_value - 0.15) < 1e-4]
-            assert len(matching) >= 1, "OpinionSnapshot should have been inserted with opinion ≈ 0.15"
+            profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            snaps = sess.exec(
+                select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile.id)
+            ).all()
+            assert len(snaps) >= 1, "RelationshipSnapshot should have been inserted"
 
     def test_empty_pending_loads_returns_early(self) -> None:
         from app.memory.db import engine
@@ -517,66 +556,71 @@ class TestRunSocialUpdate:
 
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
-            # Profile may not exist (no loads were added, so _append_pending_load created '[]')
-            # In either case, pending_loads should not have been cleared or opinion changed
             if profile is not None:
-                assert profile.opinion == 0.0, "opinion must not change if no loads"
-                assert profile.trust == 0.0
+                assert json.loads(profile.pending_loads_json) == [], \
+                    "empty loads should stay empty"
 
     def test_nonexistent_profile_returns_early(self) -> None:
-        # Should not raise; nothing in DB for this uid
-        _run_social_update(999999, "test_trace")
+        _run_social_update(999999, "test_trace")  # must not raise
 
-    def test_second_run_accumulates_ema(self) -> None:
+    def test_second_run_inserts_second_snapshot(self) -> None:
         from app.memory.db import engine
         uid = 9982
-        _setup_profile_with_loads(engine, uid, [2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
-        _run_social_update(uid, "test_trace")  # first batch: all +2
+        _setup_profile_with_loads(engine, uid, [1, 1, 1, 1, 1])
+        _run_social_update(uid, "test_trace")
 
         with Session(engine) as sess:
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
-            _append_pending_load(sess, f"user:{uid}", -2)
+            _append_pending_load(sess, f"user:{uid}", -1)
+            _append_pending_load(sess, f"user:{uid}", -1)
+            _append_pending_load(sess, f"user:{uid}", -1)
+            _append_pending_load(sess, f"user:{uid}", -1)
+            _append_pending_load(sess, f"user:{uid}", -1)
             sess.commit()
-        _run_social_update(uid, "test_trace")  # second batch: all -2
+        _run_social_update(uid, "test_trace")
 
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             assert profile is not None
-            # After first run: opinion = 0.3×1.0 + 0.7×0.0 = 0.30
-            # After second run: opinion = 0.3×(-1.0) + 0.7×0.30 = -0.30 + 0.21 = -0.09
-            assert profile.opinion == pytest.approx(-0.09, abs=1e-6)
+            assert json.loads(profile.pending_loads_json) == []
+            snaps = sess.exec(
+                select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile.id)
+            ).all()
+            assert len(snaps) == 2, f"expected 2 snapshots after 2 runs, got {len(snaps)}"
 
-    # -----------------------------------------------------------------------
-    # Case 2 (edge): atomicity — exception before commit leaves DB unchanged
-    # -----------------------------------------------------------------------
+    def test_snapshot_stores_current_profile_dimensions(self) -> None:
+        from app.memory.db import engine
+        uid = 9985
+        _setup_profile_with_loads(engine, uid, [1])
+        with Session(engine) as sess:
+            profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            expected_affinity = profile.affinity
+            expected_conflict = profile.conflict
+
+        _run_social_update(uid, "test_trace")
+
+        with Session(engine) as sess:
+            profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
+            snaps = sess.exec(
+                select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile.id)
+            ).all()
+            assert len(snaps) >= 1
+            snap = snaps[-1]
+            assert snap.affinity == pytest.approx(expected_affinity, abs=1e-6)
+            assert snap.conflict == pytest.approx(expected_conflict, abs=1e-6)
 
     def test_atomicity_exception_before_commit_leaves_state_unchanged(self) -> None:
-        """Simulate a crash mid-job: pending_loads and opinion must not change.
-
-        This mirrors the real-world scenario of a backend restart while the
-        daemon thread is in progress (same invariant as bg_after_tools).
-        """
         from app.memory.db import engine
         uid = 9983
         original_loads = [1, -1, 2]
         _setup_profile_with_loads(engine, uid, original_loads)
 
-        # Capture state before the failed run
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
-            pre_opinion = profile.opinion
-            pre_trust = profile.trust
             pre_loads = json.loads(profile.pending_loads_json)
             pre_snapshot_count = len(
-                sess.exec(select(OpinionSnapshot).where(OpinionSnapshot.profile_id == profile.id)).all()
+                sess.exec(
+                    select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile.id)
+                ).all()
             )
 
         def blow_up() -> None:
@@ -584,38 +628,20 @@ class TestRunSocialUpdate:
 
         _run_social_update(uid, "test_trace", _test_hook_before_commit=blow_up)
 
-        # Verify: DB state must be identical to before the failed run
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             assert profile is not None
-            assert json.loads(profile.pending_loads_json) == pre_loads, (
+            assert json.loads(profile.pending_loads_json) == pre_loads, \
                 "pending_loads_json must be unchanged after rollback"
-            )
-            assert profile.opinion == pytest.approx(pre_opinion, abs=1e-9), (
-                "opinion must be unchanged after rollback"
-            )
-            assert profile.trust == pytest.approx(pre_trust, abs=1e-9), (
-                "trust must be unchanged after rollback"
-            )
             post_snapshot_count = len(
-                sess.exec(select(OpinionSnapshot).where(OpinionSnapshot.profile_id == profile.id)).all()
+                sess.exec(
+                    select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile.id)
+                ).all()
             )
-            assert post_snapshot_count == pre_snapshot_count, (
-                "no OpinionSnapshot must be inserted after rollback"
-            )
-
-    # -----------------------------------------------------------------------
-    # Case 1 (edge): snapshot semantics — loads arriving during update are not lost
-    # -----------------------------------------------------------------------
+            assert post_snapshot_count == pre_snapshot_count, \
+                "no RelationshipSnapshot must be inserted after rollback"
 
     def test_snapshot_semantics_concurrent_load_not_consumed(self) -> None:
-        """Loads appended while update runs must survive to the next cycle.
-
-        _run_social_update holds BEGIN IMMEDIATE before reading pending_loads.
-        Any concurrent _append_pending_load is therefore serialised AFTER
-        the commit: it appends to the cleared '[]', not to the snapshot being
-        processed.  This test proves that property with real threads.
-        """
         from app.memory.db import engine
         uid = 9984
         _setup_profile_with_loads(engine, uid, [1] * 10)
@@ -624,61 +650,61 @@ class TestRunSocialUpdate:
         concurrent_write_done = threading.Event()
 
         def concurrent_write_fn() -> None:
-            concurrent_write_started.set()  # signal: thread is running
-            # This write is blocked by _run_social_update's BEGIN IMMEDIATE lock.
-            # It will proceed only after _run_social_update commits.
+            concurrent_write_started.set()
             with Session(engine) as bg_sess:
                 _append_pending_load(bg_sess, f"user:{uid}", 99)
                 bg_sess.commit()
             concurrent_write_done.set()
 
         def hook_after_read() -> None:
-            # Fire the concurrent writer while the write lock is held.
             t = threading.Thread(target=concurrent_write_fn, daemon=True)
             t.start()
-            # Wait for the thread to have started (it will then block on the write lock)
             concurrent_write_started.wait(timeout=2.0)
-            # Small pause to let the thread reach and block on the SQLite write lock
             time.sleep(0.1)
-            # Return: _run_social_update continues to commit, unblocking the thread
 
         _run_social_update(uid, "test_trace", _test_hook_after_read=hook_after_read)
 
-        # Wait for the concurrent write to complete after the lock was released
-        assert concurrent_write_done.wait(timeout=5.0), (
+        assert concurrent_write_done.wait(timeout=5.0), \
             "concurrent write did not complete within 5 s after update committed"
-        )
 
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             assert profile is not None
             remaining = json.loads(profile.pending_loads_json)
-            assert remaining == [99], (
+            assert remaining == [99], \
                 f"expected only the concurrent load [99] in pending_loads, got {remaining}"
-            )
-            # The batch of 10×(+1) was processed: opinion should be ~0.15
-            assert profile.opinion == pytest.approx(0.15, abs=1e-6), (
-                f"opinion should be 0.15 from the batch of 10×(+1), got {profile.opinion}"
-            )
 
 
 # ---------------------------------------------------------------------------
 # Paso 4 — Social context injection in PromptContextBuilder
 # ---------------------------------------------------------------------------
 
-def _make_mock_session(opinion: float, trust: float) -> Any:
+def _make_mock_session(
+    familiarity: float,
+    affinity: float,
+    trust_avg: float,
+    conflict: float = 0.1,
+) -> Any:
     """Return a minimal SQLAlchemy session stub for _build_social_context_block.
 
-    First execute() → profile row (id, opinion, trust).
-    Second execute() → None (no active reflection), preventing IndexError.
+    Returns 9-column profile row:
+      (id, familiarity, affinity, trust_honesty, trust_intentions, trust_competence, trust_reliability, comfort, conflict)
+
+    trust_avg is expanded into 4 equal sub-dimensions for simplicity.
+    First execute() → profile row; second execute() → None (no active reflection).
     """
     from unittest.mock import MagicMock
 
     profile_row = MagicMock()
-    # Row now returns (id=1, opinion, trust)
-    profile_row.__getitem__ = lambda self, i: [1, opinion, trust][i]
+    # Unpack order matches SQL in _build_social_context_block:
+    #   id, familiarity, affinity, th, ti, tc, tr, comfort, conflict
+    values = [1, familiarity, affinity, trust_avg, trust_avg, trust_avg, trust_avg, 0.5, conflict]
+    profile_row.__getitem__ = lambda self, i: values[i]
+    profile_row.__iter__ = lambda self: iter(values)
+    # Support tuple unpacking via __len__
+    profile_row.__len__ = lambda self: len(values)
     profile_result = MagicMock()
-    profile_result.fetchone.return_value = profile_row
+    profile_result.fetchone.return_value = tuple(values)
 
     no_ref_result = MagicMock()
     no_ref_result.fetchone.return_value = None
@@ -689,7 +715,6 @@ def _make_mock_session(opinion: float, trust: float) -> Any:
 
 
 def _make_null_session() -> Any:
-    """Return a session stub that returns None (no profile row)."""
     from unittest.mock import MagicMock
     result = MagicMock()
     result.fetchone.return_value = None
@@ -712,46 +737,61 @@ class TestSocialContextBlock:
         assert block == ""
 
     def test_no_profile_returns_empty(self) -> None:
-        """First contact — user exists in auth but no SocialProfile yet."""
         from app.chat.prompt_context import _build_social_context_block
         block = _build_social_context_block(_make_null_session(), "user:42")
         assert block == ""
 
-    def test_profile_positive_opinion(self) -> None:
+    def test_profile_high_familiarity_high_affinity(self) -> None:
         from app.chat.prompt_context import _build_social_context_block
-        block = _build_social_context_block(_make_mock_session(0.34, 0.55), "user:1")
-        assert "positiva" in block
+        block = _build_social_context_block(_make_mock_session(0.6, 0.8, 0.75), "user:1")
+        assert "muy conocida" in block
+        assert "alta" in block
         assert "consolidada" in block
-        assert "0.34" not in block, "numeric opinion must not appear in the block"
-        assert "0.55" not in block, "numeric trust must not appear in the block"
         assert "no citar" in block
 
-    def test_profile_negative_opinion(self) -> None:
+    def test_profile_low_affinity_incipient_trust(self) -> None:
         from app.chat.prompt_context import _build_social_context_block
-        block = _build_social_context_block(_make_mock_session(-0.6, 0.15), "user:2")
-        assert "bastante negativa" in block
-        assert "inicial" in block
+        block = _build_social_context_block(_make_mock_session(0.05, 0.1, 0.25), "user:2")
+        assert "muy baja" in block
+        assert "incipiente" in block
 
-    def test_profile_neutral_opinion(self) -> None:
+    def test_profile_moderate_familiarity(self) -> None:
         from app.chat.prompt_context import _build_social_context_block
-        block = _build_social_context_block(_make_mock_session(0.05, 0.35), "user:3")
-        assert "neutra" in block
-        assert "en desarrollo" in block
+        block = _build_social_context_block(_make_mock_session(0.25, 0.45, 0.55), "user:3")
+        assert "conocida" in block
+        assert "moderada" in block
+        assert "establecida" in block
+
+    def test_conflict_shown_when_high(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_mock_session(0.3, 0.5, 0.6, conflict=0.5), "user:4")
+        assert "Tensión acumulada" in block
+
+    def test_conflict_not_shown_when_low(self) -> None:
+        from app.chat.prompt_context import _build_social_context_block
+        block = _build_social_context_block(_make_mock_session(0.3, 0.5, 0.6, conflict=0.1), "user:5")
+        assert "Tensión acumulada" not in block
 
     def test_read_only_does_not_modify_db(self) -> None:
-        """_build_social_context_block must not write to DB."""
         from datetime import datetime, timezone
         from app.memory.db import engine
         from app.chat.prompt_context import _build_social_context_block
         uid = 9990
-        # Ensure clean state, then insert profile directly
         with Session(engine) as sess:
             existing = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             if existing:
                 sess.delete(existing)
                 sess.commit()
             sess.add(SocialProfile(
-                user_id=uid, opinion=0.42, trust=0.30,
+                user_id=uid,
+                familiarity=0.3,
+                affinity=0.4,
+                trust_honesty=0.5,
+                trust_intentions=0.5,
+                trust_competence=0.5,
+                trust_reliability=0.5,
+                comfort=0.5,
+                conflict=0.1,
                 pending_loads_json="[]",
                 created_at=datetime.now(timezone.utc),
             ))
@@ -763,12 +803,8 @@ class TestSocialContextBlock:
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             assert profile is not None
-            assert profile.opinion == pytest.approx(0.42, abs=1e-6), (
-                "opinion must be unchanged after reading social context block"
-            )
-            assert profile.trust == pytest.approx(0.30, abs=1e-6), (
-                "trust must be unchanged after reading social context block"
-            )
+            assert profile.familiarity == pytest.approx(0.3, abs=1e-6)
+            assert profile.affinity == pytest.approx(0.4, abs=1e-6)
 
 
 class TestPromptContextBuilderSocialInjection:
@@ -777,14 +813,18 @@ class TestPromptContextBuilderSocialInjection:
     def _build(
         self,
         session_id: str,
-        opinion: float = 0.4,
-        trust: float = 0.6,
+        familiarity: float = 0.3,
+        affinity: float = 0.4,
+        trust_avg: float = 0.6,
         *,
         no_profile: bool = False,
     ) -> Any:
         from app.chat.prompt_context import PromptContextBuilder
 
-        mock_session = _make_null_session() if no_profile else _make_mock_session(opinion, trust)
+        mock_session = (
+            _make_null_session() if no_profile
+            else _make_mock_session(familiarity, affinity, trust_avg)
+        )
 
         builder = PromptContextBuilder(get_recent_messages=lambda sess, limit=10: [])
         return builder.build(
@@ -795,14 +835,12 @@ class TestPromptContextBuilderSocialInjection:
         )
 
     def test_user_with_profile_injects_block_in_user_message(self) -> None:
-        ctx = self._build("user:1", opinion=0.4, trust=0.6)
+        ctx = self._build("user:1")
         assert "Contexto de relación" in ctx.user_message_with_history
-        assert "positiva" in ctx.user_message_with_history
 
     def test_user_with_profile_injects_block_in_planner_message(self) -> None:
-        ctx = self._build("user:1", opinion=0.4, trust=0.6)
+        ctx = self._build("user:1")
         assert "Contexto de relación" in ctx.planner_user_message
-        assert "positiva" in ctx.planner_user_message
 
     def test_guest_omits_social_block(self) -> None:
         ctx = self._build("guest:abc", no_profile=True)
@@ -815,22 +853,21 @@ class TestPromptContextBuilderSocialInjection:
         assert "Contexto de relación" not in ctx.planner_user_message
 
     def test_message_appears_after_social_block(self) -> None:
-        """User message must come after the social block, not before."""
-        ctx = self._build("user:1", opinion=0.4, trust=0.6)
+        ctx = self._build("user:1")
         rel_pos = ctx.user_message_with_history.find("Contexto de relación")
         msg_pos = ctx.user_message_with_history.find("hola")
         assert rel_pos < msg_pos, "social block must precede the user message"
 
 
 class TestAntiInjection:
-    """Verify that user text cannot directly modify SocialProfile.opinion/trust."""
+    """Verify that user text cannot directly modify SocialProfile dimensions."""
 
-    def test_user_claiming_high_trust_does_not_modify_profile(self) -> None:
-        """A user message asserting their own trust score must not write to the DB.
+    def test_user_claiming_high_affinity_does_not_inflate_snapshot(self) -> None:
+        """A user message asserting their affinity score must not write to the DB.
 
-        The only write path to opinion/trust is _run_social_update, which
-        uses the AI's <R:N> tag (evaluated by the model, not the user text).
-        This test proves no direct bypass exists.
+        The only write path to dimension state is apply_appraisal_to_social_profile
+        (called from turn_cognition) and _run_social_update (snapshot + reflection).
+        Neither reads user text directly.
         """
         from datetime import datetime, timezone
         from app.memory.db import engine
@@ -841,29 +878,31 @@ class TestAntiInjection:
                 sess.delete(existing)
                 sess.commit()
             sess.add(SocialProfile(
-                user_id=uid, opinion=-0.3, trust=0.1,
+                user_id=uid,
+                familiarity=0.05,
+                affinity=0.0,
+                trust_honesty=0.5,
+                trust_intentions=0.5,
                 pending_loads_json="[]",
                 created_at=datetime.now(timezone.utc),
             ))
             sess.commit()
 
-        # Simulate what happens on a turn where the user message is an injection attempt.
-        # The pipeline calls _append_pending_load with the AI's load (e.g., 0 = neutral),
-        # NOT with a value derived from user text.
+        # Simulate neutral AI load (user injection attempt has no effect on load)
         with Session(engine) as sess:
-            _append_pending_load(sess, f"user:{uid}", 0)  # AI says neutral
+            _append_pending_load(sess, f"user:{uid}", 0)
             sess.commit()
 
         _run_social_update(uid, "anti_injection_test")
 
-        expected_opinion = 0.3 * 0.0 + 0.7 * (-0.3)  # EMA: -0.21
         with Session(engine) as sess:
             profile = sess.exec(select(SocialProfile).where(SocialProfile.user_id == uid)).first()
             assert profile is not None
-            assert profile.opinion == pytest.approx(expected_opinion, abs=1e-6), (
-                f"opinion must follow EMA from AI load=0, not user-claimed value. "
-                f"Expected {expected_opinion:.4f}, got {profile.opinion:.4f}"
-            )
-            assert profile.trust < 0.5, (
-                "trust must remain low for a new user — not inflated by user claims"
+            # Snapshot inserted with current (unchanged by user text) affinity=0.0
+            snaps = sess.exec(
+                select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile.id)
+            ).all()
+            assert len(snaps) == 1
+            assert snaps[0].affinity == pytest.approx(0.0, abs=1e-6), (
+                "snapshot affinity must reflect actual profile value, not user-claimed value"
             )
