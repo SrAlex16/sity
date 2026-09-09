@@ -88,7 +88,7 @@ auth:
 social:
   update_threshold_turns: 10           # fire background update when pending_loads_json reaches this count
   reflection_min_new_messages: 20      # min new messages since last reflection to consider generating
-  reflection_min_opinion_delta: 0.15   # |Δopinion| threshold to bypass message count requirement
+  reflection_min_combined_delta: 0.15   # |Δcombined| threshold to bypass message count requirement
   reflection_max_age_days: 30          # reflection expires this many days after creation
   reflection_max_evidence_messages: 15 # recent messages passed to LLM as evidence
 
@@ -105,7 +105,7 @@ notifications:
   max_external_events_per_day_user: 20   # "external_event" per session per calendar day
   recurrent_task_cooldown_minutes: 60    # min gap between two recurrent_task of same session
   initiative_cooldown_hours: 24          # min hours between two initiative sends to same session
-  initiative_min_trust: 0.30             # minimum SocialProfile.trust to receive initiative
+  initiative_min_familiarity: 0.05       # minimum SocialProfile.familiarity to receive initiative
   initiative_silence_hours: 4            # skip if last user message was within this window
   notification_log_ttl_days: 30          # NotificationLog row retention (GC)
   dedup_window_hours: 24                 # window for fact_id deduplication
@@ -122,16 +122,19 @@ initiative:
   eval_log_ttl_days: 60                  # InitiativeEvalLog row retention
 
 achievements:
-  who_am_i_distance_threshold: 0.5     # normalized euclidean distance from default personality vector
-  remember_me_trust_threshold: 0.30    # SocialProfile.trust threshold (= initiative_min_trust)
-  memory_remains_min_age_days: 7       # minimum age (days) of a recalled ChatMessage to qualify
-  chaos_head_threshold: 0.95           # rudeness×0.4 + sarcasm×0.3 + contrarian×0.2 + dry_humor×0.1
-  opinion_negative_threshold: -0.5     # SocialProfile.opinion for love_is_war
-  opinion_extreme_threshold: -1.5      # SocialProfile.opinion for its_over_9000
-  schizophrenia_min_flips: 3           # sign-change count in OpinionSnapshot history
-  account_age_days: 30                 # account age in days for a_long_time_ago
-  youre_finally_awake_days: 7          # days without login to trigger youre_finally_awake
-  hello_voice_threshold: 10            # voice messages sent to trigger hello_voice
+  who_am_i_distance_threshold: 0.5        # normalized euclidean distance from default personality vector
+  chaos_head_threshold: 0.95              # playfulness×0.35 + (1-warmth)×0.30 + assertiveness×0.20 + independence×0.15
+  remember_me_trust_avg_threshold: 0.65   # avg(trust_*) ≥ this to unlock remember_me (starts at 0.5)
+  remember_me_familiarity_threshold: 0.30 # familiarity ≥ this to unlock remember_me
+  love_is_war_conflict_threshold: 0.50    # conflict ≥ this for love_is_war / its_over_9000 / redemption
+  love_is_war_affinity_ceiling: 0.20      # affinity < this for love_is_war
+  its_over_9000_conflict_threshold: 0.75  # conflict ≥ this for its_over_9000 (extreme)
+  its_over_9000_affinity_ceiling: 0.10    # affinity < this for its_over_9000
+  schizophrenia_min_flips: 3              # state transitions in RelationshipSnapshot history (bad = conflict ≥ 0.35)
+  memory_remains_min_age_days: 7          # minimum age (days) of a recalled ChatMessage to qualify
+  account_age_days: 30                    # account age in days for a_long_time_ago
+  youre_finally_awake_days: 7             # days without login to trigger youre_finally_awake
+  hello_voice_threshold: 10               # voice messages sent to trigger hello_voice
 
 debug:
   enabled: true

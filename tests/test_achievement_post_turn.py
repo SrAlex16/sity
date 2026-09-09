@@ -29,7 +29,7 @@ from app.core.refusal_tracker import (
     reset_consecutive_refusals,
 )
 from app.memory.db import engine
-from app.memory.models import SocialProfile, User
+from app.memory.models import RelationshipSnapshot, SocialProfile, User
 from app.settings.settings_service import CANONICAL_PERSONALITY
 
 
@@ -49,9 +49,12 @@ def _cfg() -> dict:
     return {
         "who_am_i_distance_threshold": 0.5,
         "chaos_head_threshold": 0.95,
-        "remember_me_trust_threshold": 0.30,
-        "opinion_negative_threshold": -0.5,
-        "opinion_extreme_threshold": -1.5,
+        "remember_me_trust_avg_threshold": 0.65,
+        "remember_me_familiarity_threshold": 0.30,
+        "love_is_war_conflict_threshold": 0.50,
+        "love_is_war_affinity_ceiling": 0.20,
+        "its_over_9000_conflict_threshold": 0.75,
+        "its_over_9000_affinity_ceiling": 0.10,
         "schizophrenia_min_flips": 3,
         "account_age_days": 30,
     }
@@ -65,13 +68,42 @@ def _personality(overrides: dict) -> dict:
     return {**CANONICAL_PERSONALITY, **overrides}
 
 
-def _create_profile(db: Session, user_id: int) -> SocialProfile:
-    """Create a SocialProfile with new multidimensional defaults."""
-    profile = SocialProfile(user_id=user_id)
+def _create_profile(
+    db: Session,
+    user_id: int,
+    *,
+    trust_avg: float = 0.5,
+    familiarity: float = 0.0,
+    affinity: float = 0.0,
+    conflict: float = 0.0,
+) -> SocialProfile:
+    profile = SocialProfile(
+        user_id=user_id,
+        familiarity=familiarity,
+        trust_honesty=trust_avg,
+        trust_intentions=trust_avg,
+        trust_competence=trust_avg,
+        trust_reliability=trust_avg,
+        affinity=affinity,
+        conflict=conflict,
+    )
     db.add(profile)
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def _add_snapshot(
+    db: Session,
+    profile_id: int,
+    *,
+    affinity: float,
+    conflict: float,
+    trust_avg: float = 0.5,
+) -> None:
+    db.add(RelationshipSnapshot(profile_id=profile_id, affinity=affinity,
+                                conflict=conflict, trust_avg=trust_avg))
+    db.commit()
 
 
 def _create_user(db: Session, days_old: int) -> int:
@@ -149,33 +181,184 @@ def test_chaos_head_no_unlock_below_threshold() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Social — Fase 3 Paso 2: fórmulas pendientes de confirmación explícita
-#
-# _check_social() is currently a no-op (returns early) — formulas for the 5
-# social achievements (remember_me, love_is_war, its_over_9000, redemption,
-# schizophrenia) will be reimplemented with the new SocialProfile dimensions
-# once the user explicitly confirms them in Paso 2.
+# Social — Fase 3 Paso 2: remember_me, love_is_war, its_over_9000,
+#                          redemption, schizophrenia
 # ---------------------------------------------------------------------------
 
-def test_check_social_is_noop_unlocks_nothing() -> None:
-    """_check_social must be a no-op: it should not unlock any social achievement."""
+# --- remember_me -----------------------------------------------------------
+
+def test_remember_me_unlocks_when_trust_avg_and_familiarity_above_threshold() -> None:
     uid = _uid()
-    social_slugs = {"remember_me", "love_is_war", "its_over_9000", "redemption", "schizophrenia"}
+    with Session(engine) as db:
+        _create_profile(db, uid, trust_avg=0.70, familiarity=0.35)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "remember_me" in _unlocked(db, uid)
+
+
+def test_remember_me_no_unlock_trust_below_threshold() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, trust_avg=0.60, familiarity=0.35)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "remember_me" not in _unlocked(db, uid)
+
+
+def test_remember_me_no_unlock_familiarity_below_threshold() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, trust_avg=0.70, familiarity=0.20)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "remember_me" not in _unlocked(db, uid)
+
+
+def test_remember_me_no_unlock_no_profile() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "remember_me" not in _unlocked(db, uid)
+
+
+# --- love_is_war -----------------------------------------------------------
+
+def test_love_is_war_unlocks_when_conflict_high_affinity_low() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, conflict=0.55, affinity=0.10)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "love_is_war" in _unlocked(db, uid)
+
+
+def test_love_is_war_no_unlock_when_affinity_above_ceiling() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, conflict=0.55, affinity=0.25)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "love_is_war" not in _unlocked(db, uid)
+
+
+def test_love_is_war_no_unlock_when_conflict_below_threshold() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, conflict=0.40, affinity=0.10)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "love_is_war" not in _unlocked(db, uid)
+
+
+# --- its_over_9000 ---------------------------------------------------------
+
+def test_its_over_9000_unlocks_at_extreme_conflict() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, conflict=0.80, affinity=0.05)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "its_over_9000" in _unlocked(db, uid)
+
+
+def test_its_over_9000_no_unlock_at_love_is_war_level() -> None:
+    """conflict=0.55 + affinity=0.10 → love_is_war fires but not its_over_9000."""
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, conflict=0.55, affinity=0.10)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "its_over_9000" not in _unlocked(db, uid)
+
+
+def test_its_over_9000_no_unlock_affinity_above_ceiling() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, conflict=0.80, affinity=0.15)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "its_over_9000" not in _unlocked(db, uid)
+
+
+# --- redemption ------------------------------------------------------------
+
+def test_redemption_unlocks_after_recovery_from_war_state() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        profile = _create_profile(db, uid, affinity=0.40, conflict=0.20)
+        _add_snapshot(db, profile.id, affinity=0.10, conflict=0.55)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "redemption" in _unlocked(db, uid)
+
+
+def test_redemption_no_unlock_if_never_was_bad() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        profile = _create_profile(db, uid, affinity=0.40, conflict=0.20)
+        _add_snapshot(db, profile.id, affinity=0.40, conflict=0.20)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "redemption" not in _unlocked(db, uid)
+
+
+def test_redemption_no_unlock_if_still_in_bad_state() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        profile = _create_profile(db, uid, affinity=0.10, conflict=0.55)
+        _add_snapshot(db, profile.id, affinity=0.10, conflict=0.60)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "redemption" not in _unlocked(db, uid)
+
+
+def test_redemption_no_unlock_without_snapshots() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        _create_profile(db, uid, affinity=0.40, conflict=0.20)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "redemption" not in _unlocked(db, uid)
+
+
+# --- schizophrenia ---------------------------------------------------------
+
+def test_schizophrenia_unlocks_after_min_flips() -> None:
+    """good→bad→good→bad = 3 transitions ≥ min_flips(3) → fires."""
+    uid = _uid()
+    with Session(engine) as db:
+        profile = _create_profile(db, uid)
+        _add_snapshot(db, profile.id, affinity=0.40, conflict=0.20)  # good
+        _add_snapshot(db, profile.id, affinity=0.10, conflict=0.55)  # bad
+        _add_snapshot(db, profile.id, affinity=0.40, conflict=0.20)  # good
+        _add_snapshot(db, profile.id, affinity=0.10, conflict=0.55)  # bad
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "schizophrenia" in _unlocked(db, uid)
+
+
+def test_schizophrenia_no_unlock_below_min_flips() -> None:
+    """good→bad→good = 2 transitions < min_flips(3) → does not fire."""
+    uid = _uid()
+    with Session(engine) as db:
+        profile = _create_profile(db, uid)
+        _add_snapshot(db, profile.id, affinity=0.40, conflict=0.20)  # good
+        _add_snapshot(db, profile.id, affinity=0.10, conflict=0.55)  # bad
+        _add_snapshot(db, profile.id, affinity=0.40, conflict=0.20)  # good
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "schizophrenia" not in _unlocked(db, uid)
+
+
+def test_schizophrenia_no_unlock_stable_good_history() -> None:
+    uid = _uid()
+    with Session(engine) as db:
+        profile = _create_profile(db, uid)
+        _add_snapshot(db, profile.id, affinity=0.40, conflict=0.20)
+        _add_snapshot(db, profile.id, affinity=0.45, conflict=0.15)
+        _add_snapshot(db, profile.id, affinity=0.50, conflict=0.10)
+        _check_social(db, uid, _cfg(), _unlock)
+        assert "schizophrenia" not in _unlocked(db, uid)
+
+
+def test_schizophrenia_no_unlock_no_snapshots() -> None:
+    uid = _uid()
     with Session(engine) as db:
         _create_profile(db, uid)
         _check_social(db, uid, _cfg(), _unlock)
-        assert _unlocked(db, uid).isdisjoint(social_slugs), (
-            "_check_social must not unlock social achievements until Paso 2 formulas are confirmed"
-        )
+        assert "schizophrenia" not in _unlocked(db, uid)
 
 
-def test_check_social_does_not_raise() -> None:
-    """_check_social must never raise regardless of profile state."""
+def test_check_social_does_not_raise_without_profile() -> None:
+    """_check_social must never raise when profile is absent."""
     uid = _uid()
     with Session(engine) as db:
-        _check_social(db, uid, _cfg(), _unlock)  # no profile — must not raise
-        _create_profile(db, uid)
-        _check_social(db, uid, _cfg(), _unlock)  # with profile — must not raise
+        _check_social(db, uid, _cfg(), _unlock)
 
 
 # ---------------------------------------------------------------------------

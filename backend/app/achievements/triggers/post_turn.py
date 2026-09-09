@@ -63,11 +63,71 @@ def _check_personality(db: Any, user_id: int, cfg: dict, unlock) -> None:
 
 
 def _check_social(db: Any, user_id: int, cfg: dict, unlock) -> None:
-    # Fase 3 Paso 2: fórmulas de logros pendientes de confirmación explícita.
-    # Las 5 fórmulas (remember_me, love_is_war, its_over_9000, redemption,
-    # schizophrenia) se reimplementarán con las dimensiones nuevas de SocialProfile
-    # una vez aprobadas en Paso 2.
-    return
+    try:
+        from sqlmodel import col, select
+        from app.memory.models import RelationshipSnapshot, SocialProfile
+        from app.social.social_service import trust_avg as _trust_avg
+
+        profile = db.exec(
+            select(SocialProfile).where(SocialProfile.user_id == user_id)
+        ).first()
+        if profile is None:
+            return
+
+        ta = _trust_avg(profile)
+
+        # remember_me: trust_avg AND familiarity both above threshold
+        if (ta >= float(cfg.get("remember_me_trust_avg_threshold", 0.65))
+                and profile.familiarity >= float(cfg.get("remember_me_familiarity_threshold", 0.30))):
+            unlock(db, user_id, "remember_me")
+
+        liw_conflict = float(cfg.get("love_is_war_conflict_threshold", 0.50))
+        liw_affinity = float(cfg.get("love_is_war_affinity_ceiling",   0.20))
+
+        # love_is_war: significant conflict, almost no affinity
+        if profile.conflict >= liw_conflict and profile.affinity < liw_affinity:
+            unlock(db, user_id, "love_is_war")
+
+        # its_over_9000: extreme version of love_is_war
+        if (profile.conflict >= float(cfg.get("its_over_9000_conflict_threshold", 0.75))
+                and profile.affinity < float(cfg.get("its_over_9000_affinity_ceiling", 0.10))):
+            unlock(db, user_id, "its_over_9000")
+
+        if profile.id is None:
+            return
+
+        snapshots = db.exec(
+            select(RelationshipSnapshot)
+            .where(RelationshipSnapshot.profile_id == profile.id)
+            .order_by(col(RelationshipSnapshot.computed_at))
+        ).all()
+
+        if not snapshots:
+            return
+
+        # redemption: was in "war" state in history, currently recovered
+        was_bad = any(
+            s.conflict >= liw_conflict and s.affinity < liw_affinity
+            for s in snapshots
+        )
+        currently_good = profile.affinity >= 0.35 and profile.conflict < 0.30
+        if was_bad and currently_good:
+            unlock(db, user_id, "redemption")
+
+        # schizophrenia: ≥ min_flips state transitions (bad = conflict ≥ 0.35)
+        _FLIP_THR = 0.35
+        min_flips = int(cfg.get("schizophrenia_min_flips", 3))
+        states = ["bad" if s.conflict >= _FLIP_THR else "good" for s in snapshots]
+        transitions = sum(1 for i in range(1, len(states)) if states[i] != states[i - 1])
+        if transitions >= min_flips:
+            unlock(db, user_id, "schizophrenia")
+
+    except Exception as exc:
+        write_log(
+            level="WARN", module="achievements",
+            event="post_turn_social_check_error",
+            payload={"user_id": user_id, "error": str(exc), "error_type": type(exc).__name__},
+        )
 
 
 def check_curiosity_achievement(db: Any, user_id: int, user_message: str) -> None:
