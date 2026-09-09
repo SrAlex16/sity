@@ -225,9 +225,6 @@ def _migrate_social_profile_fase3() -> None:
         if pk_broken or old_notnull:
             # Full table rebuild: new table preserves existing data, fixes constraints.
             # Collect all existing column names so we copy every column.
-            existing_cols = list(col_info.keys())
-            cols_csv = ", ".join(existing_cols)
-
             conn.execute(text("PRAGMA foreign_keys = OFF"))
             conn.execute(text(
                 "CREATE TABLE _sp_rebuild ("

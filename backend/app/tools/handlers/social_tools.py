@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from sqlalchemy import text as sa_text
 
-from app.chat.prompt_context import _affinity_label, _familiarity_label, _trust_avg_label
+from app.chat.prompt_context import _affinity_label, _familiarity_label
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 

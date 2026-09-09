@@ -173,7 +173,6 @@ def _generate_reflection_content(messages: list[dict]) -> Optional[str]:
         return None
 
     from app.cortex.providers.factory import build_ai_provider
-    from app.cortex.schemas import AIRequest
 
     _REFLECTION_SYSTEM = (
         "Eres un observador que lee un extracto de conversación y escribe una reflexión breve "

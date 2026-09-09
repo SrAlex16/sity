@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-09 (Operación Remake Fase 2 — cognición por turno, sistema de metas con ciclo de vida completo).
+Última actualización: 2026-09-09 (Operación Remake Fase 3 — relación multidimensional, SocialProfile 11 dimensiones).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -9,7 +9,7 @@ sistema de tareas en background ver docs/background-tasks.md. Para el
 sistema de cancelación de turnos ver docs/turn-cancellation.md. Para
 el bucle multi-turno de tool calling ver docs/multi-turn-tool-calling.md.
 Para el sistema de contexto persistente entre turnos ver docs/task-context.md.
-Para el sistema de memoria social (opinion/trust por usuario) ver docs/social-memory.md.
+Para el sistema de memoria social (Remake Fase 3, 11 dimensiones) ver docs/remake/fase-3-relacion-multidimensional.md.
 Para el nuevo sistema de personalidad (Remake Fase 1) ver docs/remake/fase-1-personalidad.md.
 Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/fase-2-appraisal-goals.md.
 
@@ -59,7 +59,7 @@ Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/
 
 ## Tests y CI
 
-- 2504 tests en verde (pytest, 19 skipped; CI pendiente de fix mypy pre-existente)
+- 2655 tests en verde (pytest, 20 skipped)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -83,6 +83,23 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-09, continuación)
+
+- **Operación Remake Fase 3 — SocialProfile 11 dimensiones (commits `bbaf94f` + `2fd58fe`).**
+  Reemplaza el modelo binario `opinion`/`trust` por 11 dimensiones independientes [0,1]:
+  `familiarity`, `trust_honesty/intentions/competence/reliability`, `affinity`, `comfort`,
+  `respect`, `attachment`, `conflict`, `uncertainty`. Las columnas `opinion`/`trust` se
+  conservan como dead weight (nullable). `RelationshipSnapshot` reemplaza `OpinionSnapshot`;
+  `_combined_delta()` ponderado (affinity×0.35 + conflict×0.30 + trust_avg×0.25 + attachment×0.10).
+  `SocialReflection` migrada a campos `*_at_gen` nuevos. `social_recall_impression`: disclosure =
+  `trust_avg_A × trust_avg_B` en 3 niveles (LOW/MEDIUM/HIGH). Initiative: gate por `familiarity`,
+  contexto 4-dim inyectado en Haiku. 5 logros sociales reimplementados: `remember_me`
+  (trust_avg ≥ 0.65 AND familiarity ≥ 0.30), `love_is_war` (conflict ≥ 0.50 AND affinity < 0.20),
+  `its_over_9000` (conflict ≥ 0.75 AND affinity < 0.10), `redemption` (arco narrativo guerra→recuperación),
+  `schizophrenia` (≥ 3 transiciones good/bad en snapshots). Migraciones DB con full table rebuild
+  idempotente para relajar NOT NULL en dead weight columns. 2655 tests. Ver
+  `docs/remake/fase-3-relacion-multidimensional.md`.
 
 ## Completado recientemente (2026-09-09)
 
