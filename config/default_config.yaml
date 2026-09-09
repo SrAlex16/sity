@@ -91,6 +91,9 @@ social:
   reflection_min_combined_delta: 0.15   # |Δcombined| threshold to bypass message count requirement
   reflection_max_age_days: 30          # reflection expires this many days after creation
   reflection_max_evidence_messages: 15 # recent messages passed to LLM as evidence
+  narrative_min_muy_alta_episodes: 3   # min muy_alta episodes (new since last) to trigger narrative
+  narrative_min_days_since_last: 7     # min days since last narrative before regenerating
+  narrative_max_episodes: 10           # max episode summaries passed to Haiku as evidence
 
 timers:
   poll_interval_seconds: 5      # ScheduledTaskRunner wake-up cadence
