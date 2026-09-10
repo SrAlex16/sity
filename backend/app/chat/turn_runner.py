@@ -484,6 +484,25 @@ def _chat_message_inner(
         if _goals_block:
             persona_prompt += f"\n\n{_goals_block}"
 
+        # Expression: inject Decision action instruction into persona_prompt.
+        # "wait" cannot be a real synchronous action — fall through to answer + log.
+        # All other actions (including "refuse") are expressed via instruction block.
+        if _cognition_result.decision is not None:
+            from app.cognition.decision import build_action_instruction
+            _dec_action = _cognition_result.decision.action
+            if _dec_action == "wait":
+                write_log(
+                    level="INFO",
+                    module="cognition",
+                    event="decision_wait_fallback",
+                    trace_id=ctx.trace_id,
+                    payload={"action_overridden": "wait", "fallback": "answer"},
+                )
+            else:
+                _action_instr = build_action_instruction(_dec_action)
+                if _action_instr:
+                    persona_prompt += f"\n\n{_action_instr}"
+
     prep = build_ai_turn_prep(
         session=session,
         request=request,

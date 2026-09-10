@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-09 (Operación Remake Fase 4 — memoria episódica y autobiográfica, Partes 2-3).
+Última actualización: 2026-09-10 (Operación Remake Fase 5 — Decision + Expression, Partes 1-2).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -13,6 +13,7 @@ Para el sistema de memoria social (Remake Fase 3, 11 dimensiones) ver docs/remak
 Para el nuevo sistema de personalidad (Remake Fase 1) ver docs/remake/fase-1-personalidad.md.
 Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/fase-2-appraisal-goals.md.
 Para la memoria episódica y autobiográfica (Remake Fase 4) ver docs/remake/fase-4-memoria-episodica-autobiografica.md.
+Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5-decision-expression.md.
 
 ## Infraestructura activa
 
@@ -60,7 +61,7 @@ Para la memoria episódica y autobiográfica (Remake Fase 4) ver docs/remake/fas
 
 ## Tests y CI
 
-- 2700+ tests en verde (pytest, ~20 skipped) — Fase 4 Partes 2-3 añaden 46 tests nuevos
+- 2700+ tests en verde (pytest, ~20 skipped) — Fase 5 Partes 1-2 añaden 52 tests nuevos (total ~2790+)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -85,7 +86,18 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 
 Ver .env.example para la lista completa.
 
-## Completado recientemente (2026-09-09, continuación)
+## Completado recientemente (2026-09-10, continuación)
+
+- **Operación Remake Fase 5 Partes 1-2 — Decision (Action Policy) + Expression.**
+  Parte 1: `decision.py` nuevo — fórmula de utilidad determinista (22 señales × 10 acciones, matrix
+  de pesos calibrada en 4 rondas), Haiku #3 (max_tokens=120) selecciona o anula la acción Python,
+  Haiku #4 (max_tokens=40) verifica coherencia, Python floor (score < 0.30) dispara fallback antes
+  de llamar Haiku #4. 10 acciones: answer/help/ask/challenge/refuse/set_boundary/use_tool/wait/
+  initiate/change_topic. `CognitionTurnResult.decision` añadido. `turn_cognition.py` paso 11.
+  Parte 2: `build_action_instruction()` en `decision.py`; Expression injection en `turn_runner.py`
+  (después de goals_block); `wait` → fallback silencioso con log; todos los demás → bloque
+  `ACCIÓN DECIDIDA: <ACTION>` en español inyectado en `persona_prompt`. 52 tests en
+  `test_decision_service.py`. Ver docs/remake/fase-5-decision-expression.md.
 
 - **Operación Remake Fase 4 Partes 2-3 — Memoria episódica y autobiográfica (commits `1fd142d` + `56803a0`).**
   Parte 2: `Episode` + `AutobiographicalNarrative` en `models.py`; `AppraisalResult` extendido con

@@ -1,4 +1,4 @@
-"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2 Paso 3, Fase 3 Paso 1, Fase 4).
+"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2 Paso 3, Fase 3 Paso 1, Fase 4, Fase 5).
 
 run_cognition_turn is the single entry point for the complete cognition pass:
   1. Expire stale short_term goals
@@ -11,15 +11,18 @@ run_cognition_turn is the single entry point for the complete cognition pass:
   8. Apply Appraisal + Perception signals to SocialProfile and persist
   9. Apply GoalUpdateIntents, GoalStateChanges, MilestoneUpdates to DB
  10. Evaluate salience and maybe persist an Episode (Haiku, conditional)
- 11. Return CognitionTurnResult
+ 11. Run Decision (Haiku #3 + coherence check Haiku #4) → DecisionResult | None
+ 12. Return CognitionTurnResult
 
 Never raises — Perception and Appraisal return neutral/zero fallbacks on any error.
+Decision returns None on any failure (technical or coherence) → fallback to old system.
 The MentalState/SocialProfile commits are the only DB writes that could fail; they are
 wrapped in a try/except at the call site in turn_runner.py.
 
 MentalState timing note: TurnContext.mental_state is a plain dict snapshot
 built before this function runs and already passed to PersonaEngine. Deltas
 are applied here to the SQLModel rows and persisted for the NEXT turn.
+Decision uses the POST-APPRAISAL mental state (after step 6).
 """
 from __future__ import annotations
 
@@ -28,8 +31,9 @@ from dataclasses import dataclass, field
 from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
+from app.cognition.decision import DecisionResult, run_decision
 from app.cognition.episode_service import maybe_create_episode
-from app.trace.logger import write_log
+from app.cognition.goal_priority import compute_effective_priority
 from app.cognition.goal_service import (
     apply_goal_intents,
     apply_goal_state_changes,
@@ -42,6 +46,7 @@ from app.cognition.perception import PerceptionResult, run_perception
 from app.memory.models import Goal
 from app.settings.settings_service import SettingsService
 from app.social.social_service import apply_appraisal_to_social_profile, get_or_create_social_profile
+from app.trace.logger import write_log
 
 
 @dataclass
@@ -49,6 +54,7 @@ class CognitionTurnResult:
     perception: PerceptionResult
     appraisal: AppraisalResult
     active_goals: list[Goal] = field(default_factory=list)
+    decision: DecisionResult | None = None
 
 
 def run_cognition_turn(
@@ -150,8 +156,71 @@ def run_cognition_turn(
             payload={"user_id": user_id, "error": str(ep_exc)[:200]},
         )
 
+    # Step 11: Decision — selects one of 10 actions via Haiku + coherence check.
+    # Returns None on any failure → turn_runner.py falls back to old system.
+    decision_result: DecisionResult | None = None
+    try:
+        # POST-APPRAISAL mental state (after deltas applied in step 6)
+        post_mental_state = {
+            "frustration":    ms_row.frustration,
+            "interest":       ms_row.interest,
+            "defensiveness":  ms_row.defensiveness,
+            "boredom":        ms_row.boredom,
+            "social_comfort": ms_row.social_comfort,
+            "melancholy":     ms_row.melancholy,
+        }
+        # Trust average across the 4 trust dimensions in SocialProfile
+        _trust_avg = (
+            sp_row.trust_honesty + sp_row.trust_intentions
+            + sp_row.trust_competence + sp_row.trust_reliability
+        ) / 4.0
+        # Highest effective_priority across active goals; 0 if no goals
+        _max_goal_priority = 0.0
+        if active_goals:
+            _rel_map = {gr.goal_id: gr.relevance for gr in appraisal.goal_relevance}
+            for _g in active_goals:
+                if _g.id is not None:
+                    _eff = compute_effective_priority(
+                        base_importance=_g.base_importance,
+                        relevance_boost=_rel_map.get(_g.id, 0.0),
+                        tone=perception.tone,
+                        is_wellbeing=_g.is_wellbeing,
+                    )
+                    _max_goal_priority = max(_max_goal_priority, _eff)
+        # domain_activated: any non-base tool domain triggered for this message
+        from app.chat.toolset_selector import select_toolset_with_metadata
+        _domain_activated = bool(
+            select_toolset_with_metadata(user_message).activated_domains
+        )
+        decision_result = run_decision(
+            user_message=user_message,
+            perception=perception,
+            appraisal=appraisal,
+            mental_state=post_mental_state,
+            personality=personality,
+            affinity=sp_row.affinity,
+            conflict=sp_row.conflict,
+            trust_avg=_trust_avg,
+            max_goal_priority=_max_goal_priority,
+            domain_activated=_domain_activated,
+            trace_id=trace_id,
+        )
+    except Exception as dec_exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="decision_fallback_triggered",
+            trace_id=trace_id,
+            payload={
+                "reason": "technical_error",
+                "step": "decision_orchestration",
+                "error": str(dec_exc)[:200],
+            },
+        )
+
     return CognitionTurnResult(
         perception=perception,
         appraisal=appraisal,
         active_goals=active_goals,
+        decision=decision_result,
     )
