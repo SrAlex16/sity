@@ -1,18 +1,20 @@
-"""turn_cognition.py — Full per-turn cognition pipeline (Fase 2 Paso 3, Fase 3 Paso 1, Fase 4, Fase 5).
+"""turn_cognition.py — Full per-turn cognition pipeline (Fases 2–6).
 
 run_cognition_turn is the single entry point for the complete cognition pass:
-  1. Expire stale short_term goals
-  2. Load active Goals + their milestones
-  3. Run Perception (Haiku classifier)
-  4. Load MentalState SQLModel row
-  5. Run Appraisal (Haiku — Perception + MentalState + Goals)
-  6. Apply Appraisal deltas to MentalState row and persist
-  7. Load SocialProfile row
-  8. Apply Appraisal + Perception signals to SocialProfile and persist
-  9. Apply GoalUpdateIntents, GoalStateChanges, MilestoneUpdates to DB
- 10. Evaluate salience and maybe persist an Episode (Haiku, conditional)
- 11. Run Decision (Haiku #3 + coherence check Haiku #4) → DecisionResult | None
- 12. Return CognitionTurnResult
+  1.  Expire stale short_term goals
+  2.  Load active Goals + their milestones
+  3.  Run Perception (Haiku #1)
+  4.  Load MentalState SQLModel row
+  5.  Run Appraisal (Haiku #2 — Perception + MentalState + Goals)
+  6.  Apply Appraisal deltas to MentalState row and persist
+  7.  Load SocialProfile row
+  8.  Apply Appraisal + Perception signals to SocialProfile and persist
+  9.  Apply GoalUpdateIntents, GoalStateChanges, MilestoneUpdates to DB
+ 10.  Compute salience (pure Python — used for both Episode and Reflection gates)
+ 11.  Evaluate salience and maybe persist an Episode (Haiku #3, conditional ≥ 0.25)
+ 12.  Run Decision (Haiku #4 + coherence check Haiku #5) → DecisionResult | None
+ 13.  Run Reflection after-action review (Haiku #6, conditional ≥ 0.45) → ReflectionResult | None
+ 14.  Return CognitionTurnResult
 
 Never raises — Perception and Appraisal return neutral/zero fallbacks on any error.
 Decision returns None on any failure (technical or coherence) → fallback to old system.
@@ -32,8 +34,9 @@ from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
 from app.cognition.decision import DecisionResult, run_decision
+from app.cognition.episode_service import compute_salience, maybe_create_episode
+from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
 from app.cognition.self_model_service import load_values_dict
-from app.cognition.episode_service import maybe_create_episode
 from app.cognition.goal_priority import compute_effective_priority
 from app.cognition.goal_service import (
     apply_goal_intents,
@@ -56,6 +59,7 @@ class CognitionTurnResult:
     appraisal: AppraisalResult
     active_goals: list[Goal] = field(default_factory=list)
     decision: DecisionResult | None = None
+    reflection: ReflectionResult | None = None
 
 
 def run_cognition_turn(
@@ -137,7 +141,10 @@ def run_cognition_turn(
     if appraisal.milestone_updates:
         apply_milestone_updates(session, user_id, appraisal.milestone_updates)
 
-    # Step 10: episodic memory — conditional Haiku call only when salience ≥ 0.25
+    # Step 10: compute salience (pure Python) — used for both Episode and Reflection gates
+    _salience = compute_salience(perception, appraisal)
+
+    # Step 11: episodic memory — conditional Haiku call only when salience ≥ 0.25
     try:
         maybe_create_episode(
             session=session,
@@ -157,7 +164,7 @@ def run_cognition_turn(
             payload={"user_id": user_id, "error": str(ep_exc)[:200]},
         )
 
-    # Step 11: Decision — selects one of 10 actions via Haiku + coherence check.
+    # Step 12: Decision — selects one of 10 actions via Haiku + coherence check.
     # Returns None on any failure → turn_runner.py falls back to old system.
     decision_result: DecisionResult | None = None
     try:
@@ -224,9 +231,34 @@ def run_cognition_turn(
             },
         )
 
+    # Step 13: Reflection — after-action review when salience ≥ 0.45 (sección 56).
+    # Runs after Decision so it can include the chosen action in its context.
+    reflection_result: ReflectionResult | None = None
+    if _salience.total >= _REFLECTION_SALIENCE_MIN:
+        try:
+            reflection_result = run_reflection(
+                session,
+                user_id=user_id,
+                user_message=user_message,
+                perception=perception,
+                appraisal=appraisal,
+                decision=decision_result,
+                salience_total=_salience.total,
+                trace_id=trace_id,
+            )
+        except Exception as refl_exc:
+            write_log(
+                level="WARN",
+                module="cognition",
+                event="reflection_failed",
+                trace_id=trace_id,
+                payload={"user_id": user_id, "error": str(refl_exc)[:200]},
+            )
+
     return CognitionTurnResult(
         perception=perception,
         appraisal=appraisal,
         active_goals=active_goals,
         decision=decision_result,
+        reflection=reflection_result,
     )

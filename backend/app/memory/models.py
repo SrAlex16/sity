@@ -602,6 +602,25 @@ class SelfBelief(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class ReflectionLog(SQLModel, table=True):
+    """Structured reflection output after a salient turn (salience ≥ 0.45). Remake Fase 6 Paso 3.
+
+    Persisted for full traceability (sección 57: metacognición no equivale a verdad).
+    belief_updates from this row are separately stored as SelfBelief candidates.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    trace_id: str = Field(default="")
+    salience_total: float
+    success_estimate: float = Field(default=0.0, ge=0.0, le=1.0)
+    memory_candidates_json: str = Field(default="[]")      # list[str]
+    belief_updates_json: str = Field(default="[]")         # list[str] → SelfBelief candidates
+    relationship_evidence_json: str = Field(default="[]")  # list[str]
+    goal_updates_json: str = Field(default="[]")           # list[str]
+    self_model_updates_json: str = Field(default="[]")     # list[str]
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class SityValues(SQLModel, table=True):
     """Sity's internal values — stable principles distinct from personality traits.
 
