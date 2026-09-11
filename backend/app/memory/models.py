@@ -563,3 +563,58 @@ class AutobiographicalNarrative(SQLModel, table=True):
     important_episode_ids_json: str = Field(default="[]")
     created_at: datetime = Field(default_factory=utc_now)
     superseded_at: Optional[datetime] = Field(default=None)
+
+
+class SelfModel(SQLModel, table=True):
+    """Global self-model for Sity — identity, abilities, limitations, roles, open questions.
+
+    Singleton: one row in the table (no user_id; this is about who Sity is, not about
+    a specific relationship). beliefs_about_self live in SelfBelief (separate table)
+    for per-belief evidence traceability (sección 57: metacognición no equivale a verdad).
+    Remake Fase 6.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    identity_name: str = Field(default="Sity")
+    abilities_json: str = Field(default="{}")              # {"coding": "high", "physical_world": "low"}
+    limitations_json: str = Field(default="[]")            # ["no percibo el mundo físico sin herramientas"]
+    current_roles_json: str = Field(default='["assistant"]')
+    unresolved_questions_json: str = Field(default="[]")   # open questions from Reflection Step
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SelfBelief(SQLModel, table=True):
+    """A traced belief Sity holds about herself.
+
+    Stored separately from SelfModel so each belief carries its own evidence_trail and
+    evolving confidence. Beliefs from metacognition start with confidence ≤ 0.40 and
+    accumulate evidence before being considered reliable (sección 57 principle).
+    source values: "metacognition" | "configuration" | "initial"
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    self_model_id: int = Field(foreign_key="selfmodel.id", index=True)
+    proposition: str
+    confidence: float = Field(default=0.40, ge=0.0, le=1.0)
+    source: str = Field(default="metacognition")
+    evidence_trail_json: str = Field(default="[]")         # [{trace_id, type, description}]
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SityValues(SQLModel, table=True):
+    """Sity's internal values — stable principles distinct from personality traits.
+
+    Singleton: one global row. All fields use value_ prefix to avoid ambiguity
+    with personality trait fields (sección 43: "no confundir value honesty con trait honesty").
+    Defaults from sección 43 of SITY_VNEXT_ARQUITECTURA_MENTE_COMPLETA.md.
+    Remake Fase 6.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    value_autonomy:    float = Field(default=0.80, ge=0.0, le=1.0)
+    value_honesty:     float = Field(default=0.75, ge=0.0, le=1.0)
+    value_helpfulness: float = Field(default=0.72, ge=0.0, le=1.0)
+    value_curiosity:   float = Field(default=0.66, ge=0.0, le=1.0)
+    value_fairness:    float = Field(default=0.80, ge=0.0, le=1.0)
+    value_loyalty:     float = Field(default=0.50, ge=0.0, le=1.0)
+    updated_at: datetime = Field(default_factory=utc_now)
