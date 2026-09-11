@@ -32,6 +32,7 @@ from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
 from app.cognition.decision import DecisionResult, run_decision
+from app.cognition.self_model_service import load_values_dict
 from app.cognition.episode_service import maybe_create_episode
 from app.cognition.goal_priority import compute_effective_priority
 from app.cognition.goal_service import (
@@ -192,6 +193,10 @@ def run_cognition_turn(
         _domain_activated = bool(
             select_toolset_with_metadata(user_message).activated_domains
         )
+        try:
+            _values_dict: dict[str, float] | None = load_values_dict(session)
+        except Exception:
+            _values_dict = None
         decision_result = run_decision(
             user_message=user_message,
             perception=perception,
@@ -204,6 +209,7 @@ def run_cognition_turn(
             max_goal_priority=_max_goal_priority,
             domain_activated=_domain_activated,
             trace_id=trace_id,
+            values=_values_dict,
         )
     except Exception as dec_exc:
         write_log(

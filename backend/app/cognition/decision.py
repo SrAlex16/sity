@@ -226,6 +226,49 @@ _SIGNAL_WEIGHTS: list[tuple[str, dict[str, float]]] = [
     ("max_goal_priority", _W_MAX_GOAL_PRIORITY),
 ]
 
+# ---------------------------------------------------------------------------
+# Values matrix: SityValues influence on actions (Fase 6 Paso 2)
+#
+# Applied as an independent pass AFTER _SIGNAL_WEIGHTS. Optional (default None)
+# so all Fase 5 tests remain unaffected without modification.
+#
+# value_curiosity is intentionally absent: _W_CURIOSITY (ask+0.35, initiate+0.20)
+# at personality trait default 0.85 already covers it; adding the value would
+# duplicate signal without contributing new information.
+# ---------------------------------------------------------------------------
+_VALUES_MATRIX: dict[str, dict[str, float]] = {
+    "value_honesty": {          # ethical commitment to truth
+        "refuse":        +0.08,
+        "change_topic":  -0.04,  # -0.04 not -0.08: _W_PATIENCE already subtracts -0.09
+    },
+    "value_helpfulness": {      # ethical commitment to being useful
+        "wait":          -0.12,
+        "ask":           +0.06,
+        # change_topic omitted: combined with loyalty/honesty penalties already ~-0.06
+    },
+    "value_autonomy": {         # right to maintain own judgment under pressure
+        "challenge":     +0.08,
+        "refuse":        +0.05,
+        "set_boundary":  +0.04,
+        "help":          -0.04,
+    },
+    "value_fairness": {         # commitment to justice (no personality trait overlap)
+        "refuse":        +0.12,
+        "challenge":     +0.10,
+        "set_boundary":  +0.08,
+        "help":          -0.06,
+        # change_topic omitted: fairness connection too context-specific for a general weight
+    },
+    "value_loyalty": {          # commitment to this relationship (no personality trait overlap)
+        "help":          +0.10,
+        "answer":        +0.06,
+        "refuse":        -0.08,
+        "set_boundary":  -0.05,
+        "challenge":     -0.04,
+        "change_topic":  -0.06,
+    },
+}
+
 # Coherence check: action is suspicious if Python formula scores it below this
 _COHERENCE_MIN_SCORE: float = 0.30
 
@@ -289,6 +332,7 @@ def compute_utility_scores(
     max_goal_priority: float,
     intent_request: bool,
     domain_activated: bool,
+    values: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Compute utility scores for all 10 actions. Pure, deterministic, no I/O.
 
@@ -334,6 +378,12 @@ def compute_utility_scores(
         scores["use_tool"] += _DOMAIN_ACTIVATED_BONUS_TOOL
     else:
         scores["use_tool"] += _DOMAIN_ACTIVATED_PENALTY_TOOL
+
+    if values:
+        for value_name, weight_table in _VALUES_MATRIX.items():
+            vv = clamp_01(float(values.get(value_name, 0.0)))
+            for action, w in weight_table.items():
+                scores[action] = scores.get(action, 0.0) + w * vv
 
     return {a: clamp_01(s) for a, s in scores.items()}
 
@@ -534,6 +584,7 @@ def run_decision(
     max_goal_priority: float,
     domain_activated: bool,
     trace_id: str = "",
+    values: dict[str, float] | None = None,
 ) -> DecisionResult | None:
     """Run the Decision module for this turn.
 
@@ -560,6 +611,7 @@ def run_decision(
         max_goal_priority=max_goal_priority,
         intent_request=intent_request,
         domain_activated=domain_activated,
+        values=values,
     )
 
     signals_summary = {
