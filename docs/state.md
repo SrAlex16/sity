@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-11 (Operación Remake Fase 5 — cierre de calidad completo, fix del test flaky de 3 fases).
+Última actualización: 2026-09-12 (Operación Remake Fase 6 — Self-Model, Valores y Metacognición — completa).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -14,6 +14,7 @@ Para el nuevo sistema de personalidad (Remake Fase 1) ver docs/remake/fase-1-per
 Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/fase-2-appraisal-goals.md.
 Para la memoria episódica y autobiográfica (Remake Fase 4) ver docs/remake/fase-4-memoria-episodica-autobiografica.md.
 Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5-decision-expression.md.
+Para Self-Model, Valores y Metacognición (Remake Fase 6) ver docs/remake/fase-6-selfmodel-valores-metacognicion.md.
 
 ## Infraestructura activa
 
@@ -61,7 +62,7 @@ Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5
 
 ## Tests y CI
 
-- 2700+ tests en verde (pytest, ~20 skipped) — Fase 5 añade 52 tests nuevos (total ~2790+); CI verde al 100% en bbcb2eb
+- 2793 tests en verde (pytest, ~20 skipped) — Fase 6 añade 65 tests nuevos (Pasos 1-3); CI verde al 100% en 02eaa5d
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -85,6 +86,24 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-12)
+
+- **Operación Remake Fase 6 — Self-Model, Valores y Metacognición (commits `0e690d8` · `d208822` · `02eaa5d`).**
+  Tres pasos que cierran el ciclo de auto-conocimiento de Sity. Paso 1: tablas `SelfModel`,
+  `SelfBelief`, `SityValues` + servicio `self_model_service.py` (7 funciones). Paso 2: integración
+  de `SityValues` en la fórmula de Decision como pass independiente (`_VALUES_MATRIX` — 5 valores
+  × N acciones); `compute_utility_scores()` sigue siendo función pura sin I/O; parámetro
+  `values=None` es no-op total (todos los tests de Fase 5 sin cambios). Bug de calibración
+  detectado y corregido durante implementación: la versión inicial suprimía `change_topic`
+  permanentemente por no contabilizar `_W_PATIENCE × patience_default = -0.090` ya existente
+  en la fórmula; fix: reducción de -0.08 a -0.04 en honesty y eliminación de las entradas
+  de helpfulness y fairness contra `change_topic`. Paso 3: `reflection.py` nuevo — revisión
+  retrospectiva condicionada por `salience ≥ 0.45` (Haiku #6, max_tokens=300); 9 preguntas
+  introspectivas; `ReflectionLog` persiste output completo; `belief_updates` extraídas como
+  candidatas `SelfBelief(confidence=0.40, source="metacognition")` — nunca auto-hechos (sección 57).
+  65 tests nuevos. CI verde en todos los commits. 14 pasos en pipeline cognitivo.
+  Ver docs/remake/fase-6-selfmodel-valores-metacognicion.md.
 
 ## Completado recientemente (2026-09-11, continuación)
 
