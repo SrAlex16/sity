@@ -1086,7 +1086,6 @@ Documento de referencia original: `docs/remake/SITY_VNEXT_ARQUITECTURA_MENTE_COM
 - Teoría de la mente
 - Memoria prospectiva (generalizar OpenLoop)
 - Consolidación semántica
-- Self-model / valores / conflictos internos / metacognición
 
 **Fusión confirmada:** "Sistema de perfiles personales por hablante" se incorpora dentro
 del diseño de Relación multidimensional/User Model de Remake — no vive como idea aparte.
