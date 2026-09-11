@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-10 (Operación Remake Fase 5 — Decision + Expression, Partes 1-2).
+Última actualización: 2026-09-11 (Operación Remake Fase 5 — cierre de calidad completo, fix del test flaky de 3 fases).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -61,7 +61,7 @@ Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5
 
 ## Tests y CI
 
-- 2700+ tests en verde (pytest, ~20 skipped) — Fase 5 Partes 1-2 añaden 52 tests nuevos (total ~2790+)
+- 2700+ tests en verde (pytest, ~20 skipped) — Fase 5 añade 52 tests nuevos (total ~2790+); CI verde al 100% en bbcb2eb
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -86,18 +86,23 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 
 Ver .env.example para la lista completa.
 
-## Completado recientemente (2026-09-10, continuación)
+## Completado recientemente (2026-09-11, continuación)
 
-- **Operación Remake Fase 5 Partes 1-2 — Decision (Action Policy) + Expression.**
-  Parte 1: `decision.py` nuevo — fórmula de utilidad determinista (22 señales × 10 acciones, matrix
-  de pesos calibrada en 4 rondas), Haiku #3 (max_tokens=120) selecciona o anula la acción Python,
-  Haiku #4 (max_tokens=40) verifica coherencia, Python floor (score < 0.30) dispara fallback antes
-  de llamar Haiku #4. 10 acciones: answer/help/ask/challenge/refuse/set_boundary/use_tool/wait/
-  initiate/change_topic. `CognitionTurnResult.decision` añadido. `turn_cognition.py` paso 11.
-  Parte 2: `build_action_instruction()` en `decision.py`; Expression injection en `turn_runner.py`
-  (después de goals_block); `wait` → fallback silencioso con log; todos los demás → bloque
-  `ACCIÓN DECIDIDA: <ACTION>` en español inyectado en `persona_prompt`. 52 tests en
-  `test_decision_service.py`. Ver docs/remake/fase-5-decision-expression.md.
+- **Operación Remake Fase 5 — CIERRE DE CALIDAD COMPLETO (commits `ba7dbb7` + `bbcb2eb`).**
+  Partes 1-2 (2026-09-10): `decision.py` nuevo — fórmula de utilidad determinista (22 señales × 10
+  acciones, matrix de pesos calibrada en 4 rondas de escenarios), Haiku #3 (max_tokens=120) selecciona
+  o anula la acción Python, Haiku #4 (max_tokens=40) verifica coherencia, Python floor (score < 0.30)
+  dispara fallback antes de llamar Haiku #4. 10 acciones: answer/help/ask/challenge/refuse/set_boundary/
+  use_tool/wait/initiate/change_topic. Dos bonos contextuales binarios: `intent_request` (+help,
+  −answer) y `domain_activated` (+use_tool). `CognitionTurnResult.decision` añadido.
+  `turn_cognition.py` paso 11. `build_action_instruction()` + Expression injection en `turn_runner.py`
+  (después de goals_block); `wait` → fallback silencioso con log. 52 tests en `test_decision_service.py`.
+  Cierre de calidad (2026-09-11): fix del test flaky `test_local_ai_missing_model_returns_provider_not_configured`
+  presente desde hace 3 fases — causa real: `PersonaEngine._should_refuse` es probabilística y
+  disparaba la puerta de refusal estructural (ok=True) antes del routing, haciendo fallar el assert
+  `ok is False`. Fix: parchear `_should_refuse → False` en el test (mismo patrón que `local_ai_client`
+  fixture). 10/10 estable. CI verde al 100% (primera vez en 3 fases sin ningún flaky).
+  Ver docs/remake/fase-5-decision-expression.md.
 
 - **Operación Remake Fase 4 Partes 2-3 — Memoria episódica y autobiográfica (commits `1fd142d` + `56803a0`).**
   Parte 2: `Episode` + `AutobiographicalNarrative` en `models.py`; `AppraisalResult` extendido con
