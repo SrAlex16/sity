@@ -1,9 +1,9 @@
-"""turn_cognition.py — Full per-turn cognition pipeline (Fases 2–6).
+"""turn_cognition.py — Full per-turn cognition pipeline (Fases 2–7).
 
 run_cognition_turn is the single entry point for the complete cognition pass:
   1.  Expire stale short_term goals
   2.  Load active Goals + their milestones
-  3.  Run Perception (Haiku #1)
+  3.  Run Perception (Haiku #1) — includes context_type classification (Fase 7)
   4.  Load MentalState SQLModel row
   5.  Run Appraisal (Haiku #2 — Perception + MentalState + Goals)
   6.  Apply Appraisal deltas to MentalState row and persist
@@ -15,6 +15,7 @@ run_cognition_turn is the single entry point for the complete cognition pass:
  12.  Run Decision (Haiku #4 + coherence check Haiku #5) → DecisionResult | None
  13.  Run Reflection after-action review (Haiku #6, conditional ≥ 0.45) → ReflectionResult | None
  14.  Return CognitionTurnResult
+ 15.  Record ProceduralObservation; fire background synthesis if threshold reached (non-blocking)
 
 Never raises — Perception and Appraisal return neutral/zero fallbacks on any error.
 Decision returns None on any failure (technical or coherence) → fallback to old system.
@@ -35,6 +36,7 @@ from sqlmodel import Session
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
 from app.cognition.decision import DecisionResult, run_decision
 from app.cognition.episode_service import compute_salience, maybe_create_episode
+from app.cognition.procedural_service import maybe_trigger_pattern_synthesis
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
 from app.cognition.self_model_service import load_values_dict
 from app.cognition.goal_priority import compute_effective_priority
@@ -254,6 +256,25 @@ def run_cognition_turn(
                 trace_id=trace_id,
                 payload={"user_id": user_id, "error": str(refl_exc)[:200]},
             )
+
+    # Step 15: Procedural memory — record observation; fire daemon synthesis if threshold reached.
+    # Non-blocking: any failure is logged and swallowed; never affects turn result.
+    try:
+        maybe_trigger_pattern_synthesis(
+            session,
+            user_id=user_id,
+            context_type=perception.context_type,
+            user_message=user_message,
+            trace_id=trace_id,
+        )
+    except Exception as proc_exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="procedural_observation_error",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(proc_exc)[:200]},
+        )
 
     return CognitionTurnResult(
         perception=perception,

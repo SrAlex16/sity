@@ -621,6 +621,41 @@ class ReflectionLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class ProceduralObservation(SQLModel, table=True):
+    """One recorded turn of a given context_type, used to detect behavioural patterns.
+
+    Inserted per-turn (pure DB write, no Haiku). Consumed by the background
+    pattern-synthesis job and marked processed=True. Remake Fase 7.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    context_type: str = Field(index=True)
+    user_message_excerpt: str = Field(default="")    # first 100 chars — evidence for synthesis Haiku
+    trace_id: str = Field(default="")
+    processed: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class ProceduralPattern(SQLModel, table=True):
+    """A learned behavioural pattern for a (user_id, context_type) pair.
+
+    One active row per (user_id, context_type). Created when occurrence_count
+    reaches _PROCEDURAL_THRESHOLD (3); updated on each subsequent batch.
+    confidence grows from 0.45 → 0.85 with repetition — never instant truth.
+    Remake Fase 7.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    context_type: str
+    strategy_description: str = Field(default="")   # generated/updated by synthesis Haiku
+    confidence: float = Field(default=0.45, ge=0.0, le=1.0)
+    evidence_trail_json: str = Field(default="[]")   # list of trace_ids consumed
+    occurrence_count: int = Field(default=0)
+    last_observed_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
+    is_active: bool = Field(default=True)
+
+
 class SityValues(SQLModel, table=True):
     """Sity's internal values — stable principles distinct from personality traits.
 
