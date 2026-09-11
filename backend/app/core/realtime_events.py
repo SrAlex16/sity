@@ -71,7 +71,15 @@ def ensure_queue(turn_id: str) -> None:
 def publish_event_sync(client_turn_id: str | None, event: dict[str, Any]) -> None:
     if not client_turn_id or _loop is None or not _loop.is_running():
         return
-    asyncio.run_coroutine_threadsafe(publish_event(client_turn_id, event), _loop)
+    fut = asyncio.run_coroutine_threadsafe(publish_event(client_turn_id, event), _loop)
+    # Block until "done" is actually in the queue so the SSE drain never misses it
+    # due to a race between the background thread exiting and the event loop processing
+    # the scheduled coroutine. Other event types (response, error, …) are fire-and-forget.
+    if event.get("type") == "done":
+        try:
+            fut.result(timeout=5.0)
+        except Exception:
+            pass
 
 
 def _get_or_create_session_queue(session_id: str) -> _SessionQueue:

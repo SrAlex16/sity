@@ -1172,17 +1172,13 @@ luego arrancar con Remake.
   primero en el código). No afecta producción. Fix: añadir teardown/cleanup de `cooldown_active`
   en los tests anteriores de `TestEvaluatorRateLimits`. Pendiente de sesión de mantenimiento.
 
+**Resueltos recientemente (2026-09-11):**
+
 - **`test_routes_chat_routing.py::test_local_ai_missing_model_returns_provider_not_configured`**
-  (introducido en commit `66e18ef`, pre-Remake):
-  Falla con `assert True is False` — `data["ok"]` es `True` cuando se espera `False` (se espera
-  `error_type=provider_not_configured`). Pasa siempre en aislamiento
-  (`pytest tests/test_routes_chat_routing.py::test_local_ai_missing_model_returns_provider_not_configured`).
-  Causa: sensibilidad al orden dentro del mismo archivo. El fixture `local_ai_client` (usado por
-  tests anteriores) establece `SITY_OLLAMA_MODEL=gemma3:4b-it-qat` via monkeypatch; cuando el
-  test fallido se ejecuta tras ellos en la suite completa, `SITY_OLLAMA_MODEL` permanece establecida
-  pese al teardown de monkeypatch, posiblemente por retención de estado en el singleton `app` o
-  en la instancia `TestClient`. `resolve_local_provider_model()` encuentra el modelo → el request
-  tiene éxito (`ok=True`) en lugar de retornar `provider_not_configured`. No afecta producción.
+  (2026-09-11): `_should_refuse` es probabilística; cuando devuelve `True` la puerta de refusal
+  estructural se activa antes del routing y devuelve `ok=True` (respuesta válida de rechazo con
+  `provider='haiku_refusal'`). Fix: parchear `PersonaEngine._should_refuse → False` en el test,
+  igual que hace el fixture `local_ai_client` para los tests 1-6. 10/10 estable.
 
 **Resueltos recientemente (2026-08-12):**
 

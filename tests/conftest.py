@@ -62,6 +62,15 @@ os.environ.setdefault("VAPID_CONTACT", "mailto:test@sity-test.invalid")
 _TEST_DB_PATH = ROOT / "tests" / ".pytest_test.db"
 os.environ.setdefault("SITY_DB_URL", f"sqlite:///{_TEST_DB_PATH}")
 
+# Prevent SITY_LOCAL_AI_ENABLED from leaking across tests when monkeypatch
+# sets it to "true" for local-AI tests and teardown races with background threads.
+# setdefault wins because load_dotenv() does not override existing env vars.
+os.environ.setdefault("SITY_LOCAL_AI_ENABLED", "false")
+# Prevent SITY_OLLAMA_MODEL from leaking across local-AI tests; an empty value
+# is treated as absent by resolve_local_provider_model() so tests that expect
+# a missing model still see provider_not_configured as intended.
+os.environ.setdefault("SITY_OLLAMA_MODEL", "")
+
 # Redirect log output so tests NEVER write to data/logs/ production log files.
 # Must be set before app.trace.logger is imported (LOG_DIR is a module-level
 # constant computed from this env var).
