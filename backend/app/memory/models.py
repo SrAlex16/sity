@@ -656,6 +656,80 @@ class ProceduralPattern(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
 
+class UserKnowledge(SQLModel, table=True):
+    """Sity's estimate of what the user knows about a given topic/domain.
+
+    One active row per (user_id, topic). Updated via background Haiku synthesis or
+    explicit inference from observed conversation. Confidence is capped at 0.80
+    because knowledge estimates from indirect observation are never certain.
+    Remake Fase 8.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    topic: str                                              # "python", "machine_learning", etc.
+    level: float = Field(default=0.5, ge=0.0, le=1.0)     # 0=novice, 1=expert
+    confidence: float = Field(default=0.40, ge=0.0, le=1.0)
+    evidence_trail_json: str = Field(default="[]")          # list[trace_id]
+    occurrence_count: int = Field(default=0)
+    last_observed_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
+    is_active: bool = Field(default=True)
+
+
+class BeliefAttribution(SQLModel, table=True):
+    """A belief Sity attributes to a specific user (Theory of Mind).
+
+    Separate table from SelfBelief because:
+    1. SelfBelief has no user_id (global singleton about Sity herself).
+       BeliefAttribution is always per-user — FK structure is incompatible.
+    2. Query patterns differ: SelfBelief is loaded once globally;
+       BeliefAttribution always filters by user_id.
+    3. Conceptual clarity: "what Sity believes about herself" vs.
+       "what Sity believes the user believes" must not share a table.
+
+    Confidence is conservatively capped at 0.65 — attributing beliefs to another
+    mind is always speculative (same sección 57 principle as SelfBelief, stricter).
+    Remake Fase 8.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    proposition: str                                         # "The user believes X" — max 300 chars
+    confidence: float = Field(default=0.35, ge=0.0, le=1.0)
+    source: str = Field(default="reflection")                # "reflection"|"explicit_statement"|"inference"
+    context_type: str = Field(default="")                    # Fase 7 enum — context where observed
+    evidence_trail_json: str = Field(default="[]")           # list[trace_id]
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    last_observed_at: datetime = Field(default_factory=utc_now)
+
+
+class Expectation(SQLModel, table=True):
+    """Sity's forward-looking prediction of user behaviour within a context_type.
+
+    One active row per (user_id, context_type, expected_behavior). Updated via
+    background synthesis; probability grows with confirmed observations.
+
+    expected_behavior uses a fixed 8-value enum (parallel to context_type from Fase 7):
+      ask_question | request_help | challenge_sity | share_feedback |
+      casual_engagement | creative_collaboration | seek_explanation | plan_together
+
+    Probability threshold to influence Decision: _EXPECTATION_PROBABILITY_MIN = 0.60
+    (higher than ProceduralPattern's 0.55 — predictions are more speculative than
+    confirmed behavioural patterns).
+    Remake Fase 8.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    context_type: str                                        # reuses Fase 7 taxonomy (8 values)
+    expected_behavior: str                                   # enum — see docstring
+    probability: float = Field(default=0.50, ge=0.0, le=1.0)
+    evidence_trail_json: str = Field(default="[]")           # list[trace_id]
+    occurrence_count: int = Field(default=0)
+    last_observed_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
+    is_active: bool = Field(default=True)
+
+
 class SityValues(SQLModel, table=True):
     """Sity's internal values — stable principles distinct from personality traits.
 
