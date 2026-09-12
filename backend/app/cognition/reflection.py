@@ -4,10 +4,11 @@ Conditional Haiku call (#5 per turn) only when salience_total >= _REFLECTION_SAL
 
 Architecture (sección 56):
   1. Build context from turn data (perception, appraisal, decision, salience).
-  2. Haiku answers 9 introspective questions and returns structured JSON.
+  2. Haiku answers 10 introspective questions and returns structured JSON.
   3. Save ReflectionLog to DB (full traceability for sección 57).
   4. Extract belief_updates → add_belief_candidate() with source="metacognition", confidence=0.40.
-  5. Return ReflectionResult or None on any failure.
+  5. Extract user_belief_updates → add_belief_attribution() with confidence=0.35 (Fase 8).
+  6. Return ReflectionResult or None on any failure.
 
 sección 57 invariant: outputs are NEVER auto-applied as facts. Belief candidates
 require explicit promotion by the caller — confidence 0.40 is the metacognition floor.
@@ -26,6 +27,7 @@ from app.cognition.appraisal import AppraisalResult
 from app.cognition.decision import DecisionResult
 from app.cognition.perception import PerceptionResult
 from app.cognition.self_model_service import add_belief_candidate, get_or_create_self_model
+from app.cognition.user_model_service import add_belief_attribution
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
 from app.memory.models import ReflectionLog
@@ -55,6 +57,7 @@ class ReflectionResult:
     relationship_evidence: list[str] = field(default_factory=list)
     goal_updates: list[str] = field(default_factory=list)
     self_model_updates: list[str] = field(default_factory=list)
+    user_belief_updates: list[str] = field(default_factory=list)
     log_id: int | None = None  # set after DB save
 
 
@@ -64,14 +67,15 @@ class ReflectionResult:
 
 _REFLECTION_SYSTEM = (
     "You are Sity's internal reflection module. Analyze the conversational turn "
-    "provided and answer 9 introspective questions.\n\n"
+    "provided and answer 10 introspective questions.\n\n"
     "Return ONLY a JSON object — no markdown, no explanation:\n"
     '{"success_estimate": <float 0-1, how well this turn went>,\n'
     ' "memory_candidates": [<moments worth remembering, may be empty>],\n'
     ' "belief_updates": [<short sentences about what Sity learned about herself>],\n'
     ' "relationship_evidence": [<observations about this relationship>],\n'
     ' "goal_updates": [<goal-related observations>],\n'
-    ' "self_model_updates": [<observations about capabilities, limits, or roles>]}\n\n'
+    ' "self_model_updates": [<observations about capabilities, limits, or roles>],\n'
+    ' "user_belief_updates": [<what Sity now believes the user believes — Theory of Mind>]}\n\n'
     "Internal questions to answer:\n"
     "1. What happened this turn?\n"
     "2. What did Sity try to do?\n"
@@ -81,7 +85,9 @@ _REFLECTION_SYSTEM = (
     "6. Did any belief shift? → belief_updates\n"
     "7. Is anything worth remembering? → memory_candidates\n"
     "8. Did a new goal surface? → goal_updates\n"
-    "9. Was anything inconsistent with Sity's self-model? → self_model_updates\n\n"
+    "9. Was anything inconsistent with Sity's self-model? → self_model_updates\n"
+    "10. What does Sity now believe the user believes? → user_belief_updates\n"
+    "    (e.g. 'User believes testing matters less than shipping')\n\n"
     "Keep each entry under 120 characters. All list fields may be empty [].\n"
     "Output only valid JSON."
 )
@@ -118,6 +124,7 @@ def _parse_reflection_response(text: str) -> ReflectionResult | None:
             relationship_evidence=_clean_list("relationship_evidence"),
             goal_updates=_clean_list("goal_updates"),
             self_model_updates=_clean_list("self_model_updates"),
+            user_belief_updates=_clean_list("user_belief_updates"),
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
@@ -155,7 +162,7 @@ def _call_reflection_haiku(context: str, *, trace_id: str) -> ReflectionResult |
             task_type="reflection",
             system_prompt=_REFLECTION_SYSTEM,
             user_message=context,
-            max_tokens=300,
+            max_tokens=380,
             tools_enabled=False,
         )
         response = provider.generate(request)
@@ -232,6 +239,7 @@ def run_reflection(
         relationship_evidence_json=json.dumps(result.relationship_evidence, ensure_ascii=False),
         goal_updates_json=json.dumps(result.goal_updates, ensure_ascii=False),
         self_model_updates_json=json.dumps(result.self_model_updates, ensure_ascii=False),
+        user_belief_updates_json=json.dumps(result.user_belief_updates, ensure_ascii=False),
     )
     session.add(log_row)
     session.commit()
@@ -255,6 +263,21 @@ def run_reflection(
                         evidence_description=f"salience={salience_total:.2f}",
                     )
 
+    # Extract user belief attribution candidates (Fase 8 — Theory of Mind)
+    # confidence=0.35: more conservative than self-belief (0.40) — sección 57 stricter for ToM
+    if result.user_belief_updates:
+        for proposition in result.user_belief_updates:
+            if proposition.strip():
+                add_belief_attribution(
+                    session,
+                    user_id=user_id,
+                    proposition=proposition.strip(),
+                    confidence=0.35,
+                    source="reflection",
+                    context_type=perception.context_type,
+                    trace_id=trace_id,
+                )
+
     write_log(
         level="INFO",
         module="cognition",
@@ -265,6 +288,7 @@ def run_reflection(
             "salience_total": round(salience_total, 3),
             "success_estimate": round(result.success_estimate, 3),
             "belief_updates_count": len(result.belief_updates),
+            "user_belief_updates_count": len(result.user_belief_updates),
             "log_id": log_row.id,
         },
     )

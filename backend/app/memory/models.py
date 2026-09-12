@@ -613,11 +613,12 @@ class ReflectionLog(SQLModel, table=True):
     trace_id: str = Field(default="")
     salience_total: float
     success_estimate: float = Field(default=0.0, ge=0.0, le=1.0)
-    memory_candidates_json: str = Field(default="[]")      # list[str]
-    belief_updates_json: str = Field(default="[]")         # list[str] → SelfBelief candidates
-    relationship_evidence_json: str = Field(default="[]")  # list[str]
-    goal_updates_json: str = Field(default="[]")           # list[str]
-    self_model_updates_json: str = Field(default="[]")     # list[str]
+    memory_candidates_json: str = Field(default="[]")       # list[str]
+    belief_updates_json: str = Field(default="[]")          # list[str] → SelfBelief candidates
+    relationship_evidence_json: str = Field(default="[]")   # list[str]
+    goal_updates_json: str = Field(default="[]")            # list[str]
+    self_model_updates_json: str = Field(default="[]")      # list[str]
+    user_belief_updates_json: str = Field(default="[]")     # list[str] → BeliefAttribution candidates (Fase 8)
     created_at: datetime = Field(default_factory=utc_now)
 
 

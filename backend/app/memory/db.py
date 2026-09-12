@@ -363,6 +363,23 @@ def _verify_encryption_key(session: Session) -> None:
         ) from exc
 
 
+def _migrate_reflectionlog() -> None:
+    """Add user_belief_updates_json column to reflectionlog if absent (Fase 8 Paso 2)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(reflectionlog)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # table not yet created; create_all handles full schema
+        if "user_belief_updates_json" not in existing:
+            conn.execute(text(
+                "ALTER TABLE reflectionlog ADD COLUMN user_belief_updates_json TEXT NOT NULL DEFAULT '[]'"
+            ))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "reflectionlog",
+                               "added_columns": ["user_belief_updates_json"]})
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
@@ -377,6 +394,7 @@ def init_db() -> None:
         _migrate_social_reflection_fase3()
         _migrate_userachievement()
         _migrate_fileartifact()
+        _migrate_reflectionlog()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()
