@@ -599,6 +599,17 @@ def _run_social_update(
                 payload={"user_id": user_id, "error": str(narr_exc)[:200]},
             )
 
+        try:
+            from app.cognition.semantic_service import maybe_trigger_semantic_consolidation
+            maybe_trigger_semantic_consolidation(user_id=user_id, trace_id=trace_id)
+        except Exception as sem_exc:
+            write_log(
+                level="WARN",
+                module="social",
+                event="semantic_consolidation_failed",
+                payload={"user_id": user_id, "error": str(sem_exc)[:200]},
+            )
+
     except Exception as exc:
         if not committed:
             try:

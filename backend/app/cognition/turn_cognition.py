@@ -37,6 +37,7 @@ from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_s
 from app.cognition.decision import DecisionResult, run_decision
 from app.cognition.episode_service import compute_salience, maybe_create_episode
 from app.cognition.procedural_service import load_active_patterns, maybe_trigger_pattern_synthesis
+from app.cognition.semantic_service import load_active_facts
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
 from app.cognition.user_model_service import load_active_expectations
 from app.cognition.self_model_service import load_values_dict
@@ -250,6 +251,13 @@ def run_cognition_turn(
 
     # Step 13: Reflection — after-action review when salience ≥ 0.45 (sección 56).
     # Runs after Decision so it can include the chosen action in its context.
+    # Load semantic facts for read-only context injection (Fase 9).
+    _semantic_facts: list = []
+    try:
+        _semantic_facts = load_active_facts(session, user_id)
+    except Exception:
+        _semantic_facts = []
+
     reflection_result: ReflectionResult | None = None
     if _salience.total >= _REFLECTION_SALIENCE_MIN:
         try:
@@ -262,6 +270,7 @@ def run_cognition_turn(
                 decision=decision_result,
                 salience_total=_salience.total,
                 trace_id=trace_id,
+                semantic_facts=_semantic_facts or None,
             )
         except Exception as refl_exc:
             write_log(

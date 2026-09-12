@@ -542,6 +542,7 @@ class Episode(SQLModel, table=True):
     last_recalled_at: Optional[datetime] = Field(default=None)
     recall_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=utc_now)
+    semantically_processed: bool = Field(default=False)   # True once consumed by semantic consolidation (Fase 9)
 
 
 class AutobiographicalNarrative(SQLModel, table=True):
@@ -727,6 +728,36 @@ class Expectation(SQLModel, table=True):
     evidence_trail_json: str = Field(default="[]")           # list[trace_id]
     occurrence_count: int = Field(default=0)
     last_observed_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
+    is_active: bool = Field(default=True)
+
+
+class SemanticFact(SQLModel, table=True):
+    """A stable fact Sity has extracted about a specific user from episodic memory.
+
+    Created by the background semantic consolidation job (Fase 9) when enough
+    unprocessed episodes accumulate. Confidence evolves asymmetrically:
+      Reinforcement: min(0.85, confidence + 0.05)
+      Contradiction: max(0.00, confidence - 0.10)
+      Deactivation: confidence < 0.20 → is_active = False
+
+    source_episode_ids_json: JSON list[int] of Episode IDs that produced this fact.
+    No unique constraint on proposition — the synthesis Haiku is responsible for
+    deduplication via anti-duplication context injection.
+
+    Top-N high-confidence facts are injected (read-only) into the Reflection Step
+    prompt so metacognition has user context. Never feeds Decision/compute_utility_scores.
+    Remake Fase 9.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    proposition: str                                               # max 300 chars (enforced in service)
+    confidence: float = Field(default=0.40, ge=0.0, le=1.0)
+    source_episode_ids_json: str = Field(default="[]")            # list[int]
+    reinforcement_count: int = Field(default=0)
+    contradiction_count: int = Field(default=0)
+    last_confirmed_at: Optional[datetime] = Field(default=None)
+    last_contradicted_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now)
     is_active: bool = Field(default=True)
 

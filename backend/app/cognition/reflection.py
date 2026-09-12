@@ -140,8 +140,9 @@ def _build_reflection_context(
     appraisal: AppraisalResult,
     action: str,
     salience_total: float,
+    semantic_facts: list | None = None,
 ) -> str:
-    return (
+    ctx = (
         f"USER MESSAGE: {user_message[:200]}\n\n"
         f"PERCEPTION: intent={perception.user_intent}, tone={perception.tone}, "
         f"challenge={perception.challenge:.2f}, novelty={perception.novelty:.2f}\n"
@@ -150,6 +151,11 @@ def _build_reflection_context(
         f"ACTION TAKEN: {action}\n"
         f"SALIENCE: {salience_total:.2f}"
     )
+    if semantic_facts:
+        top = sorted(semantic_facts, key=lambda f: f.confidence, reverse=True)[:5]
+        facts_lines = "\n".join(f"- {f.proposition}" for f in top)
+        ctx += f"\n\nKNOWN USER FACTS (high-confidence):\n{facts_lines}"
+    return ctx
 
 
 def _call_reflection_haiku(context: str, *, trace_id: str) -> ReflectionResult | None:
@@ -202,6 +208,7 @@ def run_reflection(
     decision: DecisionResult | None,
     salience_total: float,
     trace_id: str = "",
+    semantic_facts: list | None = None,
 ) -> ReflectionResult | None:
     """Run the Reflection Step for one salient turn.
 
@@ -214,7 +221,8 @@ def run_reflection(
     """
     action = decision.action if decision is not None else "unknown"
     context = _build_reflection_context(
-        user_message, perception, appraisal, action, salience_total
+        user_message, perception, appraisal, action, salience_total,
+        semantic_facts=semantic_facts,
     )
 
     result = _call_reflection_haiku(context, trace_id=trace_id)

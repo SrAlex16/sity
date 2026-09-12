@@ -363,6 +363,23 @@ def _verify_encryption_key(session: Session) -> None:
         ) from exc
 
 
+def _migrate_episode_semantically_processed() -> None:
+    """Add semantically_processed column to episode if absent (Fase 9 Paso 1)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(episode)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # table not yet created; create_all handles full schema
+        if "semantically_processed" not in existing:
+            conn.execute(text(
+                "ALTER TABLE episode ADD COLUMN semantically_processed INTEGER NOT NULL DEFAULT 0"
+            ))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "episode",
+                               "added_columns": ["semantically_processed"]})
+
+
 def _migrate_reflectionlog() -> None:
     """Add user_belief_updates_json column to reflectionlog if absent (Fase 8 Paso 2)."""
     with engine.connect() as conn:
@@ -394,6 +411,7 @@ def init_db() -> None:
         _migrate_social_reflection_fase3()
         _migrate_userachievement()
         _migrate_fileartifact()
+        _migrate_episode_semantically_processed()
         _migrate_reflectionlog()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts

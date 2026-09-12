@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-12 (Operación Remake Fase 8 — User Model, Teoría de la Mente y Expectativas).
+Última actualización: 2026-09-12 (Operación Remake Fase 9 — Consolidación Semántica).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -17,6 +17,7 @@ Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5
 Para Self-Model, Valores y Metacognición (Remake Fase 6) ver docs/remake/fase-6-selfmodel-valores-metacognicion.md.
 Para Memoria Procedimental (Remake Fase 7) ver docs/remake/fase-7-memoria-procedimental.md.
 Para User Model, Teoría de la Mente y Expectativas (Remake Fase 8) ver docs/remake/fase-8-usermodel-teoria-mente-expectativas.md.
+Para Consolidación Semántica (Remake Fase 9) ver docs/remake/fase-9-consolidacion-semantica.md.
 
 ## Infraestructura activa
 
@@ -64,7 +65,7 @@ Para User Model, Teoría de la Mente y Expectativas (Remake Fase 8) ver docs/rem
 
 ## Tests y CI
 
-- 2924 tests en verde (pytest, ~20 skipped) — Fase 8 añade 53 tests nuevos; CI verde al 100%
+- 2963 tests en verde (pytest, ~20 skipped) — Fase 9 añade 39 tests nuevos; CI verde al 100%
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -90,6 +91,19 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 Ver .env.example para la lista completa.
 
 ## Completado recientemente (2026-09-12)
+
+- **Operación Remake Fase 9 — Consolidación Semántica.**
+  `SemanticFact` — tabla nueva de hechos estables sobre el usuario, sintetizados inductivamente
+  de la memoria episódica. Campo `semantically_processed` añadido a `Episode` (migración idempotente).
+  `semantic_service.py`: `load_active_facts`, `reinforce_fact` (+0.05, cap 0.85), `contradict_fact`
+  (−0.10, desactivación < 0.20), `_run_fact_synthesis` (batch Haiku con anti-duplicación via
+  contexto), `maybe_trigger_semantic_consolidation` — llamada inline desde `social/update.py`
+  (ya en daemon thread, sin thread adicional). Threshold: `_SEMANTIC_BATCH_MIN=3`.
+  Fórmula asimétrica: contradicción pesa el doble que refuerzo — revisión-a-la-baja desde el inicio.
+  Integración **solo lectura** en Reflection Step: top-5 facts por confidence inyectados en contexto
+  Haiku #5 sin coste marginal (sin llamada extra). `turn_cognition.py`: `load_active_facts` antes de
+  Reflection, `semantic_facts=_semantic_facts or None` en `run_reflection()`. 39 tests. mypy limpio.
+  Ver docs/remake/fase-9-consolidacion-semantica.md.
 
 - **Operación Remake Fase 8 — User Model, Teoría de la Mente y Expectativas.**
   Paso 1 (`fbbf161`): 3 tablas nuevas — `UserKnowledge` (nivel estimado por dominio, confidence cap 0.80),
