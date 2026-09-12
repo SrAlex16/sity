@@ -38,7 +38,7 @@ from app.settings.config_loader import load_default_config
 from app.trace.logger import write_log
 
 # Priority order: lower value = higher priority.
-_PRIORITY = {"open_loop": 0, "conversation_abandoned": 1, "long_inactivity": 2}
+_PRIORITY = {"open_loop": 0, "goal_urgent": 1, "conversation_abandoned": 2, "long_inactivity": 3}
 
 
 def _utc_now() -> datetime:

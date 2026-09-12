@@ -19,6 +19,7 @@ class InitiativeSettings(BaseModel):
     trigger_conversation_abandoned: bool = True
     trigger_long_inactivity: bool = True
     trigger_open_loop: bool = True
+    trigger_goal_urgent: bool = True
 
 
 _INITIATIVE_PER_SESSION = (
@@ -26,6 +27,7 @@ _INITIATIVE_PER_SESSION = (
     "trigger_conversation_abandoned",
     "trigger_long_inactivity",
     "trigger_open_loop",
+    "trigger_goal_urgent",
 )
 
 

@@ -230,6 +230,19 @@ marca open_loop_resolved: true y responde skip.
 Responde ÚNICAMENTE en JSON:
 {"decision": "send" | "skip", "open_loop_resolved": true | false, "message": "...", "reasoning": "..."}"""
 
+_SYSTEM_GOAL_URGENT = """\
+Eres Sity. Decides si iniciar una conversación con el usuario sobre una de sus metas personales.
+
+REGLAS:
+- Solo escribe si tienes algo genuino que aportar: una pregunta de seguimiento útil, \
+un recordatorio oportuno, o un apoyo concreto relacionado con la meta.
+- Si hablasteis de esta meta recientemente o no tienes contexto aprovechable, responde skip.
+- El mensaje debe ser corto (1–3 frases), natural, en el tono habitual. \
+No menciones prioridades ni datos internos.
+
+Responde ÚNICAMENTE en JSON:
+{"decision": "send" | "skip", "message": "...", "reasoning": "..."}"""
+
 
 def _build_user_message(
     candidate: TriggerCandidate,
@@ -279,6 +292,12 @@ def _build_user_message(
         else:
             lines.append("No ha habido mensajes desde la detección.")
 
+    elif candidate.trigger_type == "goal_urgent":
+        lines.append(f"Meta urgente: {ctx.get('goal_description', '')}")
+        lines.append(f"Importancia: {ctx.get('base_importance', '?')} (prioridad efectiva: {ctx.get('effective_priority', '?')})")
+        if ctx.get("is_wellbeing"):
+            lines.append("(Meta de bienestar — alta sensibilidad)")
+
     return "\n".join(lines)
 
 
@@ -290,7 +309,12 @@ def _call_haiku(
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
 
-    system = _SYSTEM_OPEN_LOOP if candidate.trigger_type == "open_loop" else _SYSTEM_STANDARD
+    if candidate.trigger_type == "open_loop":
+        system = _SYSTEM_OPEN_LOOP
+    elif candidate.trigger_type == "goal_urgent":
+        system = _SYSTEM_GOAL_URGENT
+    else:
+        system = _SYSTEM_STANDARD
     request = AIRequest(
         trace_id="",
         task_type="initiative_evaluation",

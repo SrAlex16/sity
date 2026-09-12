@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-12 (Operación Remake Fase 9 — Consolidación Semántica).
+Última actualización: 2026-09-12 (Ajuste Remake — trigger goal_urgent / cierre Memoria Prospectiva).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -65,7 +65,7 @@ Para Consolidación Semántica (Remake Fase 9) ver docs/remake/fase-9-consolidac
 
 ## Tests y CI
 
-- 2963 tests en verde (pytest, ~20 skipped) — Fase 9 añade 39 tests nuevos; CI verde al 100%
+- 2989 tests en verde (pytest, ~20 skipped) — ajuste goal_urgent añade 26 tests; CI verde al 100%
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -91,6 +91,18 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 Ver .env.example para la lista completa.
 
 ## Completado recientemente (2026-09-12)
+
+- **Ajuste Remake — trigger goal_urgent (cierre Memoria Prospectiva, sección 28).**
+  Nuevo `trigger_type="goal_urgent"` en `initiative/detector.py`: evalúa Goals `long_term`
+  activos usando `relevance_boost=1.0, tone="neutral"` (contexto proactivo sin turno activo).
+  Umbral: `ep >= 0.85` → equivale a `base_importance >= 0.75`. Si varios goals califican, se
+  escoge el de mayor `effective_priority`. `is_wellbeing=True` se comporta idénticamente.
+  Prioridad: `{open_loop:0, goal_urgent:1, conversation_abandoned:2, long_inactivity:3}`.
+  Toggle `trigger_goal_urgent: bool = True` en `InitiativeSettings`. Sistema prompt propio
+  `_SYSTEM_GOAL_URGENT` en `evaluator.py`. Restricción de inactividad: misma compuerta
+  `_is_now_a_good_time()` que el resto — no se evalúa en turnos activos.
+  26 tests nuevos (`tests/test_goal_urgent_trigger.py`). Regresión: 121/121 tests de
+  initiative_step1-4 siguen en verde. Ver docs/remake/fase-2-appraisal-goals.md §11.
 
 - **Operación Remake Fase 9 — Consolidación Semántica.**
   `SemanticFact` — tabla nueva de hechos estables sobre el usuario, sintetizados inductivamente
@@ -1122,8 +1134,8 @@ Documento de referencia original: `docs/remake/SITY_VNEXT_ARQUITECTURA_MENTE_COM
 
 **PRIORIDAD MEDIA/BAJA — FASE FUTURA EXPLÍCITA:**
 *(No descartadas, solo pospuestas hasta tener más usuarios reales o más madurez del núcleo)*
-- Memoria prospectiva (generalizar OpenLoop)
-- Consolidación semántica
+- ~~Memoria prospectiva (generalizar OpenLoop)~~ — **CERRADO** 2026-09-12 via trigger `goal_urgent`
+- ~~Consolidación semántica~~ — **CERRADO** 2026-09-12 (Fase 9)
 
 **Fusión confirmada:** "Sistema de perfiles personales por hablante" se incorpora dentro
 del diseño de Relación multidimensional/User Model de Remake — no vive como idea aparte.

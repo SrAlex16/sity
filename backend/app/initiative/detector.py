@@ -14,10 +14,13 @@ from typing import Optional
 
 from sqlmodel import Session, col, desc, select
 
+from app.cognition.goal_priority import compute_effective_priority
 from app.initiative.settings import get_initiative_settings
-from app.memory.models import ChatMessage, InitiativeEvalLog, OpenLoop
+from app.memory.models import ChatMessage, Goal, InitiativeEvalLog, OpenLoop
 from app.settings.config_loader import load_default_config
 from app.trace.logger import write_log
+
+_GOAL_URGENT_PRIORITY_MIN: float = 0.85
 
 
 def _cfg() -> dict:
@@ -30,7 +33,7 @@ def _utc_now() -> datetime:
 
 @dataclass
 class TriggerCandidate:
-    trigger_type: str          # "conversation_abandoned" | "long_inactivity" | "open_loop"
+    trigger_type: str          # "conversation_abandoned" | "long_inactivity" | "open_loop" | "goal_urgent"
     session_id: str
     context: dict = field(default_factory=dict)
     open_loop_id: Optional[str] = None
@@ -70,6 +73,11 @@ def get_trigger_candidates(
 
     if settings.trigger_open_loop:
         c = _check_open_loop(session_id, db)
+        if c:
+            candidates.append(c)
+
+    if settings.trigger_goal_urgent:
+        c = _check_goal_urgent(session_id, db)
         if c:
             candidates.append(c)
 
@@ -276,4 +284,68 @@ def _check_open_loop(
         session_id=session_id,
         context=context,
         open_loop_id=loop.id,
+    )
+
+
+def _check_goal_urgent(
+    session_id: str,
+    db: Session,
+) -> Optional[TriggerCandidate]:
+    """Long-term active Goal whose effective_priority (with full proactive boost) exceeds threshold.
+
+    In initiative context (no active turn) we use relevance_boost=1.0 and tone="neutral" to
+    represent Sity proactively evaluating goals. Formula: ep = 0.6*base_importance + 0.4.
+    Threshold 0.85 is reached when base_importance >= 0.75.
+
+    Returns the single highest-priority qualifying goal, or None if none qualify.
+    """
+    try:
+        user_id = int(session_id.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return None
+
+    goals = db.exec(
+        select(Goal).where(
+            Goal.user_id == user_id,
+            Goal.status == "active",
+            Goal.scope == "long_term",
+        )
+    ).all()
+
+    urgent: list[tuple[float, Goal]] = []
+    for goal in goals:
+        ep = compute_effective_priority(
+            base_importance=goal.base_importance,
+            relevance_boost=1.0,
+            tone="neutral",
+            is_wellbeing=goal.is_wellbeing,
+        )
+        if ep >= _GOAL_URGENT_PRIORITY_MIN:
+            urgent.append((ep, goal))
+
+    if not urgent:
+        return None
+
+    ep_top, goal_top = max(urgent, key=lambda t: t[0])
+
+    write_log(
+        level="INFO",
+        module="initiative",
+        event="trigger_goal_urgent_detected",
+        session_id=session_id,
+        payload={
+            "goal_id": goal_top.id,
+            "effective_priority": round(ep_top, 3),
+            "base_importance": round(goal_top.base_importance, 3),
+        },
+    )
+    return TriggerCandidate(
+        trigger_type="goal_urgent",
+        session_id=session_id,
+        context={
+            "goal_description": goal_top.description,
+            "base_importance": round(goal_top.base_importance, 3),
+            "effective_priority": round(ep_top, 3),
+            "is_wellbeing": goal_top.is_wellbeing,
+        },
     )

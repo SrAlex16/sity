@@ -242,6 +242,66 @@ corto plazo son demasiado efímeras para influir en si Sity debe iniciar convers
 
 ---
 
+## 11. Ajuste — trigger goal_urgent en Initiative (cierre Memoria Prospectiva)
+
+**Fecha:** 2026-09-12
+
+### Hallazgo cerrado
+
+La sección 28 ("Memoria prospectiva") especificaba que las metas deben poder _alimentar la
+iniciativa sin forzar notificación_. El sistema de Goals existente inyectaba las metas como
+contexto en la evaluación Haiku, pero ninguna meta podía generar por sí misma un `TriggerCandidate`.
+Este ajuste cierra ese hueco.
+
+### Diseño
+
+Nuevo `trigger_type="goal_urgent"` en `initiative/detector.py`:
+
+- Solo aplica a metas `scope="long_term"`, `status="active"`.
+- Calcula `effective_priority` con `relevance_boost=1.0, tone="neutral"` (contexto proactivo:
+  sin turno activo, Sity evalúa metas de forma autónoma). Fórmula: `ep = 0.6*bi + 0.4`.
+- Umbral fijo: `ep >= 0.85` → equivale a `base_importance >= 0.75`.
+- Si varios goals califican, se escoge el de mayor `ep`.
+- `is_wellbeing=True` se comporta idénticamente — el riesgo aquí es sobre-actuar,
+  no infravalorar; no hay excepción diferenciada.
+
+**Por qué `relevance_boost=1.0` en contexto de iniciativa:** sin turno activo no existe
+`relevance_boost` real del Appraisal. Usar `relevance_boost=0.0` daría `ep_max = 0.60`,
+imposibilitando alcanzar el umbral 0.85. El valor `1.0` expresa que Sity evalúa el goal con
+plena atención proactiva — la máxima relevancia posible sin señal contextual del usuario.
+
+### Prioridad relativa
+
+```python
+_PRIORITY = {"open_loop": 0, "goal_urgent": 1, "conversation_abandoned": 2, "long_inactivity": 3}
+```
+
+`goal_urgent` se sitúa entre `open_loop` (intención explícita del usuario, más urgente)
+y `conversation_abandoned` (reenganche pasivo, menos urgente).
+
+### Restricción de inactividad
+
+El trigger solo corre cuando `_is_now_a_good_time()` lo permite — misma compuerta que todos los
+demás triggers (silencio configurable, default 4 h). No hay lógica adicional dentro del
+trigger para forzar el requisito de inactividad: la compuerta de runner ya lo garantiza.
+
+> **Nota de Alex (2026-09-12):** "esta decisión es la más incierta de todo el ajuste y puede
+> revisarse tras pruebas reales." La restricción de _only-when-inactive_ fue aceptada para
+> el lanzamiento pero puede relajarse si en producción se comprueba que los goals urgentes
+> de bienestar quedan bloqueados demasiado tiempo por la ventana de silencio.
+
+### Archivos modificados
+
+| Archivo                                    | Cambio                                                         |
+|--------------------------------------------|----------------------------------------------------------------|
+| `backend/app/initiative/settings.py`       | +`trigger_goal_urgent: bool = True`                            |
+| `backend/app/initiative/detector.py`       | +`_check_goal_urgent()`, +wired en `get_trigger_candidates()`  |
+| `backend/app/initiative/runner.py`         | `_PRIORITY` actualizado (goal_urgent=1)                        |
+| `backend/app/initiative/evaluator.py`      | +`_SYSTEM_GOAL_URGENT`, rama en `_build_user_message()` y `_call_haiku()` |
+| `tests/test_goal_urgent_trigger.py`        | 26 tests nuevos                                                |
+
+---
+
 ## 10. Commits
 
 | Hash      | Descripción                                                          |
