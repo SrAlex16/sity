@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-12 (Operación Remake Fase 7 Pasos 1-2 — Memoria Procedimental).
+Última actualización: 2026-09-12 (Operación Remake Fase 8 — User Model, Teoría de la Mente y Expectativas).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -16,6 +16,7 @@ Para la memoria episódica y autobiográfica (Remake Fase 4) ver docs/remake/fas
 Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5-decision-expression.md.
 Para Self-Model, Valores y Metacognición (Remake Fase 6) ver docs/remake/fase-6-selfmodel-valores-metacognicion.md.
 Para Memoria Procedimental (Remake Fase 7) ver docs/remake/fase-7-memoria-procedimental.md.
+Para User Model, Teoría de la Mente y Expectativas (Remake Fase 8) ver docs/remake/fase-8-usermodel-teoria-mente-expectativas.md.
 
 ## Infraestructura activa
 
@@ -63,7 +64,7 @@ Para Memoria Procedimental (Remake Fase 7) ver docs/remake/fase-7-memoria-proced
 
 ## Tests y CI
 
-- 2871 tests en verde (pytest, ~20 skipped) — Fase 7 Pasos 1-2 añaden 53 tests nuevos; CI verde al 100%
+- 2924 tests en verde (pytest, ~20 skipped) — Fase 8 añade 53 tests nuevos; CI verde al 100%
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -89,6 +90,20 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 Ver .env.example para la lista completa.
 
 ## Completado recientemente (2026-09-12)
+
+- **Operación Remake Fase 8 — User Model, Teoría de la Mente y Expectativas.**
+  Paso 1 (`fbbf161`): 3 tablas nuevas — `UserKnowledge` (nivel estimado por dominio, confidence cap 0.80),
+  `BeliefAttribution` (ToM — creencias atribuidas al usuario, tabla separada de `SelfBelief` por
+  incompatibilidad de FK + semántica opuesta, confidence cap 0.65), `Expectation` (predicciones
+  forward-looking de comportamiento del usuario por context_type, enum `expected_behavior` de 8 valores);
+  `user_model_service.py` con 6 funciones; 22 tests con aislamiento estricto por user_id.
+  Paso 2 (`86b05a6`): extensión zero-cost de Reflection Step — campo `user_belief_updates`
+  en JSON de Haiku #5 (10ª pregunta introspectiva), persiste `BeliefAttribution`
+  con confidence=0.35, source="reflection"; migración idempotente `_migrate_reflectionlog()`;
+  max_tokens 300→380; 11 tests. Paso 3 (PENDING): `_EXPECTATION_ACTION_MAP` en
+  `decision.py` como cuarto pase en `compute_utility_scores()`; guard explícito
+  `_EXPECTATION_PROBABILITY_MIN=0.60`; fórmula `delta × probability`; 20 tests.
+  53 tests totales. Ver docs/remake/fase-8-usermodel-teoria-mente-expectativas.md.
 
 - **Operación Remake Fase 7 Pasos 1-2 — Memoria Procedimental.**
   Paso 1 (`ba293f0`): tablas `ProceduralObservation` + `ProceduralPattern`; extensión de Perception con

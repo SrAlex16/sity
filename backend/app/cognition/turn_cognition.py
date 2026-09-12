@@ -38,6 +38,7 @@ from app.cognition.decision import DecisionResult, run_decision
 from app.cognition.episode_service import compute_salience, maybe_create_episode
 from app.cognition.procedural_service import load_active_patterns, maybe_trigger_pattern_synthesis
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
+from app.cognition.user_model_service import load_active_expectations
 from app.cognition.self_model_service import load_values_dict
 from app.cognition.goal_priority import compute_effective_priority
 from app.cognition.goal_service import (
@@ -212,6 +213,12 @@ def run_cognition_turn(
             )
         except Exception:
             _proc_patterns = []
+        try:
+            _active_exps = load_active_expectations(
+                session, user_id=user_id, context_type=perception.context_type
+            )
+        except Exception:
+            _active_exps = []
         decision_result = run_decision(
             user_message=user_message,
             perception=perception,
@@ -226,6 +233,7 @@ def run_cognition_turn(
             trace_id=trace_id,
             values=_values_dict,
             procedural_patterns=_proc_patterns or None,
+            active_expectations=_active_exps or None,
         )
     except Exception as dec_exc:
         write_log(

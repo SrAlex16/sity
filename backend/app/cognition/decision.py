@@ -25,7 +25,7 @@ from app.cognition.appraisal import AppraisalResult
 from app.cognition.perception import PerceptionResult
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
-from app.memory.models import ProceduralPattern
+from app.memory.models import Expectation, ProceduralPattern
 from app.settings.settings_service import clamp_01
 from app.trace.logger import write_log
 
@@ -270,6 +270,56 @@ _VALUES_MATRIX: dict[str, dict[str, float]] = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Expectation map: predicted user behaviour → action adjustments (Fase 8 Paso 3)
+#
+# Applied as a fourth independent pass after _PROCEDURAL_ACTION_HINTS.
+# Weighted by expectation.probability (analogous to confidence in ProceduralPattern).
+# Guard: probability < _EXPECTATION_PROBABILITY_MIN → skip entirely.
+#
+# Higher threshold than ProceduralPattern (0.60 vs 0.55): expectations are
+# forward-looking predictions, inherently more speculative than confirmed patterns.
+# Defined independently of user_model_service.VALID_EXPECTED_BEHAVIORS to keep
+# modules decoupled — same pattern as _PROCEDURAL_CONFIDENCE_MIN vs
+# procedural_service.PROCEDURAL_CONFIDENCE_MIN.
+# ---------------------------------------------------------------------------
+_EXPECTATION_PROBABILITY_MIN: float = 0.60
+
+_EXPECTATION_ACTION_MAP: dict[str, dict[str, float]] = {
+    "ask_question": {
+        "ask":    +0.05,   # prepare to clarify in return
+        "answer": +0.03,   # or answer preemptively
+    },
+    "request_help": {
+        "help":     +0.10,  # user coming for help — be ready
+        "use_tool": +0.04,  # tools may be needed to fulfil help
+    },
+    "challenge_sity": {
+        "challenge": +0.06,  # respond to challenge with counter-argument
+        "answer":    +0.04,  # or address the challenge directly
+    },
+    "share_feedback": {
+        "answer":    +0.05,  # receive feedback and respond
+        "challenge": +0.04,  # push back if warranted
+    },
+    "casual_engagement": {
+        "answer":   +0.05,  # relax into conversational mode
+        "initiate": +0.04,  # take social initiative
+    },
+    "creative_collaboration": {
+        "initiate": +0.08,  # proactive contribution to creative work
+        "help":     +0.04,  # support the creative process
+    },
+    "seek_explanation": {
+        "answer": +0.10,   # primary: explain clearly
+        "ask":    +0.03,   # clarify before explaining
+    },
+    "plan_together": {
+        "ask":    +0.08,   # clarify scope — critical in planning
+        "answer": +0.04,   # or provide plan directly if scope is clear
+    },
+}
+
 # Coherence check: action is suspicious if Python formula scores it below this
 _COHERENCE_MIN_SCORE: float = 0.30
 
@@ -383,6 +433,7 @@ def compute_utility_scores(
     domain_activated: bool,
     values: dict[str, float] | None = None,
     procedural_patterns: list[ProceduralPattern] | None = None,
+    active_expectations: list[Expectation] | None = None,
 ) -> dict[str, float]:
     """Compute utility scores for all 10 actions. Pure, deterministic, no I/O.
 
@@ -442,6 +493,14 @@ def compute_utility_scores(
             hints = _PROCEDURAL_ACTION_HINTS.get(pattern.context_type, {})
             for action, delta in hints.items():
                 scores[action] = scores.get(action, 0.0) + delta * pattern.confidence
+
+    if active_expectations:
+        for exp in active_expectations:
+            if exp.probability < _EXPECTATION_PROBABILITY_MIN:
+                continue  # explicit guard — below threshold, no adjustment at all
+            hints = _EXPECTATION_ACTION_MAP.get(exp.expected_behavior, {})
+            for action, delta in hints.items():
+                scores[action] = scores.get(action, 0.0) + delta * exp.probability
 
     return {a: clamp_01(s) for a, s in scores.items()}
 
@@ -648,6 +707,7 @@ def run_decision(
     trace_id: str = "",
     values: dict[str, float] | None = None,
     procedural_patterns: list[ProceduralPattern] | None = None,
+    active_expectations: list[Expectation] | None = None,
 ) -> DecisionResult | None:
     """Run the Decision module for this turn.
 
@@ -676,6 +736,7 @@ def run_decision(
         domain_activated=domain_activated,
         values=values,
         procedural_patterns=procedural_patterns,
+        active_expectations=active_expectations,
     )
 
     signals_summary = {
