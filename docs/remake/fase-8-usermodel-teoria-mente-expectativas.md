@@ -2,7 +2,7 @@
 
 **Estado:** Pasos 1–4 completos (2026-09-12)  
 **Tests nuevos:** 53 (22 test_user_model_service.py + 11 test_reflection_belief_attribution.py + 20 test_decision_expectations.py)  
-**Commits:** `fbbf161` (Paso 1) · `86b05a6` (Paso 2) · `PENDING` (Pasos 3-4)
+**Commits:** `fbbf161` (Paso 1) · `86b05a6` (Paso 2) · `8c14ce2` (Pasos 3-4)
 
 ---
 

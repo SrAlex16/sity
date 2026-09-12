@@ -100,7 +100,7 @@ Ver .env.example para la lista completa.
   Paso 2 (`86b05a6`): extensión zero-cost de Reflection Step — campo `user_belief_updates`
   en JSON de Haiku #5 (10ª pregunta introspectiva), persiste `BeliefAttribution`
   con confidence=0.35, source="reflection"; migración idempotente `_migrate_reflectionlog()`;
-  max_tokens 300→380; 11 tests. Paso 3 (PENDING): `_EXPECTATION_ACTION_MAP` en
+  max_tokens 300→380; 11 tests. Paso 3 (`8c14ce2`): `_EXPECTATION_ACTION_MAP` en
   `decision.py` como cuarto pase en `compute_utility_scores()`; guard explícito
   `_EXPECTATION_PROBABILITY_MIN=0.60`; fórmula `delta × probability`; 20 tests.
   53 tests totales. Ver docs/remake/fase-8-usermodel-teoria-mente-expectativas.md.
@@ -109,7 +109,7 @@ Ver .env.example para la lista completa.
   Paso 1 (`ba293f0`): tablas `ProceduralObservation` + `ProceduralPattern`; extensión de Perception con
   `context_type` (8 valores, clasificado por Haiku #1 sin coste marginal); `procedural_service.py`
   con daemon thread de síntesis (mismo patrón que AutobiographicalNarrative), Step 15 en `turn_cognition.py`;
-  31 tests con aislamiento estricto por `user_id`. Paso 2 (PENDING commit): `_PROCEDURAL_ACTION_HINTS`
+  31 tests con aislamiento estricto por `user_id`. Paso 2 (`0910095`): `_PROCEDURAL_ACTION_HINTS`
   (8 context_types × 2 acciones/tipo) en `decision.py`; tercer pase independiente en `compute_utility_scores()`;
   guard explícito `confidence ≥ 0.55` dentro del bucle (defensa en profundidad — independiente del filtrado
   en `load_active_patterns()`); `pattern_hint` inyectado en el contexto de Haiku #3; 22 tests nuevos.
