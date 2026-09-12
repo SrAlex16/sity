@@ -18,6 +18,7 @@ Para Self-Model, Valores y Metacognición (Remake Fase 6) ver docs/remake/fase-6
 Para Memoria Procedimental (Remake Fase 7) ver docs/remake/fase-7-memoria-procedimental.md.
 Para User Model, Teoría de la Mente y Expectativas (Remake Fase 8) ver docs/remake/fase-8-usermodel-teoria-mente-expectativas.md.
 Para Consolidación Semántica (Remake Fase 9) ver docs/remake/fase-9-consolidacion-semantica.md.
+Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/remake/pipeline-cognitivo-completo.md.
 
 ## Infraestructura activa
 
@@ -1113,9 +1114,12 @@ Ver .env.example para la lista completa.
   `https://sity.aletm.com/auth/integrations/spotify/callback`.
   Documentado en `docs/auth-system.md`.
 
-## Operación Remake — rediseño de personalidad/memoria/relación (planificación)
+## Operación Remake — rediseño de personalidad/memoria/relación
 
-**Estado: LISTA PARA ARRANCAR** — los 4 items prioritarios están cerrados (2026-09-07).
+**Estado: COMPLETA** — 9 fases + ajuste goal_urgent cerrados (2026-09-12).
+Pipeline cognitivo completo documentado: docs/remake/pipeline-cognitivo-completo.md
+
+_(La planificación original aparece a continuación por referencia histórica.)_
 
 Documento de referencia original: `docs/remake/SITY_VNEXT_ARQUITECTURA_MENTE_COMPLETA.md`
 *(pendiente de añadir el archivo — solicitar a Alex el documento de la sesión 2026-09-07)*
