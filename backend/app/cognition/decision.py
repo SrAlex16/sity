@@ -25,6 +25,7 @@ from app.cognition.appraisal import AppraisalResult
 from app.cognition.perception import PerceptionResult
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
+from app.memory.models import ProceduralPattern
 from app.settings.settings_service import clamp_01
 from app.trace.logger import write_log
 
@@ -273,6 +274,54 @@ _VALUES_MATRIX: dict[str, dict[str, float]] = {
 _COHERENCE_MIN_SCORE: float = 0.30
 
 # ---------------------------------------------------------------------------
+# Procedural hints: per-context_type action deltas (Fase 7 Paso 2)
+#
+# Applied as a third independent pass after _VALUES_MATRIX, weighted by
+# pattern.confidence. Guard: confidence < _PROCEDURAL_CONFIDENCE_MIN → skip.
+# Only fires when the current turn's context_type matches a confirmed pattern.
+#
+# Defined independently from procedural_service.PROCEDURAL_CONFIDENCE_MIN
+# (same value) to avoid cross-module imports — same decoupling pattern used
+# for _REFLECTION_SALIENCE_MIN vs episode_service._THR_MEDIA.
+# ---------------------------------------------------------------------------
+_PROCEDURAL_CONFIDENCE_MIN: float = 0.55
+
+_PROCEDURAL_ACTION_HINTS: dict[str, dict[str, float]] = {
+    "technical_design": {
+        "ask":    +0.06,   # clarify architecture before proposing
+        "answer": +0.04,   # direct architectural response also valid
+    },
+    "debugging": {
+        "ask":  +0.08,   # understand bug context first
+        "help": +0.06,   # active assistance once context is clear
+    },
+    "implementation": {
+        "help": +0.10,   # "do it" mode — direct assistance wins
+        "ask":  -0.04,   # fewer clarifications when action is explicit
+    },
+    "explanation": {
+        "answer":  +0.08,  # direct conceptual response
+        "initiate": +0.04, # proactively add related context
+    },
+    "casual_chat": {
+        "answer": +0.04,   # natural conversational response
+        "wait":   -0.06,   # never pause in social conversation
+    },
+    "creative": {
+        "initiate": +0.08, # proactive contribution to creative work
+        "ask":      +0.04, # understand direction before creating
+    },
+    "planning": {
+        "ask":    +0.08,   # clarify scope — critical in planning
+        "answer": +0.04,   # direct plan if scope is clear
+    },
+    "feedback": {
+        "challenge": +0.06,  # feedback invites pushback
+        "answer":    +0.04,  # direct evaluation also valid
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Expression: per-action instruction blocks injected into persona_prompt
 # ---------------------------------------------------------------------------
 
@@ -333,6 +382,7 @@ def compute_utility_scores(
     intent_request: bool,
     domain_activated: bool,
     values: dict[str, float] | None = None,
+    procedural_patterns: list[ProceduralPattern] | None = None,
 ) -> dict[str, float]:
     """Compute utility scores for all 10 actions. Pure, deterministic, no I/O.
 
@@ -385,6 +435,14 @@ def compute_utility_scores(
             for action, w in weight_table.items():
                 scores[action] = scores.get(action, 0.0) + w * vv
 
+    if procedural_patterns:
+        for pattern in procedural_patterns:
+            if pattern.confidence < _PROCEDURAL_CONFIDENCE_MIN:
+                continue  # explicit guard — below threshold, no adjustment at all
+            hints = _PROCEDURAL_ACTION_HINTS.get(pattern.context_type, {})
+            for action, delta in hints.items():
+                scores[action] = scores.get(action, 0.0) + delta * pattern.confidence
+
     return {a: clamp_01(s) for a, s in scores.items()}
 
 
@@ -433,16 +491,20 @@ def _build_decision_context(
     user_message: str,
     python_scores: dict[str, float],
     signals_summary: dict,
+    pattern_hint: str = "",
 ) -> str:
     top_action = max(python_scores, key=lambda a: python_scores[a])
     top_score = python_scores[top_action]
     scores_str = ", ".join(f"{a}: {s:.2f}" for a, s in sorted(python_scores.items(), key=lambda x: -x[1]))
-    return (
+    base = (
         f"USER MESSAGE: {user_message[:300]}\n\n"
         f"SIGNALS SUMMARY:\n{json.dumps(signals_summary, ensure_ascii=False)}\n\n"
         f"PYTHON UTILITY SCORES (formula-computed):\n  {scores_str}\n\n"
         f"FORMULA TOP CANDIDATE: {top_action} (score: {top_score:.2f})"
     )
+    if pattern_hint:
+        base += f"\n\nLEARNED PATTERN ({signals_summary.get('context_type', '')}): {pattern_hint}"
+    return base
 
 
 def _parse_decision_response(text: str) -> tuple[str, str] | None:
@@ -585,6 +647,7 @@ def run_decision(
     domain_activated: bool,
     trace_id: str = "",
     values: dict[str, float] | None = None,
+    procedural_patterns: list[ProceduralPattern] | None = None,
 ) -> DecisionResult | None:
     """Run the Decision module for this turn.
 
@@ -612,6 +675,7 @@ def run_decision(
         intent_request=intent_request,
         domain_activated=domain_activated,
         values=values,
+        procedural_patterns=procedural_patterns,
     )
 
     signals_summary = {
@@ -629,9 +693,18 @@ def run_decision(
         "domain_activated": domain_activated,
         "intent_request": intent_request,
         "max_goal_priority": round(max_goal_priority, 2),
+        "context_type": perception.context_type,
     }
 
-    context = _build_decision_context(user_message, python_scores, signals_summary)
+    # Build pattern_hint for Haiku context — first active pattern above confidence threshold
+    pattern_hint = ""
+    if procedural_patterns:
+        for _p in procedural_patterns:
+            if _p.confidence >= _PROCEDURAL_CONFIDENCE_MIN and _p.strategy_description:
+                pattern_hint = _p.strategy_description[:120]
+                break
+
+    context = _build_decision_context(user_message, python_scores, signals_summary, pattern_hint)
     try:
         haiku_result = _call_decision_haiku(context, trace_id=trace_id)
     except Exception as exc:

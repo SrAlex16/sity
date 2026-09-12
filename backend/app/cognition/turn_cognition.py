@@ -36,7 +36,7 @@ from sqlmodel import Session
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
 from app.cognition.decision import DecisionResult, run_decision
 from app.cognition.episode_service import compute_salience, maybe_create_episode
-from app.cognition.procedural_service import maybe_trigger_pattern_synthesis
+from app.cognition.procedural_service import load_active_patterns, maybe_trigger_pattern_synthesis
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
 from app.cognition.self_model_service import load_values_dict
 from app.cognition.goal_priority import compute_effective_priority
@@ -206,6 +206,12 @@ def run_cognition_turn(
             _values_dict: dict[str, float] | None = load_values_dict(session)
         except Exception:
             _values_dict = None
+        try:
+            _proc_patterns = load_active_patterns(
+                session, user_id=user_id, context_type=perception.context_type
+            )
+        except Exception:
+            _proc_patterns = []
         decision_result = run_decision(
             user_message=user_message,
             perception=perception,
@@ -219,6 +225,7 @@ def run_cognition_turn(
             domain_activated=_domain_activated,
             trace_id=trace_id,
             values=_values_dict,
+            procedural_patterns=_proc_patterns or None,
         )
     except Exception as dec_exc:
         write_log(

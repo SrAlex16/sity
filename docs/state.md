@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-12 (Operación Remake Fase 6 — Self-Model, Valores y Metacognición — completa).
+Última actualización: 2026-09-12 (Operación Remake Fase 7 Pasos 1-2 — Memoria Procedimental).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -15,6 +15,7 @@ Para el sistema de cognición por turno y metas (Remake Fase 2) ver docs/remake/
 Para la memoria episódica y autobiográfica (Remake Fase 4) ver docs/remake/fase-4-memoria-episodica-autobiografica.md.
 Para la política de acción y Expression (Remake Fase 5) ver docs/remake/fase-5-decision-expression.md.
 Para Self-Model, Valores y Metacognición (Remake Fase 6) ver docs/remake/fase-6-selfmodel-valores-metacognicion.md.
+Para Memoria Procedimental (Remake Fase 7) ver docs/remake/fase-7-memoria-procedimental.md.
 
 ## Infraestructura activa
 
@@ -62,7 +63,7 @@ Para Self-Model, Valores y Metacognición (Remake Fase 6) ver docs/remake/fase-6
 
 ## Tests y CI
 
-- 2793 tests en verde (pytest, ~20 skipped) — Fase 6 añade 65 tests nuevos (Pasos 1-3); CI verde al 100% en 02eaa5d
+- 2871 tests en verde (pytest, ~20 skipped) — Fase 7 Pasos 1-2 añaden 53 tests nuevos; CI verde al 100%
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -88,6 +89,16 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 Ver .env.example para la lista completa.
 
 ## Completado recientemente (2026-09-12)
+
+- **Operación Remake Fase 7 Pasos 1-2 — Memoria Procedimental.**
+  Paso 1 (`ba293f0`): tablas `ProceduralObservation` + `ProceduralPattern`; extensión de Perception con
+  `context_type` (8 valores, clasificado por Haiku #1 sin coste marginal); `procedural_service.py`
+  con daemon thread de síntesis (mismo patrón que AutobiographicalNarrative), Step 15 en `turn_cognition.py`;
+  31 tests con aislamiento estricto por `user_id`. Paso 2 (PENDING commit): `_PROCEDURAL_ACTION_HINTS`
+  (8 context_types × 2 acciones/tipo) en `decision.py`; tercer pase independiente en `compute_utility_scores()`;
+  guard explícito `confidence ≥ 0.55` dentro del bucle (defensa en profundidad — independiente del filtrado
+  en `load_active_patterns()`); `pattern_hint` inyectado en el contexto de Haiku #3; 22 tests nuevos.
+  53 tests totales. CI verde en Paso 1. Ver docs/remake/fase-7-memoria-procedimental.md.
 
 - **Operación Remake Fase 6 — Self-Model, Valores y Metacognición (commits `0e690d8` · `d208822` · `02eaa5d`).**
   Tres pasos que cierran el ciclo de auto-conocimiento de Sity. Paso 1: tablas `SelfModel`,
