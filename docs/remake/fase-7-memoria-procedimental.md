@@ -2,7 +2,7 @@
 
 **Estado:** Pasos 1–2 completos (2026-09-12)  
 **Tests nuevos:** 53 (31 test_procedural_service.py + 22 test_decision_procedural.py)  
-**Commits:** `ba293f0` (Paso 1) · `PENDING` (Paso 2)
+**Commits:** `ba293f0` (Paso 1) · `0910095` (Pasos 2-3)
 
 ---
 

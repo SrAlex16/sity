@@ -98,7 +98,7 @@ Ver .env.example para la lista completa.
   (8 context_types × 2 acciones/tipo) en `decision.py`; tercer pase independiente en `compute_utility_scores()`;
   guard explícito `confidence ≥ 0.55` dentro del bucle (defensa en profundidad — independiente del filtrado
   en `load_active_patterns()`); `pattern_hint` inyectado en el contexto de Haiku #3; 22 tests nuevos.
-  53 tests totales. CI verde en Paso 1. Ver docs/remake/fase-7-memoria-procedimental.md.
+  53 tests totales. CI verde en ambos pasos (`ba293f0` · `0910095`). Ver docs/remake/fase-7-memoria-procedimental.md.
 
 - **Operación Remake Fase 6 — Self-Model, Valores y Metacognición (commits `0e690d8` · `d208822` · `02eaa5d`).**
   Tres pasos que cierran el ciclo de auto-conocimiento de Sity. Paso 1: tablas `SelfModel`,
