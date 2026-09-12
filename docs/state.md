@@ -1108,8 +1108,6 @@ Documento de referencia original: `docs/remake/SITY_VNEXT_ARQUITECTURA_MENTE_COM
 
 **PRIORIDAD MEDIA/BAJA — FASE FUTURA EXPLÍCITA:**
 *(No descartadas, solo pospuestas hasta tener más usuarios reales o más madurez del núcleo)*
-- Memoria procedimental
-- Teoría de la mente
 - Memoria prospectiva (generalizar OpenLoop)
 - Consolidación semántica
 
