@@ -161,7 +161,7 @@ def message_mentions_file_path(message: str) -> bool:
         or "../" in text
         or "config/" in text
         or "backend/" in text
-        or "frontend/" in text
+        or "mobile/" in text
         or "scripts/" in text
         or "README.md" in text
         or ".env" in text

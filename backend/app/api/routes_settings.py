@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlmodel import Session
 
-from app.auth.dependencies import CurrentUser, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 
-def _require_non_guest(current: CurrentUser) -> CurrentUser:
+def _require_non_guest(current: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     if current.is_guest:
         raise HTTPException(status_code=401, detail="Autenticación requerida")
     return current
@@ -11,6 +11,7 @@ from app.memory.db import get_session
 from app.settings.alter_service import AlterService
 from app.settings.schemas import (
     AlterSlot,
+    CommunicationPreferences,
     LanguageSettings,
     LocationSettings,
     PersonalityAdjustRequest,
@@ -18,6 +19,7 @@ from app.settings.schemas import (
     PersonalitySettings,
     RenameAlterRequest,
     SaveAlterRequest,
+    SityValuesSchema,
     SUPPORTED_LANGUAGE_CODES,
     VoiceSettings,
 )
@@ -26,6 +28,8 @@ from app.initiative.settings import (
     get_initiative_settings,
     set_initiative_settings,
 )
+from app.cognition.self_model_service import get_or_create_sity_values
+from app.memory.models import utc_now
 from app.settings.settings_service import SettingsService
 from app.trace.logger import new_trace_id, write_log
 
@@ -367,6 +371,70 @@ _COUNTRY_TO_UI_LANG: dict[str, str] = {
 # Only these have translations in the frontend; others fall back to "en"
 _UI_LANG_SUPPORTED = frozenset({"es", "en", "ja"})
 _UI_LANG_DEFAULT = "en"
+
+
+@router.get("/verbosity", response_model=CommunicationPreferences)
+def get_verbosity(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(_require_non_guest),
+):
+    service = SettingsService(session)
+    prefs = service.get_comm_prefs(session_id=current.session_id)
+    return CommunicationPreferences(verbosity=prefs["verbosity"])
+
+
+@router.put("/verbosity", response_model=CommunicationPreferences)
+def update_verbosity(
+    body: CommunicationPreferences,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(_require_non_guest),
+):
+    service = SettingsService(session)
+    prefs = service.set_comm_prefs(body, session_id=current.session_id, source="ui")
+    return CommunicationPreferences(verbosity=prefs["verbosity"])
+
+
+@router.get("/values", response_model=SityValuesSchema)
+def get_sity_values(
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(_require_non_guest),
+):
+    v = get_or_create_sity_values(session)
+    return SityValuesSchema(
+        value_autonomy=v.value_autonomy,
+        value_honesty=v.value_honesty,
+        value_helpfulness=v.value_helpfulness,
+        value_curiosity=v.value_curiosity,
+        value_fairness=v.value_fairness,
+        value_loyalty=v.value_loyalty,
+    )
+
+
+@router.put("/values", response_model=SityValuesSchema)
+def update_sity_values(
+    body: SityValuesSchema,
+    session: Session = Depends(get_session),
+    _: CurrentUser = Depends(require_admin),
+):
+    v = get_or_create_sity_values(session)
+    v.value_autonomy    = body.value_autonomy
+    v.value_honesty     = body.value_honesty
+    v.value_helpfulness = body.value_helpfulness
+    v.value_curiosity   = body.value_curiosity
+    v.value_fairness    = body.value_fairness
+    v.value_loyalty     = body.value_loyalty
+    v.updated_at = utc_now()
+    session.add(v)
+    session.commit()
+    session.refresh(v)
+    return SityValuesSchema(
+        value_autonomy=v.value_autonomy,
+        value_honesty=v.value_honesty,
+        value_helpfulness=v.value_helpfulness,
+        value_curiosity=v.value_curiosity,
+        value_fairness=v.value_fairness,
+        value_loyalty=v.value_loyalty,
+    )
 
 
 @router.get("/ui-language-suggestion")

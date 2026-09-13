@@ -259,7 +259,7 @@ const es: T = {
     personality: 'Rasgos',
     achievements: 'Logros',
     settings: 'Ajustes',
-    dataset: 'Datos',
+    dataset: 'Dev',
   },
   app: {
     initializing: 'Inicializando…',
@@ -499,7 +499,7 @@ const en: T = {
     personality: 'Traits',
     achievements: 'Awards',
     settings: 'Settings',
-    dataset: 'Data',
+    dataset: 'Dev',
   },
   app: {
     initializing: 'Initializing…',
@@ -739,7 +739,7 @@ const ja: T = {
     personality: '性格',
     achievements: '実績',
     settings: '設定',
-    dataset: 'データ',
+    dataset: 'Dev',
   },
   app: {
     initializing: '読込中…',

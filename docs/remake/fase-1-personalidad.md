@@ -185,8 +185,9 @@ Esta decisión fue preferible a una migración automática porque:
 ## Archivos principales modificados
 
 - `backend/app/memory/models.py` — tabla MentalState
-- `backend/app/settings/schemas.py` — PersonalitySettings (13 campos) + CommunicationPreferences
+- `backend/app/settings/schemas.py` — PersonalitySettings (13 campos) + CommunicationPreferences + SityValuesSchema
 - `backend/app/settings/settings_service.py` — PERSONALITY_KEYS, CANONICAL_PERSONALITY, COMM_PREF_KEYS, _DEPRECATED_KEYS, get_comm_prefs(), set_comm_prefs(), get_or_create_mental_state(), save_mental_state()
+- `backend/app/api/routes_settings.py` — GET/PUT /settings/verbosity, GET/PUT /settings/values (admin gate)
 - `backend/app/core/persona_engine.py` — 13 traits, 5-level directive system, refusal_propensity
 - `backend/app/cortex/tool_schemas/personality.py` — PERSONALITY_PARAMETERS (13 nombres)
 - `backend/app/chat/turn_context.py` — campos comm_prefs y mental_state en TurnContext
@@ -194,3 +195,22 @@ Esta decisión fue preferible a una migración automática porque:
 - `backend/app/prompts/persona_system.md` — sección "Rasgos actuales" actualizada
 - `backend/app/training/dataset_stats.py` — BASE_VECTOR y targets actualizados
 - `backend/app/achievements/triggers/post_turn.py` — fórmula chaos_head actualizada
+
+## Sincronización frontend (2026-09-13)
+
+El frontend no se sincronizó durante las 9 fases de Operación Remake (Fases 1-9 se
+ejecutaron íntegramente en el backend). La sincronización se realizó en 2026-09-13:
+
+**PWA móvil (`mobile/`):**
+- `hooks/usePersonality.ts` — interface con 13 claves nuevas
+- `components/PersonalitySliderItem.tsx` — PARAM_META con 13 entradas, iconos SVG, tooltips es/jp
+- `screens/PersonalityScreen.tsx` — computeMoodLevel usa chaos_head exacta (playfulness×0.35 + (1-warmth)×0.30 + assertiveness×0.20 + independence×0.15); sección verbosity (todos los usuarios); sección SityValues (solo admin, 6 sliders con tooltips)
+- `hooks/useDebug.ts` — nuevo hook para traza de eventos y stats de dataset
+- `screens/DevToolsScreen.tsx` — reemplaza DatasetScreen; dos tabs internas (Dataset: capture+stats, Debug: traza)
+- `i18n/translations.ts` — label nav "dataset" → "Dev" en los 3 idiomas
+
+**Consolidación frontend:**
+- `frontend/` eliminado el 2026-09-13 — era el panel de desarrollo local (tabs: Chat, Personality, Debug, Dataset, Voice). Sus funciones únicas (Debug + Dataset Stats) se migraron a DevToolsScreen en la PWA.
+- `backend/app/chat/toolset_selector.py` — `"frontend/"` → `"mobile/"` en detección de paths
+
+**Lección:** La deuda de sincronización frontend creció a 9 fases sin tocar el frontend. Para Operaciones futuras: sincronizar el frontend al final de cada Fase, no al cerrar la Operación completa.

@@ -193,3 +193,131 @@
   background: var(--color-border);
   border-radius: 2px;
 }
+
+/* ── Verbosity section ── */
+.verbositySection {
+  padding: 14px 0 8px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+}
+
+.verbosityHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.verbosityLabel {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  letter-spacing: 0.06em;
+}
+
+.verbosityJp {
+  font-family: var(--font-japanese);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.verbosityPct {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--neon-cyan);
+  min-width: 36px;
+  text-align: right;
+}
+
+.verbositySlider {
+  margin-bottom: 6px;
+}
+
+.verbosityHint {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ── SityValues section ── */
+.valuesSection {
+  padding: 14px 0 16px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+}
+
+.valuesSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.valuesSectionTitle {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--neon-magenta);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.valuesSectionJp {
+  font-family: var(--font-japanese);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.valuesSectionHint {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: rgba(255, 0, 128, 0.55);
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+
+.valueRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.valueNames {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.valueNameEs {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  cursor: help;
+}
+
+.valueNameJp {
+  font-family: var(--font-japanese);
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.valueSlider {
+  flex: 1;
+}
+
+.valuePct {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--neon-magenta);
+  min-width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}

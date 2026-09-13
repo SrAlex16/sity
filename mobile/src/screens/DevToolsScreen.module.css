@@ -1,0 +1,595 @@
+/* DevToolsScreen — combines Dataset (capture + stats) and Debug (trace events) */
+/* Inherits the same neon design language as DatasetScreen */
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(10, 10, 15, 0.5);
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.titleMain {
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px var(--neon-cyan);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.titleSub {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.titleSubActive {
+  color: #ffcc44;
+}
+
+.helpBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.helpBtn:hover {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+/* ── Internal tab bar ────────────────────────────────────────────────────── */
+
+.tabsRow {
+  flex-shrink: 0;
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 9px 8px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s;
+}
+
+.tabBtn:hover {
+  color: var(--text-primary);
+}
+
+.tabBtnActive {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+}
+
+/* ── Scrollable tab content ──────────────────────────────────────────────── */
+
+.tabContent {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tabContent::-webkit-scrollbar { width: 3px; }
+.tabContent::-webkit-scrollbar-track { background: transparent; }
+.tabContent::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+/* ── Shared section primitives ───────────────────────────────────────────── */
+
+.section {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sectionLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+
+.sectionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.errorMsg {
+  margin: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 50, 50, 0.4);
+  background: rgba(255, 50, 50, 0.08);
+  border-radius: 8px;
+  color: #ff7070;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.loading {
+  padding: 20px 16px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.emptyMsg {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 4px 0;
+}
+
+/* ── Dataset capture — preset chips ─────────────────────────────────────── */
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 245, 255, 0.2);
+  background: rgba(0, 245, 255, 0.04);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.chip:disabled { opacity: 0.4; cursor: default; }
+
+.chipActive {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.08);
+  box-shadow: 0 0 8px rgba(0, 245, 255, 0.3);
+}
+
+/* ── Dataset capture — fields grid ──────────────────────────────────────── */
+
+.fieldsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.field {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.field:nth-child(odd):not(.fieldFull) {
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: block;
+  margin: 0 0 6px;
+  user-select: none;
+}
+
+.fieldHint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.04em;
+  margin: 2px 0 0;
+}
+
+.select,
+.input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(0, 245, 255, 0.2);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300f5ff' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  padding-right: 28px;
+}
+
+.select:focus,
+.input:focus {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 0 1px var(--neon-cyan);
+}
+
+.select option {
+  background: #0f0f1a;
+  color: var(--text-primary);
+}
+
+.hiddenInput {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkboxIndicator {
+  flex-shrink: 0;
+  margin-top: 1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 2px solid rgba(0, 245, 255, 0.3);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.checkboxIndicator::after {
+  content: '';
+  width: 4px;
+  height: 9px;
+  border: 2px solid transparent;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) translateY(-1px);
+  transition: border-color 0.15s;
+}
+
+.checkboxLarge {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  margin-top: 2px;
+}
+
+.checkboxLarge::after {
+  width: 6px;
+  height: 12px;
+}
+
+.hiddenInput:checked + .checkboxIndicator,
+.hiddenInput:checked + .checkboxLarge {
+  border-color: var(--neon-cyan);
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px var(--neon-cyan);
+}
+
+.hiddenInput:checked + .checkboxIndicator::after,
+.hiddenInput:checked + .checkboxLarge::after {
+  border-color: #0a0a0f;
+}
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.btn {
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.2s, box-shadow 0.2s;
+  border: none;
+  text-align: center;
+}
+
+.btn:disabled { opacity: 0.35; cursor: default; }
+
+.btnCyan {
+  background: var(--neon-cyan);
+  color: #0a0a0f;
+  box-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.btnCyan:hover:not(:disabled) { box-shadow: 0 0 18px var(--neon-cyan); }
+
+.btnMagenta {
+  background: transparent;
+  border: 1px solid var(--neon-magenta);
+  color: var(--neon-magenta);
+}
+
+.btnMagenta:hover:not(:disabled) { box-shadow: 0 0 10px rgba(255, 0, 128, 0.4); }
+
+.btnSecondary {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--text-secondary);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+/* ── Dataset stats ───────────────────────────────────────────────────────── */
+
+.statsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.statsTitle {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.statsComputedAt {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.statsCards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.statCard {
+  padding: 12px 10px;
+  text-align: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.statCard:last-child { border-right: none; }
+.statCard:nth-child(3n) { border-right: none; }
+
+.statValue {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  line-height: 1;
+}
+
+.statLabel {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.bucketRow {
+  padding: 4px 0;
+}
+
+.bucketHeader {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  margin-bottom: 4px;
+}
+
+.bucketName { color: var(--text-primary); }
+
+.bucketCount { color: var(--text-secondary); }
+
+.progressBar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--neon-cyan);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.tagChip {
+  display: inline-block;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  margin: 3px;
+}
+
+.tagCount {
+  color: var(--neon-cyan);
+  font-weight: 700;
+}
+
+/* ── Debug trace events ──────────────────────────────────────────────────── */
+
+.eventCard {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 16px;
+}
+
+.eventHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.eventName {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--neon-cyan);
+  word-break: break-all;
+}
+
+.eventMeta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.eventLevel {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--text-secondary);
+}
+
+.eventPre {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.55);
+  overflow-x: auto;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.eventPre::-webkit-scrollbar { height: 3px; }
+.eventPre::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+.traceIdLabel {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.recentPairCard {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.recentPairMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.recentPairTime {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.recentPairBucket {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--neon-cyan);
+}
+
+.recentPairText {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 2px 0;
+}
+
+.recentPairSity {
+  color: var(--text-primary);
+}

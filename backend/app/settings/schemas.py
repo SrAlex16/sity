@@ -84,3 +84,12 @@ class LanguageSettings(BaseModel):
 class LocationSettings(BaseModel):
     city: str = ""
     source: Literal["manual", "browser", "auto", "denied", ""] = ""
+
+
+class SityValuesSchema(BaseModel):
+    value_autonomy:    float = Field(default=0.80, ge=0.0, le=1.0)
+    value_honesty:     float = Field(default=0.75, ge=0.0, le=1.0)
+    value_helpfulness: float = Field(default=0.72, ge=0.0, le=1.0)
+    value_curiosity:   float = Field(default=0.66, ge=0.0, le=1.0)
+    value_fairness:    float = Field(default=0.80, ge=0.0, le=1.0)
+    value_loyalty:     float = Field(default=0.50, ge=0.0, le=1.0)

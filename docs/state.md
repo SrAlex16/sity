@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-12 (Ajuste Remake — trigger goal_urgent / cierre Memoria Prospectiva).
+Última actualización: 2026-09-13 (Consolidación frontend — PWA sincronizada con Operación Remake, frontend/ eliminado).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -91,7 +91,26 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 
 Ver .env.example para la lista completa.
 
-## Completado recientemente (2026-09-12)
+## Completado recientemente (2026-09-13)
+
+- **Consolidación frontend — sincronización PWA con Operación Remake.**
+  `mobile/src/hooks/usePersonality.ts` — interface actualizada a 13 claves nuevas.
+  `mobile/src/components/PersonalitySliderItem.tsx` — PARAM_META con 13 entradas, iconos SVG, tooltips es/jp.
+  `mobile/src/screens/PersonalityScreen.tsx` — computeMoodLevel usa fórmula chaos_head exacta
+  (`playfulness*0.35 + (1-warmth)*0.30 + assertiveness*0.20 + independence*0.15`); nueva sección
+  Verbosity (GET/PUT /settings/verbosity, todos los usuarios); nueva sección SityValues (GET/PUT /settings/values,
+  solo admin, 6 sliders con tooltips es/jp).
+  `backend/app/settings/schemas.py` — SityValuesSchema añadido.
+  `backend/app/api/routes_settings.py` — GET/PUT /settings/verbosity + GET/PUT /settings/values (admin gate 403).
+  13 tests nuevos en `tests/test_verbosity_values_endpoints.py`.
+  `mobile/src/screens/DevToolsScreen.tsx` — nueva pantalla admin-only que reemplaza DatasetScreen;
+  dos tabs internas: "Dataset" (capture + stats) y "Debug" (traza de eventos + last trace).
+  `mobile/src/hooks/useDebug.ts` — hook para `/debug/events/recent`, `/debug/last-trace`, `/debug/dataset-stats`.
+  `frontend/` eliminado — era panel de desarrollo local (Chat/Personality/Debug/Dataset/Voice);
+  funciones de Debug y Dataset Stats migradas a DevToolsScreen en la PWA.
+  `backend/app/chat/toolset_selector.py` — `"frontend/"` → `"mobile/"` en detección de paths.
+  Nav label "Datos"/"Data"/"データ" → "Dev" en los 3 idiomas.
+  2989+13 = ~3002 tests en verde.
 
 - **Ajuste Remake — trigger goal_urgent (cierre Memoria Prospectiva, sección 28).**
   Nuevo `trigger_type="goal_urgent"` en `initiative/detector.py`: evalúa Goals `long_term`

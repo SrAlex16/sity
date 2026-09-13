@@ -1,20 +1,19 @@
 import { useState, useEffect } from 'react';
 
 export interface PersonalitySettings {
-  sarcasm_level: number;
-  rudeness_level: number;
-  warmth_level: number;
-  honesty_level: number;
-  initiative_level: number;
-  dry_humor_level: number;
-  frialdad_afectiva_level: number;
-  contrarian_level: number;
-  patience_level: number;
-  refusal_chance: number;
-  helpfulness_level: number;
-  verbosity_level: number;
-  melancholy_level: number;
-  skepticism_level: number;
+  warmth:              number;
+  empathy:             number;
+  directness:          number;
+  assertiveness:       number;
+  independence:        number;
+  skepticism:          number;
+  patience:            number;
+  curiosity:           number;
+  proactivity:         number;
+  helpfulness:         number;
+  honesty:             number;
+  playfulness:         number;
+  emotional_stability: number;
 }
 
 export function usePersonality() {
@@ -40,7 +39,6 @@ export function usePersonality() {
   }
 
   async function adjust(parameter: keyof PersonalitySettings, value: number) {
-    // Optimistic update
     setSettings((prev) => prev ? { ...prev, [parameter]: value } : prev);
     try {
       const res = await fetch('/settings/personality/adjust', {
@@ -52,7 +50,7 @@ export function usePersonality() {
       const data = await res.json() as { new_value: number };
       setSettings((prev) => prev ? { ...prev, [parameter]: data.new_value } : prev);
     } catch {
-      void load(); // revert via reload
+      void load();
     }
   }
 

@@ -10,7 +10,7 @@ import { BottomNav } from './components/BottomNav';
 import { ChatScreen } from './screens/ChatScreen';
 import { PersonalityScreen } from './screens/PersonalityScreen';
 import { VoiceScreen } from './screens/VoiceScreen';
-import { DatasetScreen } from './screens/DatasetScreen';
+import { DevToolsScreen } from './screens/DevToolsScreen';
 import { AchievementsScreen, UnlockNotification } from './screens/AchievementsScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { RegisterScreen } from './screens/RegisterScreen';
@@ -216,7 +216,7 @@ export default function App() {
       case 'personality':   return <PersonalityScreen role={role} uiLang={uiLang} />;
       case 'achievements':  return <AchievementsScreen role={role} uiLang={uiLang} data={achievData} isLoading={achievLoading} />;
       case 'voice':         return <VoiceScreen role={role} uiLang={uiLang} onUiLangChange={setUiLang} />;
-      case 'dataset':     return <DatasetScreen uiLang={uiLang} />;
+      case 'dataset':     return <DevToolsScreen uiLang={uiLang} />;
     }
   }
 
