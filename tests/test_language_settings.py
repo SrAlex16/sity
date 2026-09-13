@@ -72,10 +72,12 @@ def test_language_session_isolation() -> None:
     assert resp_b.json()["language_override"] == "fr-FR"
 
 
-def test_language_guest_rejected() -> None:
+def test_language_guest_get_returns_defaults() -> None:
+    # Fix 2026-09-14: GET now returns 200 with schema defaults for guests
     with _client() as c:
         resp = c.get("/settings/language")
-    assert resp.status_code == 401
+    assert resp.status_code == 200
+    assert "language_override" in resp.json()
 
 
 def test_language_put_guest_rejected() -> None:

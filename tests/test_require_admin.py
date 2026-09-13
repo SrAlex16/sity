@@ -53,8 +53,9 @@ def admin():
 # ---------------------------------------------------------------------------
 
 
-def test_get_voice_guest_401(guest: TestClient) -> None:
-    assert guest.get("/settings/voice").status_code == 401
+def test_get_voice_guest_200_defaults(guest: TestClient) -> None:
+    # Fix 2026-09-14: GET now returns 200 with schema defaults for guests
+    assert guest.get("/settings/voice").status_code == 200
 
 
 def test_get_voice_user_ok(user: TestClient) -> None:

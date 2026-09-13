@@ -115,10 +115,12 @@ def test_location_session_isolation() -> None:
     assert resp_b.json()["city"] == "Tokyo"
 
 
-def test_location_guest_rejected() -> None:
+def test_location_guest_get_returns_defaults() -> None:
+    # Fix 2026-09-14: GET now returns 200 with schema defaults for guests
     with _client() as c:
         resp = c.get("/settings/location")
-    assert resp.status_code == 401
+    assert resp.status_code == 200
+    assert "city" in resp.json()
 
 
 def test_location_put_guest_rejected() -> None:
