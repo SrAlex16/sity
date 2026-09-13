@@ -55,6 +55,7 @@ interface SettingsScreenProps {
 const ELEVENLABS_LANGUAGES = new Set<string>(['es-ES', 'es-419', 'en-US', 'en-GB', 'ja']);
 
 export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProps) {
+  const isGuest = role === 'guest';
   const tl = TRANSLATIONS[uiLang].settings;
   const { settings, isLoading, error, save, reload } = useVoice();
   const { settings: initiativeSettings, save: saveInitiative } = useInitiative();
@@ -350,6 +351,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         {error && <p className={styles.errorMsg}>{error}</p>}
         {autoSaveStatus === 'saved' && <p className={styles.successMsg}>✓ {tl.saved}</p>}
         {autoSaveStatus === 'error' && <p className={styles.errorMsg}>{autoSaveError}</p>}
+        {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
 
         {!form && isLoading && <p className={styles.loading}>{tl.loading}</p>}
 
@@ -371,7 +373,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                       name="voice_response_mode"
                       value={mode}
                       checked={form.voice_response_mode === mode}
-                      onChange={() => void autoSave({ ...form!, voice_response_mode: mode })}
+                      disabled={isGuest}
+                      onChange={() => !isGuest && void autoSave({ ...form!, voice_response_mode: mode })}
                     />
                     <span className={styles.radioIndicator} />
                     <span className={styles.optionText}>{
@@ -389,7 +392,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                   type="checkbox"
                   className={styles.hiddenInput}
                   checked={form.voice_include_text}
-                  onChange={(e) => void autoSave({ ...form!, voice_include_text: e.target.checked })}
+                  disabled={isGuest}
+                  onChange={(e) => !isGuest && void autoSave({ ...form!, voice_include_text: e.target.checked })}
                 />
                 <span className={styles.checkboxIndicator} />
                 <div>
@@ -409,7 +413,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                       name="voice_long_response_action"
                       value={action}
                       checked={form.voice_long_response_action === action}
-                      onChange={() => void autoSave({ ...form!, voice_long_response_action: action })}
+                      disabled={isGuest}
+                      onChange={() => !isGuest && void autoSave({ ...form!, voice_long_response_action: action })}
                     />
                     <span className={styles.radioIndicator} />
                     <span className={styles.optionText}>{action === 'split' ? tl.longSplit : tl.longTextOnly}</span>
@@ -422,7 +427,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                 className={`${styles.sectionBtn} ${styles.btnSecondary}`}
                 style={{ marginTop: 18 }}
                 onClick={handleRestore}
-                disabled={busy}
+                disabled={busy || isGuest}
               >
                 {tl.restoreVoice}
               </button>
@@ -530,102 +535,99 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         </div>
 
         {/* Idioma de conversación de Sity — Sistema 2, funcional */}
-        {role !== 'guest' && (
-          <div className={styles.section}>
-            <p className={styles.sectionEs}>{tl.sityLanguageSection}</p>
-            <p className={styles.sectionJp}>会話言語</p>
-            <p className={styles.sectionHint}>{tl.sityLanguageHint}</p>
-            <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
-              ⓘ {tl.sityLanguageNote}
-            </p>
-            {langLoading && !langSettings && <p className={styles.sectionHint}>{tl.loading}</p>}
-            {langError && <p className={styles.errorMsg}>{langError}</p>}
-            {langSettings && (
-              <select
-                className={styles.select}
-                value={langSettings.language_override}
-                onChange={(e) => void handleLangChange(e.target.value as LanguageCode)}
-                disabled={langLoading}
-              >
-                {SUPPORTED_LANGUAGES.map(({ code, label }) => (
-                  <option key={code} value={code}>{label}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
+        <div className={styles.section}>
+          <p className={styles.sectionEs}>{tl.sityLanguageSection}</p>
+          <p className={styles.sectionJp}>会話言語</p>
+          <p className={styles.sectionHint}>{tl.sityLanguageHint}</p>
+          <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
+            ⓘ {tl.sityLanguageNote}
+          </p>
+          {!isGuest && langLoading && !langSettings && <p className={styles.sectionHint}>{tl.loading}</p>}
+          {!isGuest && langError && <p className={styles.errorMsg}>{langError}</p>}
+          {(langSettings || isGuest) && (
+            <select
+              className={isGuest ? styles.selectDisabled : styles.select}
+              value={langSettings?.language_override ?? 'auto'}
+              onChange={(e) => !isGuest && void handleLangChange(e.target.value as LanguageCode)}
+              disabled={isGuest || langLoading}
+            >
+              {SUPPORTED_LANGUAGES.map(({ code, label }) => (
+                <option key={code} value={code}>{label}</option>
+              ))}
+            </select>
+          )}
+        </div>
 
-        {/* Ubicación — User/Admin only */}
-        {role !== 'guest' && (
-          <div className={styles.section}>
-            <p className={styles.sectionEs}>{tl.locationSection}</p>
-            <p className={styles.sectionJp}>位置情報</p>
-            <p className={styles.sectionHint}>{tl.locationHint}</p>
+        {/* Ubicación — visible para todos, editable solo por usuarios */}
+        <div className={styles.section}>
+          <p className={styles.sectionEs}>{tl.locationSection}</p>
+          <p className={styles.sectionJp}>位置情報</p>
+          <p className={styles.sectionHint}>{tl.locationHint}</p>
 
-            {/* Current location display */}
-            {locationSettings?.city && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <span className={styles.sectionHint} style={{ flex: 1 }}>
-                  {locationSettings.city}
-                  {locationSettings.source && (
-                    <> — <span style={{ opacity: 0.6 }}>{tl.locationSourceLabel(locationSettings.source)}</span></>
-                  )}
-                </span>
-                <button
-                  className={`${styles.sectionBtn} ${styles.btnMagenta}`}
-                  onClick={() => void saveLocation({ city: '', source: '' })}
-                  disabled={locLoading}
-                >
-                  {tl.locationClear}
-                </button>
-              </div>
-            )}
-
-            {locationSettings?.source === 'denied' && !locationSettings.city && (
-              <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
-                {tl.locationDenied}
-              </p>
-            )}
-
-            {/* Manual input */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <input
-                type="text"
-                className={styles.cleanupInput}
-                style={{ flex: 1 }}
-                placeholder={tl.locationPlaceholder}
-                value={locationInput}
-                onChange={(e) => setLocationInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && locationInput.trim()) {
-                    void saveLocation({ city: locationInput.trim(), source: 'manual' }).then(() => setLocationInput(''));
-                  }
-                }}
-              />
+          {/* Current location display */}
+          {!isGuest && locationSettings?.city && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <span className={styles.sectionHint} style={{ flex: 1 }}>
+                {locationSettings.city}
+                {locationSettings.source && (
+                  <> — <span style={{ opacity: 0.6 }}>{tl.locationSourceLabel(locationSettings.source)}</span></>
+                )}
+              </span>
               <button
-                className={`${styles.sectionBtn} ${styles.btnCyan}`}
-                disabled={!locationInput.trim() || locLoading}
-                onClick={() => void saveLocation({ city: locationInput.trim(), source: 'manual' }).then(() => setLocationInput(''))}
+                className={`${styles.sectionBtn} ${styles.btnMagenta}`}
+                onClick={() => void saveLocation({ city: '', source: '' })}
+                disabled={locLoading}
               >
-                {tl.locationSave}
+                {tl.locationClear}
               </button>
             </div>
+          )}
 
-            {/* Browser detection */}
-            {typeof navigator !== 'undefined' && 'geolocation' in navigator && (
-              <button
-                className={`${styles.sectionBtn} ${styles.btnSecondary}`}
-                onClick={() => void handleDetectLocation()}
-                disabled={locationDetecting || locLoading}
-              >
-                {locationDetecting ? tl.locationDetecting : tl.locationDetect}
-              </button>
-            )}
+          {!isGuest && locationSettings?.source === 'denied' && !locationSettings.city && (
+            <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
+              {tl.locationDenied}
+            </p>
+          )}
+
+          {/* Manual input */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <input
+              type="text"
+              className={styles.cleanupInput}
+              style={{ flex: 1 }}
+              placeholder={tl.locationPlaceholder}
+              value={locationInput}
+              disabled={isGuest}
+              onChange={(e) => setLocationInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (!isGuest && e.key === 'Enter' && locationInput.trim()) {
+                  void saveLocation({ city: locationInput.trim(), source: 'manual' }).then(() => setLocationInput(''));
+                }
+              }}
+            />
+            <button
+              className={`${styles.sectionBtn} ${styles.btnCyan}`}
+              disabled={isGuest || !locationInput.trim() || locLoading}
+              onClick={() => !isGuest && void saveLocation({ city: locationInput.trim(), source: 'manual' }).then(() => setLocationInput(''))}
+            >
+              {tl.locationSave}
+            </button>
           </div>
-        )}
 
-        {/* Mensajes proactivos — User/Admin only */}
-        {role !== 'guest' && initiativeSettings && (
+          {/* Browser detection */}
+          {typeof navigator !== 'undefined' && 'geolocation' in navigator && (
+            <button
+              className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+              onClick={() => !isGuest && void handleDetectLocation()}
+              disabled={isGuest || locationDetecting || locLoading}
+            >
+              {locationDetecting ? tl.locationDetecting : tl.locationDetect}
+            </button>
+          )}
+        </div>
+
+        {/* Mensajes proactivos — visible para todos, editable solo por usuarios */}
+        {initiativeSettings && (
           <div className={styles.section}>
             <p className={styles.sectionEs}>{tl.initiativeSection}</p>
             <p className={styles.sectionJp}>プロアクティブ</p>
@@ -636,7 +638,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                 type="checkbox"
                 className={styles.hiddenInput}
                 checked={initiativeSettings.enabled}
-                onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, enabled: e.target.checked })}
+                disabled={isGuest}
+                onChange={(e) => !isGuest && void autoSaveInitiative({ ...initiativeSettings, enabled: e.target.checked })}
               />
               <span className={styles.checkboxIndicator} />
               <div>
@@ -653,7 +656,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                     type="checkbox"
                     className={styles.hiddenInput}
                     checked={initiativeSettings.trigger_conversation_abandoned}
-                    onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, trigger_conversation_abandoned: e.target.checked })}
+                    disabled={isGuest}
+                    onChange={(e) => !isGuest && void autoSaveInitiative({ ...initiativeSettings, trigger_conversation_abandoned: e.target.checked })}
                   />
                   <span className={styles.checkboxIndicator} />
                   <div>
@@ -667,7 +671,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                     type="checkbox"
                     className={styles.hiddenInput}
                     checked={initiativeSettings.trigger_long_inactivity}
-                    onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, trigger_long_inactivity: e.target.checked })}
+                    disabled={isGuest}
+                    onChange={(e) => !isGuest && void autoSaveInitiative({ ...initiativeSettings, trigger_long_inactivity: e.target.checked })}
                   />
                   <span className={styles.checkboxIndicator} />
                   <div>
@@ -681,7 +686,8 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                     type="checkbox"
                     className={styles.hiddenInput}
                     checked={initiativeSettings.trigger_open_loop}
-                    onChange={(e) => void autoSaveInitiative({ ...initiativeSettings, trigger_open_loop: e.target.checked })}
+                    disabled={isGuest}
+                    onChange={(e) => !isGuest && void autoSaveInitiative({ ...initiativeSettings, trigger_open_loop: e.target.checked })}
                   />
                   <span className={styles.checkboxIndicator} />
                   <div>

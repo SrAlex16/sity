@@ -143,7 +143,10 @@ def get_voice_settings(
     current: CurrentUser = Depends(get_current_user),
 ):
     """Per-session voice settings (mode/transcript/long_response) with global fallback.
-    audio_cleanup_days is always read from the global admin row."""
+    audio_cleanup_days is always read from the global admin row.
+    Guests receive schema defaults (200) so the UI can show read-only values."""
+    if current.is_guest:
+        return VoiceSettings()
     _require_non_guest(current)
     return SettingsService(session).get_voice_settings(session_id=current.session_id)
 
@@ -166,7 +169,10 @@ def get_language_settings(
     session: Session = Depends(get_session),
     current: CurrentUser = Depends(get_current_user),
 ):
-    """Per-session language override for Sity's conversation language."""
+    """Per-session language override for Sity's conversation language.
+    Guests receive schema defaults (200) so the UI can show a read-only selector."""
+    if current.is_guest:
+        return LanguageSettings()
     _require_non_guest(current)
     override = SettingsService(session).get_language_override(session_id=current.session_id)
     return LanguageSettings(language_override=override)
@@ -201,7 +207,10 @@ def get_location_settings_endpoint(
     session: Session = Depends(get_session),
     current: CurrentUser = Depends(get_current_user),
 ):
-    """Per-session location (city + source) used by Sity for local context."""
+    """Per-session location (city + source) used by Sity for local context.
+    Guests receive schema defaults (200) so the UI can show a read-only placeholder."""
+    if current.is_guest:
+        return LocationSettings()
     _require_non_guest(current)
     return SettingsService(session).get_location_settings(session_id=current.session_id)
 
@@ -228,7 +237,10 @@ def get_initiative_settings_endpoint(
     session: Session = Depends(get_session),
     current: CurrentUser = Depends(get_current_user),
 ):
-    """Per-session initiative settings with global fallback."""
+    """Per-session initiative settings with global fallback.
+    Guests receive schema defaults (200) so the UI can show read-only toggles."""
+    if current.is_guest:
+        return InitiativeSettings()
     _require_non_guest(current)
     return get_initiative_settings(session, session_id=current.session_id)
 

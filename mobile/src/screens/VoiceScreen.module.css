@@ -116,6 +116,18 @@
   line-height: 1.4;
 }
 
+.guestHint {
+  margin: 0 16px 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 245, 255, 0.25);
+  background: rgba(0, 245, 255, 0.05);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 /* ── Sections ────────────────────────────────────────────────────────────── */
 
 .section {

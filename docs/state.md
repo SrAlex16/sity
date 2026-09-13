@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-13 (Consolidación frontend — PWA sincronizada con Operación Remake, frontend/ eliminado).
+Última actualización: 2026-09-14 (Fix bug 15 días — guests ven Voz/Idioma/Ubicación/Iniciativa con controles deshabilitados, 401s eliminados).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -1267,6 +1267,19 @@ luego arrancar con Remake.
   test compartida; el evaluador lo detecta antes del check de `rate_limited` (cooldown se evalúa
   primero en el código). No afecta producción. Fix: añadir teardown/cleanup de `cooldown_active`
   en los tests anteriores de `TestEvaluatorRateLimits`. Pendiente de sesión de mantenimiento.
+
+**Resueltos recientemente (2026-09-14):**
+
+- **401 para guests en /settings/voice, /initiative, /location, /language** (regresión 15 días):
+  Commit `1953534` (2026-08-30, achievements Paso 3) eliminó accidentalmente `voice` de
+  `ADMIN_ONLY_TABS` en `BottomNav.tsx`. Los guests podían navegar a `VoiceScreen`, los hooks
+  disparaban fetch sin guardia de rol, y el backend devolvía 401. Fix (Opción C):
+  - Backend: 4 endpoints GET retornan 200 con defaults para guests (antes del guard `_require_non_guest`).
+    PUT/POST mantienen 401 — guests nunca pueden persistir cambios.
+  - Frontend: `VoiceScreen.tsx` — secciones Voz, Idioma-conversación, Ubicación, Mensajes-proactivos
+    ahora se muestran para guests con controles `disabled` + banner `guestRegisterHint` (es/en/ja).
+    Integraciones, Exportar, Borrar datos, Archivos siguen ocultas para guests.
+  - Tests: 8 tests nuevos en `tests/test_guest_settings_access.py`.
 
 **Resueltos recientemente (2026-09-11):**
 
