@@ -376,7 +376,7 @@ _UI_LANG_DEFAULT = "en"
 @router.get("/verbosity", response_model=CommunicationPreferences)
 def get_verbosity(
     session: Session = Depends(get_session),
-    current: CurrentUser = Depends(_require_non_guest),
+    current: CurrentUser = Depends(require_admin),
 ):
     service = SettingsService(session)
     prefs = service.get_comm_prefs(session_id=current.session_id)
@@ -387,7 +387,7 @@ def get_verbosity(
 def update_verbosity(
     body: CommunicationPreferences,
     session: Session = Depends(get_session),
-    current: CurrentUser = Depends(_require_non_guest),
+    current: CurrentUser = Depends(require_admin),
 ):
     service = SettingsService(session)
     prefs = service.set_comm_prefs(body, session_id=current.session_id, source="ui")

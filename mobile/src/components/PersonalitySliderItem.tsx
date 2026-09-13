@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { PersonalitySettings } from '../hooks/usePersonality';
+import { InfoTooltip } from './InfoTooltip';
 import { NeonSlider } from './NeonSlider';
 import styles from './PersonalitySliderItem.module.css';
 
@@ -64,7 +65,10 @@ export const PersonalitySliderItem = memo(function PersonalitySliderItem({
       <span className={styles.icon}><Icon /></span>
 
       <div className={styles.names}>
-        <span className={styles.nameEs} title={tooltip}>{es}</span>
+        <div className={styles.nameRow}>
+          <span className={styles.nameEs}>{es}</span>
+          <InfoTooltip content={tooltip} />
+        </div>
         <span className={styles.nameJp}>{jp}</span>
       </div>
 

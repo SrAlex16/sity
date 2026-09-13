@@ -22,10 +22,16 @@
 
 .names {
   flex-shrink: 0;
-  width: 72px;
+  width: 88px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .nameJp {

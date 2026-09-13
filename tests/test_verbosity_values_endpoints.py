@@ -1,23 +1,22 @@
 """Tests for GET/PUT /settings/verbosity and GET/PUT /settings/values.
 
 Coverage:
-  Verbosity:
-  - Default verbosity is 0.60 for a fresh user
-  - PUT verbosity persists and GET returns updated value
-  - Two users have isolated verbosity (per-session)
-  - Guest user is rejected (401)
+  Verbosity (admin-only since 2026-09-13):
+  - Admin can GET verbosity (returns 0.60 after reset)
+  - Admin PUT persists and GET returns updated value
+  - Non-admin (regular user) is rejected with 403 on both GET and PUT
+  - Guest is rejected with 403 on both GET and PUT
   - Value out of range (>1.0) is rejected (422)
+  - Boundary values 0.0 and 1.0 are accepted
 
   SityValues:
   - GET returns default values for any authenticated user
   - Admin can PUT and values persist
   - Non-admin (user role) gets 403 on PUT
-  - Guest is rejected (401) on GET
+  - Guest is rejected (403) on GET
   - Value out of range is rejected (422)
 """
 from __future__ import annotations
-
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,82 +38,84 @@ def _client() -> TestClient:
     return TestClient(app, raise_server_exceptions=True)
 
 
-def _register(client: TestClient) -> str:
-    email = f"vv_{uuid.uuid4().hex[:8]}@sity-test.invalid"
-    resp = client.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
-    assert resp.status_code == 201, resp.text
-    cookie = resp.cookies.get("sity_session")
-    assert cookie
-    return cookie
-
-
 # ---------------------------------------------------------------------------
-# Verbosity
+# Verbosity — admin-only
 # ---------------------------------------------------------------------------
 
 class TestVerbosityEndpoints:
 
-    def test_default_verbosity_is_060(self) -> None:
+    def test_admin_get_verbosity_default(self) -> None:
+        admin_token = make_admin_token()
         with _client() as c:
-            cookie = _register(c)
-            resp = c.get("/settings/verbosity", cookies={"sity_session": cookie})
+            # Ensure default by resetting first
+            c.put("/settings/verbosity", json={"verbosity": 0.60}, cookies={"sity_session": admin_token})
+            resp = c.get("/settings/verbosity", cookies={"sity_session": admin_token})
         assert resp.status_code == 200
         assert resp.json()["verbosity"] == pytest.approx(0.60)
 
-    def test_put_verbosity_persists(self) -> None:
+    def test_admin_put_verbosity_persists(self) -> None:
+        admin_token = make_admin_token()
         with _client() as c:
-            cookie = _register(c)
             put = c.put(
                 "/settings/verbosity",
                 json={"verbosity": 0.80},
-                cookies={"sity_session": cookie},
+                cookies={"sity_session": admin_token},
             )
             assert put.status_code == 200
             assert put.json()["verbosity"] == pytest.approx(0.80)
 
-            get = c.get("/settings/verbosity", cookies={"sity_session": cookie})
-        assert get.status_code == 200
-        assert get.json()["verbosity"] == pytest.approx(0.80)
+            get = c.get("/settings/verbosity", cookies={"sity_session": admin_token})
+            assert get.status_code == 200
+            assert get.json()["verbosity"] == pytest.approx(0.80)
 
-    def test_verbosity_per_session_isolated(self) -> None:
+            # Restore default
+            c.put("/settings/verbosity", json={"verbosity": 0.60}, cookies={"sity_session": admin_token})
+
+    def test_verbosity_get_non_admin_rejected(self) -> None:
+        user_token = make_user_token()
         with _client() as c:
-            cookie_a = _register(c)
-            cookie_b = _register(c)
-            c.put("/settings/verbosity", json={"verbosity": 0.90}, cookies={"sity_session": cookie_a})
-            resp_b = c.get("/settings/verbosity", cookies={"sity_session": cookie_b})
-        assert resp_b.json()["verbosity"] == pytest.approx(0.60)
+            resp = c.get("/settings/verbosity", cookies={"sity_session": user_token})
+        assert resp.status_code == 403
 
-    def test_verbosity_guest_rejected(self) -> None:
+    def test_verbosity_put_non_admin_rejected(self) -> None:
+        user_token = make_user_token()
+        with _client() as c:
+            resp = c.put("/settings/verbosity", json={"verbosity": 0.5}, cookies={"sity_session": user_token})
+        assert resp.status_code == 403
+
+    def test_verbosity_get_guest_rejected(self) -> None:
         with _client() as c:
             resp = c.get("/settings/verbosity")
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     def test_verbosity_put_guest_rejected(self) -> None:
         with _client() as c:
             resp = c.put("/settings/verbosity", json={"verbosity": 0.5})
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     def test_verbosity_out_of_range_rejected(self) -> None:
+        admin_token = make_admin_token()
         with _client() as c:
-            cookie = _register(c)
             resp = c.put(
                 "/settings/verbosity",
                 json={"verbosity": 1.5},
-                cookies={"sity_session": cookie},
+                cookies={"sity_session": admin_token},
             )
         assert resp.status_code == 422
 
     def test_verbosity_put_boundary_values(self) -> None:
+        admin_token = make_admin_token()
         with _client() as c:
-            cookie = _register(c)
             for val in (0.0, 1.0):
                 resp = c.put(
                     "/settings/verbosity",
                     json={"verbosity": val},
-                    cookies={"sity_session": cookie},
+                    cookies={"sity_session": admin_token},
                 )
                 assert resp.status_code == 200
                 assert resp.json()["verbosity"] == pytest.approx(val)
+            # Restore default
+            c.put("/settings/verbosity", json={"verbosity": 0.60}, cookies={"sity_session": admin_token})
 
 
 # ---------------------------------------------------------------------------
@@ -201,4 +202,3 @@ class TestSityValuesEndpoints:
                 cookies={"sity_session": admin_token},
             )
         assert resp.status_code == 422
-

@@ -231,15 +231,7 @@
 }
 
 .verbositySlider {
-  margin-bottom: 6px;
-}
-
-.verbosityHint {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
-  margin: 0;
+  margin-top: 2px;
 }
 
 /* ── SityValues section ── */
@@ -294,12 +286,17 @@
   flex-shrink: 0;
 }
 
+.valueNameRow {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .valueNameEs {
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--text-primary);
   letter-spacing: 0.04em;
-  cursor: help;
 }
 
 .valueNameJp {

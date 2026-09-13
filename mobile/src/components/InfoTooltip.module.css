@@ -1,0 +1,52 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.trigger {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.trigger:hover {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px var(--neon-cyan);
+}
+
+/* position: fixed so overflow:auto ancestors don't clip it */
+.popover {
+  position: fixed;
+  z-index: 9000;
+  transform: translateX(-50%) translateY(calc(-100% - 8px));
+
+  width: 200px;
+  max-width: 80vw;
+
+  background: var(--color-surface);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: 0 0 12px rgba(0, 245, 255, 0.25), 0 4px 16px rgba(0, 0, 0, 0.8);
+  border-radius: 4px;
+  padding: 8px 10px;
+
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  word-wrap: break-word;
+
+  pointer-events: none;
+}

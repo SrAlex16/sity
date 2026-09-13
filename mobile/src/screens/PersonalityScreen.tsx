@@ -4,6 +4,7 @@ import { usePersonality } from '../hooks/usePersonality';
 import type { PersonalitySettings } from '../hooks/usePersonality';
 import { MoodFace } from '../components/MoodFace';
 import { PersonalitySliderItem, PARAM_META } from '../components/PersonalitySliderItem';
+import { InfoTooltip } from '../components/InfoTooltip';
 import { NeonSlider } from '../components/NeonSlider';
 import { HelpModal } from '../components/HelpModal';
 import { AltersPanel } from '../components/AltersPanel';
@@ -91,12 +92,12 @@ export function PersonalityScreen({ role, uiLang = 'es' }: PersonalityScreenProp
   const [verbositySaving, setVerbositySaving] = useState(false);
 
   useEffect(() => {
-    if (isGuest) return;
+    if (!isAdmin) return;
     fetch('/settings/verbosity')
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d?.verbosity != null) setVerbosity(d.verbosity as number); })
       .catch(() => {});
-  }, [isGuest]);
+  }, [isAdmin]);
 
   const handleVerbosityCommit = useCallback(async (v: number) => {
     setVerbosityLive(null);
@@ -275,11 +276,12 @@ export function PersonalityScreen({ role, uiLang = 'es' }: PersonalityScreenProp
               />
             ))}
 
-            {/* Verbosity section (non-guest) */}
-            {!isGuest && (
+            {/* Verbosity section — admin only (changed 2026-09-13, see docs/remake/fase-1-personalidad.md) */}
+            {isAdmin && (
               <div className={styles.verbositySection}>
                 <div className={styles.verbosityHeader}>
                   <span className={styles.verbosityLabel}>Verbosidad</span>
+                  <InfoTooltip content="Longitud de las respuestas. Bajo = frases sueltas; alto = explicaciones extensas." />
                   <span className={styles.verbosityJp}>冗長{verbositySaving ? ' …' : ''}</span>
                   <span className={styles.verbosityPct}>
                     {Math.round((verbosityLive ?? verbosity) * 100)}%
@@ -292,9 +294,6 @@ export function PersonalityScreen({ role, uiLang = 'es' }: PersonalityScreenProp
                     onCommit={handleVerbosityCommit}
                   />
                 </div>
-                <p className={styles.verbosityHint}>
-                  Longitud de las respuestas. Bajo = frases sueltas; alto = explicaciones extensas.
-                </p>
               </div>
             )}
 
@@ -315,7 +314,10 @@ export function PersonalityScreen({ role, uiLang = 'es' }: PersonalityScreenProp
                   return (
                     <div key={key} className={styles.valueRow}>
                       <div className={styles.valueNames}>
-                        <span className={styles.valueNameEs} title={meta.tooltip}>{meta.es}</span>
+                        <div className={styles.valueNameRow}>
+                          <span className={styles.valueNameEs}>{meta.es}</span>
+                          <InfoTooltip content={meta.tooltip} />
+                        </div>
                         <span className={styles.valueNameJp}>{meta.jp}</span>
                       </div>
                       <div className={styles.valueSlider}>

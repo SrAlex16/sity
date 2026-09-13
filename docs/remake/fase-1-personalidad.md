@@ -204,7 +204,7 @@ ejecutaron íntegramente en el backend). La sincronización se realizó en 2026-
 **PWA móvil (`mobile/`):**
 - `hooks/usePersonality.ts` — interface con 13 claves nuevas
 - `components/PersonalitySliderItem.tsx` — PARAM_META con 13 entradas, iconos SVG, tooltips es/jp
-- `screens/PersonalityScreen.tsx` — computeMoodLevel usa chaos_head exacta (playfulness×0.35 + (1-warmth)×0.30 + assertiveness×0.20 + independence×0.15); sección verbosity (todos los usuarios); sección SityValues (solo admin, 6 sliders con tooltips)
+- `screens/PersonalityScreen.tsx` — computeMoodLevel usa chaos_head exacta (playfulness×0.35 + (1-warmth)×0.30 + assertiveness×0.20 + independence×0.15); sección verbosity (todos los usuarios → **cambiada a solo-admin el 2026-09-13**, ver nota abajo); sección SityValues (solo admin, 6 sliders con tooltips)
 - `hooks/useDebug.ts` — nuevo hook para traza de eventos y stats de dataset
 - `screens/DevToolsScreen.tsx` — reemplaza DatasetScreen; dos tabs internas (Dataset: capture+stats, Debug: traza)
 - `i18n/translations.ts` — label nav "dataset" → "Dev" en los 3 idiomas
@@ -212,5 +212,11 @@ ejecutaron íntegramente en el backend). La sincronización se realizó en 2026-
 **Consolidación frontend:**
 - `frontend/` eliminado el 2026-09-13 — era el panel de desarrollo local (tabs: Chat, Personality, Debug, Dataset, Voice). Sus funciones únicas (Debug + Dataset Stats) se migraron a DevToolsScreen en la PWA.
 - `backend/app/chat/toolset_selector.py` — `"frontend/"` → `"mobile/"` en detección de paths
+
+**Nota — Verbosidad admin-only (2026-09-13):** La sección de verbosidad se cambió de
+`!isGuest` (cualquier usuario autenticado) a `isAdmin` (solo admin). El backend
+(`GET/PUT /settings/verbosity`) usa `require_admin` para defensa en profundidad.
+**ESTA DECISIÓN ES SUSCEPTIBLE DE CAMBIAR** — revisar tras las pruebas con agentes de
+IA simulando usuarios distintos. (Nota explícita de Alex; no es una decisión definitiva.)
 
 **Lección:** La deuda de sincronización frontend creció a 9 fases sin tocar el frontend. Para Operaciones futuras: sincronizar el frontend al final de cada Fase, no al cerrar la Operación completa.
