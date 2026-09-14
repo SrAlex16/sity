@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-14 (Fix bug 15 días — guests ven Voz/Idioma/Ubicación/Iniciativa con controles deshabilitados, 401s eliminados).
+Última actualización: 2026-09-14 (Ronda post-Remake: bug 15 días guests, InfoTooltip, botón mostrar contraseña, fix DatasetStats, RESETEO COMPLETO DE DATOS).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -46,8 +46,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 ## Stack técnico
 
 **Backend:** FastAPI + SQLite + Claude Haiku (claude-haiku-4-5-20251001)
-**Frontend PWA:** React 18 + TypeScript + Vite + Framer Motion
-**Frontend escritorio:** React + TypeScript (frontend/, sin PWA features)
+**Frontend PWA:** React 18 + TypeScript + Vite + Framer Motion (único frontend — `frontend/` eliminado 2026-09-13)
 **Panel:** Electron + TypeScript
 **Modelos:** Claude Haiku (principal), Claude Sonnet (tareas complejas via model router)
 **TTS local:** Piper (voz femenina)
@@ -58,15 +57,14 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Estado del dataset
 
-- 3.813 mensajes totales en chatmessage
-- 1.904 respuestas de Sity
-- 865 respuestas con tone_meta (parámetros de personalidad por turno)
-- Dataset de texto: sity_style_v0 en datasets/ (en .gitignore)
+- **0 mensajes** — base de datos reseteada el 2026-09-14 (punto de corte dataset v1 post-Remake)
+- Dataset v0 de texto: sity_style_v0 en datasets/ (en .gitignore, conservado)
 - Dataset de audio: pendiente (ver docs/decisions.md 2026-07-08)
+- Conexiones OAuth Google/Spotify: **pendiente reconectar manualmente** (borradas en el reset)
 
 ## Tests y CI
 
-- 2989 tests en verde (pytest, ~20 skipped) — ajuste goal_urgent añade 26 tests; CI verde al 100%
+- ~3010 tests en verde (pytest, ~20 skipped) — CI verde en `a942b35` (2026-09-14)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -90,6 +88,56 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 ```
 
 Ver .env.example para la lista completa.
+
+## Completado recientemente (2026-09-14)
+
+- **RESETEO COMPLETO DE DATOS — punto de corte dataset v1 post-Remake.**
+  Motivación: iniciar el dataset de fine-tuning (LoRA v1) desde cero con la nueva arquitectura de
+  13 rasgos, eliminando comportamiento residual arrastrado de conversaciones antiguas (incluyendo
+  el bug de voseo esporádico). Ejecución: script manual aprobado por Alex, no dejó commit en git.
+  Alcance del borrado: todas las tablas de datos de conversación/cognición/social/settings (chatmessage,
+  setting, socialprofile, opinionsnapshot, episode, sityvalues, userachievement, pendingaction,
+  initiativeevallog, aiusage, chatsession, y todas las demás tablas de datos — 42 tablas en total);
+  722 archivos de audio TTS; logs de la app (app-*.jsonl, audit-*.jsonl); file_backups obsoletos;
+  tokens OAuth Google/Spotify (google_token.json, spotify_token.json); user de tests residual
+  `_pytest_admin@sity-test.invalid` (id=2); DBs huérfanas `data/db.sqlite3` y `data/sity.db`.
+  Conservado: cuenta Admin Alex (id=1, `alejandrotubio1004@gmail.com`, misma contraseña y rol);
+  esquema de tablas intacto; configuración del sistema; código; modelos TTS.
+  Backup completo: `/home/alex/SITY-RESET-BACKUP-20260914/app.db.backup-pre-reset-20260914` (12 MB).
+  **Pendiente:** reconectar Google OAuth y Spotify OAuth manualmente desde Ajustes → Integraciones.
+
+- **Bug de 15 días corregido: guests veían 401 en 4 endpoints de settings (commits `004bdd4`·`9bab7cc`·`af37a22`).**
+  Regresión introducida en `1953534` (2026-08-30, construcción del sistema de Logros) que
+  eliminó accidentalmente `voice` de `ADMIN_ONLY_TABS`, permitiendo a guests navegar a VoiceScreen
+  donde los hooks disparaban 401 en `/settings/voice`, `/settings/initiative`, `/settings/location`,
+  `/settings/language`. Solución Option C: GET devuelve defaults (200) para guests, PUT mantiene 401;
+  frontend muestra controles deshabilitados + mensaje explicativo (`guestRegisterHint`) dentro de
+  cada una de las 5 secciones afectadas (Voz, Memoria de modelo, Idioma de conversación, Ubicación,
+  Mensajes proactivos). 1 nuevo test en `tests/test_guest_settings_access.py`; 3 tests stale actualizados.
+
+- **Nuevo componente reutilizable InfoTooltip (commit `1fe2c3c`).**
+  `mobile/src/components/InfoTooltip.tsx` — hover en PC (mouseenter/leave), long-press 400 ms en
+  móvil (touchstart/end). API: `<InfoTooltip content="texto" />`. Sin lógica acoplada a personalidad.
+  Usado en PersonalitySliderItem (tooltips de cada rasgo) y SityValues (tooltips de cada valor).
+  Test de regresión `PersonalityScreen.verbosity.test.tsx`: verbosity fetch no se dispara para
+  guest/user (solo para admin).
+
+- **Verbosity promovida a admin-only (commit `1fe2c3c`).**
+  La sección de verbosidad en VoiceScreen pasó de `!isGuest` → `isAdmin`. Backend: `require_admin`
+  en GET/PUT `/settings/verbosity`. **Susceptible de cambiar** tras pruebas con distintos roles.
+
+- **Botón mostrar/ocultar contraseña en LoginScreen (commit `d52a7c7`).**
+  Los 3 campos password de LoginScreen — login, nueva contraseña (modal reset), confirmar contraseña
+  (modal reset) — tienen icono de ojo SVG inline posicionado dentro del campo (right: 0.65rem,
+  centrado vertical). `aria-label` i18n en es/en/ja (`showPassword`/`hidePassword`).
+  3 tests nuevos en `mobile/src/screens/LoginScreen.test.tsx`.
+
+- **Fix: DatasetStatsSection invisible con DB vacía (commit `a942b35`).**
+  El `useEffect` en DevToolsScreen solo llamaba `reloadDebug()` cuando `tab === 'debug'`, pero el
+  tab por defecto es `'dataset'`. Resultado: `datasetStats` nunca se cargaba al montar, permanecía
+  `null`, y `if (!stats) return null` ocultaba silenciosamente la sección completa. Fix: eliminada
+  la condición `if (tab === 'debug')` — el fetch se lanza siempre al montar y en cada cambio de tab.
+  El endpoint `/debug/dataset-stats` devuelve objeto válido con todos los conteos en 0.
 
 ## Completado recientemente (2026-09-13)
 

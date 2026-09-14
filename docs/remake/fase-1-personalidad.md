@@ -220,3 +220,9 @@ ejecutaron íntegramente en el backend). La sincronización se realizó en 2026-
 IA simulando usuarios distintos. (Nota explícita de Alex; no es una decisión definitiva.)
 
 **Lección:** La deuda de sincronización frontend creció a 9 fases sin tocar el frontend. Para Operaciones futuras: sincronizar el frontend al final de cada Fase, no al cerrar la Operación completa.
+
+**Ronda de calidad post-sincronización (2026-09-14):** Bugs descubiertos al usar la PWA sincronizada:
+- Regresión de 15 días: guests veían 401 en 4 endpoints de settings (corregido `004bdd4`·`af37a22`).
+- `DatasetStatsSection` invisible con DB vacía por `useEffect` condicionado a tab incorrecto (corregido `a942b35`).
+- Botón mostrar/ocultar contraseña añadido a los 3 campos password de LoginScreen (`d52a7c7`).
+- Reseteo completo de datos (no commit git) — punto de corte para dataset LoRA v1.
