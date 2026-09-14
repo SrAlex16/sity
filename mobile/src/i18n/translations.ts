@@ -251,6 +251,8 @@ export interface T {
     loginError: string;
     registerError: string;
     privacyTitle: string;
+    showPassword: string;
+    hidePassword: string;
   };
 }
 
@@ -492,6 +494,8 @@ const es: T = {
     loginError: 'Error al iniciar sesión.',
     registerError: 'Error al registrarse.',
     privacyTitle: 'Política de privacidad',
+    showPassword: 'Mostrar contraseña',
+    hidePassword: 'Ocultar contraseña',
   },
 };
 
@@ -733,6 +737,8 @@ const en: T = {
     loginError: 'Error signing in.',
     registerError: 'Error registering.',
     privacyTitle: 'Privacy policy',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
   },
 };
 
@@ -974,6 +980,8 @@ const ja: T = {
     loginError: 'ログインエラー。',
     registerError: '登録エラー。',
     privacyTitle: 'プライバシーポリシー',
+    showPassword: 'パスワードを表示',
+    hidePassword: 'パスワードを非表示',
   },
 };
 

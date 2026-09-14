@@ -1,4 +1,20 @@
 import React, { useState, useEffect } from 'react';
+
+function IconEye({ open }: { open: boolean }) {
+  return open ? (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  );
+}
 import { HelpModal } from '../components/HelpModal';
 import type { UseAuthResult } from '../hooks/useAuth';
 import { getRecaptchaToken, loadRecaptchaScript } from '../utils/recaptcha';
@@ -28,6 +44,9 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showLoginPw, setShowLoginPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -136,16 +155,27 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
 
           <div className={styles.field}>
             <label className={styles.label} htmlFor="login-password">{tla.password}</label>
-            <input
-              id="login-password"
-              className={styles.input}
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-            />
+            <div className={styles.pwWrapper}>
+              <input
+                id="login-password"
+                className={styles.input}
+                type={showLoginPw ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+              <button
+                type="button"
+                className={styles.eyeBtn}
+                onClick={() => setShowLoginPw((v) => !v)}
+                aria-label={showLoginPw ? tla.hidePassword : tla.showPassword}
+                tabIndex={-1}
+              >
+                <IconEye open={showLoginPw} />
+              </button>
+            </div>
             <button
               type="button"
               className={styles.forgotLink}
@@ -231,30 +261,52 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
             <p className={styles.modalText}>{tla.resetIntro}</p>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="reset-new-pw">{tla.newPasswordLabel}</label>
-              <input
-                id="reset-new-pw"
-                className={styles.input}
-                type="password"
-                autoComplete="new-password"
-                placeholder={tla.newPasswordPlaceholder}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                disabled={resetLoading}
-              />
+              <div className={styles.pwWrapper}>
+                <input
+                  id="reset-new-pw"
+                  className={styles.input}
+                  type={showNewPw ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder={tla.newPasswordPlaceholder}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={resetLoading}
+                />
+                <button
+                  type="button"
+                  className={styles.eyeBtn}
+                  onClick={() => setShowNewPw((v) => !v)}
+                  aria-label={showNewPw ? tla.hidePassword : tla.showPassword}
+                  tabIndex={-1}
+                >
+                  <IconEye open={showNewPw} />
+                </button>
+              </div>
               {newPwError && <span className={styles.fieldError}>{newPwError}</span>}
             </div>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="reset-confirm-pw">{tla.confirmPasswordLabel}</label>
-              <input
-                id="reset-confirm-pw"
-                className={styles.input}
-                type="password"
-                autoComplete="new-password"
-                placeholder={tla.confirmPasswordPlaceholder}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={resetLoading}
-              />
+              <div className={styles.pwWrapper}>
+                <input
+                  id="reset-confirm-pw"
+                  className={styles.input}
+                  type={showConfirmPw ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder={tla.confirmPasswordPlaceholder}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={resetLoading}
+                />
+                <button
+                  type="button"
+                  className={styles.eyeBtn}
+                  onClick={() => setShowConfirmPw((v) => !v)}
+                  aria-label={showConfirmPw ? tla.hidePassword : tla.showPassword}
+                  tabIndex={-1}
+                >
+                  <IconEye open={showConfirmPw} />
+                </button>
+              </div>
               {pwMismatch && <span className={styles.fieldError}>{tla.pwMismatch}</span>}
             </div>
             {resetError && <div className={styles.errorBanner}>{resetError}</div>}
