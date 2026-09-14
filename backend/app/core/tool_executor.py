@@ -47,9 +47,16 @@ TOOL_LABELS: dict[str, str] = {
 
 
 class ToolExecutor:
-    def __init__(self, session: Session, session_id: str = _DEFAULT_SESSION_ID):
+    def __init__(
+        self,
+        session: Session,
+        session_id: str = _DEFAULT_SESSION_ID,
+        *,
+        is_admin: bool = False,
+    ):
         self.session = session
         self.session_id = session_id
+        self.is_admin = is_admin
         self.settings_service = SettingsService(session)
         self._tool_call_count: int = 0
         self._ha_call_count: int = 0
@@ -143,6 +150,35 @@ class ToolExecutor:
         trace_id: str,
         client_turn_id: str | None = None,
     ) -> ToolExecutionResult:
+        from app.chat.toolset_selector import _ADMIN_ONLY_TOOL_NAMES
+        if tool_name in _ADMIN_ONLY_TOOL_NAMES and not self.is_admin:
+            write_log(
+                level="WARN",
+                module="tools",
+                event="admin_tool_access_denied",
+                trace_id=trace_id,
+                payload={
+                    "tool_name": tool_name,
+                    "session_id": self.session_id,
+                    "client_turn_id": client_turn_id,
+                },
+                audit=True,
+            )
+            msg = f"Herramienta no autorizada para esta sesión: {tool_name}"
+            return ToolExecutionResult(
+                tool_name=tool_name,
+                ok=False,
+                message=msg,
+                updated_parameters=[],
+                raw_result={
+                    "success": False,
+                    "message": msg,
+                    "local_final": True,
+                    "text": msg,
+                    "local_model": "tool-policy",
+                },
+            )
+
         from app.tools.registry import ToolContext, dispatch_tool, has_handler
         if has_handler(tool_name):
             return dispatch_tool(ToolContext(

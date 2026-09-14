@@ -342,7 +342,7 @@ class ChatAIOrchestrator:
             if _forced_plan.ok and _forced_plan.tool_calls:
                 _guard_loop = run_tool_loop(
                     planner_response=_forced_plan,
-                    executor=ToolExecutor(self.session, ctx.session_id),
+                    executor=ToolExecutor(self.session, ctx.session_id, is_admin=ctx.is_admin),
                     trace_id=ctx.trace_id,
                     client_turn_id=request.client_turn_id,
                     max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
@@ -481,7 +481,7 @@ class ChatAIOrchestrator:
         prep = self.prep
         request = self.request
 
-        executor = ToolExecutor(self.session, ctx.session_id)
+        executor = ToolExecutor(self.session, ctx.session_id, is_admin=ctx.is_admin)
         _first_tool = planner_response.tool_calls[0]
 
         if get_blocking_policy(_first_tool.name) == "detachable" and len(planner_response.tool_calls) == 1:

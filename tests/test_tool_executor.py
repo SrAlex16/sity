@@ -653,3 +653,134 @@ class TestBuildConfirmationHint:
     def test_checkout_without_branch_falls_back(self):
         h = self._hint({"action": "checkout_branch", "branch": ""})
         assert "hazlo" in h.lower()
+
+
+# ---------------------------------------------------------------------------
+# Authorization gate — admin-only tools blocked for non-admin sessions
+# Regression for: guest:0b2a403b executed git_read_log (trc_5007a66981ed, 2026-09-14)
+# ---------------------------------------------------------------------------
+
+_ADMIN_ONLY_SAMPLE = frozenset({
+    "git_read_log",
+    "capture_camera_snapshot",
+    "record_audio_sample",
+    "list_camera_devices",
+    "list_audio_devices",
+    "get_capture_storage_summary",
+    "clean_old_captures",
+})
+
+
+class TestDispatchAuthorizationGate:
+    """ToolExecutor must block admin-only tools regardless of what the planner requested."""
+
+    def _exec(self, is_admin: bool) -> ToolExecutor:
+        return ToolExecutor(MagicMock(), session_id="guest:test" if not is_admin else "user:admin", is_admin=is_admin)
+
+    def test_git_read_log_blocked_for_guest(self):
+        executor = self._exec(is_admin=False)
+        with patch("app.core.tool_executor.write_log"):
+            result = executor._dispatch_tool_call(
+                tool_name="git_read_log",
+                tool_input={},
+                trace_id="trc_test",
+            )
+        assert result.ok is False
+        assert "no autorizada" in result.message.lower()
+        assert result.raw_result.get("local_final") is True
+
+    def test_git_read_log_allowed_for_admin(self):
+        executor = self._exec(is_admin=True)
+        import app.tools.handlers  # noqa: F401 — ensure handlers registered
+        with patch("app.tools.handlers.git_tools.git_log", return_value={"ok": True, "log": "abc  2026-09-14  test\n"}):
+            result = executor._dispatch_tool_call(
+                tool_name="git_read_log",
+                tool_input={"max_entries": 3},
+                trace_id="trc_test",
+            )
+        assert result.ok is True
+
+    def test_senses_tools_blocked_for_guest(self):
+        executor = self._exec(is_admin=False)
+        senses_tools = {
+            "capture_camera_snapshot",
+            "record_audio_sample",
+            "list_camera_devices",
+            "list_audio_devices",
+            "get_capture_storage_summary",
+            "clean_old_captures",
+        }
+        with patch("app.core.tool_executor.write_log"), \
+             patch("app.core.tool_executor.publish_event_sync"):
+            for tool_name in senses_tools:
+                result = executor._dispatch_tool_call(
+                    tool_name=tool_name,
+                    tool_input={},
+                    trace_id="trc_test",
+                )
+                assert result.ok is False, f"{tool_name} should be blocked for guest"
+                assert "no autorizada" in result.message.lower()
+
+    def test_non_admin_tool_passes_auth_check_for_guest(self):
+        executor = self._exec(is_admin=False)
+        with patch("app.tools.handlers.web_search_tools.httpx.Client") as mc, \
+             patch("app.tools.handlers.web_search_tools._cache_get", return_value=None), \
+             patch("app.tools.handlers.web_search_tools._cache_set"):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.text = '<a class="result__snippet" href="https://example.com">OK</a>'
+            mc.return_value.__enter__ = MagicMock(return_value=mc.return_value)
+            mc.return_value.__exit__ = MagicMock(return_value=False)
+            mc.return_value.post.return_value = resp
+            result = executor._dispatch_tool_call(
+                tool_name="web_search",
+                tool_input={"query": "test", "is_dynamic": False},
+                trace_id="trc_test",
+            )
+        assert result.ok is True
+
+    def test_access_denied_logged_as_audit(self):
+        executor = self._exec(is_admin=False)
+        log_calls: list[dict] = []
+
+        def capture_log(**kwargs: Any) -> None:
+            log_calls.append(kwargs)
+
+        with patch("app.core.tool_executor.write_log", side_effect=capture_log):
+            executor._dispatch_tool_call(
+                tool_name="git_read_log",
+                tool_input={},
+                trace_id="trc_test",
+            )
+
+        denied = [c for c in log_calls if c.get("event") == "admin_tool_access_denied"]
+        assert len(denied) == 1
+        assert denied[0]["level"] == "WARN"
+        assert denied[0].get("audit") is True
+        assert denied[0]["payload"]["tool_name"] == "git_read_log"
+        assert denied[0]["payload"]["session_id"] == "guest:test"
+
+    def test_execute_tool_call_blocks_admin_tool_for_guest(self):
+        """Integration: execute_tool_call (public method) also blocks admin tools."""
+        executor = self._exec(is_admin=False)
+        with patch("app.core.tool_executor.write_log"), \
+             patch("app.core.tool_executor.publish_event_sync"):
+            result = executor.execute_tool_call(
+                tool_name="git_read_log",
+                tool_input={},
+                trace_id="trc_test",
+            )
+        assert result.ok is False
+        assert "no autorizada" in result.message.lower()
+
+    def test_default_is_admin_false(self):
+        """ToolExecutor() with no is_admin kwarg defaults to non-admin."""
+        executor = ToolExecutor(MagicMock(), "guest:implicit")
+        assert executor.is_admin is False
+        with patch("app.core.tool_executor.write_log"):
+            result = executor._dispatch_tool_call(
+                tool_name="git_read_log",
+                tool_input={},
+                trace_id="trc_test",
+            )
+        assert result.ok is False

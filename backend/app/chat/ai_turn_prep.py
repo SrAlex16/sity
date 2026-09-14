@@ -245,6 +245,8 @@ def build_ai_turn_prep(
             "reasons": toolset_selection.reasons,
             "local_ai_enabled": routing_decision.local_ai_enabled,
             "reason": routing_decision.reason,
+            "tool_count": len(selected_tools),
+            "is_admin": ctx.is_admin,
         },
     )
 
