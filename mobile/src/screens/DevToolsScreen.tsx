@@ -195,7 +195,7 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
   }, [capture]);
 
   useEffect(() => {
-    if (tab === 'debug') void reloadDebug();
+    void reloadDebug();
   }, [tab, reloadDebug]);
 
   const busy = saving || captureLoading;
