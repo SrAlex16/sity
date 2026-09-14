@@ -309,7 +309,7 @@ def test_admin_only_domains_absent_for_non_admin() -> None:
         "muéstrame los logs del backend",
         "dame los debug events",
     ]
-    all_admin_domains = {"git", "file", "service_control", "system", "debug"}
+    all_admin_domains = {"git", "file", "service_control", "system", "debug", "senses"}
     for message in cases:
         sel = select_toolset_with_metadata(message, is_admin=False)
         admin_found = sel.activated_domains & all_admin_domains
@@ -398,6 +398,88 @@ def test_debug_tools_available_for_admin(message: str) -> None:
     names = selected_tool_names(message, is_admin=True)
     found = names & _DEBUG_TOOLS
     assert found, f"No debug tools for admin: {message!r}"
+
+
+# ---------------------------------------------------------------------------
+# SENSES_TOOLSET — admin-only (SEC fix 2026-09-14)
+# Exposes physical camera and microphone of the server — must never reach
+# guest or regular user sessions.  Confirmed by external audit: guest session
+# guest:0b2a403b82ed499d8c9fa775b6cf35e8 activated domain "senses" at 11:47:31
+# via keywords "system" and "senses" — tools were in selection but NOT executed.
+# ---------------------------------------------------------------------------
+
+_SENSES_TOOLS: set[str] = {
+    "capture_camera_snapshot",
+    "record_audio_sample",
+    "list_camera_devices",
+    "list_audio_devices",
+    "get_capture_storage_summary",
+    "clean_old_captures",
+}
+
+
+@pytest.mark.parametrize("message", [
+    "saca una foto",
+    "graba audio",
+    "graba una muestra de audio",
+    "muéstrame la cámara",
+    "¿qué dispositivos de audio hay?",
+    "cuántas capturas hay guardadas",
+    "limpia las capturas antiguas",
+])
+def test_senses_tools_blocked_for_guest(message: str) -> None:
+    """Guest sessions must never receive SENSES_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _SENSES_TOOLS
+    assert not found, f"Senses tools {found} appeared for guest: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "saca una foto",
+    "graba audio",
+    "muéstrame la cámara",
+])
+def test_senses_tools_blocked_for_regular_user(message: str) -> None:
+    """Regular authenticated (non-admin) sessions must not receive SENSES_TOOLSET tools."""
+    names = selected_tool_names(message, is_admin=False)
+    found = names & _SENSES_TOOLS
+    assert not found, f"Senses tools {found} appeared for regular user: {message!r}"
+
+
+@pytest.mark.parametrize("message", [
+    "saca una foto",
+    "graba audio",
+    "graba una muestra de audio",
+    "muéstrame la cámara",
+])
+def test_senses_tools_available_for_admin(message: str) -> None:
+    """Admin sessions must receive SENSES_TOOLSET tools for camera/audio messages."""
+    names = selected_tool_names(message, is_admin=True)
+    found = names & _SENSES_TOOLS
+    assert found, f"No senses tools for admin: {message!r}"
+
+
+def test_senses_domain_absent_for_non_admin() -> None:
+    """activated_domains must not include 'senses' for non-admin sessions."""
+    from app.chat.toolset_selector import select_toolset_with_metadata
+    cases = [
+        "saca una foto",
+        "graba audio",
+        "capture_camera_snapshot",
+        "¿qué micrófonos hay?",
+    ]
+    for message in cases:
+        sel = select_toolset_with_metadata(message, is_admin=False)
+        assert "senses" not in sel.activated_domains, (
+            f"'senses' domain appeared for non-admin: {message!r}"
+        )
+
+
+def test_senses_domain_present_for_admin() -> None:
+    """activated_domains must include 'senses' for admin sessions."""
+    from app.chat.toolset_selector import select_toolset_with_metadata
+    sel = select_toolset_with_metadata("saca una foto", is_admin=True)
+    assert "senses" in sel.activated_domains
 
 
 # ---------------------------------------------------------------------------
