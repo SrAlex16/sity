@@ -351,7 +351,6 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         {error && <p className={styles.errorMsg}>{error}</p>}
         {autoSaveStatus === 'saved' && <p className={styles.successMsg}>✓ {tl.saved}</p>}
         {autoSaveStatus === 'error' && <p className={styles.errorMsg}>{autoSaveError}</p>}
-        {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
 
         {!form && isLoading && <p className={styles.loading}>{tl.loading}</p>}
 
@@ -361,6 +360,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
             <div className={styles.section}>
               <p className={styles.sectionEs}>{tl.voice}</p>
               <p className={styles.sectionJp}>ボイス</p>
+              {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
 
               {/* Modo de respuesta */}
               <p className={styles.sectionHint} style={{ marginBottom: 10 }}>{tl.responseMode}</p>
@@ -502,6 +502,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         <div className={styles.section}>
           <p className={styles.sectionEs}>{tl.upgradeMemorySection}</p>
           <p className={styles.sectionJp}>モデル記憶</p>
+          {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
           <p className={styles.sectionHint}>{tl.upgradeMemoryHint}</p>
           <select
             className={role === 'guest' ? styles.selectDisabled : styles.select}
@@ -538,6 +539,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         <div className={styles.section}>
           <p className={styles.sectionEs}>{tl.sityLanguageSection}</p>
           <p className={styles.sectionJp}>会話言語</p>
+          {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
           <p className={styles.sectionHint}>{tl.sityLanguageHint}</p>
           <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
             ⓘ {tl.sityLanguageNote}
@@ -562,6 +564,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         <div className={styles.section}>
           <p className={styles.sectionEs}>{tl.locationSection}</p>
           <p className={styles.sectionJp}>位置情報</p>
+          {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
           <p className={styles.sectionHint}>{tl.locationHint}</p>
 
           {/* Current location display */}
@@ -631,6 +634,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           <div className={styles.section}>
             <p className={styles.sectionEs}>{tl.initiativeSection}</p>
             <p className={styles.sectionJp}>プロアクティブ</p>
+            {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
 
             {/* Master toggle */}
             <label className={styles.checkboxRow}>
