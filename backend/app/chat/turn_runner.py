@@ -15,6 +15,7 @@ from app.api.schemas import ChatMessageRequest, ChatMessageResponse
 from app.chat.chat_persistence import DEFAULT_CHAT_SESSION_ID
 from app.chat.model_router import LocalFlowSignal, clear_proposal
 from app.core.cancellation import clear_operation
+from app.core.session_queue import acquire_session_lock, claim_session_slot, is_superseded
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
 from app.core.realtime_events import get_subscriber_state, publish_event_sync
@@ -137,7 +138,12 @@ def _maybe_dispatch_chat_response(
 
 def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_id: str = DEFAULT_CHAT_SESSION_ID, is_admin: bool = False, image_artifact_ids: list[int] | None = None) -> None:
     """Worker that runs the full chat turn in a thread pool and publishes
-    the result (or error) as SSE events before closing with 'done'."""
+    the result (or error) as SSE events before closing with 'done'.
+
+    Turns for the same session are serialized via a per-session lock so that
+    each turn reads complete context (including the previous turn's persisted
+    response).  See app/core/session_queue.py for the full design.
+    """
     from app.memory.db import engine
 
     # Ensure client_turn_id is always the resolved turn_id so downstream
@@ -145,102 +151,121 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
     if request.client_turn_id != turn_id:
         request = request.model_copy(update={"client_turn_id": turn_id})
 
-    with Session(engine) as session:
-        try:
-            result = _chat_message_inner(request=request, session=session, _session_id=session_id, _is_admin=is_admin, _image_artifact_ids=image_artifact_ids)
-            if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
-                original_message = result.original_message
-                strong_model = result.strong_model
-                forced_tools = result.selected_tools or None
-                write_log(
-                    level="INFO", module="chat", event="model_upgrade_accepted",
-                    trace_id=turn_id,
-                    payload={"original_message": original_message[:80], "strong_model": strong_model},
-                )
-                upgraded = request.model_copy(update={"message": original_message})
-                clear_proposal()
-                write_log(
-                    level="INFO", module="chat", event="model_upgrade_rerun",
-                    trace_id=turn_id,
-                    payload={"strong_model": strong_model, "message_len": len(original_message)},
-                )
-                _upgrade_ctx = (
-                    "CONTEXTO DE UPGRADE: El usuario ya confirmó usar el modelo más potente para esta tarea. "
-                    "Ejecuta la tarea directamente sin volver a preguntar ni proponer cambios de modelo. "
-                    "No menciones el cambio de modelo — simplemente responde a la tarea."
-                )
-                result = _chat_message_inner(
-                    request=upgraded,
-                    session=session,
-                    _strong_model=strong_model,
-                    _skip_history_turns=result.skip_history_turns,
-                    _upgrade_context=_upgrade_ctx,
-                    _session_id=session_id,
-                    _forced_tools=forced_tools,
-                    _is_admin=is_admin,
-                )
-            elif isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_rejected":
-                original_message = result.original_message
-                write_log(
-                    level="INFO", module="chat", event="model_upgrade_rejected",
-                    trace_id=turn_id,
-                    payload={"original_message": original_message[:80]},
-                )
-                rejected = request.model_copy(update={"message": original_message})
-                result = _chat_message_inner(
-                    request=rejected,
-                    session=session,
-                    _skip_history_turns=3,
-                    _session_id=session_id,
-                    _is_admin=is_admin,
-                )
-            # Achievement triggers: hello_world on first successful response,
-            # pause_menu when the user cancels mid-stream.
-            from app.achievements.triggers.inline import fire as _fire_ach
-            from app.cortex.ai_gateway import API_ERROR_TYPES
-            _result_error = getattr(result, "error_type", None)
-            if _result_error in API_ERROR_TYPES:
-                _notify_admin_api_error(session, _result_error, getattr(result, "error_message", ""))
-            if _result_error == "cancelled":
-                _fire_ach(session, session_id, "pause_menu")
-            elif not _result_error and getattr(result, "text", None):
-                _fire_ach(session, session_id, "hello_world")
-                if session_id.startswith("user:"):
-                    try:
-                        _uid = int(session_id.split(":", 1)[1])
-                        from app.achievements.triggers.post_turn import (
-                            check_post_turn_achievements,
-                            check_curiosity_achievement,
-                        )
-                        check_post_turn_achievements(session, _uid, session_id)
-                        check_curiosity_achievement(session, _uid, request.message)
-                        from app.achievements.triggers.haiku_classifier import classify_conversation_async
-                        classify_conversation_async(
-                            session_id, _uid,
-                            request.message,
-                            getattr(result, "text", "") or "",
-                        )
-                    except Exception:
-                        pass
-
-            # Skip "response" event for cancelled turns — the frontend already
-            # shows a cancelled bubble from the abort handler; emitting here
-            # would cause a duplicate or overwrite it with the empty text.
-            if _result_error != "cancelled":
-                publish_event_sync(turn_id, {
-                    "type": "response",
-                    "data": result.model_dump(mode="json"),
-                })
-                # Paso C: notify when tab is in background or absent.
-                # The ChatMessage is already in DB at this point (persisted by
-                # build_final_ai_response). Dispatcher handles channel selection.
-                if not _result_error and getattr(result, "text", None):
-                    _maybe_dispatch_chat_response(result, session_id, session)
-        except Exception:
-            publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
-        finally:
+    # Register as the latest pending turn for this session, then wait for any
+    # in-progress turn to complete before touching the DB or calling the AI.
+    my_version = claim_session_slot(session_id)
+    session_lock = acquire_session_lock(session_id)
+    try:
+        if is_superseded(session_id, my_version):
+            write_log(
+                level="INFO",
+                module="chat",
+                event="turn_superseded",
+                trace_id=turn_id,
+                payload={"session_id": session_id, "version": my_version},
+            )
             publish_event_sync(turn_id, {"type": "done"})
             clear_operation(turn_id)
+            return
+
+        with Session(engine) as session:
+            try:
+                result = _chat_message_inner(request=request, session=session, _session_id=session_id, _is_admin=is_admin, _image_artifact_ids=image_artifact_ids)
+                if isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_accepted":
+                    original_message = result.original_message
+                    strong_model = result.strong_model
+                    forced_tools = result.selected_tools or None
+                    write_log(
+                        level="INFO", module="chat", event="model_upgrade_accepted",
+                        trace_id=turn_id,
+                        payload={"original_message": original_message[:80], "strong_model": strong_model},
+                    )
+                    upgraded = request.model_copy(update={"message": original_message})
+                    clear_proposal()
+                    write_log(
+                        level="INFO", module="chat", event="model_upgrade_rerun",
+                        trace_id=turn_id,
+                        payload={"strong_model": strong_model, "message_len": len(original_message)},
+                    )
+                    _upgrade_ctx = (
+                        "CONTEXTO DE UPGRADE: El usuario ya confirmó usar el modelo más potente para esta tarea. "
+                        "Ejecuta la tarea directamente sin volver a preguntar ni proponer cambios de modelo. "
+                        "No menciones el cambio de modelo — simplemente responde a la tarea."
+                    )
+                    result = _chat_message_inner(
+                        request=upgraded,
+                        session=session,
+                        _strong_model=strong_model,
+                        _skip_history_turns=result.skip_history_turns,
+                        _upgrade_context=_upgrade_ctx,
+                        _session_id=session_id,
+                        _forced_tools=forced_tools,
+                        _is_admin=is_admin,
+                    )
+                elif isinstance(result, LocalFlowSignal) and result.kind == "model_upgrade_rejected":
+                    original_message = result.original_message
+                    write_log(
+                        level="INFO", module="chat", event="model_upgrade_rejected",
+                        trace_id=turn_id,
+                        payload={"original_message": original_message[:80]},
+                    )
+                    rejected = request.model_copy(update={"message": original_message})
+                    result = _chat_message_inner(
+                        request=rejected,
+                        session=session,
+                        _skip_history_turns=3,
+                        _session_id=session_id,
+                        _is_admin=is_admin,
+                    )
+                # Achievement triggers: hello_world on first successful response,
+                # pause_menu when the user cancels mid-stream.
+                from app.achievements.triggers.inline import fire as _fire_ach
+                from app.cortex.ai_gateway import API_ERROR_TYPES
+                _result_error = getattr(result, "error_type", None)
+                if _result_error in API_ERROR_TYPES:
+                    _notify_admin_api_error(session, _result_error, getattr(result, "error_message", ""))
+                if _result_error == "cancelled":
+                    _fire_ach(session, session_id, "pause_menu")
+                elif not _result_error and getattr(result, "text", None):
+                    _fire_ach(session, session_id, "hello_world")
+                    if session_id.startswith("user:"):
+                        try:
+                            _uid = int(session_id.split(":", 1)[1])
+                            from app.achievements.triggers.post_turn import (
+                                check_post_turn_achievements,
+                                check_curiosity_achievement,
+                            )
+                            check_post_turn_achievements(session, _uid, session_id)
+                            check_curiosity_achievement(session, _uid, request.message)
+                            from app.achievements.triggers.haiku_classifier import classify_conversation_async
+                            classify_conversation_async(
+                                session_id, _uid,
+                                request.message,
+                                getattr(result, "text", "") or "",
+                            )
+                        except Exception:
+                            pass
+
+                # Skip "response" event for cancelled turns — the frontend already
+                # shows a cancelled bubble from the abort handler; emitting here
+                # would cause a duplicate or overwrite it with the empty text.
+                if _result_error != "cancelled":
+                    publish_event_sync(turn_id, {
+                        "type": "response",
+                        "data": result.model_dump(mode="json"),
+                    })
+                    # Paso C: notify when tab is in background or absent.
+                    # The ChatMessage is already in DB at this point (persisted by
+                    # build_final_ai_response). Dispatcher handles channel selection.
+                    if not _result_error and getattr(result, "text", None):
+                        _maybe_dispatch_chat_response(result, session_id, session)
+            except Exception:
+                publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
+            finally:
+                publish_event_sync(turn_id, {"type": "done"})
+                clear_operation(turn_id)
+    finally:
+        session_lock.release()
 
 
 def _chat_message_inner(
