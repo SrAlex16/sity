@@ -129,6 +129,7 @@ class ChatAIOrchestrator:
         updated_parameters: list[str] = []
         response_artifacts: list[ChatArtifact] = []
         executor: Optional[ToolExecutor] = None
+        _tool_called = False  # tracks whether any tool was attempted this turn
 
         if prep.routing_decision.provider_mode == ProviderMode.local_chat_candidate:
             response = self._run_local_path()
@@ -154,9 +155,31 @@ class ChatAIOrchestrator:
                     response_artifacts = outcome.artifacts
                     persona_decision = outcome.persona_decision
                     executor = outcome.executor
+                    _tool_called = True
 
         if tool_results_for_claude and not is_cancelled(request.client_turn_id):
             self._run_after_tools_loop(response, tool_results_for_claude, persona_decision, executor)
+
+        # Post-generation integrity check: verify response text for capability overclaims,
+        # internal leaks, and memory fabrication before persisting. Zero cost on clean turns.
+        if response.text and not is_cancelled(request.client_turn_id):
+            from app.chat.response_integrity import check_and_correct_response
+            from sqlmodel import col as _col
+            _prior_msg = session.exec(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == ctx.session_id)
+                .where(ChatMessage.role == "sity")
+                .order_by(_col(ChatMessage.id).desc())
+                .limit(1)
+            ).first()
+            response.text = check_and_correct_response(
+                response.text,
+                ctx.session_id,
+                is_admin=ctx.is_admin,
+                prior_assistant_text=_prior_msg.text if _prior_msg else None,
+                tool_called=_tool_called,
+                trace_id=ctx.trace_id,
+            )
 
         ctx.persistence.tag_sity_with_model(response.model)
         chat_result = build_final_ai_response(
