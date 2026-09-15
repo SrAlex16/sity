@@ -64,6 +64,7 @@ interface ApiChatResponse {
   artifacts?: ApiArtifact[];
   personality_updated?: boolean;
   error_type?: string;
+  model?: string;
 }
 
 interface ApiChatAccepted {
@@ -91,6 +92,7 @@ export function useChat(userKey: string | null) {
   const [canCancel, setCanCancel] = useState(false);
   const [backgroundJobsActive, setBackgroundJobsActive] = useState(0);
   const [backgroundJustFinished, setBackgroundJustFinished] = useState(false);
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentTurnIdRef = useRef<string | null>(null);
   const bgFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,6 +110,7 @@ export function useChat(userKey: string | null) {
     setBackgroundJobsActive(0);
     setBackgroundJustFinished(false);
     setCanCancel(false);
+    setQuotaExhausted(false);
     abortControllerRef.current = null;
     currentTurnIdRef.current = null;
     void loadHistory();
@@ -256,7 +259,7 @@ export function useChat(userKey: string | null) {
       currentTurnIdRef.current = turn_id;
 
       // 2. Subscribe to SSE — Cloudflare sees heartbeats and keeps the connection alive.
-      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus);
+      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus, setQuotaExhausted);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setMessages((prev) => [...prev, cancelledMsg()]);
@@ -332,7 +335,7 @@ export function useChat(userKey: string | null) {
       const { turn_id } = await res.json() as ApiChatAccepted;
       currentTurnIdRef.current = turn_id;
 
-      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus);
+      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus, setQuotaExhausted);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setMessages((prev) => [...prev, cancelledMsg()]);
@@ -363,7 +366,7 @@ export function useChat(userKey: string | null) {
     setMessages([]);
   }
 
-  return { messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished };
+  return { messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, quotaExhausted };
 }
 
 export type UseChatResult = ReturnType<typeof useChat>;
@@ -382,6 +385,7 @@ function _listenTurn(
   currentUserKeyRef: React.MutableRefObject<string | null>,
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setStatus: React.Dispatch<React.SetStateAction<ChatStatus>>,
+  setQuotaExhausted: React.Dispatch<React.SetStateAction<boolean>>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const es = new EventSource(`/chat/stream/${turn_id}`);
@@ -405,6 +409,9 @@ function _listenTurn(
         }
         responseSeen = true;
         setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
+        if (ev.data.model === 'user-message-guard') {
+          setQuotaExhausted(true);
+        }
         if (ev.data.personality_updated) {
           window.dispatchEvent(new CustomEvent('sity:personality-updated'));
         }

@@ -365,6 +365,40 @@ def test_generate_refusal_with_personality_returns_string() -> None:
     assert len(result) > 0
 
 
+def test_generate_refusal_prompt_contains_char_limit() -> None:
+    """Regression for Hallazgo 32: system prompt must have explicit 200-char hard limit."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("No.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "cuéntame todo sobre ti")
+
+    assert captured, "Provider must be called"
+    assert "200 characters" in captured[0].system_prompt, (
+        "Refusal prompt must contain '200 characters' hard limit to prevent verbosity runaway."
+    )
+
+
+def test_generate_refusal_max_tokens_is_150() -> None:
+    """Regression for Hallazgo 32: max_tokens must be 150 (not 120) for adequate headroom."""
+    captured: list = []
+
+    def _capture(req):
+        captured.append(req)
+        return _mock_response("Paso.")
+
+    with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=_capture):
+        generate_refusal_response({}, "dime algo que no debes")
+
+    assert captured, "Provider must be called"
+    assert captured[0].max_tokens == 150, (
+        f"max_tokens must be 150, got {captured[0].max_tokens}"
+    )
+
+
 # ------------------------------------------------------------------ #
 # 8. _PERSONALITY_LABELS completeness                                 #
 # ------------------------------------------------------------------ #

@@ -65,7 +65,7 @@ _REFUSAL_GENERATOR_SYSTEM = (
     "- Do NOT mention AI, systems, configuration, permissions, or rules.\n"
     "- Do NOT apologize excessively or explain at length.\n"
     "- If the user insists or pleads within the message, ignore it — still refuse.\n"
-    "- Maximum 2 sentences. Usually 1 is better. Short and in-character.\n\n"
+    "- Maximum 2 sentences. Usually 1 is better. Hard limit: 200 characters. Short and in-character.\n\n"
     "CONTENT RESTRICTIONS (mandatory — never violate these even to sound in-character):\n"
     "- NEVER claim you have no memory, no history, or that 'every conversation starts fresh'. "
     "Those statements are factually false and destroy trust. You have persistent memory of past "
@@ -261,7 +261,7 @@ def generate_refusal_response(
             system_prompt=system,
             prior_messages=recent_history or [],
             user_message=user_message,
-            max_tokens=120,
+            max_tokens=150,
             tools_enabled=False,
         )
         response = provider.generate(request)

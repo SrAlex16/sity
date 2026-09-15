@@ -115,7 +115,7 @@ interface ChatScreenProps extends UseChatResult {
   uiLang?: UiLang;
 }
 
-export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, onLogout, currentUser, uiLang = 'es' }: ChatScreenProps) {
+export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMessages, canCancel, cancel, backgroundJobsActive, backgroundJustFinished, quotaExhausted, onLogout, currentUser, uiLang = 'es' }: ChatScreenProps) {
   const tl = TRANSLATIONS[uiLang].chat;
   const { settings: voiceSettings } = useVoice();
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
@@ -586,7 +586,13 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                     onKeyDown={handleKeyDown}
                     placeholder="メッセージを入力..."
                     rows={1}
+                    disabled={quotaExhausted}
                   />
+                  {quotaExhausted && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                      {tl.quotaHint}
+                    </span>
+                  )}
                 </div>
 
                 <button
@@ -610,7 +616,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <motion.button
                     className={styles.sendBtn}
                     onClick={handleSend}
-                    disabled={!inputText.trim() && !pendingImage}
+                    disabled={quotaExhausted || (!inputText.trim() && !pendingImage)}
                     whileTap={{ scale: 0.88 }}
                     aria-label="Enviar"
                   >

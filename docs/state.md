@@ -443,6 +443,15 @@ Ver .env.example para la lista completa.
   con `tts_fragments`/`audio_filename`. 3 tests nuevos en `test_structural_refusal.py`
   (TTS llamado, artefacto en respuesta, sin audio cuando `voice_response_mode=never`).
 
+  **Limitación conocida: latencia TTS de Piper en Raspberry Pi 4B.**
+  Piper sin GPU procesa ~83 ms/carácter en CPU. Una negativa de 235 chars tarda ~30 s en
+  sintetizarse; respuestas cortas (~139 chars) tardan ~22 s. Esta latencia es una
+  limitación del hardware (Pi 4B ARM Cortex-A72, sin aceleración FP16), no un bug del
+  código. Comportamiento aceptado y no accionable sin cambiar el motor TTS o el hardware.
+  Dato de referencia (log 2026-09-14): 5 chars→15 s, 139 chars→22 s, 226 chars→27 s,
+  235 chars→30 s. El umbral `tts_long_response_chars=500` está por encima de la longitud
+  típica de negativas, por lo que van siempre como un solo fragmento sin split.
+
 - **Ronda de seguridad y bugs de personalidad (commits `cc9943b`→`a8f60a9`, 2026-09-02/03):**
 
   **Limpieza de referencias residuales a Telegram (commit `cc9943b`).** La auditoría
