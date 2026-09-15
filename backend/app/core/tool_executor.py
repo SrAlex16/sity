@@ -189,18 +189,31 @@ class ToolExecutor:
                 client_turn_id=client_turn_id,
             ))
 
-        msg = f"Herramienta no soportada: {tool_name}"
+        internal_msg = f"Herramienta no soportada: {tool_name}"
+        write_log(
+            level="WARN",
+            module="tools",
+            event="unknown_tool_called",
+            trace_id=trace_id,
+            payload={
+                "tool_name": tool_name,
+                "session_id": self.session_id,
+                "client_turn_id": client_turn_id,
+            },
+            audit=True,
+        )
+        user_msg = "No puedo completar esa acción."
         return ToolExecutionResult(
             tool_name=tool_name,
             ok=False,
-            message=msg,
+            message=internal_msg,
             updated_parameters=[],
             raw_result={
                 "success": False,
-                "message": msg,
+                "message": internal_msg,
                 "updated_parameters": [],
                 "local_final": True,
-                "text": msg,
+                "text": user_msg,
                 "local_model": "tool-policy",
             },
         )

@@ -208,6 +208,55 @@ class TestDispatchToolCall:
         assert "no soportada" in result.message.lower()
         assert result.raw_result.get("local_final") is True
 
+    def test_unknown_tool_text_is_generic_not_raw_error(self):
+        """Hallazgo 31 (2026-09-15): invented tool name must NOT leak to the user.
+
+        When the model calls a non-existent tool (e.g. 'system_get_disk_usage'),
+        the 'text' field (= what the user sees) must be a safe generic message.
+        The internal error (tool name) stays only in 'message' for log purposes.
+        """
+        executor = _executor()
+        result = executor._dispatch_tool_call(
+            tool_name="system_get_disk_usage",
+            tool_input={},
+            trace_id="trc_31",
+        )
+        user_facing = result.raw_result.get("text", "")
+        assert "system_get_disk_usage" not in user_facing, (
+            f"Internal tool name leaked to user-facing text: {user_facing!r}"
+        )
+        assert "no soportada" not in user_facing.lower(), (
+            f"Raw internal error message leaked: {user_facing!r}"
+        )
+        assert len(user_facing) > 0, "User-facing text must not be empty"
+
+    def test_unknown_tool_internal_message_preserved(self):
+        """Internal 'message' field must still contain the tool name for logging."""
+        executor = _executor()
+        result = executor._dispatch_tool_call(
+            tool_name="system_get_disk_usage",
+            tool_input={},
+            trace_id="trc_31",
+        )
+        assert "system_get_disk_usage" in result.message
+
+    def test_unknown_tool_logs_warn_audit(self):
+        """Unknown tool calls must be logged at WARN level with audit=True."""
+        executor = _executor()
+        with patch("app.core.tool_executor.write_log") as mock_log:
+            executor._dispatch_tool_call(
+                tool_name="system_get_disk_usage",
+                tool_input={},
+                trace_id="trc_audit",
+                client_turn_id="t_audit",
+            )
+        mock_log.assert_called_once()
+        call_kwargs = mock_log.call_args[1]
+        assert call_kwargs["level"] == "WARN"
+        assert call_kwargs["event"] == "unknown_tool_called"
+        assert call_kwargs.get("audit") is True
+        assert call_kwargs["payload"]["tool_name"] == "system_get_disk_usage"
+
     def test_known_tool_dispatches(self):
         import app.tools.handlers  # ensure handlers are registered  # noqa: F401
         executor = _executor()
