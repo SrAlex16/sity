@@ -116,17 +116,25 @@ _PERSONALITY_OVERRIDE_SYSTEM = (
 _REFUSAL_FALLBACKS = ["No.", "No me apetece.", "Paso."]
 
 _HISTORY_NEED_SYSTEM = (
-    "Classify whether the user's message explicitly asks about THIS conversation's own history. "
+    "Classify how much conversation history the AI needs to answer the user's message. "
     "Reply with exactly one word.\n\n"
     "- deep: The message explicitly references events, content, or statements from earlier in THIS "
     "conversation ('¿qué hablamos ayer?', '¿recuerdas cuando dijiste...?', 'resume lo que hemos "
     "hablado', '¿de qué hemos tratado?', 'mencionaste antes que...', '¿qué dijiste sobre X?', "
     "'haz un resumen de nuestra conversación').\n"
-    "- standard: Everything else — including messages that START with 'Resume', 'Resumen', or "
-    "'Recapitula' but refer to EXTERNAL content ('Resume este texto:', 'Resume el artículo "
-    "siguiente', 'Resume en una frase la idea central del texto'), technical questions, actions, "
-    "greetings, or anything that does not explicitly reference THIS conversation's history.\n\n"
-    "Reply with exactly one word: deep or standard"
+    "- moderate: The message uses implicit anaphoric references that only make sense within an "
+    "ongoing conversation — pronouns or demonstratives without a clear antecedent in the message "
+    "itself ('eso', 'lo de antes', 'aquello', 'la receta esa', 'el tema ese'), or short follow-up "
+    "questions that assume recent context ('¿y cuándo lo hago?', '¿también vale ahí?', '¿sigue "
+    "siendo buena idea?', '¿y si prefiero la otra opción?', '¿la receta esa se puede hacer sin "
+    "horno?', '¿y el volcán de chocolate de antes?'). The reference is IMPLICIT — the user does "
+    "NOT explicitly say 'recuerdas cuando dijiste X' but assumes shared context.\n"
+    "- standard: Everything else — self-contained messages that can be understood without prior "
+    "context, including messages that START with 'Resume', 'Resumen', or 'Recapitula' but refer "
+    "to EXTERNAL content ('Resume este texto:', 'Resume el artículo siguiente'), technical "
+    "questions, actions, greetings, or anything that does not reference recent conversational "
+    "context.\n\n"
+    "Reply with exactly one word: deep, moderate, or standard"
 )
 
 
@@ -336,7 +344,11 @@ def _build_personality_integrity_block(personality: dict) -> str:
 
 
 def classify_history_need(message: str, *, trace_id: str = "") -> str:
-    """Return 'deep' if the message genuinely needs deep conversation history, else 'standard'.
+    """Return 'deep', 'moderate', or 'standard' based on how much history the message needs.
+
+    - deep: explicit meta-question about this conversation (¿qué hablamos ayer?)
+    - moderate: implicit anaphoric reference to recent context (¿y eso cómo funciona?)
+    - standard: self-contained message, no prior context needed
 
     Uses Haiku (cheap, fast). Falls back to 'standard' on any error — never expands
     history on failure, which is the safe default.
@@ -350,12 +362,16 @@ def classify_history_need(message: str, *, trace_id: str = "") -> str:
             task_type="classification",
             system_prompt=_HISTORY_NEED_SYSTEM,
             user_message=message,
-            max_tokens=5,
+            max_tokens=10,
             tools_enabled=False,
         )
         response = provider.generate(request)
-        if response.ok and response.text and "deep" in response.text.strip().lower():
-            return "deep"
+        if response.ok and response.text:
+            text = response.text.strip().lower()
+            if "deep" in text:
+                return "deep"
+            if "moderate" in text:
+                return "moderate"
         return "standard"
     except Exception:
         return "standard"

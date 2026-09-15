@@ -386,13 +386,15 @@ def history_limit_for_message(message: str, *, trace_id: str = "") -> int:
         "raspberry", "sistema", "cpu", "ram", "disco",
     ]
 
-    # Keyword lists are not used for deep history — they were bypassable by an attacker
-    # including "resume" or "ayer" in an otherwise unrelated message. Haiku evaluates
-    # genuine intent: only expands to 20 turns when the message explicitly asks about
-    # THIS conversation's history.
+    # Keyword lists are not used for deep/moderate history — they were bypassable by an
+    # attacker including "resume" or "ayer" in an otherwise unrelated message. Haiku
+    # evaluates genuine intent. See docs/turn-queue.md for the security incident context.
     from app.core.message_classifier import classify_history_need
-    if classify_history_need(message, trace_id=trace_id) == "deep":
+    need = classify_history_need(message, trace_id=trace_id)
+    if need == "deep":
         return base * 5
+    if need == "moderate":
+        return int(base * 1.5)  # = 6 with base=4: 3 full turns visible
 
     if any(term in normalized for term in technical_terms):
         return base * 2

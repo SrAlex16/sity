@@ -705,6 +705,11 @@ def test_classify_history_need_returns_deep_when_provider_says_deep() -> None:
         assert classify_history_need("¿qué hablamos ayer sobre el dataset?") == "deep"
 
 
+def test_classify_history_need_returns_moderate_when_provider_says_moderate() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("moderate")):
+        assert classify_history_need("¿y eso también funciona para el martes?") == "moderate"
+
+
 def test_classify_history_need_returns_standard_when_provider_says_standard() -> None:
     with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("standard")):
         assert classify_history_need("Resume este artículo en una frase") == "standard"
@@ -723,6 +728,12 @@ def test_classify_history_need_standard_on_empty_response() -> None:
 def test_classify_history_need_standard_on_api_exception() -> None:
     with patch("app.cortex.mock_provider.MockProvider.generate", side_effect=Exception("boom")):
         assert classify_history_need("algo") == "standard"
+
+
+def test_classify_history_need_deep_takes_priority_over_moderate() -> None:
+    """'deep' substring in response must win even if 'moderate' also appears."""
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_resp("deep")):
+        assert classify_history_need("¿recuerdas lo que dijiste ayer?") == "deep"
 
 
 # ------------------------------------------------------------------ #

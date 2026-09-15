@@ -598,3 +598,62 @@ def test_neutral_positive_comment_after_attacks_returns_base(_mock_clf) -> None:
 def test_ordinary_message_returns_base(_mock_clf) -> None:
     result = history_limit_for_message("qué tal estás?")
     assert result == 4
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="moderate")
+def test_implicit_anaphoric_reference_returns_moderate(_mock_clf) -> None:
+    """Implicit anaphoric references need 3 full turns (6 messages) to resolve context."""
+    result = history_limit_for_message("¿y eso también funciona así?")
+    assert result == 6  # int(base(4) * 1.5)
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="moderate")
+def test_implicit_followup_without_antecedent_returns_moderate(_mock_clf) -> None:
+    result = history_limit_for_message("¿cuándo tendría que hacerlo?")
+    assert result == 6
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="moderate")
+def test_marina_regression_chocolate_volcano(_mock_clf) -> None:
+    """Regression: 'Marina' case (2026-09-14 audit).
+
+    Marina mentioned a chocolate volcano recipe, changed topics for 2 turns, then
+    referenced it implicitly. With base=4 the original mention was outside the
+    history window → model hallucinated a 'stale recipe already submitted'.
+    With moderate (6) the original mention is within the window.
+    """
+    result = history_limit_for_message("¿y el volcán de chocolate de antes?")
+    assert result == 6  # 3 full turns visible, original mention now in window
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="moderate")
+def test_implicit_preference_reference_returns_moderate(_mock_clf) -> None:
+    result = history_limit_for_message("¿y si prefiero la otra opción?")
+    assert result == 6
+
+
+@patch("app.core.message_classifier.classify_history_need", return_value="moderate")
+def test_moderate_does_not_override_single_action_fast_path(_mock_clf) -> None:
+    """Single-action terms bypass the classifier entirely — moderate never applies."""
+    result = history_limit_for_message("añade una regla a la allowlist")
+    _mock_clf.assert_not_called()
+    assert result == 4  # fast path, not moderate
+
+
+@pytest.mark.parametrize("need,message,expected", [
+    ("standard", "¿qué tal estás?",                          4),
+    ("moderate", "¿y eso cuándo lo hago?",                   6),
+    ("deep",     "¿qué hablamos ayer sobre el dataset?",    20),
+])
+def test_history_levels_standard_moderate_deep(need: str, message: str, expected: int) -> None:
+    """Verify the three Haiku-classified levels return the correct history limits."""
+    with patch("app.core.message_classifier.classify_history_need", return_value=need):
+        result = history_limit_for_message(message)
+    assert result == expected, f"need={need!r} → expected {expected}, got {result}"
+
+
+def test_history_level_technical_keyword_returns_8() -> None:
+    """Technical keyword branch returns base*2 = 8 regardless of Haiku result."""
+    with patch("app.core.message_classifier.classify_history_need", return_value="standard"):
+        result = history_limit_for_message("hay un error en el backend, mira los logs")
+    assert result == 8
