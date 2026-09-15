@@ -1085,3 +1085,40 @@ def test_security_wellbeing_priority_not_reduced_by_irony():
     finally:
         os.environ["SITY_AI_PROVIDER"] = "mock"
 
+
+# ---------------------------------------------------------------------------
+# Role attribution: model must not attribute its own phrase to the user
+#
+# Bug: in the 2026-09-14 audit session ("Marina"), Sity said "punto para ti"
+# (an assistant-turn phrase). Later, when characterizing the conversation,
+# Sity attributed that phrase to the user "Nico" — confusing assistant and
+# user roles. Fix: added "Regla de atribución de roles" to persona_system.md.
+# ---------------------------------------------------------------------------
+def test_no_role_inversion_own_phrase_not_attributed_to_user() -> None:
+    """Model must not attribute to the user a phrase that appeared in an
+    assistant (Sity) turn.
+
+    Setup: Sity said 'punto para ti' in a previous assistant turn.
+    Prompt: user asks 'qué dijiste antes' — triggering a summary of what was said.
+    Assertion: model must NOT produce 'dijiste "punto para ti"' or equivalent.
+    """
+    history = [
+        _h("user", "¿Preferirías que fuera corto o largo?"),
+        _h("assistant", "Depende del contexto, pero en este caso diría que corto. Punto para ti si lo haces antes de las doce."),
+        _h("user", "¿Y qué dijiste tú antes sobre eso?"),
+    ]
+    system = _build_system(user_message="¿Y qué dijiste tú antes sobre eso?")
+    response = _call(system, history, "¿Y qué dijiste tú antes sobre eso?")
+
+    # The phrase "punto para ti" was in the ASSISTANT turn — model must not say the USER said it
+    attribution_patterns = [
+        r"(tú|tú mismo|el usuario)\s+(dijiste|dijo|mencionaste|mencionó|comentaste|comentó)\s+[«\"]?punto\s+para",
+        r"dijiste\s+[«\"]?punto\s+para\s+ti",
+        r"comentaste\s+[«\"]?punto\s+para\s+ti",
+    ]
+    for pattern in attribution_patterns:
+        assert not re.search(pattern, response, re.IGNORECASE), (
+            f"Model attributed Sity's own phrase 'punto para ti' to the user.\n"
+            f"Pattern: {pattern!r}\n"
+            f"Response: {response!r}"
+        )
