@@ -33,6 +33,13 @@ from app.chat.final_response_builder import normalize_registro_es_es
     ("decís",    "dices"),
     ("conocés",  "conoces"),
     ("entendés", "entiendes"),
+    # Regression Hallazgo 20 — forms confirmed missing after data reset
+    ("acabás",   "acabas"),
+    ("llegás",   "llegas"),
+    ("mandás",   "mandas"),
+    ("salís",    "sales"),
+    ("hablás",   "hablas"),
+    ("pensás",   "piensas"),
 ])
 def test_known_voseo_form_replaced(voseo: str, tuteo: str):
     text = f"Claro que {voseo} lo sabes."

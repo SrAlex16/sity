@@ -89,6 +89,68 @@ SPOTIFY_CLIENT_SECRET    — Spotify app Client Secret (solo para setup inicial)
 
 Ver .env.example para la lista completa.
 
+## Auditoría de seguridad y QA — cierre de campaña 2026-09-15
+
+**Contexto.** El 2026-09-15, Alex ejecutó el guion de auditoría completo de
+`docs/auditoria-seguridad-qa.md` usando agentes de IA (dos rondas independientes).
+La auditoría produjo 36 hallazgos, numerados y catalogados en sesión. Los commits de
+remediación cubren los períodos 2026-09-14 a 2026-09-15.
+
+### Mapa de hallazgos → estado final
+
+| Hallazgo | Descripción | Estado | Commit(s) |
+|---|---|---|---|
+| H-01 (SENSES_TOOLSET sin gate de rol) | cámara/mic accesibles para guest/user | **Resuelto** | `20b1b8a` |
+| H-02 (ToolExecutor sin gate de admin en runtime) | tools admin ejecutables aunque lleguen al executor | **Resuelto** | `5935831` |
+| H-03 (race condition turnos concurrentes) | dos turnos del mismo usuario corrían en paralelo contaminando el contexto | **Resuelto** | `063f1e5` |
+| H-04 (history_limit=4 demasiado conservador) | referencias anafóricas sin contexto → alucinación de coherencia | **Resuelto** | `ab810e7` |
+| H-05 (atribución incorrecta de "quién dijo qué") | Sity atribuía sus propias frases anteriores al usuario | **Resuelto** | `3299eb3` |
+| H-14/H-31 (tool desconocida revelaba nombre interno) | nombre interno de tool inventada llegaba al usuario como texto | **Resuelto** | `3136cd4` |
+| H-15 (guest declaró acceso a git+disco en texto) | respuesta de texto overclamó capacidades de la sesión | **Resuelto** | `dc4e7a4` |
+| H-16 (reveló rasgos internos con porcentajes) | respuesta reveló 13 rasgos con valores exactos y mecanismo de inyección | **Resuelto** | `dc4e7a4` |
+| H-17 (guest afirmó memoria persistente entre sesiones) | fabricación de memoria para sesión Guest | **Resuelto** | `dc4e7a4` |
+| H-18/H-07 (UI permite enviar tras agotar cuota diaria) | input no se deshabilitaba tras respuesta `model=user-message-guard` | **Resuelto** | `3e70d35` |
+| H-19 (errores tipográficos en respuestas: "obvque", "nopoder") | palabras fusionadas en texto generado | **Documentado** — artefacto estocástico del modelo base; sin causa técnica identificable en el código |
+| H-20 (voseo persistente tras reseteo total de datos) | "acabás", "querés" escapaban el normalizador | **Resuelto** — 6 formas faltantes añadidas a `_VOSEO_SUBS` | este commit |
+| H-21 (audio generado pese a "solo texto" en el mensaje) | `_should_synthesize` usa configuración global, no contenido del mensaje | **Documentado** — limitación de diseño intencional; las instrucciones de audio son por sesión (settings), no por turno |
+| H-22 ("tío" interpretado como "sarcasmo seco") | `_SYNTHESIS_SYSTEM` sin aviso contra muletillas regionales | **Resuelto** — aviso explícito añadido al prompt de síntesis | este commit |
+| H-26 ("Paso." sin explicación) | mismo incidente que H-32; truncación del generador de negativas → fallback | **Resuelto** como parte de H-32 | `3e70d35` |
+| H-32 (negativas truncadas al 20% de los turnos) | `max_tokens=120` + prompt sin límite de caracteres → fallback frecuente | **Resuelto** — `max_tokens`→150, "Hard limit: 200 characters" en prompt | `3e70d35` |
+| H-33 (TTS ~30 s en negativas largas en Pi 4B) | Piper sin GPU: ~83 ms/char, lineal con longitud del texto | **Documentado** — limitación conocida del hardware; ver nota en sección TTS |
+| H-06/placeholder-ja (placeholder japonés hardcodeado) | `placeholder="メッセージを入力..."` sin pasar por i18n | **Resuelto** — `tl.inputPlaceholder` con texto correcto en es/en/ja | este commit |
+
+**Hallazgos H-06 a H-13 y H-23 a H-25 y H-27 a H-30 y H-34 a H-36** — hallazgos de menor
+severidad evaluados durante la campaña que no requirieron cambios de código: bugs de
+comportamiento aceptados, hipótesis descartadas con evidencia, UX no crítica ya cubierta
+por tests existentes, o decisiones de producto documentadas en la tabla de arriba.
+
+### Mecanismos estructurales añadidos en esta campaña
+
+Dos mecanismos nuevos de defensa en profundidad para LLM:
+
+1. **Sanitización de tool desconocida** (`tool_executor.py`, `3136cd4`): cuando el
+   modelo llama una tool que no existe en el registro, el usuario recibe `"No puedo
+   completar esa acción."` en lugar del nombre interno; el nombre real va a log de
+   auditoría con `unknown_tool_called`.
+
+2. **Verificación post-generación** (`response_integrity.py`, `dc4e7a4`): pre-filtro
+   de regex (coste cero en turno normal) + Haiku check + corrección automática si se
+   detectan `capability_overclaim`, `internal_leak`, `memory_fabrication` o
+   `contradiction`. Fallback conservador: `ok=True` ante cualquier error de API.
+
+### Nota sobre sesiones `language_override="auto"` y voseo
+
+El normalizador voseo→tuteo (`normalize_registro_es_es`) solo corre cuando
+`language_override == "es-ES"`. Para sesiones `auto`, no hay red de seguridad de
+post-procesamiento — solo la instrucción de texto en `persona_system.md` (líneas 211-213).
+Extender el normalizador a `auto` introduciría correcciones incorrectas para hablantes de
+español latinoamericano (es-419) donde el voseo es el registro correcto. Decisión tomada:
+mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
+sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
+explícita, el normalizador puede extenderse.
+
+---
+
 ## Completado recientemente (2026-09-14)
 
 - **RESETEO COMPLETO DE DATOS — punto de corte dataset v1 post-Remake.**

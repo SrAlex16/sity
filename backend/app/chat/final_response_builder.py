@@ -54,6 +54,12 @@ _VOSEO_SUBS: list[tuple[str, str, str]] = [
     ("decís",    "dices",     "Dices"),
     ("conocés",  "conoces",   "Conoces"),
     ("entendés", "entiendes", "Entiendes"),
+    ("acabás",   "acabas",    "Acabas"),
+    ("llegás",   "llegas",    "Llegas"),
+    ("mandás",   "mandas",    "Mandas"),
+    ("salís",    "sales",     "Sales"),
+    ("hablás",   "hablas",    "Hablas"),
+    ("pensás",   "piensas",   "Piensas"),
 ]
 
 _VOSEO_RES: list[tuple[re.Pattern[str], str, re.Pattern[str], str]] = [

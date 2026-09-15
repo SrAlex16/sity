@@ -584,7 +584,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                     value={inputText}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="メッセージを入力..."
+                    placeholder={tl.inputPlaceholder}
                     rows={1}
                     disabled={quotaExhausted}
                   />

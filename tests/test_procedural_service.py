@@ -489,3 +489,19 @@ class TestPerceptionContextType:
     def test_valid_context_types_count(self):
         # Property 32
         assert len(_VALID_CONTEXT_TYPES) == 8
+
+
+# ---------------------------------------------------------------------------
+# Regression Hallazgo 22 — synthesis prompt must warn against filler words
+# ---------------------------------------------------------------------------
+
+def test_synthesis_system_contains_filler_word_warning() -> None:
+    """Regression: _SYNTHESIS_SYSTEM must instruct Haiku not to interpret regional
+    filler words (tío, tía, macho, venga…) as personality traits."""
+    from app.cognition.procedural_service import _SYNTHESIS_SYSTEM
+    assert "tío" in _SYNTHESIS_SYSTEM, (
+        "_SYNTHESIS_SYSTEM must warn against interpreting 'tío' as a personality trait."
+    )
+    assert "filler" in _SYNTHESIS_SYSTEM.lower() or "colloquialism" in _SYNTHESIS_SYSTEM.lower(), (
+        "_SYNTHESIS_SYSTEM must contain guidance about regional fillers/colloquialisms."
+    )

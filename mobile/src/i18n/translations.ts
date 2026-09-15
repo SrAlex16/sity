@@ -150,6 +150,7 @@ export interface T {
     revoking: string;
     viewsLabel: string;
     quotaHint: string;
+    inputPlaceholder: string;
   };
   personality: {
     moodTranquil: string;
@@ -394,6 +395,7 @@ const es: T = {
     revoking: 'Revocando…',
     viewsLabel: 'vistas',
     quotaHint: 'Has alcanzado el límite diario de mensajes.',
+    inputPlaceholder: 'Escribe un mensaje…',
   },
   personality: {
     moodTranquil: 'Tranquila',
@@ -638,6 +640,7 @@ const en: T = {
     revoking: 'Revoking…',
     viewsLabel: 'views',
     quotaHint: 'You have reached the daily message limit.',
+    inputPlaceholder: 'Type a message…',
   },
   personality: {
     moodTranquil: 'Calm',
@@ -882,6 +885,7 @@ const ja: T = {
     revoking: '無効化中…',
     viewsLabel: '回表示',
     quotaHint: '1日のメッセージ上限に達しました。',
+    inputPlaceholder: 'メッセージを入力…',
   },
   personality: {
     moodTranquil: '穏やか',

@@ -61,6 +61,9 @@ _SYNTHESIS_SYSTEM = (
     "- 'Ask one clarifying question before diving into debugging steps'\n"
     "- 'Keep explanations concise; user grasps concepts quickly'\n"
     "- 'Use concrete code examples rather than abstract descriptions'\n\n"
+    "IMPORTANT: Do not interpret regional filler words or verbal tics (e.g. 'tío', 'tía', "
+    "'macho', 'venga', 'buah', 'ostia', 'colega') as personality traits or communication "
+    "styles — they are informal colloquialisms with no behavioural signal.\n\n"
     "Output only the strategy sentence."
 )
 
