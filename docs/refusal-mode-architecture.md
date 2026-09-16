@@ -22,7 +22,7 @@ Usuario envía mensaje
         │
         ▼
 PersonaEngine._should_refuse()
-  random.random() < refusal_chance
+  random.random() < refusal_propensity
         │
    ┌────┴────┐
    │         │
@@ -51,7 +51,7 @@ trivial   config_query   real
 
 | Componente | Archivo | Responsabilidad |
 |---|---|---|
-| `PersonaEngine._should_refuse()` | `app/core/persona_engine.py` | Dado determinista — `random.random() < refusal_chance` |
+| `PersonaEngine._should_refuse()` | `app/core/persona_engine.py` | Dado probabilístico — `random.random() < refusal_propensity`; `refusal_propensity` se deriva de rasgos: `max(0, min(1, 0.20*assertiveness + 0.15*independence - 0.40*helpfulness + 0.20))` |
 | `classify_message()` | `app/core/message_classifier.py` | Haiku clasifica el mensaje como trivial/config_query/real |
 | `_CLASSIFY_SYSTEM_REFUSAL_CONTEXT` | `app/core/message_classifier.py` | Contexto adicional cuando el turno anterior fue negativa |
 | `build_verified_config_block()` | `app/core/message_classifier.py` | Bloque de valores verificados para config_query |
@@ -65,7 +65,9 @@ trivial   config_query   real
 
 ### Flujo de datos completo
 
-1. **Decisión probabilística** — `_should_refuse(user_message, refusal_chance)` tira el dado.
+1. **Decisión probabilística** — `_should_refuse(user_message, refusal_propensity)` tira el dado.
+   `refusal_propensity` es derivado de rasgos en `PersonaEngine` antes de la llamada
+   (`0.20*assertiveness + 0.15*independence - 0.40*helpfulness + 0.20`, clamped 0–1).
    Si `True`, el flujo entra en la rama de refusal. El modelo nunca ve esta decisión.
 
 2. **Clasificación** — `classify_message(user_message, last_was_refusal=...)` llama a Haiku
@@ -238,9 +240,9 @@ Tests de regresión destacados:
 
 ## Estado verificado en producción (2026-08-13)
 
-- `refusal_chance=1.0` con mensaje real → negativa generada por Haiku, `provider="haiku_refusal"` en logs.
-- `refusal_chance=1.0` con "hola" → trivial, modelo principal responde.
-- `refusal_chance=1.0` con pregunta de config → modelo principal responde con valores verificados.
+- `refusal_propensity=1.0` con mensaje real → negativa generada por Haiku, `provider="haiku_refusal"` en logs.
+- `refusal_propensity=1.0` con "hola" → trivial, modelo principal responde.
+- `refusal_propensity=1.0` con pregunta de config → modelo principal responde con valores verificados.
 - La hora en las negativas coincide con la hora real del sistema (verificado en producción).
 - `last_was_refusal` aislado por sesión — una sesión no contamina las otras.
 
@@ -284,7 +286,7 @@ sliders.
 
 | | `refusal_mode` | `classify_personality_override` |
 |---|---|---|
-| **Trigger** | Probabilístico (`refusal_chance`) | Determinista (cada turno) |
+| **Trigger** | Probabilístico (`refusal_propensity` derivado de rasgos) | Determinista (cada turno) |
 | **Si se activa** | Haiku genera la respuesta; modelo principal NO ve el turno | Modelo principal SÍ responde, pero con guardarraíl al TOP |
 | **Acción** | Toma el turno por completo | Inyecta bloque "INTEGRIDAD DE PERSONALIDAD — PRIORIDAD ABSOLUTA" con valores reales de sliders al inicio del system prompt |
 | **Componente** | `generate_refusal_response()` en `message_classifier.py` | `classify_personality_override()` en `message_classifier.py` |

@@ -1,6 +1,6 @@
 # Arquitectura de Sity
 
-Última actualización: 2026-08-11.
+Última actualización: 2026-09-16.
 
 ## Resumen
 
@@ -46,9 +46,11 @@ Responsabilidades:
 - presupuesto;
 - runtime config.
 
-### Frontend
+### Frontend (PWA móvil)
 
-Frontend web modular.
+`mobile/` — único frontend del proyecto. React + TypeScript + Vite 5.
+Build de producción servido por Caddy desde `mobile/dist/`.
+Ver sección [PWA móvil](#pwa-móvil) para detalles de stack, temas y comunicación.
 
 Responsabilidades:
 
@@ -57,8 +59,7 @@ Responsabilidades:
 - debug (trazas y eventos recientes);
 - dataset (Dataset Capture + DatasetStats);
 - previews de cámara/audio;
-- cancelación de acciones;
-- interacción táctil futura.
+- cancelación de acciones.
 
 #### Campo de texto del chat
 
@@ -107,8 +108,8 @@ backend/app/audio/transcriber.py       — WhisperModel singleton + transcribe_b
 backend/app/audio/edit_distance.py     — compute_edit_distance_pct()
 backend/app/api/routes_audio.py        — POST /audio/transcribe
 config/default_config.yaml             — audio.stt_model / stt_device / stt_language
-frontend/src/hooks/useVoiceInput.ts    — MediaRecorder hook → POST /audio/transcribe
-frontend/src/api/chatApi.ts            — transcribeAudio() + voice options en sendChatMessage()
+mobile/src/hooks/useVoiceInput.ts      — MediaRecorder hook → POST /audio/transcribe
+mobile/src/api/chatApi.ts              — transcribeAudio() + voice options en sendChatMessage()
 ```
 
 Tests: `tests/test_edit_distance.py`, `tests/test_audio_transcribe.py`. Sin llamadas reales a Whisper.
@@ -200,8 +201,8 @@ backend/app/api/routes_audio.py        — POST /audio/synthesize, GET /audio/tt
 backend/app/settings/schemas.py        — VoiceSettings (incl. audio_cleanup_days)
 backend/app/settings/settings_service.py — get/set_voice_settings()
 backend/app/api/routes_settings.py     — GET/PUT /settings/voice
-frontend/src/api/voiceApi.ts           — getVoiceSettings(), updateVoiceSettings()
-frontend/src/components/VoiceSettingsTab.tsx — UI de configuración de voz
+mobile/src/api/voiceApi.ts             — getVoiceSettings(), updateVoiceSettings()
+mobile/src/screens/VoiceScreen.tsx     — UI móvil de voz (incl. audio_cleanup_days)
 mobile/src/screens/VoiceScreen.tsx     — UI móvil de voz (incl. audio_cleanup_days)
 mobile/src/components/AudioMessageBubble.tsx — burbuja de audio con player y coordinación
 config/default_config.yaml             — audio.persist_tts, audio.cleanup_days
@@ -308,6 +309,19 @@ turn_runner.py            — extraído de routes_chat.py (commit 125e74a): _sni
                             el resultado como evento SSE. Separado de routes_chat para que el
                             entrypoint HTTP sea una capa fina sin lógica de negocio.
 ```
+
+### Módulos `backend/app/cognition/`
+
+Núcleo cognitivo implementado en Remake (Fases 1–9, completado 2026-09-12). Ejecuta el
+pipeline cognitivo completo en cada turno: percepción, valoración emocional, gestión de
+objetivos, memoria episódica, toma de decisiones, expresión, self-model, valores,
+reflexión, patrones procedimentales, user model, teoría de la mente, expectativas y
+consolidación semántica.
+
+Ver `docs/remake/pipeline-cognitivo-completo.md` para el mapa maestro con orden real de
+ejecución, efectos secundarios y módulos involucrados por paso.
+
+---
 
 ## Arquitectura del flujo de chat
 
@@ -505,22 +519,24 @@ session_override > user_setting > local_config > default_config
 
 Sity tiene personalidad parametrizable.
 
-Parámetros relevantes:
+Rasgos (13 parámetros, configurados en `config/default_config.yaml` bajo `personality.*`):
 
-- sarcasm_level;
-- rudeness_level;
-- warmth_level;
-- honesty_level;
-- initiative_level;
-- dry_humor_level;
-- frialdad_afectiva_level;
-- contrarian_level;
-- patience_level;
-- refusal_chance;
-- helpfulness_level;
-- verbosity_level;
-- melancholy_level;
-- skepticism_level.
+- warmth;
+- empathy;
+- directness;
+- assertiveness;
+- independence;
+- skepticism;
+- patience;
+- curiosity;
+- proactivity;
+- helpfulness;
+- honesty;
+- playfulness;
+- emotional_stability.
+
+`refusal_propensity` no es un parámetro directo — se deriva de rasgos (Remake Fase 1):
+`max(0.0, min(1.0, 0.20*assertiveness + 0.15*independence - 0.40*helpfulness + 0.20))`
 
 Reglas no negociables:
 
@@ -747,7 +763,7 @@ por el origen y no está en el resultado, hay que buscar.
 
 ## PWA móvil
 
-Ubicación: `mobile/` — proyecto independiente, no comparte build con `frontend/`.
+Ubicación: `mobile/` — único frontend del proyecto. El directorio `frontend/` fue eliminado y consolidado aquí.
 
 Stack: React 18 + TypeScript + Vite 5 + Framer Motion + CSS custom (sin Tailwind).
 Build de producción en `mobile/dist/`, servido por Caddy.
