@@ -2,8 +2,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import mkcert from 'vite-plugin-mkcert';
 
-export default defineConfig({
-  plugins: [react(), mkcert()],
+declare const process: { env: Record<string, string | undefined> };
+
+export default defineConfig(({ command }) => ({
+  plugins: [
+    react(),
+    ...(command === 'serve' && process.env.NODE_ENV !== 'test' ? [mkcert()] : []),
+  ],
   test: {
     environment: 'jsdom',
     globals: true,
@@ -24,6 +29,8 @@ export default defineConfig({
       '/auth': { target: 'http://localhost:8000', changeOrigin: true },
       '/captures': { target: 'http://localhost:8000', changeOrigin: true },
       '/notifications': { target: 'http://localhost:8000', changeOrigin: true },
+      '/uploads': { target: 'http://localhost:8000', changeOrigin: true },
+      '/files': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
-});
+}));
