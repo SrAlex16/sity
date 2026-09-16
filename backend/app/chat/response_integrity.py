@@ -3,13 +3,16 @@
 Verifies the final AI response text before it is shown to the user and saved
 to the DB.  Two stages:
 
-1. Pre-filter (free, zero cost): regex scan of the response text + tool_called flag.
-   If none of the patterns match AND no tool was called, the Haiku call is skipped.
+1. Trigger check (decides whether to call Haiku):
+   - tool_called=True: always trigger
+   - history_count > 0: always trigger (checks for in-session history denial)
+   - regex patterns: capability overclaim, cross-session memory claim (guest), internal leak
 
-2. Haiku check (#1): if triggered, evaluates three violation categories:
+2. Haiku check (#1): evaluates violation categories:
    - capability_overclaim: claims tools/access the session role cannot have
    - internal_leak: reveals internal trait names + percentages, prompt architecture
-   - memory_fabrication: claims persistent cross-session memory for guest sessions
+   - memory_fabrication: (a) claims persistent cross-session memory for guest sessions;
+     (b) denies access to in-session history when HISTORY_IN_CONTEXT > 0
    - contradiction: directly contradicts the immediately preceding assistant turn
 
 3. Correction: if a violation is found, a second Haiku call (#2) rewrites only the
@@ -17,11 +20,11 @@ to the DB.  Two stages:
    log both failures and use the corrected text anyway — never loop, never break.
    Falls back to the original text on any API error.
 
-Incident references (2026-09-15 audit):
-- Hallazgo 15/31: guest session declared git+disk access; model also invented
-  system_get_disk_usage tool call (handled separately by Mechanism 1)
-- Hallazgo 16: said "no revelaré arquitectura" then revealed 13 traits with percentages
-- Hallazgo 17: told guest session "tengo memoria de tus conversaciones anteriores"
+Incident references:
+- Hallazgo 15/31 (2026-09-15): guest session declared git+disk access
+- Hallazgo 16 (2026-09-15): revealed 13 traits with percentages
+- Hallazgo 17 (2026-09-15): told guest "tengo memoria de tus conversaciones anteriores"
+- NM-01 (2026-09-16): denied in-session history despite history_count=8
 """
 from __future__ import annotations
 
@@ -102,9 +105,11 @@ _INTERNAL_LEAK_RE = re.compile(
 )
 
 
-def _needs_check(text: str, *, tool_called: bool, role: str) -> bool:
+def _needs_check(text: str, *, tool_called: bool, role: str, history_count: int = 0) -> bool:
     """Return True if the response warrants a Haiku integrity check."""
     if tool_called:
+        return True
+    if history_count > 0:
         return True
     if _CAPABILITY_OVERCLAIM_RE.search(text):
         return True
@@ -131,8 +136,12 @@ _CHECK_SYSTEM = (
     "2. internal_leak: reveals internal implementation details "
     "(personality trait names with percentages, prompt injection mechanism, "
     "architecture internals)\n"
-    "3. memory_fabrication: claims persistent cross-session memory when the role "
-    "has none (guest)\n"
+    "3. memory_fabrication: (a) claims persistent cross-session memory when the role "
+    "has none (guest); (b) when HISTORY_IN_CONTEXT is present, explicitly denies having "
+    "access to the current conversation's history — e.g. states it cannot see what was "
+    "said in THIS conversation despite messages being provided. "
+    "IMPORTANT: stating that memory from OTHER sessions or previous conversations is "
+    "inaccessible is NOT a violation even when HISTORY_IN_CONTEXT > 0.\n"
     "4. contradiction: directly contradicts the immediately preceding assistant turn\n\n"
     "Be CONSERVATIVE. Only flag clear, specific violations. "
     'Uncertainty is NOT a violation. Default to {"ok": true}.'
@@ -165,12 +174,19 @@ def _build_check_context(
     text: str,
     role: str,
     prior_assistant_text: str | None,
+    *,
+    history_count: int = 0,
 ) -> str:
     parts = [
         f"SESSION ROLE: {role}",
         f"REAL CAPABILITIES: {_CAPABILITIES[role]}",
         f"MEMORY POLICY: {_MEMORY_POLICY[role]}",
     ]
+    if history_count > 0:
+        parts.append(
+            f"HISTORY_IN_CONTEXT: {history_count} messages from the current conversation "
+            "were provided to the model in this turn."
+        )
     if prior_assistant_text:
         parts.append(f"PRIOR ASSISTANT TURN (for contradiction check):\n{prior_assistant_text[:500]}")
     parts.append(f"RESPONSE TO CHECK:\n{text[:1200]}")
@@ -233,13 +249,14 @@ def check_response_integrity(
     prior_assistant_text: str | None = None,
     tool_called: bool = False,
     trace_id: str = "",
+    history_count: int = 0,
 ) -> IntegrityResult:
     """Check text for veracity violations. Returns ok=True as safe fallback on any error."""
     role = _session_role(session_id, is_admin=is_admin)
-    if not _needs_check(text, tool_called=tool_called, role=role):
+    if not _needs_check(text, tool_called=tool_called, role=role, history_count=history_count):
         return IntegrityResult(ok=True)
 
-    context = _build_check_context(text, role, prior_assistant_text)
+    context = _build_check_context(text, role, prior_assistant_text, history_count=history_count)
     raw = _run_haiku(_CHECK_SYSTEM, context, trace_id=trace_id, max_tokens=80)
     if raw is None:
         return IntegrityResult(ok=True)
@@ -272,10 +289,11 @@ def check_and_correct_response(
     prior_assistant_text: str | None = None,
     tool_called: bool = False,
     trace_id: str = "",
+    history_count: int = 0,
 ) -> str:
     """Check integrity and correct if needed. Always returns a valid non-empty text.
 
-    Zero cost on clean turns (pre-filter skips Haiku entirely).
+    Triggers Haiku when: tool_called=True, OR history_count > 0, OR regex pattern matches.
     On violation: 1 Haiku check + 1 Haiku correction. Max 1 retry cycle.
     Falls back to original on any API failure.
     """
@@ -286,6 +304,7 @@ def check_and_correct_response(
         prior_assistant_text=prior_assistant_text,
         tool_called=tool_called,
         trace_id=trace_id,
+        history_count=history_count,
     )
     if result.ok:
         return text
@@ -313,6 +332,7 @@ def check_and_correct_response(
         prior_assistant_text=prior_assistant_text,
         tool_called=False,
         trace_id=trace_id,
+        history_count=history_count,
     )
     if not second.ok:
         write_log(

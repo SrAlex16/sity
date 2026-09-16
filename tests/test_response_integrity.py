@@ -27,6 +27,7 @@ import pytest
 
 from app.chat.response_integrity import (
     IntegrityResult,
+    _build_check_context,
     _needs_check,
     _parse_check_response,
     _session_role,
@@ -353,3 +354,119 @@ def test_full_pipeline_returns_corrected_text(mock_gen) -> None:
         tool_called=False,
     )
     assert result == "No tengo memoria entre sesiones como invitado."
+
+
+# ---------------------------------------------------------------------------
+# NM-01 (2026-09-16) — history_count trigger + in-session history denial
+# ---------------------------------------------------------------------------
+
+# _needs_check — unit tests, no Haiku, no mock needed
+
+def test_needs_check_history_present_triggers() -> None:
+    """history_count > 0 must trigger the check regardless of text content."""
+    assert _needs_check("Aquí tienes la respuesta.", tool_called=False, role="user", history_count=8)
+
+
+def test_needs_check_history_present_guest_triggers() -> None:
+    assert _needs_check("Todo bien.", tool_called=False, role="guest", history_count=3)
+
+
+def test_needs_check_no_history_clean_text_no_trigger() -> None:
+    """history_count=0 with no other trigger patterns must NOT call Haiku."""
+    assert not _needs_check(
+        "Claro, aquí tienes la información.", tool_called=False, role="user", history_count=0
+    )
+
+
+def test_needs_check_history_zero_default_unchanged() -> None:
+    """Existing callers omitting history_count get history_count=0 → no new trigger."""
+    assert not _needs_check("Respuesta normal.", tool_called=False, role="user")
+
+
+# _build_check_context — history_count appears in context
+
+def test_build_context_includes_history_when_present() -> None:
+    ctx = _build_check_context("texto", "user", None, history_count=8)
+    assert "HISTORY_IN_CONTEXT" in ctx
+    assert "8" in ctx
+
+
+def test_build_context_omits_history_when_zero() -> None:
+    ctx = _build_check_context("texto", "user", None, history_count=0)
+    assert "HISTORY_IN_CONTEXT" not in ctx
+
+
+# check_response_integrity — Haiku interaction with history_count
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_history_denial_flagged_as_memory_fabrication(mock_gen) -> None:
+    """history_count=8 + response denies in-session history → memory_fabrication."""
+    mock_gen.return_value = _mock_haiku_violation(
+        "memory_fabrication", "denies access to in-session history"
+    )
+    result = check_response_integrity(
+        "No tengo acceso al historial de nuestra conversación.",
+        "user:1",
+        tool_called=False,
+        history_count=8,
+    )
+    assert result.ok is False
+    assert result.category == "memory_fabrication"
+    mock_gen.assert_called_once()
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_no_history_no_haiku_call(mock_gen) -> None:
+    """history_count=0 with no other trigger → Haiku NOT called even if text looks suspicious."""
+    check_response_integrity(
+        "No recuerdo conversaciones anteriores.",
+        "guest:abc",
+        tool_called=False,
+        history_count=0,
+    )
+    mock_gen.assert_not_called()
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_history_present_clean_response_haiku_ok(mock_gen) -> None:
+    """history_count=8, normal response → Haiku triggered, returns ok=True, no correction."""
+    mock_gen.return_value = _mock_haiku_ok()
+    result = check_response_integrity(
+        "Claro, aquí tienes lo que pediste.",
+        "user:1",
+        tool_called=False,
+        history_count=8,
+    )
+    assert result.ok is True
+    mock_gen.assert_called_once()
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_cross_session_claim_not_flagged(mock_gen) -> None:
+    """Cross-session memory denial with history_count=8 must NOT be flagged (legitimate)."""
+    mock_gen.return_value = _mock_haiku_ok()
+    result = check_response_integrity(
+        "No recuerdo lo que hablamos la semana pasada en nuestra última sesión.",
+        "user:1",
+        tool_called=False,
+        history_count=8,
+    )
+    assert result.ok is True
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_history_count_passed_to_second_check(mock_gen) -> None:
+    """check_and_correct_response passes history_count to the correction-verification check."""
+    mock_gen.side_effect = [
+        _mock_haiku_violation("memory_fabrication", "denies history"),
+        _mock_haiku_corrected("Aquí tienes lo que dijiste antes."),
+        _mock_haiku_ok(),
+    ]
+    result = check_and_correct_response(
+        "No tengo acceso al historial.",
+        "user:1",
+        tool_called=False,
+        history_count=8,
+    )
+    assert result == "Aquí tienes lo que dijiste antes."
+    assert mock_gen.call_count == 3

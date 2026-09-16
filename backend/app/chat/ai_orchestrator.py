@@ -161,7 +161,7 @@ class ChatAIOrchestrator:
             self._run_after_tools_loop(response, tool_results_for_claude, persona_decision, executor)
 
         # Post-generation integrity check: verify response text for capability overclaims,
-        # internal leaks, and memory fabrication before persisting. Zero cost on clean turns.
+        # internal leaks, memory fabrication, and in-session history denial.
         if response.text and not is_cancelled(request.client_turn_id):
             from app.chat.response_integrity import check_and_correct_response
             from sqlmodel import col as _col
@@ -179,6 +179,7 @@ class ChatAIOrchestrator:
                 prior_assistant_text=_prior_msg.text if _prior_msg else None,
                 tool_called=_tool_called,
                 trace_id=ctx.trace_id,
+                history_count=len(prep.prompt_context.recent_history),
             )
 
         ctx.persistence.tag_sity_with_model(response.model)
