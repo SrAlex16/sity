@@ -34,7 +34,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlmodel import Session, select
 
 from app.api.schemas_auth import (
@@ -47,6 +47,7 @@ from app.api.schemas_auth import (
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.auth.email_stub import send_password_reset_email
 from app.auth.hashing import hash_password, verify_password
+from app.auth.ip_rate_limiter import get_auth_rate_limiter, get_real_client_ip
 from app.auth.jwt_utils import create_token
 from app.auth.recaptcha import verify_recaptcha_token
 from app.memory.db import get_session
@@ -136,9 +137,19 @@ def _check_password_strength(password: str) -> Optional[str]:
 def register(
     body: RegisterRequest,
     response: Response,
+    request: Request,
     session: Session = Depends(get_session),
 ):
     trace_id = new_trace_id()
+
+    ip = get_real_client_ip(request)
+    allowed, retry_after = get_auth_rate_limiter().check_register_ip(ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     if not _validate_email(body.email):
         raise HTTPException(status_code=422, detail="Formato de email inválido")
@@ -178,19 +189,43 @@ def register(
 def login(
     body: LoginRequest,
     response: Response,
+    request: Request,
     session: Session = Depends(get_session),
 ):
     trace_id = new_trace_id()
+
+    ip = get_real_client_ip(request)
+    limiter = get_auth_rate_limiter()
+
+    allowed, retry_after = limiter.check_login_ip(ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    email_norm = body.email.strip().lower()
+    allowed, retry_after = limiter.check_login_email(email_norm)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos fallidos. Inténtalo más tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     if not verify_recaptcha_token(body.recaptcha_token):
         raise HTTPException(status_code=403, detail="Verificación de seguridad fallida")
 
     user = session.exec(select(User).where(User.email == body.email)).first()
     if not user or not verify_password(body.password, user.password_hash):
+        limiter.record_login_failure(email_norm)
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Cuenta desactivada")
+
+    limiter.reset_login_email(email_norm)
 
     _prev_login = user.last_login_at
     user.last_login_at = _naive_utc_now()
@@ -247,9 +282,20 @@ def me(current: CurrentUser = Depends(get_current_user)) -> MeResponse:
 @router.post("/forgot-password")
 def forgot_password(
     body: ForgotPasswordRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ):
     trace_id = new_trace_id()
+
+    ip = get_real_client_ip(request)
+    allowed, retry_after = get_auth_rate_limiter().check_forgot_ip(ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
 
     user = session.exec(select(User).where(User.email == body.email)).first()
     if user and user.is_active:
@@ -277,9 +323,20 @@ def forgot_password(
 @router.post("/reset-password")
 def reset_password(
     body: ResetPasswordRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ):
     trace_id = new_trace_id()
+
+    ip = get_real_client_ip(request)
+    allowed, retry_after = get_auth_rate_limiter().check_reset_ip(ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
 
     reset_token = session.exec(
         select(PasswordResetToken).where(PasswordResetToken.token == body.token)

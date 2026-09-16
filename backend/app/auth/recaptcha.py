@@ -1,8 +1,14 @@
 """reCAPTCHA v3 verification helper.
 
-If RECAPTCHA_SECRET_KEY is not set (development / CI without keys), the
-function always returns True and logs a WARN so it's obvious in logs that
-no real protection is active.
+Behaviour when RECAPTCHA_SECRET_KEY is not set:
+  - Production (SITY_RECAPTCHA_BYPASS not set or "0"): fail-closed — returns False
+    so auth endpoints reject the request.  A misconfiguration never silently removes
+    brute-force protection.
+  - Development / CI (SITY_RECAPTCHA_BYPASS=1): returns True and logs INFO.
+    Set this in .env.local or the test environment only — never in production.
+
+The secret key is read from os.environ at every call (not at import) so that
+hot-reloading, environment patching, and test monkeypatching work without restart.
 """
 from __future__ import annotations
 
@@ -12,7 +18,6 @@ import httpx
 
 from app.trace.logger import write_log
 
-_SECRET_KEY: str = os.environ.get("RECAPTCHA_SECRET_KEY", "")
 _SCORE_THRESHOLD: float = float(os.environ.get("RECAPTCHA_SCORE_THRESHOLD", "0.5"))
 _VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify"
 
@@ -20,23 +25,33 @@ _VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify"
 def verify_recaptcha_token(token: str) -> bool:
     """Verify a reCAPTCHA v3 token against Google's API.
 
-    Returns True when the token is valid and its score >= RECAPTCHA_SCORE_THRESHOLD.
-    Returns True unconditionally (bypass) when RECAPTCHA_SECRET_KEY is not set.
-    Returns False on verification failure, low score, or network error.
+    Returns True  — token is valid and score >= threshold.
+    Returns True  — no key configured AND SITY_RECAPTCHA_BYPASS=1 (dev/CI bypass).
+    Returns False — no key configured and bypass not active (fail-closed).
+    Returns False — verification failure, low score, or network error.
     """
-    if not _SECRET_KEY:
+    secret_key: str = os.environ.get("RECAPTCHA_SECRET_KEY", "")
+    if not secret_key:
+        if os.environ.get("SITY_RECAPTCHA_BYPASS", "0") == "1":
+            write_log(
+                level="INFO",
+                module="auth",
+                event="recaptcha_bypass_active",
+                payload={"hint": "SITY_RECAPTCHA_BYPASS=1 — skipping reCAPTCHA (dev/CI only)"},
+            )
+            return True
         write_log(
-            level="WARN",
+            level="ERROR",
             module="auth",
             event="recaptcha_not_configured",
-            payload={"hint": "RECAPTCHA_SECRET_KEY not set — allowing request (bypass mode)"},
+            payload={"hint": "RECAPTCHA_SECRET_KEY not set — rejecting request (set SITY_RECAPTCHA_BYPASS=1 for dev)"},
         )
-        return True
+        return False
 
     try:
         resp = httpx.post(
             _VERIFY_URL,
-            data={"secret": _SECRET_KEY, "response": token},
+            data={"secret": secret_key, "response": token},
             timeout=5.0,
         )
         body: dict = resp.json()

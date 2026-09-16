@@ -19,6 +19,10 @@ os.environ.setdefault("SITY_COOKIE_SECURE", "false")
 # causing auth endpoints to reject requests with real-key verification.
 # setdefault wins because load_dotenv() does not override existing env vars.
 os.environ.setdefault("RECAPTCHA_SECRET_KEY", "")
+# With RECAPTCHA_SECRET_KEY="" (above), the new fail-closed behaviour would reject all
+# auth requests in tests.  SITY_RECAPTCHA_BYPASS=1 activates dev bypass so the suite
+# passes without a real secret key.  Never set this in production.
+os.environ.setdefault("SITY_RECAPTCHA_BYPASS", "1")
 # Block ANTHROPIC_API_KEY from leaking via load_dotenv() into the test process.
 # app/main.py and app/cortex/claude_provider.py both call load_dotenv() at module
 # import time, which would set the real production key from .env — making
@@ -87,6 +91,24 @@ def clear_refusal_tracker_state() -> None:
     _tracker._last_refusal_by_session.clear()
     yield
     _tracker._last_refusal_by_session.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_rate_limiter(monkeypatch) -> None:
+    """Replace the auth rate limiter singleton with a fresh high-limit instance per test.
+
+    The process-wide singleton accumulates IP/email counts across tests (all TestClient
+    requests share the same fake IP "testclient"). Without this fixture, register/login
+    tests hit the production limits after ~10 calls and start returning 429.
+    Rate-limit-specific tests override this fixture by calling monkeypatch.setattr again
+    with a low-limit limiter — the last patch wins for that test.
+    """
+    from app.auth.ip_rate_limiter import AuthRateLimiter
+    _high = AuthRateLimiter(
+        login_ip_limit=10_000, login_email_limit=10_000,
+        register_ip_limit=10_000, forgot_ip_limit=10_000, reset_ip_limit=10_000,
+    )
+    monkeypatch.setattr("app.api.routes_auth.get_auth_rate_limiter", lambda: _high)
 
 
 @pytest.fixture(scope="session", autouse=True)

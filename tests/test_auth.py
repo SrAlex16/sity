@@ -521,23 +521,27 @@ def _mock_httpx_response(success: bool, score: float, error_codes: list | None =
     return _Resp()
 
 
-def test_recaptcha_bypass_when_no_key():
-    """Without RECAPTCHA_SECRET_KEY, verify_recaptcha_token always passes."""
-    import app.auth.recaptcha as rc
+def test_recaptcha_fail_closed_when_no_key_and_no_bypass(monkeypatch):
+    """Without key or bypass flag, verify_recaptcha_token is fail-closed → False."""
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "")
+    monkeypatch.delenv("SITY_RECAPTCHA_BYPASS", raising=False)
+    from app.auth import recaptcha as rc
+    assert rc.verify_recaptcha_token("any-token") is False
 
-    original = rc._SECRET_KEY
-    rc._SECRET_KEY = ""
-    try:
-        assert rc.verify_recaptcha_token("any-token") is True
-    finally:
-        rc._SECRET_KEY = original
+
+def test_recaptcha_dev_bypass_when_bypass_var_set(monkeypatch):
+    """With SITY_RECAPTCHA_BYPASS=1 and no key, returns True (dev bypass)."""
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "")
+    monkeypatch.setenv("SITY_RECAPTCHA_BYPASS", "1")
+    from app.auth import recaptcha as rc
+    assert rc.verify_recaptcha_token("any-token") is True
 
 
 def test_recaptcha_valid_token(monkeypatch):
     """Score 0.8 with success=True → True."""
     import app.auth.recaptcha as rc
 
-    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "fake-secret")
     monkeypatch.setattr(
         "app.auth.recaptcha.httpx.post",
         lambda *a, **kw: _mock_httpx_response(success=True, score=0.8),
@@ -549,7 +553,7 @@ def test_recaptcha_success_false(monkeypatch):
     """success=False from Google → False."""
     import app.auth.recaptcha as rc
 
-    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "fake-secret")
     monkeypatch.setattr(
         "app.auth.recaptcha.httpx.post",
         lambda *a, **kw: _mock_httpx_response(success=False, score=0.0, error_codes=["invalid-input-response"]),
@@ -561,7 +565,7 @@ def test_recaptcha_low_score(monkeypatch):
     """Score below threshold (0.3 < 0.5) → False even when success=True."""
     import app.auth.recaptcha as rc
 
-    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "fake-secret")
     monkeypatch.setattr(rc, "_SCORE_THRESHOLD", 0.5)
     monkeypatch.setattr(
         "app.auth.recaptcha.httpx.post",
@@ -574,7 +578,7 @@ def test_recaptcha_network_error(monkeypatch):
     """Network exception → False (fail-closed)."""
     import app.auth.recaptcha as rc
 
-    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "fake-secret")
 
     def _raise(*a, **kw):
         raise ConnectionError("timeout")
@@ -585,9 +589,7 @@ def test_recaptcha_network_error(monkeypatch):
 
 def test_register_blocked_by_recaptcha(monkeypatch):
     """With a key configured, a bad reCAPTCHA token blocks /auth/register."""
-    import app.auth.recaptcha as rc
-
-    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "fake-secret")
     monkeypatch.setattr(
         "app.auth.recaptcha.httpx.post",
         lambda *a, **kw: _mock_httpx_response(success=False, score=0.0),
@@ -603,13 +605,11 @@ def test_register_blocked_by_recaptcha(monkeypatch):
 
 def test_login_blocked_by_recaptcha(monkeypatch):
     """With a key configured, a bad reCAPTCHA token blocks /auth/login."""
-    import app.auth.recaptcha as rc
-
     email = _email("rc_login")
     with _client() as c:
         _register(c, email)
 
-    monkeypatch.setattr(rc, "_SECRET_KEY", "fake-secret")
+    monkeypatch.setenv("RECAPTCHA_SECRET_KEY", "fake-secret")
     monkeypatch.setattr(
         "app.auth.recaptcha.httpx.post",
         lambda *a, **kw: _mock_httpx_response(success=False, score=0.0),
@@ -621,3 +621,119 @@ def test_login_blocked_by_recaptcha(monkeypatch):
         )
     assert resp.status_code == 403
     assert "seguridad" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Auth rate limiting
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fresh_auth_limiter(monkeypatch):
+    """Fresh AuthRateLimiter with low limits to trigger blocking in tests."""
+    from app.auth.ip_rate_limiter import AuthRateLimiter
+    limiter = AuthRateLimiter(
+        login_ip_limit=3, login_email_limit=3,
+        register_ip_limit=3, forgot_ip_limit=3, reset_ip_limit=3,
+    )
+    monkeypatch.setattr("app.api.routes_auth.get_auth_rate_limiter", lambda: limiter)
+    return limiter
+
+
+def test_login_blocked_after_ip_limit(fresh_auth_limiter):
+    """After N login attempts from same IP, further attempts get 429 with Retry-After."""
+    email = _email("rl_ip_login")
+    with _client() as c:
+        for _ in range(3):
+            c.post("/auth/login", json={"email": email, "password": "WrongPass1"})
+        resp = c.post("/auth/login", json={"email": email, "password": "WrongPass1"})
+    assert resp.status_code == 429
+    assert "Retry-After" in resp.headers
+    assert int(resp.headers["Retry-After"]) > 0
+
+
+def test_login_blocked_after_email_failures(monkeypatch):
+    """After N failed logins for the same email, further attempts get 429."""
+    from app.auth.ip_rate_limiter import AuthRateLimiter
+    # High IP limit so only the email counter triggers
+    limiter = AuthRateLimiter(login_ip_limit=99, login_email_limit=3)
+    monkeypatch.setattr("app.api.routes_auth.get_auth_rate_limiter", lambda: limiter)
+
+    email = _email("rl_email_fail")
+    with _client() as c:
+        _register(c, email)
+    with _client() as c:
+        for _ in range(3):
+            c.post("/auth/login", json={"email": email, "password": "WrongPass1"})
+        resp = c.post("/auth/login", json={"email": email, "password": "WrongPass1"})
+    assert resp.status_code == 429
+    assert "Retry-After" in resp.headers
+
+
+def test_login_email_counter_reset_on_success(monkeypatch):
+    """N-1 failures + successful login resets email counter; N more failures allowed."""
+    from app.auth.ip_rate_limiter import AuthRateLimiter
+    limiter = AuthRateLimiter(login_ip_limit=99, login_email_limit=3)
+    monkeypatch.setattr("app.api.routes_auth.get_auth_rate_limiter", lambda: limiter)
+
+    email = _email("rl_reset")
+    with _client() as c:
+        _register(c, email)
+    with _client() as c:
+        for _ in range(2):
+            c.post("/auth/login", json={"email": email, "password": "WrongPass1"})
+        # Successful login resets the email counter
+        assert c.post("/auth/login", json={"email": email, "password": "Str0ngPass1"}).status_code == 200
+        # 3 more failures are now allowed (counter was reset)
+        for _ in range(3):
+            assert c.post("/auth/login", json={"email": email, "password": "WrongPass1"}).status_code == 401
+        # 4th failure triggers the block
+        resp = c.post("/auth/login", json={"email": email, "password": "WrongPass1"})
+    assert resp.status_code == 429
+
+
+def test_login_ip_and_email_limits_are_independent(monkeypatch):
+    """Email counter is per-email; exhausting one email does not block another."""
+    from app.auth.ip_rate_limiter import AuthRateLimiter
+    limiter = AuthRateLimiter(login_ip_limit=99, login_email_limit=2)
+    monkeypatch.setattr("app.api.routes_auth.get_auth_rate_limiter", lambda: limiter)
+
+    email_a = _email("rl_indep_a")
+    email_b = _email("rl_indep_b")
+    with _client() as c:
+        _register(c, email_a)
+        _register(c, email_b)
+    with _client() as c:
+        for _ in range(2):
+            c.post("/auth/login", json={"email": email_a, "password": "WrongPass1"})
+        assert c.post("/auth/login", json={"email": email_a, "password": "WrongPass1"}).status_code == 429
+        # email_b is unaffected
+        assert c.post("/auth/login", json={"email": email_b, "password": "WrongPass1"}).status_code == 401
+
+
+def test_register_blocked_after_ip_limit(fresh_auth_limiter):
+    """After N register attempts from same IP, get 429 with Retry-After."""
+    with _client() as c:
+        for _ in range(3):
+            c.post("/auth/register", json={"email": _email("rl_reg"), "password": "Str0ngPass1"})
+        resp = c.post("/auth/register", json={"email": _email("rl_reg_4"), "password": "Str0ngPass1"})
+    assert resp.status_code == 429
+    assert "Retry-After" in resp.headers
+
+
+def test_forgot_password_blocked_after_ip_limit(fresh_auth_limiter):
+    """After N forgot-password requests from same IP, get 429."""
+    with _client() as c:
+        for _ in range(3):
+            c.post("/auth/forgot-password", json={"email": "any@example.com"})
+        resp = c.post("/auth/forgot-password", json={"email": "any@example.com"})
+    assert resp.status_code == 429
+
+
+def test_reset_password_blocked_after_ip_limit(fresh_auth_limiter):
+    """After N reset-password attempts from same IP, get 429."""
+    with _client() as c:
+        for _ in range(3):
+            c.post("/auth/reset-password", json={"token": "bad-token", "new_password": "Str0ngPass1"})
+        resp = c.post("/auth/reset-password", json={"token": "bad-token", "new_password": "Str0ngPass1"})
+    assert resp.status_code == 429
