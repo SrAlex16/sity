@@ -833,3 +833,17 @@ class TestDispatchAuthorizationGate:
                 trace_id="trc_test",
             )
         assert result.ok is False
+
+    def test_admin_tool_denied_user_sees_generic_message(self):
+        """raw_result['text'] must never expose the internal tool name to the user."""
+        executor = self._exec(is_admin=False)
+        with patch("app.core.tool_executor.write_log"):
+            result = executor._dispatch_tool_call(
+                tool_name="git_read_status",
+                tool_input={},
+                trace_id="trc_test",
+            )
+        assert result.ok is False
+        user_text = result.raw_result.get("text", "")
+        assert "git_read_status" not in user_text
+        assert user_text == "No puedo completar esa acción."

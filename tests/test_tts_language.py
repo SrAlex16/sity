@@ -96,7 +96,7 @@ def _run_attach(language_override: str, tts_engine: str = "elevenlabs"):
                         with patch("app.audio.tts_service.write_log") as mock_log:
                             _attach_tts_artifacts(
                                 result=result_carrier,
-                                text="Texto.",
+                                text="Texto largo.",
                                 voice_settings=voice_settings,
                                 trace_id="test-trace",
                                 session=session,

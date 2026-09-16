@@ -1,130 +1,139 @@
-"""Tests for normalize_registro_es_es and its integration in build_final_ai_response.
+"""Tests for Haiku-based voseo normalizer and its integration in build_final_ai_response.
 
 Covers:
-  - Each known voseo form → correct tuteo replacement
-  - False-positive safety (estás, más, etc. untouched)
-  - es-419 and other languages never normalized
-  - Integration: normalization happens in build_final_ai_response for es-ES
-  - Logging: voseo_normalized event emitted when correction occurs
+  - Pre-filter: text with no voseo markers → Haiku not called (zero cost)
+  - Pre-filter: text over _MAX_VOSEO_NORM_CHARS → Haiku not called
+  - Haiku corrects known voseo form ("querés" → "quieres")
+  - Haiku corrects a form the old 17-verb list would have missed ("comés")
+  - Haiku returns original when text has no actual voseo (pre-filter false positive)
+  - API failure → original text returned (fallback, never blocks the turn)
+  - Integration: builder applies normalization for es-ES
+  - Integration: es-419 and other languages never normalized
+  - Logging: voseo_normalized event emitted exactly when correction occurs
 """
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.chat.final_response_builder import normalize_registro_es_es
+from app.chat.final_response_builder import _normalize_voseo_haiku, _VOSEO_DETECT_RE
 
 
 # ---------------------------------------------------------------------------
-# normalize_registro_es_es — known voseo forms
+# Pre-filter (_VOSEO_DETECT_RE)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("voseo,tuteo", [
-    ("vos",      "tú"),
-    ("querés",   "quieres"),
-    ("tenés",    "tienes"),
-    ("podés",    "puedes"),
-    ("hacés",    "haces"),
-    ("sos",      "eres"),
-    ("sabés",    "sabes"),
-    ("venís",    "vienes"),
-    ("decís",    "dices"),
-    ("conocés",  "conoces"),
-    ("entendés", "entiendes"),
-    # Regression Hallazgo 20 — forms confirmed missing after data reset
-    ("acabás",   "acabas"),
-    ("llegás",   "llegas"),
-    ("mandás",   "mandas"),
-    ("salís",    "sales"),
-    ("hablás",   "hablas"),
-    ("pensás",   "piensas"),
-])
-def test_known_voseo_form_replaced(voseo: str, tuteo: str):
-    text = f"Claro que {voseo} lo sabes."
-    result, changed = normalize_registro_es_es(text)
-    assert tuteo in result, f"Expected {tuteo!r} in {result!r}"
-    assert voseo not in result, f"Voseo form {voseo!r} must not remain in {result!r}"
-    assert changed is True
+def test_prefilter_matches_vos_pronoun():
+    assert _VOSEO_DETECT_RE.search("¿Qué querés hacer vos?")
 
 
-def test_multiple_voseo_forms_in_one_text():
-    text = "Vos querés saber y tenés razón."
-    result, changed = normalize_registro_es_es(text)
-    assert "Tú" in result
-    assert "quieres" in result
-    assert "tienes" in result
-    assert "vos" not in result.lower().split()
-    assert changed is True
+def test_prefilter_matches_accented_verb():
+    assert _VOSEO_DETECT_RE.search("Si querés, podemos hablar.")
 
 
-def test_voseo_at_start_of_sentence_capitalized():
-    text = "Querés conocer las consecuencias sin que te controlen."
-    result, changed = normalize_registro_es_es(text)
-    assert result.startswith("Quieres"), f"Got: {result!r}"
-    assert changed is True
+def test_prefilter_matches_sos_copula():
+    assert _VOSEO_DETECT_RE.search("Sos muy inteligente.")
 
 
-def test_voseo_capitalized_mid_text():
-    """Capitalized form mid-sentence — should be replaced with capital tuteo."""
-    text = "Pero Vos podés elegir."
-    result, changed = normalize_registro_es_es(text)
-    assert "Tú" in result
-    assert changed is True
+def test_prefilter_no_match_clean_text():
+    assert not _VOSEO_DETECT_RE.search("Claro que puedes hacerlo si quieres.")
 
 
-def test_no_voseo_returns_unchanged():
-    text = "Claro que puedes hacerlo si quieres."
-    result, changed = normalize_registro_es_es(text)
+# ---------------------------------------------------------------------------
+# _normalize_voseo_haiku — pre-filter skips Haiku
+# ---------------------------------------------------------------------------
+
+def _mock_provider(corrected_text: str):
+    """Return a mock provider that responds with corrected_text."""
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = corrected_text
+    provider = MagicMock()
+    provider.generate.return_value = resp
+    return provider
+
+
+def test_no_voseo_no_haiku_call():
+    """Text without voseo markers must not call the provider."""
+    text = "Claro que puedes hacerlo cuando quieras."
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _normalize_voseo_haiku(text, trace_id="t")
+    mock_build.assert_not_called()
     assert result == text
-    assert changed is False
 
 
-def test_empty_string():
-    result, changed = normalize_registro_es_es("")
-    assert result == ""
-    assert changed is False
-
-
-# ---------------------------------------------------------------------------
-# False-positive safety — words that must NOT be touched
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("safe_word,context", [
-    ("estás",    "¿Cómo estás hoy?"),
-    ("más",      "Quiero saber más sobre esto."),
-    ("vas",      "¿Adónde vas esta tarde?"),
-    ("das",      "¿Me das un ejemplo?"),
-    ("SOS",      "Envió una señal SOS desde el barco."),
-    ("vosotros", "Vosotros tenéis razón."),
-    ("hacéis",   "Lo hacéis muy bien."),
-    ("estáis",   "¿Estáis listos?"),
-    ("queréis",  "¿Qué queréis comer?"),
-    ("ves",      "¿Lo ves desde ahí?"),
-    ("tomás",    "Tomás llegó tarde."),     # nombre propio que termina en -ás
-    ("demás",    "Los demás están aquí."),
-    ("después",  "Lo haré después."),
-])
-def test_false_positive_not_touched(safe_word: str, context: str):
-    result, changed = normalize_registro_es_es(context)
-    assert result == context, (
-        f"Text was unexpectedly modified.\n  Before: {context!r}\n  After:  {result!r}"
-    )
-    assert changed is False
-
-
-def test_vosotros_not_matched_as_vos():
-    """'vosotros' contains 'vos' but must NOT be changed."""
-    text = "Vosotros sois el futuro."
-    result, changed = normalize_registro_es_es(text)
-    assert "vosotros" in result.lower()
-    assert "tú" not in result.lower()
-    assert changed is False
+def test_long_text_skips_haiku():
+    """Text exceeding _MAX_VOSEO_NORM_CHARS must not call the provider even with voseo."""
+    from app.chat.final_response_builder import _MAX_VOSEO_NORM_CHARS
+    long_text = "Querés saber algo. " * (_MAX_VOSEO_NORM_CHARS // 18 + 5)
+    assert len(long_text) > _MAX_VOSEO_NORM_CHARS
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _normalize_voseo_haiku(long_text, trace_id="t")
+    mock_build.assert_not_called()
+    assert result == long_text
 
 
 # ---------------------------------------------------------------------------
-# Integration — build_final_ai_response applies normalization for es-ES only
+# _normalize_voseo_haiku — Haiku corrects voseo
+# ---------------------------------------------------------------------------
+
+def test_haiku_corrects_known_voseo_form():
+    """Haiku corrects a known voseo form (querés → quieres)."""
+    original = "¿Qué querés hacer hoy?"
+    corrected = "¿Qué quieres hacer hoy?"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+def test_haiku_corrects_verb_not_in_old_list():
+    """Haiku corrects voseo forms the old 17-verb hardcoded list would have missed.
+
+    'comés' (comer), 'bebés' (beber) were never in _VOSEO_SUBS.
+    """
+    original = "¿Comés mucho o poco?"
+    corrected = "¿Comes mucho o poco?"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+def test_haiku_returns_original_when_no_actual_voseo():
+    """Pre-filter false positive (e.g. 'más'): Haiku returns original → unchanged."""
+    text = "Quiero saber más sobre este tema."
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(text)):
+        result = _normalize_voseo_haiku(text, trace_id="t")
+    assert result == text
+
+
+def test_api_failure_returns_original():
+    """Provider failure must not block the turn — original text returned."""
+    original = "Querés saber algo importante."
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               side_effect=RuntimeError("connection refused")):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == original
+
+
+def test_provider_returns_empty_falls_back():
+    """Empty provider response → fallback to original."""
+    original = "¿Tenés tiempo esta tarde?"
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = ""
+    provider = MagicMock()
+    provider.generate.return_value = resp
+    with patch("app.cortex.providers.factory.build_ai_provider", return_value=provider):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == original
+
+
+# ---------------------------------------------------------------------------
+# Integration — build_final_ai_response calls normalizer for es-ES only
 # ---------------------------------------------------------------------------
 
 def _make_mock_response(text: str):
@@ -175,37 +184,36 @@ def _call_builder(text: str, language_override: str) -> str:
 
 
 def test_builder_normalizes_voseo_for_es_es():
-    result = _call_builder(
-        "Querés conocer las consecuencias sin que te controlen.",
-        language_override="es-ES",
-    )
-    assert "Quieres" in result
-    assert "Querés" not in result
+    corrected = "¿Qué quieres hacer hoy?"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _call_builder("¿Qué querés hacer hoy?", language_override="es-ES")
+    assert result == corrected
 
 
 def test_builder_does_not_normalize_for_es_419():
-    """es-419 (Rioplatense): voseo must be preserved."""
-    result = _call_builder(
-        "Querés conocer las consecuencias.",
-        language_override="es-419",
-    )
-    assert "Querés" in result
+    """es-419 (Rioplatense): voseo must be preserved — normalizer never called."""
+    original = "¿Qué querés hacer hoy?"
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _call_builder(original, language_override="es-419")
+    mock_build.assert_not_called()
+    assert result == original
 
 
 def test_builder_does_not_normalize_for_auto():
-    result = _call_builder(
-        "Querés ir al parque.",
-        language_override="auto",
-    )
-    assert "Querés" in result
+    original = "Querés ir al parque."
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _call_builder(original, language_override="auto")
+    mock_build.assert_not_called()
+    assert result == original
 
 
 def test_builder_does_not_normalize_for_en_us():
-    result = _call_builder(
-        "Do you want to go?",
-        language_override="en-US",
-    )
-    assert "Do you want to go?" in result
+    original = "Do you want to go?"
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _call_builder(original, language_override="en-US")
+    mock_build.assert_not_called()
+    assert result == original
 
 
 # ---------------------------------------------------------------------------
@@ -213,13 +221,16 @@ def test_builder_does_not_normalize_for_en_us():
 # ---------------------------------------------------------------------------
 
 def test_voseo_normalized_event_logged_when_changed():
+    corrected = "¿Qué quieres hacer?"
     logged_events: list[dict] = []
 
     def capture_log(**kwargs):
         logged_events.append(kwargs)
 
-    with patch("app.chat.final_response_builder.write_log", side_effect=capture_log):
-        _call_builder("Vos querés saber.", language_override="es-ES")
+    with patch("app.chat.final_response_builder.write_log", side_effect=capture_log), \
+         patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        _call_builder("¿Qué querés hacer?", language_override="es-ES")
 
     events = [e for e in logged_events if e.get("event") == "voseo_normalized"]
     assert len(events) == 1
@@ -228,13 +239,14 @@ def test_voseo_normalized_event_logged_when_changed():
 
 
 def test_voseo_normalized_event_not_logged_when_no_change():
+    text = "Puedes hacer lo que quieras."
     logged_events: list[dict] = []
 
     def capture_log(**kwargs):
         logged_events.append(kwargs)
 
     with patch("app.chat.final_response_builder.write_log", side_effect=capture_log):
-        _call_builder("Puedes hacer lo que quieras.", language_override="es-ES")
+        _call_builder(text, language_override="es-ES")
 
     events = [e for e in logged_events if e.get("event") == "voseo_normalized"]
     assert len(events) == 0

@@ -164,17 +164,18 @@ class ToolExecutor:
                 },
                 audit=True,
             )
-            msg = f"Herramienta no autorizada para esta sesión: {tool_name}"
+            internal_msg = f"Herramienta no autorizada: {tool_name}"
+            user_msg = "No puedo completar esa acción."
             return ToolExecutionResult(
                 tool_name=tool_name,
                 ok=False,
-                message=msg,
+                message=internal_msg,
                 updated_parameters=[],
                 raw_result={
                     "success": False,
-                    "message": msg,
+                    "message": internal_msg,
                     "local_final": True,
-                    "text": msg,
+                    "text": user_msg,
                     "local_model": "tool-policy",
                 },
             )

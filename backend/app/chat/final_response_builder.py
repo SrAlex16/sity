@@ -19,6 +19,7 @@ Does NOT handle:
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -38,57 +39,62 @@ from app.trace.logger import write_log
 _TURN_LOAD_RE = re.compile(r"<R:([+-]?\d+)>\s*\Z")
 
 # ---------------------------------------------------------------------------
-# Voseo normalizer — post-process es-ES responses
+# Voseo normalizer — post-process es-ES responses via Haiku
 # ---------------------------------------------------------------------------
-# Each entry: (lowercase_voseo_form, lowercase_tuteo, capitalized_tuteo)
-# Case-sensitive patterns so "SOS" (emergency acronym) is never touched.
-_VOSEO_SUBS: list[tuple[str, str, str]] = [
-    ("vos",      "tú",        "Tú"),
-    ("querés",   "quieres",   "Quieres"),
-    ("tenés",    "tienes",    "Tienes"),
-    ("podés",    "puedes",    "Puedes"),
-    ("hacés",    "haces",     "Haces"),
-    ("sos",      "eres",      "Eres"),
-    ("sabés",    "sabes",     "Sabes"),
-    ("venís",    "vienes",    "Vienes"),
-    ("decís",    "dices",     "Dices"),
-    ("conocés",  "conoces",   "Conoces"),
-    ("entendés", "entiendes", "Entiendes"),
-    ("acabás",   "acabas",    "Acabas"),
-    ("llegás",   "llegas",    "Llegas"),
-    ("mandás",   "mandas",    "Mandas"),
-    ("salís",    "sales",     "Sales"),
-    ("hablás",   "hablas",    "Hablas"),
-    ("pensás",   "piensas",   "Piensas"),
-]
 
-_VOSEO_RES: list[tuple[re.Pattern[str], str, re.Pattern[str], str]] = [
-    (
-        re.compile(r"\b" + re.escape(cap) + r"\b"),
-        uc_repl,
-        re.compile(r"\b" + re.escape(lc) + r"\b"),
-        lc_repl,
-    )
-    for lc, lc_repl, uc_repl in _VOSEO_SUBS
-    for cap in [lc[0].upper() + lc[1:]]
-]
+_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+_MAX_VOSEO_NORM_CHARS = 2000
+
+# Pre-filter: cheap check before calling Haiku. Matches the pronoun "vos",
+# the copula "sos", and accented-stem+s verb forms (querés, tenés, podés…).
+# False positives (estás, más) are acceptable — Haiku returns unchanged text.
+_VOSEO_DETECT_RE = re.compile(
+    r"\bvos\b"
+    r"|\bsos\b"
+    r"|\b\w+[áéíóú]s\b",
+    re.IGNORECASE,
+)
+
+_VOSEO_SYSTEM = (
+    "Eres un corrector de dialecto español. "
+    "Tu única tarea es detectar y corregir voseo rioplatense en el texto dado.\n\n"
+    "Registro objetivo: castellano de España con tuteo. "
+    "Usa: tú, te, contigo, quieres, puedes, tienes, haces. "
+    "Nunca: vos, querés, tenés, podés, hacés, sos (cópula), ni ninguna otra forma de voseo "
+    "(verbal, pronominal, imperativa, subjuntiva, etc.).\n\n"
+    "Reglas:\n"
+    "1. Si el texto contiene CUALQUIER forma de voseo, reescribe SOLO esas formas a tuteo. "
+    "No cambies nada más.\n"
+    "2. Si no hay voseo, devuelve el texto EXACTAMENTE igual, sin ningún cambio.\n"
+    "Responde SOLO con el texto resultante. Sin explicaciones. Sin prefijos."
+)
 
 
-def normalize_registro_es_es(text: str) -> tuple[str, bool]:
-    """Replace voseo rioplatense forms with tuteo equivalents.
-
-    Returns (normalized_text, was_changed). Only call when language_override
-    is "es-ES" — never for es-419 (where voseo is correct register).
-    Uses case-sensitive patterns to avoid false positives (e.g. "SOS" untouched).
-    """
-    changed = False
-    for cap_re, cap_repl, lc_re, lc_repl in _VOSEO_RES:
-        new = cap_re.sub(cap_repl, text)
-        new = lc_re.sub(lc_repl, new)
-        if new != text:
-            changed = True
-            text = new
-    return text, changed
+def _normalize_voseo_haiku(text: str, *, trace_id: str) -> str:
+    """Detect and correct voseo rioplatense via Haiku. Returns original on any failure."""
+    if not _VOSEO_DETECT_RE.search(text):
+        return text
+    if len(text) > _MAX_VOSEO_NORM_CHARS:
+        return text
+    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    try:
+        from app.cortex.providers.factory import build_ai_provider
+        from app.cortex.schemas import AIRequest
+        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
+        request = AIRequest(
+            trace_id=trace_id,
+            task_type="voseo_normalization",
+            system_prompt=_VOSEO_SYSTEM,
+            user_message=text,
+            max_tokens=1500,
+            tools_enabled=False,
+        )
+        response = provider.generate(request)
+        if response.ok and response.text and len(response.text.strip()) > 5:
+            return response.text.strip()
+        return text
+    except Exception:
+        return text
 
 
 def strip_turn_load_tag(text: str) -> tuple[str, str | None]:
@@ -237,12 +243,12 @@ def build_final_ai_response(
             payload={"session_id": session_id},
         )
 
-    # 4.6. Normalize voseo → tuteo for es-ES responses.
-    # Deterministic post-processing: catches drift that bypassed the prompt rule.
+    # 4.6. Normalize voseo → tuteo for es-ES responses via Haiku.
+    # Pre-filter avoids Haiku call on clean responses. Fallback: original on API failure.
     # Never applied to es-419 (correct register there) or other languages.
     if language_override == "es-ES" and response.text:
-        response.text, _voseo_changed = normalize_registro_es_es(response.text)
-        if _voseo_changed:
+        _corrected = _normalize_voseo_haiku(response.text, trace_id=trace_id)
+        if _corrected != response.text:
             write_log(
                 level="INFO",
                 module="persona",
@@ -250,6 +256,7 @@ def build_final_ai_response(
                 trace_id=trace_id,
                 payload={"session_id": session_id, "language_override": language_override},
             )
+            response.text = _corrected
 
     # 5. Persist assistant message
     # Cancelled turns still need a Sity row so the history never has two

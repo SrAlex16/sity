@@ -14,6 +14,8 @@ from sqlmodel import Session
 
 from app.trace.logger import write_log
 
+MIN_TTS_CHARS = 8
+
 
 def _resolve_elevenlabs_voice_id(voice_ids: dict, language_override: str) -> str | None:
     """Return the ElevenLabs voice_id for this language, or None if not available.
@@ -82,6 +84,10 @@ def _attach_tts_artifacts(
 
     try:
         tts_text = _clean_text_for_tts(text)
+        if len(tts_text) < MIN_TTS_CHARS:
+            write_log(level="INFO", module="audio", event="tts_skipped_short_text",
+                      trace_id=trace_id, payload={"chars": len(tts_text)})
+            return None
         if len(tts_text) <= cfg.long_response_chars:
             fragments = [tts_text]
         elif voice_settings.voice_long_response_action == "split":

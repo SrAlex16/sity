@@ -328,7 +328,7 @@ def test_attach_tts_returns_fragment_count() -> None:
               return_value=("/tmp/tts_test.wav", None)),
     ):
         tts_result = _attach_tts_artifacts(
-            result=result, text="hola", voice_settings=vs, trace_id="t"
+            result=result, text="Hola mundo.", voice_settings=vs, trace_id="t"
         )
 
     assert tts_result is not None
@@ -353,7 +353,7 @@ def test_attach_tts_returns_none_on_exception() -> None:
         patch("app.audio.synthesizer.load_tts_config", return_value=fake_cfg),
         patch("app.audio.tts_dispatcher.synthesize_fragment", side_effect=RuntimeError("boom")),
     ):
-        n = _attach_tts_artifacts(result=result, text="hola", voice_settings=vs, trace_id="t")
+        n = _attach_tts_artifacts(result=result, text="Hola mundo.", voice_settings=vs, trace_id="t")
 
     assert n is None
 

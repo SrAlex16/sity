@@ -376,3 +376,90 @@ def test_clean_tts_leaves_plain_text_unchanged():
 def test_clean_tts_combined_markers():
     text = "**negrita** y *cursiva* y `código`"
     assert _clean_text_for_tts(text) == "negrita y cursiva y código"
+
+
+# ---------------------------------------------------------------------------
+# MIN_TTS_CHARS — short-text skip (NC-01/NM-02 regression)
+# ---------------------------------------------------------------------------
+
+from app.audio.tts_service import MIN_TTS_CHARS, _attach_tts_artifacts
+
+
+class _FakeResult:
+    def __init__(self):
+        self.artifacts = []
+
+
+def _fake_voice_settings():
+    s = MagicMock()
+    s.voice_long_response_action = "text_only"
+    s.tts_engine = "piper"
+    return s
+
+
+def test_min_tts_chars_is_8():
+    assert MIN_TTS_CHARS == 8
+
+
+def test_short_text_below_min_returns_none():
+    """Text shorter than MIN_TTS_CHARS must not call Piper and must return None."""
+    result = _FakeResult()
+    with patch("app.audio.tts_service.write_log") as mock_log, \
+         patch("app.audio.tts_service._clean_text_for_tts", return_value="Paso."), \
+         patch("app.audio.tts_dispatcher.synthesize_fragment") as mock_synth:
+        ret = _attach_tts_artifacts(
+            result=result,
+            text="Paso.",
+            voice_settings=_fake_voice_settings(),
+            trace_id="trc_test",
+            session=MagicMock(),
+            session_id="guest:test",
+        )
+    assert ret is None
+    assert result.artifacts == []
+    mock_synth.assert_not_called()
+    skipped = [c for c in mock_log.call_args_list
+               if c.kwargs.get("event") == "tts_skipped_short_text"]
+    assert len(skipped) == 1
+
+
+def test_text_at_min_threshold_proceeds_to_synthesis():
+    """Text of exactly MIN_TTS_CHARS characters must attempt synthesis."""
+    threshold_text = "a" * MIN_TTS_CHARS  # exactly 8 chars
+    result = _FakeResult()
+    with patch("app.audio.tts_service.write_log"), \
+         patch("app.audio.synthesizer.load_tts_config") as mock_cfg, \
+         patch("app.audio.tts_dispatcher.synthesize_fragment",
+               return_value=("/audio/tts/tts_abc.wav", None)) as mock_synth:
+        mock_cfg.return_value = MagicMock(long_response_chars=500)
+        _attach_tts_artifacts(
+            result=result,
+            text=threshold_text,
+            voice_settings=_fake_voice_settings(),
+            trace_id="trc_test",
+            session=MagicMock(),
+            session_id="guest:test",
+        )
+    mock_synth.assert_called_once()
+
+
+def test_normal_length_text_produces_artifact():
+    """A normal-length response must still produce an audio artifact."""
+    normal_text = "Aquí tienes la información que pediste sobre el tema."
+    result = _FakeResult()
+    with patch("app.audio.tts_service.write_log"), \
+         patch("app.audio.synthesizer.load_tts_config") as mock_cfg, \
+         patch("app.audio.tts_dispatcher.synthesize_fragment",
+               return_value=("/audio/tts/tts_xyz.wav", None)):
+        mock_cfg.return_value = MagicMock(long_response_chars=500)
+        ret = _attach_tts_artifacts(
+            result=result,
+            text=normal_text,
+            voice_settings=_fake_voice_settings(),
+            trace_id="trc_test",
+            session=MagicMock(),
+            session_id="user:1",
+        )
+    assert ret is not None
+    assert len(result.artifacts) == 1
+    assert result.artifacts[0].url == "/audio/tts/tts_xyz.wav"
