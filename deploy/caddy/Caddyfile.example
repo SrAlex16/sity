@@ -11,6 +11,20 @@
 }
 
 sity.tudominio.com:443 {
+    # Cabeceras de seguridad HTTP (A10 — auditoría 2026-09-16)
+    # HSTS: fuerza HTTPS durante 1 año e incluye subdominios
+    # X-Content-Type-Options: evita MIME-sniffing de respuestas del backend
+    # X-Frame-Options: impide embeber la PWA en iframes de terceros (clickjacking)
+    # Referrer-Policy: solo envía el origen en cross-site, sin path ni query
+    # Permissions-Policy: bloquea acceso a cámara, micro y geolocalización desde la web
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
     # SSE endpoints — flush_interval -1 disables buffering for streaming responses
     handle /chat/stream/* {
         reverse_proxy localhost:8000 {
@@ -41,6 +55,14 @@ sity.tudominio.com:443 {
 }
 
 sity.tudominio.com:80 {
+    # Cabeceras de seguridad HTTP (sin HSTS — solo aplica en HTTPS)
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+
     handle /chat/stream/* {
         reverse_proxy localhost:8000 {
             flush_interval -1

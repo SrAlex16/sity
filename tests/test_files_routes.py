@@ -348,3 +348,68 @@ class TestExportFiles:
         cd = resp.headers.get("content-disposition", "")
 
         assert "sity-archivos.zip" in cd
+
+
+# ---------------------------------------------------------------------------
+# A6 — unlink() failure: WARN logged, DB row still deleted
+# ---------------------------------------------------------------------------
+
+class TestUnlinkFailureLogs:
+    """Regression for A6 (audit 2026-09-16): except:pass replaced by WARN log."""
+
+    def test_single_delete_unlink_failure_logs_warn(
+        self, upload_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DELETE /files/{id} — unlink() failure logs WARN and still removes DB row."""
+        from unittest.mock import patch
+
+        client = TestClient(app, raise_server_exceptions=True)
+        cookie, user_id = _register_and_login(client)
+        artifact_id, file_path = _insert_artifact(user_id, upload_dir)
+
+        logged_events: list[dict] = []
+
+        def _fake_write_log(**kwargs: object) -> None:
+            logged_events.append(dict(kwargs))
+
+        with patch("app.api.routes_files.write_log", side_effect=_fake_write_log):
+            with patch.object(type(file_path), "unlink", side_effect=OSError("disk full")):
+                resp = client.delete(
+                    f"/files/{artifact_id}", cookies={"sity_session": cookie}
+                )
+
+        assert resp.status_code == 200
+        warn_events = [e for e in logged_events if e.get("event") == "file_unlink_failed"]
+        assert warn_events, "Expected file_unlink_failed WARN log"
+        assert warn_events[0]["level"] == "WARN"
+        assert "disk full" in warn_events[0].get("payload", {}).get("error", "")
+
+        with Session(engine) as db:
+            assert db.get(FileArtifact, artifact_id) is None, "DB row must be deleted despite unlink failure"
+
+    def test_bulk_delete_unlink_failure_logs_warn(
+        self, upload_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DELETE /files — unlink() failure logs WARN and still removes all DB rows."""
+        from unittest.mock import patch
+
+        client = TestClient(app, raise_server_exceptions=True)
+        cookie, user_id = _register_and_login(client)
+        artifact_id, file_path = _insert_artifact(user_id, upload_dir)
+
+        logged_events: list[dict] = []
+
+        def _fake_write_log(**kwargs: object) -> None:
+            logged_events.append(dict(kwargs))
+
+        with patch("app.api.routes_files.write_log", side_effect=_fake_write_log):
+            with patch.object(type(file_path), "unlink", side_effect=OSError("disk full")):
+                resp = client.delete("/files", cookies={"sity_session": cookie})
+
+        assert resp.status_code == 200
+        warn_events = [e for e in logged_events if e.get("event") == "file_unlink_failed"]
+        assert warn_events, "Expected file_unlink_failed WARN log"
+        assert warn_events[0]["level"] == "WARN"
+
+        with Session(engine) as db:
+            assert db.get(FileArtifact, artifact_id) is None, "DB row must be deleted despite unlink failure"

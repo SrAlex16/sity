@@ -1,10 +1,11 @@
 """Tests for app.chat.model_router — proposal lifecycle and expiry."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
+from app.memory.models import utc_now
 from app.chat.model_router import (
     LocalFlowSignal,
     ModelUpgradeProposal,
@@ -55,8 +56,8 @@ def test_proposal_is_expired_after_expires_at():
         original_message=p.original_message,
         strong_model=p.strong_model,
         reason=p.reason,
-        created_at=datetime.utcnow() - timedelta(minutes=10),
-        expires_at=datetime.utcnow() - timedelta(minutes=5),
+        created_at=utc_now() - timedelta(minutes=10),
+        expires_at=utc_now() - timedelta(minutes=5),
     )
     assert p.is_expired()
 
@@ -66,8 +67,8 @@ def test_get_proposal_returns_none_after_expiry():
         original_message="msg",
         strong_model="claude-sonnet-4-6",
         reason="r",
-        created_at=datetime.utcnow() - timedelta(minutes=10),
-        expires_at=datetime.utcnow() - timedelta(minutes=1),
+        created_at=utc_now() - timedelta(minutes=10),
+        expires_at=utc_now() - timedelta(minutes=1),
     )
     set_proposal(expired)
     assert get_proposal() is None
@@ -147,11 +148,8 @@ def test_entry_not_expired_within_ttl():
 def test_entry_expires_after_ttl():
     _clear_accepted()
     record_accepted_upgrade("session_exp", "ajuste de personalidad", ttl_hours=2)
-    # Simulate time passing beyond TTL
-    from datetime import datetime, timedelta
-    future = datetime.utcnow() + timedelta(hours=3)
-    with patch("app.chat.model_router.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = future
+    future = utc_now() + timedelta(hours=3)
+    with patch("app.chat.model_router.utc_now", return_value=future):
         result = get_accepted_upgrade_category("session_exp")
     assert result is None
 
@@ -159,10 +157,8 @@ def test_entry_expires_after_ttl():
 def test_entry_still_valid_just_before_expiry():
     _clear_accepted()
     record_accepted_upgrade("session_before", "ajuste de personalidad", ttl_hours=4)
-    from datetime import datetime, timedelta
-    just_before = datetime.utcnow() + timedelta(hours=3, minutes=59)
-    with patch("app.chat.model_router.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = just_before
+    just_before = utc_now() + timedelta(hours=3, minutes=59)
+    with patch("app.chat.model_router.utc_now", return_value=just_before):
         result = get_accepted_upgrade_category("session_before")
     assert result == "personality"
 
@@ -170,10 +166,8 @@ def test_entry_still_valid_just_before_expiry():
 def test_expired_entry_removed_from_dict():
     _clear_accepted()
     record_accepted_upgrade("session_clean", "personalidad", ttl_hours=1)
-    from datetime import datetime, timedelta
-    future = datetime.utcnow() + timedelta(hours=2)
-    with patch("app.chat.model_router.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = future
+    future = utc_now() + timedelta(hours=2)
+    with patch("app.chat.model_router.utc_now", return_value=future):
         get_accepted_upgrade_category("session_clean")
     assert "session_clean" not in _session_accepted_upgrade_types
 
@@ -181,11 +175,9 @@ def test_expired_entry_removed_from_dict():
 def test_custom_ttl_2h_respected():
     _clear_accepted()
     record_accepted_upgrade("session_2h", "personalidad", ttl_hours=2)
-    from datetime import datetime, timedelta
     # Should be present at 1h59m
-    just_before = datetime.utcnow() + timedelta(hours=1, minutes=59)
-    with patch("app.chat.model_router.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = just_before
+    just_before = utc_now() + timedelta(hours=1, minutes=59)
+    with patch("app.chat.model_router.utc_now", return_value=just_before):
         assert get_accepted_upgrade_category("session_2h") == "personality"
 
 

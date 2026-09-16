@@ -70,8 +70,13 @@ def _to_item(fa: FileArtifact) -> FileItem:
     try:
         if path.exists():
             size_bytes = path.stat().st_size
-    except Exception:
-        pass
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="files",
+            event="file_stat_failed",
+            payload={"path": str(path), "error": str(exc)},
+        )
     created = fa.created_at
     if created is not None and created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
@@ -183,8 +188,13 @@ def delete_file(
     try:
         if path.exists() and path.is_file():
             path.unlink()
-    except Exception:
-        pass
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="files",
+            event="file_unlink_failed",
+            payload={"path": str(path), "error": str(exc), "file_id": file_id},
+        )
 
     db.delete(fa)
     db.commit()
@@ -215,8 +225,13 @@ def delete_all_files(
         try:
             if path.exists() and path.is_file():
                 path.unlink()
-        except Exception:
-            pass
+        except Exception as exc:
+            write_log(
+                level="WARN",
+                module="files",
+                event="file_unlink_failed",
+                payload={"path": str(path), "error": str(exc), "filename": fa.filename},
+            )
         db.delete(fa)
         deleted += 1
 

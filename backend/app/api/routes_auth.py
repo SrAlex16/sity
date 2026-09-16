@@ -51,7 +51,7 @@ from app.auth.ip_rate_limiter import get_auth_rate_limiter, get_real_client_ip
 from app.auth.jwt_utils import create_token
 from app.auth.recaptcha import verify_recaptcha_token
 from app.memory.db import get_session
-from app.memory.models import PasswordResetToken, User
+from app.memory.models import PasswordResetToken, User, utc_now
 from app.trace.logger import new_trace_id, write_log
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -240,7 +240,7 @@ def login(
         if _prev_login is not None:
             from app.settings.config_loader import load_default_config
             _gap_days = int(load_default_config().get("achievements", {}).get("youre_finally_awake_days", 7))
-            _now_utc = datetime.utcnow()
+            _now_utc = utc_now()
             _delta = (_now_utc - _prev_login).days
             if _delta >= _gap_days:
                 from app.achievements.triggers.inline import fire as _fire_ach

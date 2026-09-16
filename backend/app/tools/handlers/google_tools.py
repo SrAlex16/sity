@@ -10,6 +10,7 @@ from googleapiclient.discovery import build
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.integrations.google_auth import load_credentials, load_user_credentials
+from app.memory.models import utc_now
 from app.tools.registry import ToolContext, tool_handler
 from app.tools.types import ToolExecutionResult
 from app.trace.logger import write_log
@@ -163,8 +164,8 @@ def handle_calendar_list_events(ctx: ToolContext) -> ToolExecutionResult:
         return _not_connected(ctx.tool_name)
 
     days_ahead = int(ctx.tool_input.get("days_ahead", 7))
-    now = datetime.datetime.utcnow().isoformat() + "Z"
-    end = (datetime.datetime.utcnow() + datetime.timedelta(days=days_ahead)).isoformat() + "Z"
+    now = utc_now().isoformat() + "Z"
+    end = (utc_now() + datetime.timedelta(days=days_ahead)).isoformat() + "Z"
 
     service = _build_service("calendar", "v3", creds)
 
@@ -327,8 +328,8 @@ def _resolve_event_id_by_title(
 ) -> tuple[str, str]:
     """Return (event_id, error_message). error_message is empty on success."""
     import datetime as dt
-    now = dt.datetime.utcnow().isoformat() + "Z"
-    end = (dt.datetime.utcnow() + dt.timedelta(days=365)).isoformat() + "Z"
+    now = utc_now().isoformat() + "Z"
+    end = (utc_now() + dt.timedelta(days=365)).isoformat() + "Z"
     results = _google_call("calendar", "events.list",
         lambda: service.events().list(
             calendarId="primary", timeMin=now, timeMax=end,

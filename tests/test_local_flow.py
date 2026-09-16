@@ -223,13 +223,14 @@ def test_no_proposal_passes_through_to_normal_flow():
 # ---------------------------------------------------------------------------
 
 def test_expired_proposal_passes_through():
-    from datetime import datetime, timedelta
+    from datetime import timedelta
+    from app.memory.models import utc_now
     expired = ModelUpgradeProposal(
         original_message="msg",
         strong_model="claude-sonnet-4-6",
         reason="r",
-        created_at=datetime.utcnow() - timedelta(minutes=10),
-        expires_at=datetime.utcnow() - timedelta(minutes=1),
+        created_at=utc_now() - timedelta(minutes=10),
+        expires_at=utc_now() - timedelta(minutes=1),
     )
     set_proposal(expired)
     result = _flow().try_handle(_ctx("sí"))

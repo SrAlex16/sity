@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+from app.memory.models import utc_now
+
 
 @dataclass
 class ModelUpgradeProposal:
@@ -18,13 +20,13 @@ class ModelUpgradeProposal:
     strong_model: str
     reason: str
     selected_tools: list[dict] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utc_now)
     expires_at: datetime = field(
-        default_factory=lambda: datetime.utcnow() + timedelta(minutes=5)
+        default_factory=lambda: utc_now() + timedelta(minutes=5)
     )
 
     def is_expired(self) -> bool:
-        return datetime.utcnow() > self.expires_at
+        return utc_now() > self.expires_at
 
 
 @dataclass
@@ -71,7 +73,7 @@ def get_accepted_upgrade_category(session_id: str) -> str | None:
     entry = _session_accepted_upgrade_types.get(session_id)
     if entry is None:
         return None
-    if datetime.utcnow() >= entry.expires_at:
+    if utc_now() >= entry.expires_at:
         del _session_accepted_upgrade_types[session_id]
         return None
     return entry.category
@@ -81,7 +83,7 @@ def record_accepted_upgrade(session_id: str, reason: str, ttl_hours: int = _DEFA
     """Record that the user accepted an upgrade for this task category."""
     _session_accepted_upgrade_types[session_id] = _AcceptedUpgradeEntry(
         category=_categorize_upgrade_reason(reason),
-        expires_at=datetime.utcnow() + timedelta(hours=ttl_hours),
+        expires_at=utc_now() + timedelta(hours=ttl_hours),
     )
 
 
