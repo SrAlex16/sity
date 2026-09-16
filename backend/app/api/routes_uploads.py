@@ -1,7 +1,12 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlmodel import Session, select
+
+from app.auth.dependencies import CurrentUser, get_current_user
+from app.memory.db import get_session
+from app.memory.models import ChatMessage, FileArtifact
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -34,8 +39,32 @@ def _safe_upload_path(kind: str, filename: str) -> Path:
 
 
 @router.get("/images/{filename}")
-def get_uploaded_image(filename: str):
+def get_uploaded_image(
+    filename: str,
+    current: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
     path = _safe_upload_path("images", filename)
+
+    rel_path = f"uploads/images/{filename}"
+    artifact = db.exec(select(FileArtifact).where(FileArtifact.rel_path == rel_path)).first()
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    if current.is_authenticated:
+        if artifact.user_id != current.user_id:
+            raise HTTPException(status_code=404, detail="Upload not found")
+    else:
+        # Guest path
+        if artifact.user_id is not None:
+            raise HTTPException(status_code=404, detail="Upload not found")
+        if artifact.chat_message_id is not None:
+            msg = db.get(ChatMessage, artifact.chat_message_id)
+            if msg is None or msg.session_id != current.session_id:
+                raise HTTPException(status_code=404, detail="Upload not found")
+        # chat_message_id IS NULL: brief window before wire_uploaded_images_to_message
+        # runs in the background turn. user_id IS NULL scopes to guest uploads; allow.
+
     suffix = path.suffix.lower()
     media_type = (
         "image/png" if suffix == ".png"
