@@ -502,9 +502,13 @@ def test_build_context_last_user_message_truncated_at_500() -> None:
 
 @patch("app.cortex.mock_provider.MockProvider.generate")
 def test_last_user_message_passed_through_full_pipeline(mock_gen) -> None:
-    """last_user_message flows from check_and_correct_response into check_response_integrity."""
+    """last_user_message triggers deterministic pre-check → correction → re-check (no Haiku for detection).
+
+    The _IN_SESSION_LOCATOR_RE + _IN_SESSION_DENIAL_RE pre-check fires before Haiku,
+    so the violation is detected without a Haiku call. The pipeline then makes exactly
+    2 Haiku calls: one to correct, one to re-verify.
+    """
     mock_gen.side_effect = [
-        _mock_haiku_violation("memory_fabrication", "in-session denial"),
         _mock_haiku_corrected("Claro, lo dijiste tú en el mensaje anterior."),
         _mock_haiku_ok(),
     ]
@@ -516,7 +520,7 @@ def test_last_user_message_passed_through_full_pipeline(mock_gen) -> None:
         last_user_message="No hablo de una sesión anterior: está unas líneas más arriba en este mismo chat.",
     )
     assert result == "Claro, lo dijiste tú en el mensaje anterior."
-    assert mock_gen.call_count == 3
+    assert mock_gen.call_count == 2
 
 
 # Real-model tests — require ANTHROPIC_API_KEY
