@@ -7,7 +7,7 @@ Covers:
   - Haiku corrects a form the old 17-verb list would have missed ("comés")
   - Haiku returns original when text has no actual voseo (pre-filter false positive)
   - API failure → original text returned (fallback, never blocks the turn)
-  - Integration: builder applies normalization for es-ES
+  - Integration: builder applies normalization for es-ES and auto (default Spanish)
   - Integration: es-419 and other languages never normalized
   - Logging: voseo_normalized event emitted exactly when correction occurs
 """
@@ -200,12 +200,13 @@ def test_builder_does_not_normalize_for_es_419():
     assert result == original
 
 
-def test_builder_does_not_normalize_for_auto():
-    original = "Querés ir al parque."
-    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
-        result = _call_builder(original, language_override="auto")
-    mock_build.assert_not_called()
-    assert result == original
+def test_builder_normalizes_voseo_for_auto():
+    """auto resolves to default Spanish (es-ES): voseo must be normalized."""
+    corrected = "¿Quieres ir al parque?"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _call_builder("¿Querés ir al parque?", language_override="auto")
+    assert result == corrected
 
 
 def test_builder_does_not_normalize_for_en_us():

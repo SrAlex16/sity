@@ -243,10 +243,10 @@ def build_final_ai_response(
             payload={"session_id": session_id},
         )
 
-    # 4.6. Normalize voseo → tuteo for es-ES responses via Haiku.
+    # 4.6. Normalize voseo → tuteo for es-ES and auto (default Spanish) responses via Haiku.
     # Pre-filter avoids Haiku call on clean responses. Fallback: original on API failure.
     # Never applied to es-419 (correct register there) or other languages.
-    if language_override == "es-ES" and response.text:
+    if language_override in ("es-ES", "auto") and response.text:
         _corrected = _normalize_voseo_haiku(response.text, trace_id=trace_id)
         if _corrected != response.text:
             write_log(
