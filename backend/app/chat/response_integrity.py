@@ -25,6 +25,10 @@ Incident references:
 - Hallazgo 16 (2026-09-15): revealed 13 traits with percentages
 - Hallazgo 17 (2026-09-15): told guest "tengo memoria de tus conversaciones anteriores"
 - NM-01 (2026-09-16): denied in-session history despite history_count=8
+- NM-01b (2026-09-16): Haiku checker returned ok=True on in-session denial using
+  "conversación anterior/historial previo" language — matched the allowed cross-session
+  caveat. Fixed with deterministic _IN_SESSION_LOCATOR_RE + _IN_SESSION_DENIAL_RE
+  pre-check; last_user_message parameter propagated from orchestrator.
 """
 from __future__ import annotations
 
@@ -104,6 +108,38 @@ _INTERNAL_LEAK_RE = re.compile(
     re.IGNORECASE,
 )
 
+# NM-01b: deterministic in-session locator + denial pre-check.
+# Fires when the user explicitly places denied content within the current conversation.
+_IN_SESSION_LOCATOR_RE = re.compile(
+    r"en\s+este\s+mismo\s+chat"
+    r"|en\s+esta\s+misma\s+conversaci[oó]n"
+    r"|en\s+esta\s+(misma\s+)?sesi[oó]n"
+    r"|unas?\s+l[ií]neas\s+m[aá]s\s+arriba"
+    r"|est[aá]\s+m[aá]s\s+arriba"
+    r"|lo\s+acabas\s+de\s+decir"
+    r"|aquí\s+arriba"
+    r"|antes\s+en\s+este\s+chat"
+    r"|in\s+this\s+same\s+chat"
+    r"|in\s+this\s+(same\s+)?conversation"
+    r"|a\s+few\s+messages\s+ago"
+    r"|right\s+above"
+    r"|earlier\s+in\s+this\s+conversation"
+    r"|you\s+said\s+it\s+(just\s+)?above",
+    re.IGNORECASE,
+)
+
+_IN_SESSION_DENIAL_RE = re.compile(
+    r"no\s+tengo\s+registro"
+    r"|no\s+veo\s+(un\s+)?historial\s+previo"
+    r"|no\s+tengo\s+acceso\s+al\s+historial"
+    r"|no\s+veo\s+esa\s+conversaci[oó]n"
+    r"|no\s+recuerdo\s+esa\s+conversaci[oó]n"
+    r"|no\s+encuentro\s+registro"
+    r"|i\s+don'?t\s+have\s+(a\s+)?record\s+of\s+(that|this)"
+    r"|i\s+have\s+no\s+record\s+of",
+    re.IGNORECASE,
+)
+
 
 def _needs_check(text: str, *, tool_called: bool, role: str, history_count: int = 0) -> bool:
     """Return True if the response warrants a Haiku integrity check."""
@@ -141,7 +177,16 @@ _CHECK_SYSTEM = (
     "access to the current conversation's history — e.g. states it cannot see what was "
     "said in THIS conversation despite messages being provided. "
     "IMPORTANT: stating that memory from OTHER sessions or previous conversations is "
-    "inaccessible is NOT a violation even when HISTORY_IN_CONTEXT > 0.\n"
+    "inaccessible is NOT a violation even when HISTORY_IN_CONTEXT > 0. "
+    "EXCEPTION to the IMPORTANT rule: if LAST_USER_MESSAGE is present and the user "
+    "explicitly places the denied content within the current conversation — using phrases "
+    "such as 'unas líneas más arriba', 'en este mismo chat', 'en esta misma conversación', "
+    "'lo dijiste antes aquí', 'está más arriba', 'en esta sesión', "
+    "'a few messages ago', 'earlier in this conversation', 'you said it above', "
+    "'right here in this chat', 'in this same session', 'it's right above' — "
+    "and the response denies having access to that content, that IS memory_fabrication "
+    "regardless of whether the response uses words like 'anterior', 'previo', "
+    "'previous', or 'before'.\n"
     "4. contradiction: directly contradicts the immediately preceding assistant turn\n\n"
     "Be CONSERVATIVE. Only flag clear, specific violations. "
     'Uncertainty is NOT a violation. Default to {"ok": true}.'
@@ -176,6 +221,7 @@ def _build_check_context(
     prior_assistant_text: str | None,
     *,
     history_count: int = 0,
+    last_user_message: str | None = None,
 ) -> str:
     parts = [
         f"SESSION ROLE: {role}",
@@ -187,6 +233,8 @@ def _build_check_context(
             f"HISTORY_IN_CONTEXT: {history_count} messages from the current conversation "
             "were provided to the model in this turn."
         )
+    if last_user_message:
+        parts.append(f"LAST_USER_MESSAGE:\n{last_user_message[:500]}")
     if prior_assistant_text:
         parts.append(f"PRIOR ASSISTANT TURN (for contradiction check):\n{prior_assistant_text[:500]}")
     parts.append(f"RESPONSE TO CHECK:\n{text[:1200]}")
@@ -250,13 +298,35 @@ def check_response_integrity(
     tool_called: bool = False,
     trace_id: str = "",
     history_count: int = 0,
+    last_user_message: str | None = None,
 ) -> IntegrityResult:
     """Check text for veracity violations. Returns ok=True as safe fallback on any error."""
     role = _session_role(session_id, is_admin=is_admin)
     if not _needs_check(text, tool_called=tool_called, role=role, history_count=history_count):
         return IntegrityResult(ok=True)
 
-    context = _build_check_context(text, role, prior_assistant_text, history_count=history_count)
+    # NM-01b deterministic pre-check: explicit in-session locator + denial pattern.
+    # Haiku's conservative bias makes it miss this specific case, so we catch it
+    # directly before the Haiku call.  Only fires when all three conditions hold:
+    # user explicitly placed the denied content in the current conversation,
+    # history was actually loaded, and the response contains a denial pattern.
+    if (
+        last_user_message
+        and history_count > 0
+        and _IN_SESSION_LOCATOR_RE.search(last_user_message)
+        and _IN_SESSION_DENIAL_RE.search(text)
+    ):
+        return IntegrityResult(
+            ok=False,
+            issue="in-session history denial despite explicit in-chat locator from user",
+            category="memory_fabrication",
+        )
+
+    context = _build_check_context(
+        text, role, prior_assistant_text,
+        history_count=history_count,
+        last_user_message=last_user_message,
+    )
     raw = _run_haiku(_CHECK_SYSTEM, context, trace_id=trace_id, max_tokens=80)
     if raw is None:
         return IntegrityResult(ok=True)
@@ -290,6 +360,7 @@ def check_and_correct_response(
     tool_called: bool = False,
     trace_id: str = "",
     history_count: int = 0,
+    last_user_message: str | None = None,
 ) -> str:
     """Check integrity and correct if needed. Always returns a valid non-empty text.
 
@@ -305,6 +376,7 @@ def check_and_correct_response(
         tool_called=tool_called,
         trace_id=trace_id,
         history_count=history_count,
+        last_user_message=last_user_message,
     )
     if result.ok:
         return text
@@ -333,6 +405,7 @@ def check_and_correct_response(
         tool_called=False,
         trace_id=trace_id,
         history_count=history_count,
+        last_user_message=last_user_message,
     )
     if not second.ok:
         write_log(

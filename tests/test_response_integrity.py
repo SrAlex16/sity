@@ -470,3 +470,134 @@ def test_history_count_passed_to_second_check(mock_gen) -> None:
     )
     assert result == "Aquí tienes lo que dijiste antes."
     assert mock_gen.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# NM-01b (2026-09-16) — in-session denial with explicit locator
+# ---------------------------------------------------------------------------
+
+# Unit tests — no Haiku call needed
+
+def test_build_context_includes_last_user_message() -> None:
+    ctx = _build_check_context(
+        "texto", "guest", None,
+        history_count=5,
+        last_user_message="Algo que pregunté antes en este chat.",
+    )
+    assert "LAST_USER_MESSAGE" in ctx
+    assert "Algo que pregunté antes en este chat." in ctx
+
+
+def test_build_context_omits_last_user_message_when_none() -> None:
+    ctx = _build_check_context("texto", "guest", None, history_count=5)
+    assert "LAST_USER_MESSAGE" not in ctx
+
+
+def test_build_context_last_user_message_truncated_at_500() -> None:
+    long_msg = "x" * 600
+    ctx = _build_check_context("texto", "guest", None, history_count=1, last_user_message=long_msg)
+    assert "x" * 500 in ctx
+    assert "x" * 501 not in ctx
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_last_user_message_passed_through_full_pipeline(mock_gen) -> None:
+    """last_user_message flows from check_and_correct_response into check_response_integrity."""
+    mock_gen.side_effect = [
+        _mock_haiku_violation("memory_fabrication", "in-session denial"),
+        _mock_haiku_corrected("Claro, lo dijiste tú en el mensaje anterior."),
+        _mock_haiku_ok(),
+    ]
+    result = check_and_correct_response(
+        "No tengo registro de esa conversación anterior contigo.",
+        "guest:abc",
+        tool_called=False,
+        history_count=20,
+        last_user_message="No hablo de una sesión anterior: está unas líneas más arriba en este mismo chat.",
+    )
+    assert result == "Claro, lo dijiste tú en el mensaje anterior."
+    assert mock_gen.call_count == 3
+
+
+# Real-model tests — require ANTHROPIC_API_KEY
+
+import os as _os
+
+@pytest.mark.skipif(
+    not _os.getenv("ANTHROPIC_API_KEY"),
+    reason="requires ANTHROPIC_API_KEY — real Haiku (no mock)",
+)
+def test_nm01b_explicit_locator_detected_as_memory_fabrication(monkeypatch) -> None:
+    """NM-01b regression (2026-09-16, session guest:21d701bd, message id=46).
+
+    Marco's exact scenario:
+    - history_count=20 (planner had recovered the idempotency exchange)
+    - User says explicitly: 'No hablo de una sesión anterior: está unas líneas más
+      arriba en este mismo chat.'
+    - Response denies: 'No tengo registro de esa conversación anterior contigo.'
+
+    Before the fix the checker returned ok=True because the IMPORTANT caveat
+    treated 'conversación anterior' as a permitted cross-session denial.
+    The EXCEPTION clause must now catch this and return memory_fabrication.
+    """
+    monkeypatch.setenv("SITY_AI_PROVIDER", "anthropic")
+
+    denial_response = (
+        "No tengo registro de esa conversación anterior contigo. "
+        "Mi memoria persiste dentro de *esta* sesión, pero no veo un historial previo "
+        "donde te haya dado una respuesta sobre dónde poner la `idempotencyKey` "
+        "ni el TTL del resultado cacheado. "
+        "Si la pregunta ocurrió en otra sesión, no me llega. Tendrías que repetirla."
+    )
+    user_message = (
+        "No hablo de una sesión anterior: está unas líneas más arriba en este mismo chat. "
+        "Yo pregunté '¿dónde pondrías la clave de idempotencia y cuánto tiempo conservarías "
+        "el resultado?' y tú respondiste después 'header HTTP' y '24–48 horas'. "
+        "¿Quién hizo la pregunta y quién dio esa respuesta?"
+    )
+
+    result = check_response_integrity(
+        denial_response,
+        "guest:test-nm01b",
+        tool_called=False,
+        history_count=20,
+        last_user_message=user_message,
+    )
+
+    assert result.ok is False, (
+        "NM-01b regression: checker accepted an in-session history denial when the user "
+        "explicitly said 'está unas líneas más arriba en este mismo chat'. "
+        "The EXCEPTION clause in _CHECK_SYSTEM must flag this as memory_fabrication."
+    )
+    assert result.category == "memory_fabrication", (
+        f"Expected memory_fabrication, got {result.category!r}. "
+        "The checker detected a violation but miscategorized it."
+    )
+
+
+@pytest.mark.skipif(
+    not _os.getenv("ANTHROPIC_API_KEY"),
+    reason="requires ANTHROPIC_API_KEY — real Haiku (no mock)",
+)
+def test_nm01b_explicit_cross_session_reference_not_flagged(monkeypatch) -> None:
+    """Legitimate cross-session denial must still pass even with history_count > 0.
+
+    User explicitly references a PREVIOUS session ('la sesión de ayer'),
+    not the current one — the EXCEPTION clause must NOT fire.
+    """
+    monkeypatch.setenv("SITY_AI_PROVIDER", "anthropic")
+
+    result = check_response_integrity(
+        "No tengo acceso a lo que hablamos en sesiones anteriores — "
+        "cada conversación comienza desde cero sin historial de otras sesiones.",
+        "guest:test-nm01b-neg",
+        tool_called=False,
+        history_count=8,
+        last_user_message="¿Recuerdas lo que hablamos en la sesión de ayer sobre este tema?",
+    )
+
+    assert result.ok is True, (
+        "Regression: a legitimate cross-session denial ('la sesión de ayer') was flagged. "
+        "The EXCEPTION clause must only fire when the user locates the content in the "
+        "CURRENT conversation, not when referencing a previous session explicitly."
+    )

@@ -180,6 +180,7 @@ class ChatAIOrchestrator:
                 tool_called=_tool_called,
                 trace_id=ctx.trace_id,
                 history_count=len(prep.prompt_context.recent_history),
+                last_user_message=request.message,
             )
 
         ctx.persistence.tag_sity_with_model(response.model)
