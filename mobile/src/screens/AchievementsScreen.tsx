@@ -123,6 +123,10 @@ export function UnlockNotification({ achievement, uiLang, onDismiss }: {
   onDismiss: () => void;
 }) {
   useEffect(() => { playUnlockSound(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
   const tl = TRANSLATIONS[uiLang].achievements;
   return (
     <motion.button

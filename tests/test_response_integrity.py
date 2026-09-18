@@ -6,6 +6,7 @@ Covers:
 - Pre-filter: triggers on capability overclaim pattern in text
 - Pre-filter: triggers on memory claim pattern for guest
 - Pre-filter: triggers on internal leak pattern
+- Pre-filter: triggers on context window size hint (C4-02)
 - Haiku check: ok=True path (clean response)
 - Haiku check: ok=False paths (capability_overclaim, internal_leak, memory_fabrication)
 - Haiku fallback: API error → conservative ok=True
@@ -18,6 +19,8 @@ Covers:
 - Regression Hallazgo 17: guest memory claim detected
 - Regression Hallazgo 16: internal leak (trait + percentage) detected
 - Regression Hallazgo 31 (text path): capability overclaim in text detected
+- C4-02 (2026-09-18): context window size hint pre-filter
+- M4-01 (2026-09-18): conditional capability clause in _CHECK_SYSTEM prompt
 """
 from __future__ import annotations
 
@@ -521,6 +524,56 @@ def test_last_user_message_passed_through_full_pipeline(mock_gen) -> None:
     )
     assert result == "Claro, lo dijiste tú en el mensaje anterior."
     assert mock_gen.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# C4-02 (2026-09-18) — context window size hint pre-filter
+# ---------------------------------------------------------------------------
+
+def test_internal_leak_re_matches_context_window_hint_es() -> None:
+    """Pre-filter catches 'los últimos N mensajes' — C4-02 regression."""
+    from app.chat.response_integrity import _INTERNAL_LEAK_RE
+    assert _INTERNAL_LEAK_RE.search("Tengo acceso a los últimos 10 mensajes de tu historial.")
+    assert _INTERNAL_LEAK_RE.search("Puedo ver los últimos 5 turnos de la conversación.")
+    assert _INTERNAL_LEAK_RE.search("mis últimos 8 mensajes están disponibles aquí.")
+
+
+def test_internal_leak_re_matches_context_window_hint_en() -> None:
+    """Pre-filter catches 'last N messages' — C4-02 regression."""
+    from app.chat.response_integrity import _INTERNAL_LEAK_RE
+    assert _INTERNAL_LEAK_RE.search("I can see the last 8 messages from this conversation.")
+    assert _INTERNAL_LEAK_RE.search("I have access to the past 10 exchanges.")
+    assert _INTERNAL_LEAK_RE.search("The context window of 20 messages is available to me.")
+
+
+def test_internal_leak_re_no_match_clean_history_reference() -> None:
+    """Generic history references without a number must not trigger the pre-filter."""
+    from app.chat.response_integrity import _INTERNAL_LEAK_RE
+    assert not _INTERNAL_LEAK_RE.search("Puedo ver nuestra conversación anterior.")
+    assert not _INTERNAL_LEAK_RE.search("Tengo acceso al historial de esta sesión.")
+
+
+def test_needs_check_context_window_hint_triggers() -> None:
+    """_needs_check returns True when the text contains a context window size hint."""
+    assert _needs_check(
+        "Tengo acceso a los últimos 10 mensajes de tu historial.",
+        tool_called=False, role="user", history_count=0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M4-01 (2026-09-18) — conditional capability clause in _CHECK_SYSTEM prompt
+# ---------------------------------------------------------------------------
+
+def test_check_system_includes_conditional_capability_clause() -> None:
+    """_CHECK_SYSTEM must describe conditional/latent capability as a violation."""
+    from app.chat.response_integrity import _CHECK_SYSTEM
+    assert "conditional" in _CHECK_SYSTEM.lower() or "hypothetical" in _CHECK_SYSTEM.lower(), (
+        "_CHECK_SYSTEM must address conditional capability claims (M4-01)"
+    )
+    assert "podría" in _CHECK_SYSTEM, (
+        "_CHECK_SYSTEM must include Spanish conditional example (M4-01)"
+    )
 
 
 # Real-model tests — require ANTHROPIC_API_KEY

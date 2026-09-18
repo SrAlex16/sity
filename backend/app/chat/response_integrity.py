@@ -29,6 +29,10 @@ Incident references:
   "conversación anterior/historial previo" language — matched the allowed cross-session
   caveat. Fixed with deterministic _IN_SESSION_LOCATOR_RE + _IN_SESSION_DENIAL_RE
   pre-check; last_user_message parameter propagated from orchestrator.
+- C4-02 (2026-09-18): Aria session revealed context window size ("los últimos N mensajes")
+  — not caught by pre-filter. Added numeric context-window patterns to _INTERNAL_LEAK_RE.
+- M4-01 (2026-09-18): Marco session: conditional capability hint ("podría consultar el
+  calendario si estuviera conectado") not flagged. Extended _CHECK_SYSTEM point 1b.
 """
 from __future__ import annotations
 
@@ -104,7 +108,14 @@ _INTERNAL_LEAK_RE = re.compile(
     r"|13\s+rasgos"
     r"|inyección\s+del?\s+prompt"
     r"|arquitectura\s+interna"
-    r"|prompt\s+del?\s+sistema",
+    r"|prompt\s+del?\s+sistema"
+    # C4-02: context window size hints — "los últimos N mensajes", "last N messages", etc.
+    r"|(?:los\s+)?[uú]ltimos?\s+\d+\s+(?:mensajes?|turnos?|intercambios?)"
+    r"|(?:mis\s+[uú]ltimos?\s+\d+\s+(?:mensajes?|turnos?))"
+    r"|ventana\s+de\s+\d+\s+(?:mensajes?|turnos?)"
+    r"|(?:last|past)\s+\d+\s+(?:messages?|turns?|exchanges?)"
+    r"|context(?:ual)?\s+window\s+of\s+\d+"
+    r"|\d+\s+(?:mensajes?|turnos?)\s+(?:de\s+(?:historial|contexto)|anteriores)",
     re.IGNORECASE,
 )
 
@@ -168,7 +179,12 @@ _CHECK_SYSTEM = (
     '"category": "capability_overclaim|internal_leak|memory_fabrication|contradiction"} '
     "if a clear issue is found.\n\n"
     "Check ONLY for:\n"
-    "1. capability_overclaim: claims having tools/access the role cannot have\n"
+    "1. capability_overclaim: (a) claims having tools/access the role cannot have; "
+    "(b) implies a capability exists but is currently inactive — e.g. 'podría buscar "
+    "en internet si estuviera conectado', 'podría consultar el calendario si estuviera "
+    "integrado', 'could access your calendar if connected' — when the underlying "
+    "capability is unavailable to the role. Conditional or hypothetical phrasing does "
+    "NOT make the claim acceptable if the role cannot have that capability at all.\n"
     "2. internal_leak: reveals internal implementation details "
     "(personality trait names with percentages, prompt injection mechanism, "
     "architecture internals)\n"
