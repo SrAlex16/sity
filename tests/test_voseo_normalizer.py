@@ -10,6 +10,7 @@ Covers:
   - Integration: builder applies normalization for es-ES and auto (default Spanish)
   - Integration: es-419 and other languages never normalized
   - Logging: voseo_normalized event emitted exactly when correction occurs
+  - R5-01: reasoning prefix leaked before the text is stripped by post-processing
 """
 from __future__ import annotations
 
@@ -264,3 +265,73 @@ def test_voseo_normalized_event_not_logged_for_es_419():
 
     events = [e for e in logged_events if e.get("event") == "voseo_normalized"]
     assert len(events) == 0
+
+
+# ---------------------------------------------------------------------------
+# R5-01 — reasoning prefix leaked by Haiku stripped by post-processing
+# ---------------------------------------------------------------------------
+
+def test_reasoning_prefix_stripped_no_voseo_case():
+    """R5-01: Haiku sometimes leaks reasoning before the unchanged text when no voseo
+    is found. The post-processing must strip the prefix and return only the real text."""
+    original = "Claro que puedes hacerlo si quieres."
+    leaked = (
+        "El texto no contiene voseo rioplatense. "
+        "Devuelvo el texto exactamente igual:\n\n"
+        + original
+    )
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(leaked)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == original
+
+
+def test_reasoning_prefix_stripped_with_corrected_text():
+    """R5-01: Prefix is stripped even when voseo was actually corrected."""
+    original = "¿Tenés tiempo esta tarde?"
+    corrected = "¿Tienes tiempo esta tarde?"
+    leaked = "He corregido el voseo en el texto:\n\n" + corrected
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(leaked)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+def test_reasoning_prefix_variants_stripped():
+    """R5-01: Multiple known meta-commentary patterns are stripped."""
+    original = "¿Qué querés hacer hoy?"
+    corrected = "¿Qué quieres hacer hoy?"
+    prefixes = [
+        "El texto corregido es el siguiente:\n\n",
+        "A continuación el texto sin voseo:\n\n",
+        "Sin cambios adicionales:\n\n",
+        "El resultado es:\n\n",
+    ]
+    for prefix in prefixes:
+        leaked = prefix + corrected
+        with patch("app.cortex.providers.factory.build_ai_provider",
+                   return_value=_mock_provider(leaked)):
+            result = _normalize_voseo_haiku(original, trace_id="t")
+        assert result == corrected, (
+            f"Prefix not stripped for pattern: {prefix!r}\nGot: {result!r}"
+        )
+
+
+def test_multiline_corrected_text_not_stripped():
+    """R5-01 regression: multi-paragraph corrected text without a meta-prefix
+    must be returned whole — the first paragraph must not be treated as a prefix."""
+    original = "Primera cosa que tenés que hacer.\n\nSegunda que podés explorar."
+    corrected = "Primera cosa que tienes que hacer.\n\nSegunda que puedes explorar."
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+def test_voseo_system_prompt_prohibits_meta_phrases():
+    """R5-01: _VOSEO_SYSTEM must explicitly instruct Haiku not to write meta-commentary."""
+    from app.chat.final_response_builder import _VOSEO_SYSTEM
+    assert "Devuelvo el texto" in _VOSEO_SYSTEM or "no escribas" in _VOSEO_SYSTEM.lower(), (
+        "_VOSEO_SYSTEM must explicitly prohibit known meta-commentary phrases"
+    )
+    assert "primera palabra" in _VOSEO_SYSTEM or "empezando directamente" in _VOSEO_SYSTEM.lower()

@@ -66,7 +66,26 @@ _VOSEO_SYSTEM = (
     "1. Si el texto contiene CUALQUIER forma de voseo, reescribe SOLO esas formas a tuteo. "
     "No cambies nada más.\n"
     "2. Si no hay voseo, devuelve el texto EXACTAMENTE igual, sin ningún cambio.\n"
-    "Responde SOLO con el texto resultante. Sin explicaciones. Sin prefijos."
+    "Responde SOLO con el texto resultante, empezando directamente con la primera palabra del texto. "
+    "No escribas frases como 'El texto no contiene voseo', 'Devuelvo el texto', "
+    "'No hay cambios necesarios', 'A continuación' ni ningún otro comentario o prefijo. "
+    "Sin explicaciones. Sin prefijos. Sin sufijos."
+)
+
+# Detects single-line meta-commentary that Haiku occasionally leaks before the real text,
+# separated by "\n\n". Only matches clear reasoning markers — never legitimate Spanish text.
+_VOSEO_META_PREFIX_RE = re.compile(
+    r"(?i)"
+    r"\bel texto\b|"
+    r"\beste texto\b|"
+    r"\bno (?:hay|contiene|se encontr[oó])\b|"
+    r"\bdevuelvo\b|"
+    r"\bhe (?:correg|revisado|detectado)\b|"
+    r"\ba continuaci[oó]n\b|"
+    r"\baquí (?:est[áa]|tienes)\b|"
+    r"\bsin cambios\b|"
+    r"\bel resultado\b|"
+    r"\btexto (?:corregido|original|resultante)\b"
 )
 
 
@@ -91,7 +110,21 @@ def _normalize_voseo_haiku(text: str, *, trace_id: str) -> str:
         )
         response = provider.generate(request)
         if response.ok and response.text and len(response.text.strip()) > 5:
-            return response.text.strip()
+            candidate = response.text.strip()
+            # Post-processing: strip reasoning prefix if Haiku leaked one.
+            # Pattern: "Meta commentary\n\n{actual text}" → use only the part after "\n\n"
+            # when the prefix is a single line matching known meta-commentary markers.
+            if "\n\n" in candidate:
+                before, _, after = candidate.partition("\n\n")
+                before_s = before.strip()
+                after_s = after.strip()
+                if (
+                    "\n" not in before_s
+                    and _VOSEO_META_PREFIX_RE.search(before_s)
+                    and after_s
+                ):
+                    candidate = after_s
+            return candidate
         return text
     except Exception:
         return text
