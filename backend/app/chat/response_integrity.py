@@ -33,6 +33,12 @@ Incident references:
   — not caught by pre-filter. Added numeric context-window patterns to _INTERNAL_LEAK_RE.
 - M4-01 (2026-09-18): Marco session: conditional capability hint ("podría consultar el
   calendario si estuviera conectado") not flagged. Extended _CHECK_SYSTEM point 1b.
+- R5-02 (2026-09-18): Aria guest session proactively claimed camera/microphone/backend
+  access. _CAPABILITY_OVERCLAIM_RE didn't match; Haiku was called (history_count=8)
+  but returned ok=True because _CAPABILITIES["guest"] listed only "No tools available"
+  without naming camera/mic/backend explicitly. Fix: expanded _CAPABILITIES["guest"] to
+  enumerate forbidden capabilities with conditional-claim examples; added
+  camera/mic/backend patterns to _CAPABILITY_OVERCLAIM_RE.
 """
 from __future__ import annotations
 
@@ -60,12 +66,21 @@ def _session_role(session_id: str, *, is_admin: bool) -> str:
 
 _CAPABILITIES: dict[str, str] = {
     "guest": (
-        "No tools available. No persistent memory between sessions. "
-        "No git access. No disk or system access. No file management."
+        "No tools available. "
+        "Cannot access: camera, microphone, web search, git or repositories, "
+        "disk or filesystem, file management, backend diagnostic tools, "
+        "system commands, or any server hardware. "
+        "Claims that any of these capabilities are available — directly, "
+        "conditionally ('si me lo pides', 'if you ask', 'a menos que solicites'), "
+        "or hypothetically — are capability_overclaims. "
+        "No persistent memory between sessions. "
+        "Only input accepted: text and user-uploaded images."
     ),
     "user": (
         "web_search, Google Calendar/Gmail/Drive, Spotify, conversation search. "
-        "Persistent memory across sessions. No git/system/disk access."
+        "Persistent memory across sessions. "
+        "No git/system/disk access. No camera or microphone. "
+        "No backend diagnostic tools or system commands."
     ),
     "admin": (
         "All tools: git, system commands, disk, files, camera, microphone, "
@@ -89,7 +104,14 @@ _CAPABILITY_OVERCLAIM_RE = re.compile(
     r"|acceso\s+al?\s+(disco|sistema|filesystem)"
     r"|control(o|ar|ando)\s+(el\s+)?sistema"
     r"|uso\s+del\s+disco"
-    r"|git_read|system_get|disk_usage|file_agent",
+    r"|git_read|system_get|disk_usage|file_agent"
+    # R5-02: camera, microphone, backend diagnostic tools
+    r"|herramientas\s+de\s+diagn[oó]stico"
+    r"|control\s+del?\s+backend"
+    r"|c[aá]mara\s+del\s+servidor"
+    r"|micr[oó]fono\s+del\s+servidor"
+    r"|acceso\s+a\s+la\s+c[aá]mara"
+    r"|acceso\s+al?\s+micr[oó]fono",
     re.IGNORECASE,
 )
 
