@@ -867,3 +867,98 @@ def test_classify_history_need_standard_on_ok_false() -> None:
     )
     with patch("app.cortex.mock_provider.MockProvider.generate", return_value=bad):
         assert classify_history_need("algo") == "standard"
+
+
+# ------------------------------------------------------------------ #
+# NM-13: followup category — MessageClassification contract          #
+# ------------------------------------------------------------------ #
+
+def test_followup_is_followup() -> None:
+    assert MessageClassification(kind="followup").is_followup
+
+
+def test_followup_is_real_request() -> None:
+    """followup bypasses structural refusal but IS a real request — goes to main model."""
+    assert MessageClassification(kind="followup").is_real_request
+
+
+def test_followup_is_not_config_query() -> None:
+    assert not MessageClassification(kind="followup").is_config_query
+
+
+def test_real_is_not_followup() -> None:
+    assert not MessageClassification(kind="real").is_followup
+
+
+def test_trivial_is_not_followup() -> None:
+    assert not MessageClassification(kind="trivial").is_followup
+
+
+def test_config_query_is_not_followup() -> None:
+    assert not MessageClassification(kind="config_query").is_followup
+
+
+def test_classify_followup_when_provider_says_followup() -> None:
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=_mock_response("followup")):
+        result = classify_message("antes dijiste que el ON CONFLICT es local — ¿puedes ampliar?")
+    assert result.kind == "followup"
+    assert result.is_followup
+
+
+def test_classify_system_mentions_followup_category() -> None:
+    assert "followup" in _CLASSIFY_SYSTEM
+
+
+def test_classify_system_requires_explicit_back_reference_for_followup() -> None:
+    """The classifier must require explicit back-reference keywords for followup — not just follow-up intent."""
+    assert "dijiste" in _CLASSIFY_SYSTEM or "mencionaste" in _CLASSIFY_SYSTEM
+    assert "explicit" in _CLASSIFY_SYSTEM.lower() or "EXPLICIT" in _CLASSIFY_SYSTEM
+
+
+# ------------------------------------------------------------------ #
+# NM-13: _REFUSAL_FALLBACKS — must be complete sentences, not "No." #
+# ------------------------------------------------------------------ #
+
+def test_refusal_fallbacks_not_bare_no() -> None:
+    """None of the fallbacks must be a bare 'No.' — that is an unacceptable UX regression."""
+    for fb in _REFUSAL_FALLBACKS:
+        assert fb.strip().lower() != "no.", (
+            f"_REFUSAL_FALLBACKS must not contain bare 'No.' — got {fb!r}"
+        )
+
+
+def test_refusal_fallbacks_are_complete_sentences() -> None:
+    """Each fallback must be a full sentence (> 5 chars, ends with punctuation)."""
+    for fb in _REFUSAL_FALLBACKS:
+        assert len(fb.strip()) > 5, f"Fallback too short: {fb!r}"
+        assert fb.strip()[-1] in ".!?", f"Fallback must end with punctuation: {fb!r}"
+
+
+def test_truncated_refusal_fallback_is_not_bare_no() -> None:
+    """When provider truncates at max_tokens, the fallback must be a complete sentence."""
+    truncated_response = AIResponse(
+        ok=True, provider="mock", model="mock",
+        text="No me apetece responderte a esa petición porque considero que va en contra de",
+        usage=AIUsageData(input_tokens=50, output_tokens=120),
+        latency_ms=100,
+        stop_reason="max_tokens",
+    )
+    with patch("app.cortex.mock_provider.MockProvider.generate", return_value=truncated_response):
+        result = generate_refusal_response({}, "antes dijiste X — ¿puedes ampliar?", trace_id="t")
+    assert result.strip().lower() != "no.", f"Fallback must not be bare 'No.' — got {result!r}"
+    assert len(result.strip()) > 5
+
+
+# ------------------------------------------------------------------ #
+# M4-02: _REFUSAL_GENERATOR_SYSTEM — session isolation prohibition   #
+# ------------------------------------------------------------------ #
+
+def test_refusal_generator_system_prohibits_session_isolation_claims() -> None:
+    """The refusal generator must explicitly prohibit attributing memory gaps to session isolation."""
+    lower = _REFUSAL_GENERATOR_SYSTEM.lower()
+    assert "sesión" in lower or "session" in lower, (
+        "_REFUSAL_GENERATOR_SYSTEM must mention 'sesión' in its session-isolation restriction"
+    )
+    assert "registro" in lower or "historial" in lower or "isolation" in lower, (
+        "_REFUSAL_GENERATOR_SYSTEM must reference 'registro' or 'historial' in the restriction"
+    )

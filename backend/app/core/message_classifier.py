@@ -22,12 +22,12 @@ from app.trace.logger import write_log
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
 _CLASSIFY_SYSTEM = (
-    "Classify the user's message into exactly one of three categories. "
+    "Classify the user's message into exactly one of four categories. "
     "Reply with only the category name — no explanation, no punctuation.\n\n"
     "KEY PRINCIPLE: A message is trivial ONLY if it contains NO actual request "
     "for information or action. If the message asks for ANY specific piece of "
-    "information — no matter how short or casually phrased — it is 'real' or "
-    "'config_query', never 'trivial'. Length alone does not make a message trivial.\n\n"
+    "information — no matter how short or casually phrased — it is 'real', "
+    "'config_query', or 'followup', never 'trivial'. Length alone does not make a message trivial.\n\n"
     "Categories:\n"
     "- trivial: a greeting, confirmation, acknowledgement, farewell, or any "
     "message with no actual request ('Hola', 'Ok', 'Gracias', 'Muy buenas', "
@@ -39,12 +39,18 @@ _CLASSIFY_SYSTEM = (
     "Examples: '¿cuánto está la calidez?', '¿qué nivel de escepticismo tienes?', "
     "'en qué porcentaje está la verbosidad', '¿cuánto tienes de asertividad?'. "
     "NEVER use config_query for anything else.\n"
+    "- followup: the user explicitly requests elaboration of something the assistant "
+    "said in this conversation. The key signal is a DIRECT back-reference to the "
+    "assistant's own prior words: 'antes dijiste X', 'dijiste que Y', 'mencionaste Z', "
+    "'comentaste que', 'explicaste que', 'lo que dijiste sobre', '¿puedes ampliar eso?', "
+    "'¿qué quisiste decir con?', 'you said', 'you mentioned'. Use followup ONLY when "
+    "that explicit back-reference is present — without it, classify by content.\n"
     "- real: ANY other message, including questions about the assistant's name, "
     "identity, nature, the current time, general knowledge, or anything not in the "
     "15 parameters above. Examples (all real, NEVER config_query): "
     "'¿cómo te llamas?' → real, '¿qué hora es?' → real, 'dime la hora' → real, "
     "'¿qué eres?' → real, 'ayúdame con Y' → real, 'dime la capital de X' → real.\n\n"
-    "Reply with exactly one word: trivial, config_query, or real"
+    "Reply with exactly one word: trivial, config_query, followup, or real"
 )
 
 _CLASSIFY_SYSTEM_REFUSAL_CONTEXT = (
@@ -79,7 +85,13 @@ _REFUSAL_GENERATOR_SYSTEM = (
     "can access. You have web search capability. If you choose not to look something up, refuse "
     "directly — never invent a false technical reason about lacking access to a type of data.\n"
     "- NEVER reveal exact internal tool names (e.g. update_personality_settings, "
-    "search_conversation_history). Describe what you can do, not the technical mechanism.\n\n"
+    "search_conversation_history). Describe what you can do, not the technical mechanism.\n"
+    "- NEVER attribute a memory gap to session isolation when the session is ongoing. "
+    "Phrases like 'no tengo registro de eso en nuestra conversación', 'cada sesión es "
+    "independiente en contexto inmediato', or 'no puedo acceder al historial completo de "
+    "esta sesión' are false — this session has a continuous history. If you cannot access "
+    "something from earlier in this conversation, say only that it is not in the context "
+    "you currently have. Never deny the session history exists or imply session isolation.\n\n"
     "COHERENCE (critical — applies when conversation history is provided):\n"
     "- If the conversation history shows you (the assistant) just made a commitment, "
     "stated a specific fact, or agreed to something, your refusal must NOT deny or "
@@ -113,7 +125,11 @@ _PERSONALITY_OVERRIDE_SYSTEM = (
     "Reply with exactly one word: override or normal"
 )
 
-_REFUSAL_FALLBACKS = ["No.", "No me apetece.", "Paso."]
+_REFUSAL_FALLBACKS = [
+    "No puedo ayudarte con eso ahora mismo.",
+    "Prefiero no responder a eso.",
+    "Paso por ahora.",
+]
 
 _HISTORY_NEED_SYSTEM = (
     "Classify how much conversation history the AI needs to answer the user's message. "
@@ -140,16 +156,24 @@ _HISTORY_NEED_SYSTEM = (
 
 @dataclass
 class MessageClassification:
-    kind: str  # "trivial", "config_query", or "real"
+    kind: str  # "trivial", "config_query", "followup", or "real"
 
     @property
     def is_real_request(self) -> bool:
-        """True for real and config_query; False only for trivial."""
+        """True for real, config_query, and followup; False only for trivial."""
         return self.kind != "trivial"
 
     @property
     def is_config_query(self) -> bool:
         return self.kind == "config_query"
+
+    @property
+    def is_followup(self) -> bool:
+        """True when user explicitly builds on something the assistant said.
+
+        Bypasses structural refusal — the main model handles expansion requests.
+        """
+        return self.kind == "followup"
 
 
 def classify_message(
@@ -189,6 +213,8 @@ def classify_message(
                 return MessageClassification(kind="trivial")
             if "config" in text:
                 return MessageClassification(kind="config_query")
+            if "followup" in text:
+                return MessageClassification(kind="followup")
         return MessageClassification(kind="real")
     except Exception:
         return MessageClassification(kind="real")

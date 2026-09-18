@@ -257,3 +257,117 @@ def test_structural_refusal_saves_tone_meta(monkeypatch: pytest.MonkeyPatch):
     parsed = _json.loads(sity_msg.tone_meta)
     assert isinstance(parsed, dict)
     assert "playfulness" in parsed
+
+
+# ---------------------------------------------------------------------------
+# M4-02: structural refusal integrity check — real history count
+# ---------------------------------------------------------------------------
+
+def test_structural_refusal_calls_integrity_check(monkeypatch: pytest.MonkeyPatch):
+    """Structural refusal path must call check_and_correct_response on the generated text."""
+    _force_refusal_mode(monkeypatch)
+    calls: list[dict] = []
+
+    def _capture_check(text, session_id, *, is_admin=False, trace_id="",
+                       history_count=0, last_user_message=None, **kw):
+        calls.append({"text": text, "history_count": history_count,
+                      "last_user_message": last_user_message})
+        return text  # pass-through
+
+    with patch("app.chat.response_integrity.check_and_correct_response", side_effect=_capture_check):
+        token = make_admin_token()
+        with TestClient(app, raise_server_exceptions=True) as client:
+            client.cookies.set("sity_token", token)
+            chat_post_and_drain(client, "dime la capital de Alemania")
+
+    assert len(calls) == 1, "check_and_correct_response must be called exactly once per structural refusal"
+    assert calls[0]["last_user_message"] == "dime la capital de Alemania"
+
+
+def test_structural_refusal_passes_real_history_count(monkeypatch: pytest.MonkeyPatch):
+    """check_and_correct_response must receive the value returned by count_session_messages,
+    not len(_recent_raw) which is capped at 4.
+
+    This lets the checker detect false 'no tengo registro en esta conversación' claims
+    when the session has more messages than the refusal generator can see.
+    """
+    _force_refusal_mode(monkeypatch)
+
+    FAKE_COUNT = 42  # higher than the limit=4 used for _recent_raw
+
+    calls: list[dict] = []
+
+    def _fake_count(session, session_id):
+        return FAKE_COUNT
+
+    def _capture_check(text, session_id, *, is_admin=False, trace_id="",
+                       history_count=0, last_user_message=None, **kw):
+        calls.append({"history_count": history_count})
+        return text
+
+    with patch("app.chat.chat_persistence.count_session_messages", side_effect=_fake_count), \
+         patch("app.chat.response_integrity.check_and_correct_response", side_effect=_capture_check):
+        token = make_admin_token()
+        with TestClient(app, raise_server_exceptions=True) as client:
+            client.cookies.set("sity_token", token)
+            chat_post_and_drain(client, "qué bebida me dijiste antes?")
+
+    assert calls, "check_and_correct_response must be called"
+    assert calls[0]["history_count"] == FAKE_COUNT, (
+        f"Expected history_count={FAKE_COUNT} (from count_session_messages), "
+        f"got {calls[0]['history_count']}. "
+        "The checker must receive the real total — not len(_recent_raw)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# NM-13: followup messages bypass structural refusal
+# ---------------------------------------------------------------------------
+
+def test_followup_message_bypasses_structural_refusal(monkeypatch: pytest.MonkeyPatch):
+    """A message classified as 'followup' (explicit back-reference to assistant's prior words)
+    must NOT go through structural refusal, even when refusal_mode=True.
+
+    NM-13 root cause: follow-up technical questions ("antes dijiste X — ¿puedes ampliar?")
+    were incorrectly refused at ~18% random probability, occasionally producing "No."
+    """
+    _force_refusal_mode(monkeypatch)
+    with patch(
+        "app.core.message_classifier.classify_message",
+        return_value=MagicMock(
+            is_real_request=True,
+            is_config_query=False,
+            is_followup=True,
+            kind="followup",
+        ),
+    ):
+        token = make_admin_token()
+        with TestClient(app, raise_server_exceptions=True) as client:
+            client.cookies.set("sity_token", token)
+            data = chat_post_and_drain(client, "antes dijiste que el ON CONFLICT es local — ¿puedes ampliar?")
+
+    assert data.get("provider") != "haiku_refusal", (
+        "Follow-up technical questions must bypass structural refusal and reach the main model."
+    )
+
+
+def test_legitimate_refusal_still_applies_for_non_followup(monkeypatch: pytest.MonkeyPatch):
+    """Regression: non-followup real requests must still go through structural refusal."""
+    _force_refusal_mode(monkeypatch)
+    with patch(
+        "app.core.message_classifier.classify_message",
+        return_value=MagicMock(
+            is_real_request=True,
+            is_config_query=False,
+            is_followup=False,
+            kind="real",
+        ),
+    ):
+        token = make_admin_token()
+        with TestClient(app, raise_server_exceptions=True) as client:
+            client.cookies.set("sity_token", token)
+            data = chat_post_and_drain(client, "dime la capital de Francia")
+
+    assert data.get("provider") == "haiku_refusal", (
+        "Non-followup real requests must still be structurally refused when refusal_mode=True."
+    )

@@ -399,11 +399,16 @@ def _chat_message_inner(
         and _classification is not None
         and _classification.is_real_request
         and not _classification.is_config_query
+        and not _classification.is_followup
         and not _has_override
         and not _is_personality_override
     ):
         from app.core.message_classifier import generate_refusal_response
-        from app.chat.chat_persistence import get_today_token_usage, get_recent_db_messages
+        from app.chat.chat_persistence import (
+            get_today_token_usage,
+            get_recent_db_messages,
+            count_session_messages,
+        )
         from app.chat.response_factory import refusal_response
 
         _recent_raw = get_recent_db_messages(session, ctx.session_id, limit=4)
@@ -417,6 +422,16 @@ def _chat_message_inner(
             language_override=ctx.language_override,
             trace_id=ctx.trace_id,
             recent_history=_recent_history or None,
+        )
+        _real_history_count = count_session_messages(session, ctx.session_id)
+        from app.chat.response_integrity import check_and_correct_response
+        refusal_text = check_and_correct_response(
+            refusal_text,
+            ctx.session_id,
+            is_admin=ctx.is_admin,
+            trace_id=ctx.trace_id,
+            history_count=_real_history_count,
+            last_user_message=request.message,
         )
         _user_msg_id = ctx.persistence.save(
             role="user",

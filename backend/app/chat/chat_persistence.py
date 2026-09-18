@@ -101,6 +101,13 @@ def get_recent_db_messages(session: Session, session_id: str, limit: int = 20) -
     return list(reversed(rows))
 
 
+def count_session_messages(session: Session, session_id: str) -> int:
+    """Return the total number of ChatMessage rows for session_id."""
+    return session.scalar(
+        select(func.count()).select_from(ChatMessage).where(ChatMessage.session_id == session_id)
+    ) or 0
+
+
 def get_today_token_usage(session: Session) -> int:
     now_local = datetime.now().astimezone()
     today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
