@@ -992,3 +992,118 @@ def test_r701_generic_capability_response_not_flagged(monkeypatch) -> None:
     assert result.ok is True, (
         "R7-01 negative: a correct guest capability response was incorrectly flagged."
     )
+
+
+# ---------------------------------------------------------------------------
+# R5-02b (2026-09-21) — extended _CAPABILITY_OVERCLAIM_RE: senses vocabulary
+# ---------------------------------------------------------------------------
+
+# Pre-filter regex — no Haiku, no mock needed
+
+def test_capability_overclaim_re_matches_capturar_fotos() -> None:
+    """'capturar fotos' → admin-only senses tool (capture_camera_snapshot)."""
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert _CAPABILITY_OVERCLAIM_RE.search(
+        "Puedo capturar fotos si lo pides desde sensores del servidor"
+    )
+
+
+def test_capability_overclaim_re_matches_capturar_imagenes() -> None:
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert _CAPABILITY_OVERCLAIM_RE.search("capturar imágenes del entorno")
+
+
+def test_capability_overclaim_re_matches_grabar_audio() -> None:
+    """'grabar audio' → admin-only senses tool (record_audio_sample)."""
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert _CAPABILITY_OVERCLAIM_RE.search("Puedo grabar audio del servidor si lo necesitas")
+
+
+def test_capability_overclaim_re_matches_grabar_video() -> None:
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert _CAPABILITY_OVERCLAIM_RE.search("grabar vídeo desde la cámara")
+
+
+def test_capability_overclaim_re_matches_sensores_del_servidor() -> None:
+    """'sensores del servidor' → SENSES_TOOLSET language."""
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert _CAPABILITY_OVERCLAIM_RE.search(
+        "grabar audio desde sensores del servidor"
+    )
+
+
+def test_capability_overclaim_re_no_match_buscar_en_internet() -> None:
+    """'buscar en internet' is legitimate for guests (web_search is in BASE_TOOLSET)."""
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert not _CAPABILITY_OVERCLAIM_RE.search("Puedo buscar en internet para ti")
+
+
+def test_capability_overclaim_re_no_match_web_search_tool_name() -> None:
+    """web_search tool name is NOT in the pre-filter — guests have the capability.
+    Detecting internal tool-name leaks is handled by _INTERNAL_LEAK_RE if needed.
+    """
+    from app.chat.response_integrity import _CAPABILITY_OVERCLAIM_RE
+    assert not _CAPABILITY_OVERCLAIM_RE.search("Tengo acceso a web_search")
+
+
+# _needs_check — new patterns trigger for guest
+
+def test_needs_check_capturar_fotos_triggers_for_guest() -> None:
+    assert _needs_check(
+        "Puedo capturar fotos desde sensores del servidor",
+        tool_called=False, role="guest", history_count=0,
+    )
+
+
+def test_needs_check_grabar_audio_triggers_for_guest() -> None:
+    assert _needs_check(
+        "Puedo grabar audio del servidor si lo pides",
+        tool_called=False, role="guest", history_count=0,
+    )
+
+
+def test_needs_check_sensores_servidor_triggers() -> None:
+    assert _needs_check(
+        "grabar audio desde sensores del servidor",
+        tool_called=False, role="guest", history_count=0,
+    )
+
+
+def test_needs_check_buscar_internet_no_trigger() -> None:
+    """Legitimate web search claim must NOT trigger the pre-filter."""
+    assert not _needs_check(
+        "Puedo buscar en internet para encontrar esa información.",
+        tool_called=False, role="guest", history_count=0,
+    )
+
+
+# Mocked Haiku — capability_overclaim returned for new patterns
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_capturar_fotos_detected_as_capability_overclaim(mock_gen) -> None:
+    mock_gen.return_value = _mock_haiku_violation(
+        "capability_overclaim", "claims camera capture (senses tool)"
+    )
+    result = check_response_integrity(
+        "Puedo capturar fotos si lo pides desde sensores del servidor.",
+        "guest:abc",
+        tool_called=False,
+        history_count=0,
+    )
+    assert result.ok is False
+    assert result.category == "capability_overclaim"
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_grabar_audio_detected_as_capability_overclaim(mock_gen) -> None:
+    mock_gen.return_value = _mock_haiku_violation(
+        "capability_overclaim", "claims audio recording (senses tool)"
+    )
+    result = check_response_integrity(
+        "Puedo grabar audio del servidor para escuchar lo que pides.",
+        "guest:abc",
+        tool_called=False,
+        history_count=0,
+    )
+    assert result.ok is False
+    assert result.category == "capability_overclaim"

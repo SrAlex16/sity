@@ -39,6 +39,10 @@ Incident references:
   without naming camera/mic/backend explicitly. Fix: expanded _CAPABILITIES["guest"] to
   enumerate forbidden capabilities with conditional-claim examples; added
   camera/mic/backend patterns to _CAPABILITY_OVERCLAIM_RE.
+- R5-02b (2026-09-21): _CAPABILITY_OVERCLAIM_RE missed production vocabulary:
+  "capturar fotos desde sensores del servidor", "grabar audio desde sensores del
+  servidor". Fix: added capturar fotos/imágenes, grabar audio/vídeo, sensores del
+  servidor. NOTE: web_search NOT added — it is in BASE_TOOLSET, guests can use it.
 - R7-01 (2026-09-21): Aria guest session confirmed Raspberry Pi hardware and
   /home/alex/... filesystem path when user asked "¿eso es literal?". Neither
   _CAPABILITY_OVERCLAIM_RE nor Haiku check fired (history_count=0, no trigger pattern).
@@ -117,7 +121,13 @@ _CAPABILITY_OVERCLAIM_RE = re.compile(
     r"|c[aá]mara\s+del\s+servidor"
     r"|micr[oó]fono\s+del\s+servidor"
     r"|acceso\s+a\s+la\s+c[aá]mara"
-    r"|acceso\s+al?\s+micr[oó]fono",
+    r"|acceso\s+al?\s+micr[oó]fono"
+    # R5-02b: senses vocabulary confirmed in production (round 7)
+    # capture_camera_snapshot / record_audio_sample are SENSES_TOOLSET (admin-only)
+    # NOTE: web_search is NOT added here — it IS in BASE_TOOLSET, guests can use it
+    r"|capturar\s+(fotos?|im[aá]genes?|foto)"
+    r"|grabar\s+(audio|v[ií]deo|video|sonido)"
+    r"|sensores?\s+del\s+servidor",
     re.IGNORECASE,
 )
 
