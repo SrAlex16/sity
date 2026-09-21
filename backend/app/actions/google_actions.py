@@ -59,6 +59,7 @@ class GoogleActionResult:
     text: str
 
 
+_NOT_CONNECTED_USER_MSG = "Google no está conectado — puedes configurarlo en los ajustes de la app."
 _NOT_CONNECTED_MSG = (
     "Google no está conectado. Conéctalo en Ajustes → Integraciones "
     "o a través de /auth/integrations/google/connect."
@@ -102,7 +103,7 @@ def _create_calendar_event(
 ) -> GoogleActionResult:
     creds = _resolve_creds(user_id, session)
     if creds is None:
-        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
+        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_USER_MSG)
 
     title = payload.get("title", "")
     start_iso = payload.get("start_iso", "")
@@ -137,7 +138,7 @@ def _edit_calendar_event(
 ) -> GoogleActionResult:
     creds = _resolve_creds(user_id, session)
     if creds is None:
-        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
+        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_USER_MSG)
 
     event_id = payload.get("event_id", "")
     service = _build_service("calendar", "v3", creds)
@@ -179,7 +180,7 @@ def _delete_calendar_event(
 ) -> GoogleActionResult:
     creds = _resolve_creds(user_id, session)
     if creds is None:
-        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_MSG)
+        return GoogleActionResult(ok=False, text=_NOT_CONNECTED_USER_MSG)
 
     event_id = payload.get("event_id", "")
     service = _build_service("calendar", "v3", creds)

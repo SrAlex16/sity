@@ -150,6 +150,7 @@ export interface T {
     revoking: string;
     viewsLabel: string;
     quotaHint: string;
+    busyHint: string;
     inputPlaceholder: string;
   };
   personality: {
@@ -395,6 +396,7 @@ const es: T = {
     revoking: 'Revocando…',
     viewsLabel: 'vistas',
     quotaHint: 'Has alcanzado el límite diario de mensajes.',
+    busyHint: 'Espera a que termine la respuesta.',
     inputPlaceholder: 'Escribe un mensaje…',
   },
   personality: {
@@ -640,6 +642,7 @@ const en: T = {
     revoking: 'Revoking…',
     viewsLabel: 'views',
     quotaHint: 'You have reached the daily message limit.',
+    busyHint: 'Wait for the response to finish.',
     inputPlaceholder: 'Type a message…',
   },
   personality: {
@@ -885,6 +888,7 @@ const ja: T = {
     revoking: '無効化中…',
     viewsLabel: '回表示',
     quotaHint: '1日のメッセージ上限に達しました。',
+    busyHint: '返答が終わるまでお待ちください。',
     inputPlaceholder: 'メッセージを入力…',
   },
   personality: {

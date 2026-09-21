@@ -38,15 +38,16 @@ def _resolve_spotify_token(ctx: ToolContext) -> dict | None:
 
 
 def _not_connected(tool_name: str) -> ToolExecutionResult:
-    msg = (
+    user_msg = "Spotify no está conectado — puedes configurarlo en los ajustes de la app."
+    detail_msg = (
         "Spotify no está conectado. Conéctalo en Ajustes → Integraciones "
         "o a través de /auth/integrations/spotify/connect."
     )
     return ToolExecutionResult(
-        tool_name=tool_name, ok=False, message=msg,
+        tool_name=tool_name, ok=False, message=detail_msg,
         updated_parameters=[], raw_result={
-            "success": False, "message": msg,
-            "local_final": True, "text": msg, "local_model": "spotify-auth-guard",
+            "success": False, "message": detail_msg,
+            "local_final": True, "text": user_msg, "local_model": "spotify-auth-guard",
         },
     )
 

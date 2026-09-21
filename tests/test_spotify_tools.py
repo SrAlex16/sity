@@ -783,3 +783,36 @@ def test_play_with_track_uri_skips_search(mock_search, mock_save, mock_put, _):
     mock_search.assert_not_called()
     call_kwargs = mock_put.call_args
     assert call_kwargs.kwargs["body"] == {"uris": ["spotify:track:t1"]}
+
+
+# ---------------------------------------------------------------------------
+# R6-01 — _not_connected() must not expose internal API routes to users
+# ---------------------------------------------------------------------------
+
+def test_not_connected_text_no_auth_route():
+    """R6-01: user-facing text must not contain /auth/... internal API routes."""
+    from app.tools.handlers.spotify_tools import _not_connected
+    result = _not_connected("spotify_play")
+    assert "/auth/" not in result.raw_result["text"], (
+        "R6-01: _not_connected() exposes an internal /auth/ route in raw_result['text']. "
+        f"Got: {result.raw_result['text']!r}"
+    )
+
+
+def test_not_connected_message_contains_detail():
+    """R6-01: internal detail (with auth route) is preserved in the message field for logging."""
+    from app.tools.handlers.spotify_tools import _not_connected
+    result = _not_connected("spotify_play")
+    assert "/auth/integrations/spotify/connect" in result.message, (
+        "Detail message with auth route must be kept in ToolExecutionResult.message for logging."
+    )
+
+
+def test_not_connected_text_is_generic():
+    """R6-01: user-facing text is a generic settings hint, not an internal path."""
+    from app.tools.handlers.spotify_tools import _not_connected
+    result = _not_connected("spotify_play")
+    text = result.raw_result["text"]
+    assert "ajustes" in text.lower() or "settings" in text.lower(), (
+        f"User-facing text must reference 'ajustes' generically. Got: {text!r}"
+    )

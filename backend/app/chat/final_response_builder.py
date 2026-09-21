@@ -72,6 +72,18 @@ _VOSEO_SYSTEM = (
     "Sin explicaciones. Sin prefijos. Sin sufijos."
 )
 
+# Detects rewrite-marker patterns that Haiku uses to announce the corrected text in
+# multi-block reasoning: "Reescrito sin voseo:\n\n{text}", "Texto corregido:\n\n{text}", etc.
+# The last occurrence in the response is used — any reasoning before the final marker is dropped.
+_VOSEO_REWRITE_MARKER_RE = re.compile(
+    r"(?i)"
+    r"(?:reescrito\s+sin\s+voseo"
+    r"|texto\s+corregido"
+    r"|sin\s+voseo"
+    r"|versión\s+corregida"
+    r")\s*:\s*\n\n"
+)
+
 # Detects single-line meta-commentary that Haiku occasionally leaks before the real text,
 # separated by "\n\n". Only matches clear reasoning markers — never legitimate Spanish text.
 _VOSEO_META_PREFIX_RE = re.compile(
@@ -111,19 +123,27 @@ def _normalize_voseo_haiku(text: str, *, trace_id: str) -> str:
         response = provider.generate(request)
         if response.ok and response.text and len(response.text.strip()) > 5:
             candidate = response.text.strip()
-            # Post-processing: strip reasoning prefix if Haiku leaked one.
-            # Pattern: "Meta commentary\n\n{actual text}" → use only the part after "\n\n"
-            # when the prefix is a single line matching known meta-commentary markers.
-            if "\n\n" in candidate:
-                before, _, after = candidate.partition("\n\n")
-                before_s = before.strip()
-                after_s = after.strip()
-                if (
-                    "\n" not in before_s
-                    and _VOSEO_META_PREFIX_RE.search(before_s)
-                    and after_s
-                ):
-                    candidate = after_s
+            # Post-processing layer 1: multi-block reasoning with a rewrite marker.
+            # Pattern: "...analysis...\n\nReescrito sin voseo:\n\n{text}" — use text
+            # after the LAST such marker (handles self-correction mid-reasoning).
+            _marker_hits = list(_VOSEO_REWRITE_MARKER_RE.finditer(candidate))
+            if _marker_hits:
+                _after_marker = candidate[_marker_hits[-1].end():].strip()
+                if _after_marker:
+                    candidate = _after_marker
+            else:
+                # Post-processing layer 2: single-line meta-prefix before first \n\n.
+                # Pattern: "Meta commentary\n\n{actual text}"
+                if "\n\n" in candidate:
+                    before, _, after = candidate.partition("\n\n")
+                    before_s = before.strip()
+                    after_s = after.strip()
+                    if (
+                        "\n" not in before_s
+                        and _VOSEO_META_PREFIX_RE.search(before_s)
+                        and after_s
+                    ):
+                        candidate = after_s
             return candidate
         return text
     except Exception:

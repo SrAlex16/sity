@@ -124,6 +124,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const notifications = useNotifications(isGuest);
 
   const [inputText, setInputText] = useState(() => localStorage.getItem('sity_draft_message') ?? '');
+  const [busyHint, setBusyHint] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
@@ -196,7 +197,13 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   };
 
   const handleSend = useCallback(() => {
-    if (canCancel) return; // turn active — keep text in field, user must press Stop first
+    if (canCancel) {
+      // Turn active: show brief hint instead of silently dropping the Enter press.
+      // Option (b): keep draft intact, give visual feedback, user sends when ready.
+      setBusyHint(true);
+      setTimeout(() => setBusyHint(false), 2000);
+      return;
+    }
     const text = inputText.trim();
     if (!text && !pendingImage) return;
     if (draftSaveTimeout.current) {
@@ -591,6 +598,11 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   {quotaExhausted && (
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
                       {tl.quotaHint}
+                    </span>
+                  )}
+                  {busyHint && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                      {tl.busyHint}
                     </span>
                   )}
                 </div>

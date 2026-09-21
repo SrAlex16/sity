@@ -335,3 +335,94 @@ def test_voseo_system_prompt_prohibits_meta_phrases():
         "_VOSEO_SYSTEM must explicitly prohibit known meta-commentary phrases"
     )
     assert "primera palabra" in _VOSEO_SYSTEM or "empezando directamente" in _VOSEO_SYSTEM.lower()
+
+
+# ---------------------------------------------------------------------------
+# R5-01 regression (round 6) — multi-block reasoning with rewrite marker
+# ---------------------------------------------------------------------------
+
+def test_multiblock_reasoning_rewrite_marker_stripped():
+    """R5-01 regression (round 6): Haiku emits multi-block reasoning ending with
+    'Reescrito sin voseo:\\n\\n{corrected}'. The first before_s ('Usas suena...') does not
+    match _VOSEO_META_PREFIX_RE, so the old single-block check was a no-op. The new
+    _VOSEO_REWRITE_MARKER_RE must catch the final marker and return only what follows it.
+    """
+    original = "¿Tenés tiempo esta tarde?"
+    corrected = "¿Tienes tiempo esta tarde?"
+    leaked = (
+        "Usas 'suena' en el texto y eso no es voseo. Voy a analizar...\n\n"
+        "Espera: releeré más cuidadosamente.\n\n"
+        "Sí, 'tenés' es voseo rioplatense.\n\n"
+        "Reescrito sin voseo:\n\n"
+        + corrected
+    )
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(leaked)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected, (
+        f"Multi-block reasoning with 'Reescrito sin voseo:' not stripped.\nGot: {result!r}"
+    )
+
+
+def test_rewrite_marker_variants_stripped():
+    """R5-01: All four rewrite marker variants are stripped."""
+    original = "¿Querés saber más?"
+    corrected = "¿Quieres saber más?"
+    markers = [
+        "Reescrito sin voseo:\n\n",
+        "Texto corregido:\n\n",
+        "Sin voseo:\n\n",
+        "Versión corregida:\n\n",
+    ]
+    for marker in markers:
+        leaked = f"Análisis del texto...\n\n{marker}{corrected}"
+        with patch("app.cortex.providers.factory.build_ai_provider",
+                   return_value=_mock_provider(leaked)):
+            result = _normalize_voseo_haiku(original, trace_id="t")
+        assert result == corrected, (
+            f"Rewrite marker not stripped for {marker!r}\nGot: {result!r}"
+        )
+
+
+def test_rewrite_marker_last_occurrence_wins():
+    """R5-01: When multiple rewrite markers exist (self-correction), the LAST one is used."""
+    original = "¿Vos tenés razón?"
+    corrected = "¿Tú tienes razón?"
+    first_attempt = "¿Tú tenés razón?"  # partial correction — wrong
+    leaked = (
+        "Primer intento:\n\n"
+        "Reescrito sin voseo:\n\n"
+        + first_attempt
+        + "\n\nEspera, 'tenés' sigue siendo voseo.\n\n"
+        "Reescrito sin voseo:\n\n"
+        + corrected
+    )
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(leaked)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected, (
+        f"Last rewrite marker not used. Got: {result!r}"
+    )
+
+
+def test_single_block_prefix_still_works_after_rewrite_marker_added():
+    """Regression: the existing single-block prefix strip still works when no rewrite
+    marker is present — _VOSEO_REWRITE_MARKER_RE must not break prior behavior."""
+    original = "¿Tenés tiempo esta tarde?"
+    corrected = "¿Tienes tiempo esta tarde?"
+    leaked = "El texto corregido es el siguiente:\n\n" + corrected
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(leaked)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected, (
+        f"Single-block prefix strip regressed after adding rewrite marker check.\nGot: {result!r}"
+    )
+
+
+def test_rewrite_marker_regex_exported():
+    """_VOSEO_REWRITE_MARKER_RE is importable from final_response_builder."""
+    from app.chat.final_response_builder import _VOSEO_REWRITE_MARKER_RE
+    assert _VOSEO_REWRITE_MARKER_RE.search("Reescrito sin voseo:\n\n")
+    assert _VOSEO_REWRITE_MARKER_RE.search("Texto corregido:\n\n")
+    assert _VOSEO_REWRITE_MARKER_RE.search("Sin voseo:\n\n")
+    assert _VOSEO_REWRITE_MARKER_RE.search("Versión corregida:\n\n")

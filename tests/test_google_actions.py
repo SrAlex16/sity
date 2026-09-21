@@ -8,6 +8,7 @@ import pytest
 from app.actions.google_actions import (
     GoogleActionResult,
     _NOT_CONNECTED_MSG,
+    _NOT_CONNECTED_USER_MSG,
     execute_google_action,
 )
 
@@ -49,7 +50,7 @@ class TestNoCredentials:
             result = execute_google_action(_create_payload(), user_id=None, session=None)
 
         assert result.ok is False
-        assert "Conéctalo en Ajustes" in result.text
+        assert "ajustes de la app" in result.text
         assert "scripts/google_auth_setup.py" not in result.text  # old message gone
 
     def test_edit_returns_not_connected_message(self):
@@ -59,7 +60,7 @@ class TestNoCredentials:
                 user_id=None, session=None,
             )
         assert result.ok is False
-        assert "Conéctalo en Ajustes" in result.text
+        assert "ajustes de la app" in result.text
 
     def test_delete_returns_not_connected_message(self):
         with patch("app.actions.google_actions._resolve_creds", return_value=None):
@@ -68,7 +69,7 @@ class TestNoCredentials:
                 user_id=None, session=None,
             )
         assert result.ok is False
-        assert "Conéctalo en Ajustes" in result.text
+        assert "ajustes de la app" in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -205,5 +206,24 @@ class TestPendingActionRunnerGoogleUserExtraction:
         with patch("app.actions.google_actions._resolve_creds", return_value=None):
             result = runner._run_google(action, "trc_test", "es")
 
-        assert "Conéctalo en Ajustes" in result.text
+        assert "ajustes de la app" in result.text
         runner.cm.mark_failed.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# R6-01 — _NOT_CONNECTED_USER_MSG must not expose internal API routes
+# ---------------------------------------------------------------------------
+
+def test_google_not_connected_user_msg_no_auth_route():
+    """R6-01: user-facing Google not-connected message must not contain /auth/... routes."""
+    from app.actions.google_actions import _NOT_CONNECTED_USER_MSG
+    assert "/auth/" not in _NOT_CONNECTED_USER_MSG, (
+        f"R6-01: _NOT_CONNECTED_USER_MSG exposes an internal /auth/ route. "
+        f"Got: {_NOT_CONNECTED_USER_MSG!r}"
+    )
+
+
+def test_google_not_connected_detail_msg_preserved():
+    """R6-01: internal detail (with auth route) is preserved in _NOT_CONNECTED_MSG for logging."""
+    from app.actions.google_actions import _NOT_CONNECTED_MSG
+    assert "/auth/integrations/google/connect" in _NOT_CONNECTED_MSG
