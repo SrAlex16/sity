@@ -49,7 +49,7 @@ window.HTMLElement.prototype.scrollIntoView = vi.fn();
 function makeProps(overrides: Partial<Parameters<typeof ChatScreen>[0]> = {}) {
   return {
     messages: [],
-    status: 'idle' as const,
+    status: 'desconectado' as const,
     sendMessage: vi.fn().mockResolvedValue(undefined),
     sendAudio: vi.fn().mockResolvedValue(undefined),
     clearMessages: vi.fn(),
