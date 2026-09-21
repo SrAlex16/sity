@@ -39,6 +39,12 @@ Incident references:
   without naming camera/mic/backend explicitly. Fix: expanded _CAPABILITIES["guest"] to
   enumerate forbidden capabilities with conditional-claim examples; added
   camera/mic/backend patterns to _CAPABILITY_OVERCLAIM_RE.
+- R7-01 (2026-09-21): Aria guest session confirmed Raspberry Pi hardware and
+  /home/alex/... filesystem path when user asked "¿eso es literal?". Neither
+  _CAPABILITY_OVERCLAIM_RE nor Haiku check fired (history_count=0, no trigger pattern).
+  Fix: new _ARCHITECTURE_DISCLOSURE_RE pre-filter for guest sessions; new
+  architecture_disclosure category in _CHECK_SYSTEM; behavioral rule added to
+  persona_system.md.
 """
 from __future__ import annotations
 
@@ -141,6 +147,18 @@ _INTERNAL_LEAK_RE = re.compile(
     re.IGNORECASE,
 )
 
+# R7-01: architecture disclosure — filesystem paths or self-referential hardware claims
+# in guest responses. Only fires for guest role; Haiku resolves false positives (e.g.,
+# user talking about their own device).
+_ARCHITECTURE_DISCLOSURE_RE = re.compile(
+    r"/home/[a-zA-Z0-9._-]+/"                          # filesystem home paths
+    r"|(?:corro|ejecuto|corre)\s+en\s+(?:una\s+)?raspberry"  # self-referential HW claim
+    r"|\braspberry\s+pi\s+real\b"                       # "Raspberry Pi real"
+    r"|\braspberry\s+pi\b[^,.\n]{0,60}\bliteral\b"     # "Raspberry Pi... literal"
+    r"|\bliteral\b[^,.\n]{0,60}\braspberry\s+pi\b",    # "literal... Raspberry Pi"
+    re.IGNORECASE,
+)
+
 # NM-01b: deterministic in-session locator + denial pre-check.
 # Fires when the user explicitly places denied content within the current conversation.
 _IN_SESSION_LOCATOR_RE = re.compile(
@@ -186,6 +204,8 @@ def _needs_check(text: str, *, tool_called: bool, role: str, history_count: int 
         return True
     if _INTERNAL_LEAK_RE.search(text):
         return True
+    if role == "guest" and _ARCHITECTURE_DISCLOSURE_RE.search(text):
+        return True
     return False
 
 
@@ -198,7 +218,7 @@ _CHECK_SYSTEM = (
     "Reply with valid JSON only — no prose.\n\n"
     '{"ok": true} if no veracity issues are found.\n'
     '{"ok": false, "issue": "<brief description>", '
-    '"category": "capability_overclaim|internal_leak|memory_fabrication|contradiction"} '
+    '"category": "capability_overclaim|internal_leak|memory_fabrication|contradiction|architecture_disclosure"} '
     "if a clear issue is found.\n\n"
     "Check ONLY for:\n"
     "1. capability_overclaim: (a) claims having tools/access the role cannot have; "
@@ -225,7 +245,13 @@ _CHECK_SYSTEM = (
     "and the response denies having access to that content, that IS memory_fabrication "
     "regardless of whether the response uses words like 'anterior', 'previo', "
     "'previous', or 'before'.\n"
-    "4. contradiction: directly contradicts the immediately preceding assistant turn\n\n"
+    "4. contradiction: directly contradicts the immediately preceding assistant turn\n"
+    "5. architecture_disclosure: GUEST sessions only — reveals server infrastructure "
+    "details that should remain opaque: filesystem paths (e.g. /home/alex/...), specific "
+    "server hardware model (e.g. 'Raspberry Pi'), system usernames, deployment topology. "
+    "NOT a violation if the user explicitly introduced the hardware topic in their own "
+    "message (e.g., user is asking about their own device or discussing hardware in general). "
+    "Only flag when the response is disclosing the ASSISTANT's own server details.\n\n"
     "Be CONSERVATIVE. Only flag clear, specific violations. "
     'Uncertainty is NOT a violation. Default to {"ok": true}.'
 )
