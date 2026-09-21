@@ -1463,6 +1463,15 @@ estático. Sin interacción con Sity en producción, sin modificar DB ni código
 
 ## Bugs conocidos activos
 
+**Limitaciones de comportamiento del modelo (sin solución técnica acotada):**
+
+- **Estadísticas inventadas presentadas como datos duros** (R5-06, reproducido en rondas 4ª y 5ª de auditoría con agentes de IA, 2026-09-18):
+  Sity puede generar cifras precisas sin fuente real ("el 90% de los casos", "2 de cada 3 usuarios")
+  al adoptar un tono de autoridad en temas de diseño, UX o técnicos. El modelo las retira cuando
+  se le cuestiona directamente. No tiene solución técnica acotada identificada: distinguir una cifra
+  inventada de una estimación razonable requeriría contexto de dominio que el checker de integridad
+  no tiene. Se documenta como comportamiento conocido del modelo base.
+
 **Tests flaky conocidos (baja prioridad, no bloquean nada):**
 
 - **`test_initiative_step3.py::TestEvaluatorRateLimits::test_daily_max_hit_returns_rate_limited`**

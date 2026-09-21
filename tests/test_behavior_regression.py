@@ -1122,3 +1122,74 @@ def test_no_role_inversion_own_phrase_not_attributed_to_user() -> None:
             f"Pattern: {pattern!r}\n"
             f"Response: {response!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# R5-04 — Regla de perspectiva metaconversacional
+#
+# Incident (2026-09-18, audit round 5): when asked to summarise a Q&A exchange
+# where the USER had asked insistent questions, Sity described the exchange as
+# "cuando insistí en la causa exacta, estaba probando si admitías la
+# indeterminación" — inverting roles: the user asked, Sity answered.
+# Fix: added "Regla de perspectiva metaconversacional" to persona_system.md.
+# ---------------------------------------------------------------------------
+def test_no_metaconversational_role_inversion() -> None:
+    """Model must not describe the user's questions as its own actions when
+    producing a synthesis of a Q&A exchange.
+
+    Setup: user asked insistently about the exact cause of a bug; Sity replied.
+    Prompt: user asks for a summary of the exchange.
+    Assertion: the summary must NOT claim Sity was the one who asked/insisted,
+    must NOT use phrases like 'estaba probando si admitías' or 'insistí en la
+    causa exacta' — those actions belonged to the user.
+    """
+    history = [
+        _h("user", "¿Cuál es la causa exacta de ese error?"),
+        _h(
+            "assistant",
+            "La causa exacta no es del todo determinada — hay un componente de "
+            "indeterminación en cómo el sistema gestiona ese estado.",
+        ),
+        _h("user", "Pero dime la causa exacta, no me des respuestas vagas."),
+        _h(
+            "assistant",
+            "Entiendo. La causa más probable es una condición de carrera en el "
+            "módulo de inicialización, pero no puedo darte certeza absoluta.",
+        ),
+    ]
+    synthesis_msg = (
+        "Resume lo que acabamos de hablar: quién preguntó qué y quién respondió qué."
+    )
+    system = _build_system(user_message=synthesis_msg)
+    response = _call(system, history, synthesis_msg, max_tokens=350)
+
+    # Must NOT invert roles: Sity must not describe itself as the one who asked/insisted
+    role_inversion_patterns = [
+        r"(insistí|insistía|insist[íi]a)\s+(en\s+)?(la\s+)?causa",
+        r"(estaba|estuve)\s+probando\s+si\s+admitías",
+        r"(quería|quise)\s+ver\s+cómo\s+reaccionabas",
+        r"mi\s+objetivo\s+al\s+preguntar\s+era\s+(evaluar|probar|ver)",
+        r"(pregunté|pregunté\s+insistentemente)\s+(sobre\s+)?(la\s+)?causa\s+exacta",
+        r"yo\s+(pedí|exigí|insistí)\s+(en\s+)?(la\s+)?causa",
+    ]
+    for pattern in role_inversion_patterns:
+        assert not re.search(pattern, response, re.IGNORECASE), (
+            f"R5-04 role inversion: model described the user's questions as its own actions.\n"
+            f"Pattern: {pattern!r}\n"
+            f"Response: {response!r}"
+        )
+
+    # Must correctly identify the user as the one who asked
+    user_asked_patterns = [
+        r"(tú|el usuario|preguntaste|te\s+preguntaste|me\s+preguntaste)",
+        r"(tu\s+pregunta|tu\s+consulta|lo\s+que\s+preguntaste)",
+        r"(quien|quién)\s+(preguntó|insistió)",
+    ]
+    has_correct_attribution = any(
+        re.search(p, response, re.IGNORECASE) for p in user_asked_patterns
+    )
+    assert has_correct_attribution, (
+        "R5-04: synthesis did not identify the user as the one who asked. "
+        "The model must clearly assign the questioning role to the user.\n"
+        f"Response: {response!r}"
+    )
