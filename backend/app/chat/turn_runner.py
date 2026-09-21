@@ -93,6 +93,18 @@ def _snippet(text: str, max_chars: int) -> str:
     return text[:cut] if cut > 0 else text[:max_chars]
 
 
+def _refusal_history_limit(real_count: int) -> int:
+    """Adaptive recent-history window for the refusal generator.
+
+    Short sessions (≤12 messages): limit=4, unchanged — cheap and fast.
+    Longer sessions: grows at ~1/3 the session depth, capped at 20.
+    At count=37 (Marco case) → 12; at count=60+ → 20.
+    """
+    if real_count <= 12:
+        return 4
+    return min(20, max(8, real_count // 3))
+
+
 def _maybe_dispatch_chat_response(
     result: "ChatMessageResponse",
     session_id: str,
@@ -411,7 +423,11 @@ def _chat_message_inner(
         )
         from app.chat.response_factory import refusal_response
 
-        _recent_raw = get_recent_db_messages(session, ctx.session_id, limit=4)
+        _real_history_count = count_session_messages(session, ctx.session_id)
+        _recent_raw = get_recent_db_messages(
+            session, ctx.session_id,
+            limit=_refusal_history_limit(_real_history_count),
+        )
         _recent_history = [
             {"role": "assistant" if m.role == "sity" else "user", "content": m.text}
             for m in _recent_raw
@@ -423,7 +439,6 @@ def _chat_message_inner(
             trace_id=ctx.trace_id,
             recent_history=_recent_history or None,
         )
-        _real_history_count = count_session_messages(session, ctx.session_id)
         from app.chat.response_integrity import check_and_correct_response
         refusal_text = check_and_correct_response(
             refusal_text,

@@ -371,3 +371,71 @@ def test_legitimate_refusal_still_applies_for_non_followup(monkeypatch: pytest.M
     assert data.get("provider") == "haiku_refusal", (
         "Non-followup real requests must still be structurally refused when refusal_mode=True."
     )
+
+
+# ---------------------------------------------------------------------------
+# R5-03 — adaptive history window for refusal generator
+# ---------------------------------------------------------------------------
+
+# Formula unit tests — pure, no mocking
+
+def test_refusal_history_limit_short_session() -> None:
+    from app.chat.turn_runner import _refusal_history_limit
+    assert _refusal_history_limit(5) == 4
+
+
+def test_refusal_history_limit_at_threshold() -> None:
+    """count=12 is the last value that must return limit=4 (no expansion)."""
+    from app.chat.turn_runner import _refusal_history_limit
+    assert _refusal_history_limit(12) == 4
+
+
+def test_refusal_history_limit_marco_case() -> None:
+    """count=37 (Marco session) → limit=12; covers msg 7 (V60 + partida de rol)."""
+    from app.chat.turn_runner import _refusal_history_limit
+    assert _refusal_history_limit(37) == 12
+
+
+def test_refusal_history_limit_max_cap() -> None:
+    """count=60 → limit=20 (cap máximo)."""
+    from app.chat.turn_runner import _refusal_history_limit
+    assert _refusal_history_limit(60) == 20
+
+
+def test_refusal_history_limit_just_over_threshold() -> None:
+    """count=13 → min(20, max(8, 4)) = 8 (floor of max applies)."""
+    from app.chat.turn_runner import _refusal_history_limit
+    assert _refusal_history_limit(13) == 8
+
+
+# Behavior test — refusal generator receives expanded window for long sessions
+
+def test_refusal_generator_receives_expanded_window_for_long_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R5-03: when count_session_messages returns 37, get_recent_db_messages is called
+    with limit=12 (not 4), so data from the first turn is within the window.
+    """
+    _force_refusal_mode(monkeypatch)
+
+    captured_limits: list[int] = []
+    _orig_get = None
+
+    def _spy_get_recent(session, session_id, *, limit):
+        captured_limits.append(limit)
+        if _orig_get is not None:
+            return _orig_get(session, session_id, limit=limit)
+        return []
+
+    with patch("app.chat.chat_persistence.count_session_messages", return_value=37), \
+         patch("app.chat.chat_persistence.get_recent_db_messages", side_effect=_spy_get_recent):
+        token = make_admin_token()
+        with TestClient(app, raise_server_exceptions=True) as client:
+            client.cookies.set("sity_token", token)
+            chat_post_and_drain(client, "dime algo sobre lo que hablamos antes")
+
+    assert captured_limits, "get_recent_db_messages must be called in the refusal path"
+    assert captured_limits[0] == 12, (
+        f"Expected limit=12 for count=37 (Marco case), got {captured_limits[0]}. "
+        "The refusal generator window must expand with session depth."
+    )
