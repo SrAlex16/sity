@@ -99,6 +99,10 @@ export function useChat(userKey: string | null) {
   // Always reflects the latest userKey so _listenTurn can validate events mid-flight.
   const userKeyRef = useRef<string | null>(userKey);
   userKeyRef.current = userKey;
+  // Always reflects the latest status so the visibility handler can read it without
+  // being invalidated by effect closure staleness.
+  const statusRef = useRef<ChatStatus>('desconectado');
+  statusRef.current = status;
 
   // On session change: clear all session-derived state before loading new history.
   // userKey === null means auth is still resolving — skip until identity is known.
@@ -137,9 +141,18 @@ export function useChat(userKey: string | null) {
     };
     const onVisibilityChange = () => {
       reportVisibility();
-      // When returning from background, reload history from DB so any proactive
-      // messages delivered while the tab was frozen appear without a full F5.
-      if (document.visibilityState === 'visible') void loadHistory();
+      if (document.visibilityState === 'visible') {
+        const s = statusRef.current;
+        if (s === 'procesando') {
+          // Active turn: reconcile with DB but keep the processing indicator
+          // unless the response already arrived while the tab was hidden.
+          void loadHistory({ keepProcessing: true });
+        } else if (s !== 'conectado') {
+          // 'desconectado': reload to recover from SSE drops or catch proactive msgs.
+          void loadHistory();
+        }
+        // 'conectado' = idle: skip the round-trip.
+      }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
@@ -175,13 +188,13 @@ export function useChat(userKey: string | null) {
 
     return () => {
       es.close();
-      document.removeEventListener('visibilitychange', reportVisibility);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (bgFlashTimerRef.current) clearTimeout(bgFlashTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userKey]);
 
-  async function loadHistory() {
+  async function loadHistory(opts?: { keepProcessing?: boolean }) {
     try {
       const res = await fetch('/chat/current');
       if (!res.ok) throw new Error('network');
@@ -189,36 +202,49 @@ export function useChat(userKey: string | null) {
 
       const clearedAt = localStorage.getItem(`sity_chat_cleared_${userKey ?? 'unknown'}`);
 
-      setMessages(
-        data.messages
-          .filter((m) => {
-            if (!clearedAt) return true;
-            if (!m.created_at) return true;
-            return m.created_at > clearedAt;
-          })
-          .map((m): ChatMessage => {
-            const ts = m.created_at ? new Date(m.created_at) : new Date();
-            const role = m.role === 'user' ? 'user' : 'assistant';
-            if (m.audio_filename && role === 'assistant') {
-              return {
-                id: uid(),
-                type: 'audio',
-                role,
-                audioUrl: `/audio/stored/${m.audio_filename}`,
-                transcript: m.text || undefined,
-                timestamp: ts,
-                trace_id: m.trace_id,
-              };
-            }
+      const msgs: ChatMessage[] = data.messages
+        .filter((m) => {
+          if (!clearedAt) return true;
+          if (!m.created_at) return true;
+          return m.created_at > clearedAt;
+        })
+        .map((m): ChatMessage => {
+          const ts = m.created_at ? new Date(m.created_at) : new Date();
+          const role = m.role === 'user' ? 'user' : 'assistant';
+          if (m.audio_filename && role === 'assistant') {
             return {
-              id: uid(), type: 'text', role, text: m.text, timestamp: ts, trace_id: m.trace_id,
-              imagePreviewUrl: m.image_urls?.[0],
+              id: uid(),
+              type: 'audio',
+              role,
+              audioUrl: `/audio/stored/${m.audio_filename}`,
+              transcript: m.text || undefined,
+              timestamp: ts,
+              trace_id: m.trace_id,
             };
-          }),
-      );
-      setStatus('conectado');
+          }
+          return {
+            id: uid(), type: 'text', role, text: m.text, timestamp: ts, trace_id: m.trace_id,
+            imagePreviewUrl: m.image_urls?.[0],
+          };
+        });
+
+      setMessages(msgs);
+
+      if (opts?.keepProcessing) {
+        // Only clear the processing indicator if the backend already saved a response.
+        // Last message from assistant = turn completed; last from user (or empty) = still running.
+        const lastMsg = msgs[msgs.length - 1];
+        if (!lastMsg || lastMsg.role === 'assistant') {
+          setStatus('conectado');
+        }
+      } else {
+        setStatus('conectado');
+      }
     } catch {
-      setStatus('desconectado');
+      if (!opts?.keepProcessing) {
+        // Conservative fallback: leave state untouched when called during an active turn.
+        setStatus('desconectado');
+      }
     }
   }
 
