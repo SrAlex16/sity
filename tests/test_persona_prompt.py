@@ -477,3 +477,69 @@ def test_verbosity_cap_does_not_affect_other_params(engine: PersonaEngine) -> No
     )
     # Playfulness should still be at max despite verbosity being capped
     assert "Playfulness muy alta" in result.system_prompt
+
+
+# ------------------------------------------------------------------ #
+# R7-01 root fix: system_git_block is admin-only                      #
+# ------------------------------------------------------------------ #
+
+def test_guest_prompt_contains_no_project_root(engine: PersonaEngine) -> None:
+    """Guest sessions must not receive project_root in the prompt. R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="guest:abc", is_admin=False)
+    from app.core.runtime_config import get_runtime_config
+    project_root = str(get_runtime_config().project_root)
+    assert project_root not in result.system_prompt, (
+        f"R7-01: project_root ({project_root!r}) found in guest prompt"
+    )
+
+
+def test_guest_prompt_contains_no_raspberry_reference(engine: PersonaEngine) -> None:
+    """Guest sessions must not receive 'Raspberry' hardware reference. R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="guest:abc", is_admin=False)
+    assert "Raspberry" not in result.system_prompt, (
+        "R7-01: 'Raspberry' hardware reference found in guest prompt"
+    )
+
+
+def test_guest_prompt_contains_no_git_instructions(engine: PersonaEngine) -> None:
+    """Guest sessions must not receive Git tool instructions. R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="guest:abc", is_admin=False)
+    assert "herramientas Git" not in result.system_prompt, (
+        "R7-01: Git tool instructions found in guest prompt"
+    )
+
+
+def test_user_prompt_contains_no_project_root(engine: PersonaEngine) -> None:
+    """Regular user (non-admin) sessions also must not receive project_root. R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="user:42", is_admin=False)
+    from app.core.runtime_config import get_runtime_config
+    project_root = str(get_runtime_config().project_root)
+    assert project_root not in result.system_prompt, (
+        f"R7-01: project_root found in non-admin user prompt"
+    )
+
+
+def test_admin_prompt_contains_project_root(engine: PersonaEngine) -> None:
+    """Admin sessions must still receive project_root (regression guard). R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="user:1", is_admin=True)
+    from app.core.runtime_config import get_runtime_config
+    project_root = str(get_runtime_config().project_root)
+    assert project_root in result.system_prompt, (
+        f"R7-01 regression: project_root missing from admin prompt"
+    )
+
+
+def test_admin_prompt_contains_raspberry_reference(engine: PersonaEngine) -> None:
+    """Admin sessions must still receive 'Raspberry' hardware reference. R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="user:1", is_admin=True)
+    assert "Raspberry" in result.system_prompt, (
+        "R7-01 regression: 'Raspberry' missing from admin prompt"
+    )
+
+
+def test_admin_prompt_contains_git_instructions(engine: PersonaEngine) -> None:
+    """Admin sessions must still receive Git tool instructions. R7-01."""
+    result = engine.build_persona_prompt({}, "hola", session_id="user:1", is_admin=True)
+    assert "herramientas Git" in result.system_prompt, (
+        "R7-01 regression: Git instructions missing from admin prompt"
+    )

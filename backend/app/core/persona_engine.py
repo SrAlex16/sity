@@ -455,6 +455,51 @@ class PersonaEngine:
 
         language_block = _LANGUAGE_BLOCK.get(language_override, _LANGUAGE_BLOCK["auto"])
 
+        # System/Git block — admin-only. Non-admin (guest/user) sessions must not
+        # receive project_root, hardware references, or Git/service instructions
+        # because the model reveals these faithfully when pressed. R7-01 root fix.
+        if is_admin:
+            _proj = str(get_runtime_config().project_root)
+            _svcs = _format_services(get_allowed_systemd_services())
+            system_git_block = (
+                f"- Puedes usar herramientas de solo lectura para inspeccionar la Raspberry: "
+                f"estado del sistema, disco, procesos, servicios permitidos y directorios permitidos.\n"
+                f"- Puedes usar herramientas Git de solo lectura para inspeccionar repos permitidos: "
+                f"status, log, ramas y remotos.\n"
+                f"- El repositorio principal de Sity está en {_proj}.\n"
+                f"- Si el usuario pregunta por \"el repo sity\", \"este repo\" o \"el proyecto\", "
+                f"usa {_proj} para las herramientas Git.\n"
+                f"- No inventes rutas de repositorio. Si no conoces la ruta, usa el repo principal configurado.\n"
+                f"- Si el usuario pide arrancar, parar o reiniciar el backend o el frontend de Sity, "
+                f"usa system_propose_action para crear una acción pendiente. "
+                f"No afirmes haber ejecutado nada sin confirmación.\n"
+                f"- Servicios permitidos actualmente: {_svcs}.\n"
+                f"- Si el usuario pide gestionar otros servicios, di que todavía no están en la allowlist "
+                f"y que se puede añadir más adelante.\n"
+                f"- No puedes ejecutar cambios de sistema todavía más allá de los servicios permitidos.\n"
+                f"- Si el usuario pide fetch, pull, push, commit, crear rama, cambiar de rama (checkout) "
+                f"u otra acción Git modificadora, usa git_propose_action para crear una acción pendiente. "
+                f"No ejecutes nada directamente.\n"
+                f"- Cuando una acción pendiente se cree, muestra siempre la frase exacta de confirmación "
+                f"que devuelva el sistema.\n"
+                f"- Indica también que acepta confirmación contextual si solo hay una acción pendiente: "
+                f"por ejemplo \"sí\", \"adelante\", \"hazlo\", o algo específico de la acción como "
+                f"\"sí, vuelve a main\". El sistema incluirá un campo confirmation_hint con el ejemplo "
+                f"concreto para cada acción.\n"
+                f"- Si hay varias acciones pendientes activas, exige el ID exacto para evitar ambigüedad.\n"
+                f"- Solo se ejecuta cuando el usuario confirma. No afirmes que se ha ejecutado antes de "
+                f"recibir confirmación.\n"
+                f"- Fetch puede proponerse como safe, pero aun así debe pasar por confirmación en esta versión.\n"
+                f"- Si el usuario pide un commit y no ha indicado mensaje de commit, pídele el mensaje "
+                f"antes de proponer la acción.\n"
+                f"- Si el usuario pide crear una rama y proporciona un nombre claro en el mensaje, usa ese "
+                f"nombre en git_propose_action directamente. Solo pregunta el nombre si no aparece en el "
+                f"mensaje o es ambiguo.\n"
+                f"- No inventes resultados del sistema: usa solo lo que devuelvan las tools."
+            )
+        else:
+            system_git_block = ""
+
         if session_id.startswith("user:"):
             turn_load_instruction = (
                 "\nINSTRUCCIÓN INTERNA — ETIQUETA DE CARGA CONVERSACIONAL:\n"
@@ -493,8 +538,7 @@ class PersonaEngine:
             "style_directives":            style_directives,
             "refusal_instruction":         refusal_instruction,
             "order_override_instruction":  order_override_instruction,
-            "project_root":                str(get_runtime_config().project_root),
-            "allowed_systemd_services":    _format_services(get_allowed_systemd_services()),
+            "system_git_block":            system_git_block,
             "language_block":              language_block,
             "interlocutor_block":          interlocutor_block,
             "turn_load_instruction":       turn_load_instruction,
