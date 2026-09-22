@@ -48,7 +48,7 @@ export interface UseNotificationsResult {
   unsubscribe: () => Promise<void>;
 }
 
-export function useNotifications(isGuest: boolean): UseNotificationsResult {
+export function useNotifications(isGuest: boolean, pushUnavailableMsg?: string): UseNotificationsResult {
   const isSupported =
     typeof window !== 'undefined' &&
     'Notification' in window &&
@@ -127,8 +127,9 @@ export function useNotifications(isGuest: boolean): UseNotificationsResult {
       localStorage.setItem(LS_KEY, 'true');
       setIsSubscribed(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error desconocido';
-      setError(msg);
+      const rawMsg = err instanceof Error ? err.message : 'Error desconocido';
+      const isRegistrationFailure = /registration failed|push service error/i.test(rawMsg);
+      setError(isRegistrationFailure && pushUnavailableMsg ? pushUnavailableMsg : rawMsg);
     } finally {
       setIsLoading(false);
     }

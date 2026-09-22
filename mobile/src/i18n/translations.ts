@@ -120,6 +120,7 @@ export interface T {
     notifBlocked: string;
     notifDisable: string;
     notifEnable: string;
+    notifPushUnavailable: string;
     logout: string;
     generatingLink: string;
     retry: string;
@@ -370,6 +371,7 @@ const es: T = {
     notifBlocked: 'Notificaciones bloqueadas',
     notifDisable: 'Desactivar notificaciones push',
     notifEnable: 'Activar notificaciones push',
+    notifPushUnavailable: 'Las notificaciones push no están disponibles en este navegador. Para recibirlas, actívalas desde Chrome o Firefox en tu móvil.',
     logout: 'Cerrar sesión',
     generatingLink: 'Generando enlace…',
     retry: 'Reintentar',
@@ -616,6 +618,7 @@ const en: T = {
     notifBlocked: 'Notifications blocked',
     notifDisable: 'Disable push notifications',
     notifEnable: 'Enable push notifications',
+    notifPushUnavailable: 'Push notifications are not available in this browser. To receive them, enable them from Chrome or Firefox on your phone.',
     logout: 'Sign out',
     generatingLink: 'Generating link…',
     retry: 'Retry',
@@ -862,6 +865,7 @@ const ja: T = {
     notifBlocked: '通知がブロックされています',
     notifDisable: 'プッシュ通知をオフにする',
     notifEnable: 'プッシュ通知をオンにする',
+    notifPushUnavailable: 'このブラウザではプッシュ通知は利用できません。受け取るには、スマートフォンのChromeまたはFirefoxで有効にしてください。',
     logout: 'ログアウト',
     generatingLink: 'リンク生成中…',
     retry: '再試行',

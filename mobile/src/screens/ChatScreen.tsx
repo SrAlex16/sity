@@ -121,7 +121,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const voiceIncludeText = voiceSettings?.voice_include_text ?? true;
 
   const isGuest = !currentUser || currentUser.role === 'guest';
-  const notifications = useNotifications(isGuest);
+  const notifications = useNotifications(isGuest, tl.notifPushUnavailable);
 
   const [inputText, setInputText] = useState(() => localStorage.getItem('sity_draft_message') ?? '');
   const [busyHint, setBusyHint] = useState(false);
