@@ -10,6 +10,37 @@ log()  { printf '\033[32m[deploy]\033[0m %s\n' "$*"; }
 skip() { printf '\033[33m[deploy]\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m[deploy] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# ── 0. Git pull ───────────────────────────────────────────────────────────────
+# Guarda hashes ANTES del pull para detectar cambios en archivos críticos.
+#
+# Por qué persona_system.md y persona_engine.py requieren restart inmediato:
+#   _load_persona_template() usa @functools.cache — la primera llamada lee el
+#   archivo del disco y guarda el texto en memoria para siempre. Si el archivo
+#   cambia pero el proceso no se reinicia, el cache contiene el template viejo
+#   (o nuevo), que puede no ser consistente con el formato_map del bytecode en
+#   memoria. Bug confirmado 2026-09-22: template con {system_git_block} cacheado
+#   por proceso con bytecode anterior → KeyError silencioso en cada mensaje.
+PERSONA_MD="backend/app/prompts/persona_system.md"
+PERSONA_PY="backend/app/core/persona_engine.py"
+hash_before_md=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_MD" 2>/dev/null || echo "absent")
+hash_before_py=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_PY" 2>/dev/null || echo "absent")
+
+log "Actualizando código (git pull)…"
+git -C "$REPO" pull --ff-only
+
+hash_after_md=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_MD" 2>/dev/null || echo "absent")
+hash_after_py=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_PY" 2>/dev/null || echo "absent")
+
+persona_changed=false
+if [[ "$hash_before_md" != "$hash_after_md" ]]; then
+    log "  → $PERSONA_MD cambió — restart requerido (template cacheado en memoria)"
+    persona_changed=true
+fi
+if [[ "$hash_before_py" != "$hash_after_py" ]]; then
+    log "  → $PERSONA_PY cambió — restart requerido (bytecode + format_map)"
+    persona_changed=true
+fi
+
 # ── 1. Frontend ───────────────────────────────────────────────────────────────
 # Build siempre — la detección condicional por mtime falló silenciosamente varias
 # veces (deploy.sh no era llamado; cuando sí se llama, mtime puede no reflejar
@@ -22,7 +53,13 @@ NEW_BUNDLE=$(ls "$REPO/mobile/dist/assets"/index-*.js 2>/dev/null | head -1 || t
 log "Frontend OK  →  $(basename "$NEW_BUNDLE")"
 
 # ── 2. Backend ────────────────────────────────────────────────────────────────
-log "Reiniciando sity-backend…"
+# Siempre reinicia: garantiza que cualquier cambio en .py o en archivos con
+# cache en memoria (templates, configs) quede activo sin ambigüedad.
+if $persona_changed; then
+    log "Reiniciando sity-backend (persona template o engine cambiaron)…"
+else
+    log "Reiniciando sity-backend…"
+fi
 sudo systemctl restart sity-backend
 log "Backend OK."
 
