@@ -30,9 +30,11 @@ def seed_admin() -> None:
     with Session(engine) as session:
         existing = session.exec(select(User).where(User.role == "admin")).first()
         if existing:
-            # Backfill display_name for existing admin installs that predate the field.
-            if existing.display_name is None:
-                existing.display_name = existing.email.split("@")[0]
+            # Backfill display_name: correct if absent or stale (e.g. left over from
+            # a hardcoded value that predates deriving it from the email prefix).
+            expected = existing.email.split("@")[0]
+            if existing.display_name != expected:
+                existing.display_name = expected
                 session.add(existing)
                 session.commit()
             return

@@ -22,14 +22,20 @@ die()  { printf '\033[31m[deploy] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 #   por proceso con bytecode anterior → KeyError silencioso en cada mensaje.
 PERSONA_MD="backend/app/prompts/persona_system.md"
 PERSONA_PY="backend/app/core/persona_engine.py"
+ADMIN_SEEDER="backend/app/auth/admin_seeder.py"
+DEPLOY_SH="deploy.sh"
 hash_before_md=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_MD" 2>/dev/null || echo "absent")
 hash_before_py=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_PY" 2>/dev/null || echo "absent")
+hash_before_seeder=$(git -C "$REPO" rev-parse HEAD:"$ADMIN_SEEDER" 2>/dev/null || echo "absent")
+hash_before_deploy=$(git -C "$REPO" rev-parse HEAD:"$DEPLOY_SH" 2>/dev/null || echo "absent")
 
 log "Actualizando código (git pull)…"
 git -C "$REPO" pull --ff-only
 
 hash_after_md=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_MD" 2>/dev/null || echo "absent")
 hash_after_py=$(git -C "$REPO" rev-parse HEAD:"$PERSONA_PY" 2>/dev/null || echo "absent")
+hash_after_seeder=$(git -C "$REPO" rev-parse HEAD:"$ADMIN_SEEDER" 2>/dev/null || echo "absent")
+hash_after_deploy=$(git -C "$REPO" rev-parse HEAD:"$DEPLOY_SH" 2>/dev/null || echo "absent")
 
 persona_changed=false
 if [[ "$hash_before_md" != "$hash_after_md" ]]; then
@@ -39,6 +45,13 @@ fi
 if [[ "$hash_before_py" != "$hash_after_py" ]]; then
     log "  → $PERSONA_PY cambió — restart requerido (bytecode + format_map)"
     persona_changed=true
+fi
+if [[ "$hash_before_seeder" != "$hash_after_seeder" ]]; then
+    log "  → $ADMIN_SEEDER cambió — restart requerido (seed_admin() corre en arranque)"
+    persona_changed=true
+fi
+if [[ "$hash_before_deploy" != "$hash_after_deploy" ]]; then
+    log "  → $DEPLOY_SH cambió — ejecuta el nuevo script en el próximo deploy"
 fi
 
 # ── 1. Frontend ───────────────────────────────────────────────────────────────
