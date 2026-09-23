@@ -57,6 +57,10 @@ def build_turn_context(
     comm_prefs: dict[str, float] = settings_service.get_comm_prefs(session_id=session_id)
     voice_settings = settings_service.get_voice_settings(session_id=session_id)
     language_override = settings_service.get_language_override(session_id=session_id)
+    # Guest sessions have no DB row → "auto". Accept the request hint so guests can
+    # configure a language preference stored on the client (sessionStorage).
+    if language_override == "auto" and request.language_override:
+        language_override = request.language_override
 
     # Load MentalState for authenticated users; use defaults for guest sessions.
     mental_state: dict[str, float] = {}

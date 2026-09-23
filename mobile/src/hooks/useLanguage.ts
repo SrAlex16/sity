@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+export const GUEST_LANG_KEY = 'sity_lang_pref';
+
 export const SUPPORTED_LANGUAGES = [
   { code: 'auto',   label: 'Auto (detecta el idioma)' },
   { code: 'es-ES',  label: 'Español (España)' },
@@ -19,12 +21,19 @@ export interface LanguageSettings {
   language_override: LanguageCode;
 }
 
-export function useLanguage() {
+export function useLanguage(isGuest = false) {
   const [settings, setSettings] = useState<LanguageSettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (isGuest) {
+      const stored = sessionStorage.getItem(GUEST_LANG_KEY) as LanguageCode | null;
+      setSettings({ language_override: stored ?? 'auto' });
+      return;
+    }
+    void load();
+  }, [isGuest]);
 
   async function load() {
     setIsLoading(true);
@@ -41,6 +50,12 @@ export function useLanguage() {
   }
 
   async function save(code: LanguageCode) {
+    if (isGuest) {
+      if (code === 'auto') sessionStorage.removeItem(GUEST_LANG_KEY);
+      else sessionStorage.setItem(GUEST_LANG_KEY, code);
+      setSettings({ language_override: code });
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {

@@ -46,6 +46,7 @@ class ChatMessageRequest(BaseModel):
     voice_transcript_original: Optional[str] = None
     source_channel: str = "web"
     images: list[ChatImageInput] = []
+    language_override: Optional[str] = None
 
 
 class ChatArtifact(BaseModel):

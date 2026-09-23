@@ -4,6 +4,7 @@ export type ChatStatus = 'conectado' | 'procesando' | 'desconectado';
 
 const SESSION_ID = 'default';
 const BG_FLASH_MS = 2000;
+const GUEST_LANG_KEY = 'sity_lang_pref';
 
 // ── Message types ─────────────────────────────────────────────────────────────
 
@@ -270,12 +271,16 @@ export function useChat(userKey: string | null) {
 
     try {
       // 1. POST → 202 immediately
+      const guestLang = userKey === 'guest'
+        ? (sessionStorage.getItem(GUEST_LANG_KEY) ?? undefined)
+        : undefined;
       const res = await fetch('/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmed,
           source_channel: 'mobile',
+          ...(guestLang ? { language_override: guestLang } : {}),
           images: images?.map((img) => ({ media_type: img.mediaType, data: img.data })) ?? [],
         }),
         signal: controller.signal,

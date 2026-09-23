@@ -59,7 +59,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const tl = TRANSLATIONS[uiLang].settings;
   const { settings, isLoading, error, save, reload } = useVoice();
   const { settings: initiativeSettings, save: saveInitiative } = useInitiative();
-  const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage();
+  const { settings: langSettings, isLoading: langLoading, error: langError, save: saveLang } = useLanguage(isGuest);
   const { settings: locationSettings, isLoading: locLoading, save: saveLocation } = useLocation();
   const { integrations, isLoading: intLoading, error: intError, refresh: refreshIntegrations } = useIntegrations();
   const [form, setForm] = useState<VoiceSettings | null>(null);
@@ -539,19 +539,18 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
         <div className={styles.section}>
           <p className={styles.sectionEs}>{tl.sityLanguageSection}</p>
           <p className={styles.sectionJp}>会話言語</p>
-          {isGuest && <p className={styles.guestHint}>{tl.guestRegisterHint}</p>}
           <p className={styles.sectionHint}>{tl.sityLanguageHint}</p>
           <p className={styles.sectionHint} style={{ marginBottom: 10, opacity: 0.7 }}>
             ⓘ {tl.sityLanguageNote}
           </p>
-          {!isGuest && langLoading && !langSettings && <p className={styles.sectionHint}>{tl.loading}</p>}
-          {!isGuest && langError && <p className={styles.errorMsg}>{langError}</p>}
-          {(langSettings || isGuest) && (
+          {langLoading && !langSettings && <p className={styles.sectionHint}>{tl.loading}</p>}
+          {langError && <p className={styles.errorMsg}>{langError}</p>}
+          {langSettings && (
             <select
-              className={isGuest ? styles.selectDisabled : styles.select}
-              value={langSettings?.language_override ?? 'auto'}
-              onChange={(e) => !isGuest && void handleLangChange(e.target.value as LanguageCode)}
-              disabled={isGuest || langLoading}
+              className={styles.select}
+              value={langSettings.language_override}
+              onChange={(e) => void handleLangChange(e.target.value as LanguageCode)}
+              disabled={langLoading}
             >
               {SUPPORTED_LANGUAGES.map(({ code, label }) => (
                 <option key={code} value={code}>{label}</option>
