@@ -1,6 +1,6 @@
 # Integridad post-generación de respuestas
 
-Última actualización: 2026-09-15.
+Última actualización: 2026-09-23 (NM-01/NM-01b, C4-02, M4-01, R5-02, R5-02b, R7-01).
 
 ## Problema que motiva este mecanismo
 
@@ -91,25 +91,32 @@ turno por un error de clasificación).
 La llamada Haiku solo se hace si al menos uno de estos es true:
 
 1. `tool_called=True` — se ejecutó al menos una herramienta en este turno
-2. El texto contiene patrones de `_CAPABILITY_OVERCLAIM_RE`:
-   - `acceso a git`, `acceso al disco/sistema/filesystem`
-   - `controlar/ando el sistema`, `uso del disco`
+2. `history_count > 0` — hay mensajes de la conversación actual en contexto (chequea in-session history denial)
+3. El texto contiene patrones de `_CAPABILITY_OVERCLAIM_RE`:
+   - `acceso a git`, `acceso al disco/sistema/filesystem`, `controlar/ando el sistema`
    - Nombres internos de tools: `git_read`, `system_get`, `disk_usage`, `file_agent`
-3. El rol es `guest` Y el texto contiene patrones de `_MEMORY_CLAIM_RE`:
+   - R5-02: `cámara del servidor`, `micrófono del servidor`, `acceso a la cámara/al micrófono`, `herramientas de diagnóstico`, `control del backend`
+   - R5-02b: `capturar fotos/imágenes`, `grabar audio/vídeo`, `sensores del servidor`
+4. El rol es `guest` Y el texto contiene patrones de `_MEMORY_CLAIM_RE`:
    - `recuerdo tus conversaciones`, `memoria de tus conversaciones`
    - `historial de conversaciones anteriores`, `tengo memoria persistente`
-4. El texto contiene patrones de `_INTERNAL_LEAK_RE`:
+5. El texto contiene patrones de `_INTERNAL_LEAK_RE`:
    - Nombre de rasgo seguido de porcentaje (ej. `Calidez 65%`)
    - `13 rasgos`, `inyección del prompt`, `arquitectura interna`, `prompt del sistema`
+   - C4-02: tamaño de ventana de contexto (`los últimos N mensajes`, `last N messages`, `ventana de N turnos`)
+6. El rol es `guest` Y el texto contiene patrones de `_ARCHITECTURE_DISCLOSURE_RE`:
+   - Rutas del filesystem: `/home/<usuario>/…`
+   - Self-referential hardware: `corro en una Raspberry`, `Raspberry Pi real`, `Raspberry Pi… literal`
 
 ### Categorías evaluadas por Haiku
 
 | Categoría | Descripción |
 |-----------|-------------|
-| `capability_overclaim` | Afirma tener tools/acceso que el rol no tiene |
-| `internal_leak` | Revela rasgos con porcentajes, mecanismo de inyección, arquitectura |
-| `memory_fabrication` | Afirma memoria persistente entre sesiones para sesión Guest |
+| `capability_overclaim` | (a) Afirma tener tools/acceso que el rol no tiene; (b) Afirma que una capacidad existe pero está inactiva ("podría consultar el calendario si estuviera conectado") cuando el rol no puede tener esa capacidad en absoluto |
+| `internal_leak` | Revela rasgos con porcentajes, mecanismo de inyección, arquitectura interna, tamaño de ventana de contexto ("los últimos N mensajes") |
+| `memory_fabrication` | (a) Afirma memoria persistente entre sesiones para sesión Guest; (b) Niega acceso al historial de la conversación actual cuando `HISTORY_IN_CONTEXT > 0` |
 | `contradiction` | Contradice directamente el turno anterior del asistente |
+| `architecture_disclosure` | Solo sesiones Guest — revela detalles de infraestructura del servidor: rutas del filesystem (`/home/alex/…`), modelo de hardware (`Raspberry Pi`), usuarios del sistema |
 
 ### Coste estimado
 
@@ -154,7 +161,7 @@ añadida solo en turnos de riesgo (<100ms en Pi 4B con Haiku).
 | toolset_selector (primer gate) | pre-existente | Tools de admin no llegan al modelo para sesiones no-admin |
 | ToolExecutor auth gate (segundo gate) | `5935831` | Tool admin ejecutada en runtime aunque llegue al executor |
 | Tool inexistente — sanitización | `3136cd4` | Nombre interno no llega al usuario; log de auditoría |
-| Response integrity (tercer gate) | este commit | Texto generado con overclaims/leaks/fabricaciones |
+| Response integrity (tercer gate) | `dc4e7a4`+ | Texto con capability_overclaim, internal_leak, memory_fabrication, contradiction, architecture_disclosure |
 | Regla de atribución de roles | `3299eb3` | Inversión de rol user/assistant en síntesis de historial |
 | Nivel "moderate" de historial | `ab810e7` | Referencias anafóricas sin contexto → hallucination |
 | Cola por sesión | `063f1e5` | Turnos concurrentes del mismo usuario → contexto incompleto |

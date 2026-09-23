@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-14 (Ronda post-Remake: bug 15 días guests, InfoTooltip, botón mostrar contraseña, fix DatasetStats, RESETEO COMPLETO DE DATOS).
+Última actualización: 2026-09-23 (Cierre campaña auditoría post-Remake rondas 1–10: R5-02c, R11-01, R11-02, R11-03, test flaky A9 resuelto).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- ~3010 tests en verde (pytest, ~20 skipped) — CI verde en `a942b35` (2026-09-14)
+- 3211 tests en verde (pytest, 30 skipped) — CI verde en `45d96dc` (2026-09-23)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -133,10 +133,12 @@ Dos mecanismos nuevos de defensa en profundidad para LLM:
    completar esa acción."` en lugar del nombre interno; el nombre real va a log de
    auditoría con `unknown_tool_called`.
 
-2. **Verificación post-generación** (`response_integrity.py`, `dc4e7a4`): pre-filtro
+2. **Verificación post-generación** (`response_integrity.py`, `dc4e7a4`+): pre-filtro
    de regex (coste cero en turno normal) + Haiku check + corrección automática si se
-   detectan `capability_overclaim`, `internal_leak`, `memory_fabrication` o
-   `contradiction`. Fallback conservador: `ok=True` ante cualquier error de API.
+   detectan `capability_overclaim`, `internal_leak`, `memory_fabrication`, `contradiction`
+   o `architecture_disclosure`. Fallback conservador: `ok=True` ante cualquier error de API.
+   Post-lanzamiento: NM-01, C4-02, M4-01, R5-02, R5-02b, R7-01 añadieron patrones y
+   la categoría `architecture_disclosure` (ver `docs/response-integrity.md`).
 
 ### Nota sobre sesiones `language_override="auto"` y voseo
 
@@ -150,6 +152,41 @@ sesiones `auto`. Si en el futuro se añade detección de variante dialectal por 
 explícita, el normalizador puede extenderse.
 
 ---
+
+## Completado recientemente (2026-09-23)
+
+- **Cierre campaña de auditoría post-Remake rondas 1–10 — 50+ hallazgos procesados.**
+  Campaña de auditoría con agentes de IA ejecutada por Alex en múltiples sesiones (2026-09-16 a 2026-09-23).
+  Fixes cerrados en esta sesión:
+
+  - **R5-02c — Prohibición de overclaims de capacidad ilimitada en sesiones invitado (commit `ee5fab0`).**
+    `persona_system.md` actualizado: respuesta canónica para Guest describe capacidades reales (chat,
+    análisis de imágenes) sin acceso a herramientas, cámara ni micrófono; nueva regla prohíbe frases
+    como "sin restricciones reales", "prácticamente todo", "sin limitaciones notables".
+
+  - **Push notification warning localizado (commit `3945c82`).**
+    Chromium-Debian construido sin Google API keys → `pushManager.subscribe()` falla con
+    "registration failed". `useNotifications` detecta el error y muestra mensaje localizado
+    es/en/ja en lugar del error técnico crudo. `mobile/src/i18n/translations.ts` con clave
+    `notifPushUnavailable`.
+
+  - **R11-01 — Idioma configurable para sesiones invitado (commit `a38bda6`).**
+    Guest sin fila en DB → `language_override` siempre "auto". Fix: `useLanguage(isGuest)` lee/escribe
+    `sessionStorage` (clave `sity_lang_pref`); selector en VoiceScreen habilitado para guests;
+    `useChat` envía el valor como `language_override` en el body del POST; backend usa el hint del
+    cliente como fallback cuando DB devuelve "auto". Usuarios autenticados con valor explícito en DB
+    no se ven afectados. 6 tests pytest + 5 vitest.
+
+  - **R11-02 — Debounce en handleSend para prevenir doble envío (commit `78ad328`).**
+    Double-tap en móvil / doble clic rápido podía despachar dos POST antes de que React re-renderizara
+    el botón como deshabilitado. Fix: `lastSendAt` ref comprobado síncronamente (ventana 400 ms);
+    botón de envío también deshabilitado cuando `status === 'procesando'`. 3 nuevos tests vitest.
+
+  - **R11-03 — Test flaky A9 resuelto de raíz (commit `45d96dc`).**
+    `test_daily_max_hit_returns_rate_limited`: `age_hours=1` cruzaba medianoche UTC y dejaba el
+    conteo diario en 0, devolviendo `cooldown_active` en lugar de `rate_limited`. Fix: `age_hours=0`.
+
+  Ver `docs/response-integrity.md` (actualizado) para el estado completo del módulo de integridad.
 
 ## Completado recientemente (2026-09-14)
 
@@ -1346,7 +1383,7 @@ estático. Sin interacción con Sity en producción, sin modificar DB ni código
 | A6 | `except Exception: pass` alrededor de `path.unlink()` en `routes_files.py` (líneas ~186, ~218): si el borrado físico falla, **se borra igualmente la fila de DB** → archivo huérfano en disco sin registro ni log. Contradice la garantía "DB + disco sincronizados" del diseño del Paso 3. | **Baja** | `routes_files.py:183-188, 215-220` |
 | A7 | 9 usos directos de `datetime.utcnow()` en 3 archivos de producción pese a existir `utc_now()`. Deprecado en Python 3.12+; mezclar naive/aware es fuente de `TypeError` en comparaciones. | **Baja** | `grep utcnow() backend/app` |
 | A8 | Proxy de desarrollo (`vite.config.ts`) no incluye `/uploads` ni `/files`: en `npm run dev` las imágenes subidas y la gestión de archivos no funcionan (mismo patrón del bug de Caddy `/uploads*` ya corregido en producción). | **Baja** | `vite.config.ts` bloque `proxy` |
-| A9 | Flaky `test_daily_max_hit_returns_rate_limited` documentado desde 2026-08-24, nunca resuelto de raíz (contaminación de orden por `cooldown_active`). No falló en esta pasada (intermitente). | **Baja** | `docs/state.md` "Tests flaky conocidos" |
+| A9 | Flaky `test_daily_max_hit_returns_rate_limited` — `age_hours=1` cruzaba medianoche UTC (00:00–01:00) y la notificación caía en el día anterior, dejando `today_count=0` y devolviendo `cooldown_active` en lugar de `rate_limited`. | **Resuelto** `45d96dc` — `age_hours=0` |
 | A10 | Sin cabeceras de seguridad HTTP en `Caddyfile.example` (HSTS, `X-Frame-Options`, `X-Content-Type-Options`). | **Baja** | `deploy/caddy/Caddyfile.example` |
 | A11 | `refusal-mode-architecture.md` contiene 8 menciones a `refusal_chance` (sustituido por `refusal_propensity` en Fase 1). Pendiente confirmar si se presenta como histórico o como vigente. | **A verificar** | `docs/refusal-mode-architecture.md` |
 
