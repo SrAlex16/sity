@@ -451,7 +451,11 @@ class PersonaEngine:
                 "responde honestamente que no tienes información de identidad para esta sesión."
             )
         else:
-            interlocutor_block = "Tu interlocutor es Alex, una única persona."
+            interlocutor_block = (
+                "Tu interlocutor es una única persona. No sabes cómo se llama "
+                "salvo que te lo diga en la conversación. Si lo hace, úsalo "
+                "con naturalidad. No preguntes el nombre proactivamente."
+            )
 
         language_block = _LANGUAGE_BLOCK.get(language_override, _LANGUAGE_BLOCK["auto"])
 

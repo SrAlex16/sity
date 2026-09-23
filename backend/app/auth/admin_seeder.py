@@ -7,8 +7,7 @@ restarting).
 
 The seed is idempotent: if an admin row already exists it is never
 touched. There is intentionally no mechanism to promote a regular User
-to Admin or to create a second Admin row — Admin is a single fixed
-identity (Alex).
+to Admin or to create a second Admin row.
 """
 
 import os
@@ -33,7 +32,7 @@ def seed_admin() -> None:
         if existing:
             # Backfill display_name for existing admin installs that predate the field.
             if existing.display_name is None:
-                existing.display_name = "Alex"
+                existing.display_name = existing.email.split("@")[0]
                 session.add(existing)
                 session.commit()
             return
@@ -42,7 +41,7 @@ def seed_admin() -> None:
             email=email,
             password_hash=hash_password(password),
             role="admin",
-            display_name="Alex",
+            display_name=email.split("@")[0],
         )
         session.add(admin)
         session.commit()

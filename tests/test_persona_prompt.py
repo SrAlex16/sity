@@ -202,8 +202,19 @@ def test_persona_decision_refusal_mode_is_bool(engine: PersonaEngine) -> None:
 # 6. Idioma e interlocutor — tuteo singular, no voseo, no vosotros   #
 # ------------------------------------------------------------------ #
 
-def test_interlocutor_alex_in_prompt(default_prompt: str) -> None:
-    assert "Alex" in default_prompt, "Prompt must name Alex as the sole interlocutor"
+def test_interlocutor_no_hardcoded_name(default_prompt: str) -> None:
+    assert "Alex" not in default_prompt, "Prompt must not hardcode any user name"
+
+
+def test_interlocutor_anonymous_block_in_prompt(default_prompt: str) -> None:
+    assert "No sabes cómo se llama" in default_prompt, (
+        "Non-guest prompt must contain the anonymous interlocutor instruction"
+    )
+
+
+def test_guest_interlocutor_no_identity_block(engine: PersonaEngine) -> None:
+    prompt = engine.build_persona_prompt({}, "hola", session_id="guest:abc").system_prompt
+    assert "No tienes datos de sesión" in prompt
 
 
 def test_tuteo_singular_section_in_prompt(default_prompt: str) -> None:
