@@ -156,7 +156,7 @@ class TestEvaluatorRateLimits:
         from app.initiative.evaluator import evaluate
         db = _make_db()
         sid = "user:10"
-        _add_notification_log(db, sid, age_hours=1)  # today, 1h ago
+        _add_notification_log(db, sid, age_hours=0)  # now → always today regardless of UTC hour
         cand = _candidate(session_id=sid)
         mock_factory = MagicMock()
 
