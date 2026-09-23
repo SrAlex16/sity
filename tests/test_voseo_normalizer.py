@@ -11,9 +11,15 @@ Covers:
   - Integration: es-419 and other languages never normalized
   - Logging: voseo_normalized event emitted exactly when correction occurs
   - R5-01: reasoning prefix leaked before the text is stripped by post-processing
+  - Formas que la lista de 17 verbos habría perdido: pronombre vos, voseo subjuntivo,
+    falsos negativos de hubierais, combinaciones pronombre+verbo
+  - Incidente real ronda 6: multi-bloque con "Reescrito sin voseo:" seguido de señalás
+  - Falsos positivos de es-419: voseo preservado cuando language_override es Rioplatense
 """
 from __future__ import annotations
 
+import os
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -426,3 +432,134 @@ def test_rewrite_marker_regex_exported():
     assert _VOSEO_REWRITE_MARKER_RE.search("Texto corregido:\n\n")
     assert _VOSEO_REWRITE_MARKER_RE.search("Sin voseo:\n\n")
     assert _VOSEO_REWRITE_MARKER_RE.search("Versión corregida:\n\n")
+
+
+# ---------------------------------------------------------------------------
+# Formas que la lista de 17 verbos habría perdido
+# (confirman que el cambio a Haiku vale frente a una lista finita de verbos)
+# ---------------------------------------------------------------------------
+
+def test_vos_pronoun_with_subjunctive_triggers_normalization() -> None:
+    """'vos' como pronombre activa el pre-filtro aunque el verbo sea igual en tuteo.
+
+    'si vos lo decidieras' — 'decidieras' es la misma forma en tuteo, pero
+    el pronombre 'vos' es voseo puro. La lista de 17 verbos no habría
+    detectado este caso; Haiku lo normaliza correctamente.
+    """
+    original = "si vos lo decidieras"
+    corrected = "si tú lo decidieras"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+def test_hubierais_not_voseo_prefilter_does_not_trigger() -> None:
+    """'hubierais llegado' no es voseo — es segunda persona del plural (vosotros).
+
+    El pre-filtro (_VOSEO_DETECT_RE) no debe matcharlo: sin acento en 'ais',
+    sin 'vos', sin 'sos'. Haiku no debe ser llamado, y el texto se devuelve intacto.
+    """
+    text = "Si hubierais llegado antes, habríamos podido hablar."
+    assert not _VOSEO_DETECT_RE.search(text), (
+        "'hubierais' no debe matcharse como voseo por el pre-filtro"
+    )
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _normalize_voseo_haiku(text, trace_id="t")
+    mock_build.assert_not_called()
+    assert result == text
+
+
+def test_querés_hacer_esta_tarde_normalized() -> None:
+    """'querés hacer esta tarde' — forma de presente que la lista habría tenido,
+    pero que aquí confirma cobertura completa del pipeline con texto coloquial."""
+    original = "¿qué querés hacer esta tarde?"
+    corrected = "¿qué quieres hacer esta tarde?"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+def test_vos_tenés_razón_double_marker_normalized() -> None:
+    """Pronombre vos + verbo tenés — combinación de dos marcadores de voseo.
+
+    La lista de 17 verbos correcta podría haberlo pillado, pero Haiku lo maneja
+    mejor cuando hay ambigüedad de contexto (p.ej. 'tenés razón' sin 'vos').
+    """
+    original = "vos tenés razón en eso"
+    corrected = "tú tienes razón en eso"
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(corrected)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == corrected
+
+
+# ---------------------------------------------------------------------------
+# Incidente real ronda 6 — texto exacto del bug documentado
+# ---------------------------------------------------------------------------
+
+def test_r6_señalás_multiblock_exact_incident_stripped() -> None:
+    """Incidente real (ronda 6, auditoria post-Remake): Haiku devolvió razonamiento
+    multi-bloque con marker 'Reescrito sin voseo:' antes del texto corregido.
+
+    El texto original de Sity contenía 'señalás'. Haiku respondió con el bloque
+    de análisis exactamente como se documenta aquí. El post-procesamiento debe
+    devolver solo 'Eres crítica de verdad...' y descartar el razonamiento previo.
+    """
+    original = "Señalás ese punto con mucha precisión."
+    leaked = (
+        "Usas 'señalás'... Espera: releeré completo.\n\n"
+        "Encontré formas mixtas.\n\n"
+        "Reescrito sin voseo:\n\n"
+        "Eres crítica de verdad..."
+    )
+    with patch("app.cortex.providers.factory.build_ai_provider",
+               return_value=_mock_provider(leaked)):
+        result = _normalize_voseo_haiku(original, trace_id="t")
+    assert result == "Eres crítica de verdad...", (
+        f"R6 incident: razonamiento multi-bloque no eliminado. Got: {result!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Falsos positivos es-419 — voseo PRESERVADO en Rioplatense
+# ---------------------------------------------------------------------------
+
+def test_builder_es419_preserves_complex_voseo() -> None:
+    """es-419: texto con pronombre vos + dos verbos voseantes preservado íntegro.
+
+    Complementa test_builder_does_not_normalize_for_es_419 con un texto más
+    rico para confirmar que ningún componente del pipeline interviene.
+    """
+    original = "Vos sabés bien lo que querés hacer aquí."
+    with patch("app.cortex.providers.factory.build_ai_provider") as mock_build:
+        result = _call_builder(original, language_override="es-419")
+    mock_build.assert_not_called()
+    assert result == original
+
+
+# ---------------------------------------------------------------------------
+# Behavior regression — llamada real a Haiku (excluida del suite diario)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.behavior_regression
+@pytest.mark.skipif(
+    not os.getenv("ANTHROPIC_API_KEY"),
+    reason="ANTHROPIC_API_KEY not set — skipping real-Haiku voseo test",
+)
+def test_real_haiku_corrects_forms_old_list_would_miss() -> None:
+    """Haiku real corrige formas de voseo que una lista de verbos habría perdido.
+
+    Llama al modelo real (sin mock). Detecta regressions en el prompt _VOSEO_SYSTEM
+    que los tests con mock no pueden detectar: si el modelo empieza a ignorar la
+    instrucción, o si un update del modelo cambia su comportamiento voseante.
+    """
+    text = "¿Comés bien? Si vos querés, podés cambiar de hábitos ahora mismo."
+    result = _normalize_voseo_haiku(text, trace_id="br_voseo_list_miss")
+
+    _VOSEO_FORMS = re.compile(r"\b(comés|querés|podés|vos)\b")
+    m = _VOSEO_FORMS.search(result)
+    assert m is None, (
+        f"Haiku no eliminó la forma de voseo '{m.group()}' en: {result!r}"
+    )

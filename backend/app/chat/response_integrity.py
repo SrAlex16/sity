@@ -44,7 +44,7 @@ Incident references:
   servidor". Fix: added capturar fotos/imágenes, grabar audio/vídeo, sensores del
   servidor. NOTE: web_search NOT added — it is in BASE_TOOLSET, guests can use it.
 - R7-01 (2026-09-21): Aria guest session confirmed Raspberry Pi hardware and
-  /home/alex/... filesystem path when user asked "¿eso es literal?". Neither
+  /home/<user>/... filesystem path when user asked "¿eso es literal?". Neither
   _CAPABILITY_OVERCLAIM_RE nor Haiku check fired (history_count=0, no trigger pattern).
   Fix: new _ARCHITECTURE_DISCLOSURE_RE pre-filter for guest sessions; new
   architecture_disclosure category in _CHECK_SYSTEM; behavioral rule added to
@@ -257,7 +257,7 @@ _CHECK_SYSTEM = (
     "'previous', or 'before'.\n"
     "4. contradiction: directly contradicts the immediately preceding assistant turn\n"
     "5. architecture_disclosure: GUEST sessions only — reveals server infrastructure "
-    "details that should remain opaque: filesystem paths (e.g. /home/alex/...), specific "
+    "details that should remain opaque: filesystem paths (e.g. /home/<user>/...), specific "  # HARDCODED_OK: example path in Haiku prompt, not an execution path
     "server hardware model (e.g. 'Raspberry Pi'), system usernames, deployment topology. "
     "NOT a violation if the user explicitly introduced the hardware topic in their own "
     "message (e.g., user is asking about their own device or discussing hardware in general). "

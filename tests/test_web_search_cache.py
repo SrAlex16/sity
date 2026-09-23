@@ -61,8 +61,10 @@ def test_cache_set_and_get() -> None:
 
 def test_cache_expiry() -> None:
     _cache_set("testhash002", "expiry test", "dato viejo", 1)
-    time.sleep(1.1)
-    assert _cache_get("testhash002") is None
+    # Advance the module's clock past the TTL without actually sleeping.
+    with patch("app.tools.handlers.web_search_tools.time.time",
+               side_effect=lambda: time.time() + 2):
+        assert _cache_get("testhash002") is None
 
 
 # ------------------------------------------------------------------
