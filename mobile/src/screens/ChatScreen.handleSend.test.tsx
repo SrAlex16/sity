@@ -77,6 +77,52 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('ChatScreen — R11-02 handleSend debounce', () => {
+
+  it('segundo tap en <400 ms no llama sendMessage dos veces', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    render(<ChatScreen {...makeProps({ sendMessage })} />);
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'doble tap' } });
+
+    // Primer tap
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    // Segundo tap inmediato (dentro de la ventana de debounce)
+    fireEvent.change(textarea, { target: { value: 'doble tap' } });
+    vi.advanceTimersByTime(100);
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(sendMessage).toHaveBeenCalledTimes(1); // todavía 1
+  });
+
+  it('tap después de >400 ms sí llama sendMessage de nuevo', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    render(<ChatScreen {...makeProps({ sendMessage })} />);
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'mensaje 1' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    // Fuera de la ventana de debounce
+    vi.advanceTimersByTime(500);
+    fireEvent.change(textarea, { target: { value: 'mensaje 2' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('botón enviar deshabilitado cuando status=procesando', () => {
+    render(<ChatScreen {...makeProps({ status: 'procesando' })} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'mensaje' } });
+    const sendBtn = screen.getByLabelText('Enviar');
+    expect(sendBtn).toBeDisabled();
+  });
+
+});
+
 describe('ChatScreen — R6-02 handleSend busyHint', () => {
 
   it('canCancel=true: muestra busyHint, NO llama sendMessage, conserva draft', async () => {

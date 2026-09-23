@@ -159,6 +159,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSendAt = useRef<number>(0);
 
   // Scroll to bottom on new content
   useEffect(() => {
@@ -197,15 +198,20 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
   };
 
   const handleSend = useCallback(() => {
+    const now = Date.now();
+    if (now - lastSendAt.current < 400) return;
+
     if (canCancel) {
       // Turn active: show brief hint instead of silently dropping the Enter press.
-      // Option (b): keep draft intact, give visual feedback, user sends when ready.
       setBusyHint(true);
       setTimeout(() => setBusyHint(false), 2000);
       return;
     }
     const text = inputText.trim();
     if (!text && !pendingImage) return;
+
+    lastSendAt.current = now;
+
     if (draftSaveTimeout.current) {
       clearTimeout(draftSaveTimeout.current);
       draftSaveTimeout.current = null;
@@ -628,7 +634,7 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
                   <motion.button
                     className={styles.sendBtn}
                     onClick={handleSend}
-                    disabled={quotaExhausted || (!inputText.trim() && !pendingImage)}
+                    disabled={quotaExhausted || status === 'procesando' || (!inputText.trim() && !pendingImage)}
                     whileTap={{ scale: 0.88 }}
                     aria-label="Enviar"
                   >
