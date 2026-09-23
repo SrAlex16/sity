@@ -423,13 +423,6 @@ export function ChatScreen({ messages, status, sendMessage, sendAudio, clearMess
               <StatusBadge status={status} uiLang={uiLang} />
               <BgJobIndicator active={backgroundJobsActive > 0} justFinished={backgroundJustFinished} />
             </div>
-            {currentUser && (
-              <span className={`${styles.identityBadge} ${currentUser.role === 'guest' ? styles.identityGuest : styles.identityUser}`}>
-                {currentUser.role === 'guest'
-                  ? tl.guest
-                  : currentUser.displayName ?? currentUser.email ?? currentUser.role}
-              </span>
-            )}
           </div>
 
           <div className={styles.headerMenu}>
