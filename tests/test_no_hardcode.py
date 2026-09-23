@@ -1,9 +1,10 @@
 """Guardrails estáticos contra hardcodes problemáticos en código de producción.
 
-Tres categorías:
+Cuatro categorías:
   a) Nombres propios en prompts y persona_engine.py
   b) Rutas de filesystem absolutas /home/<user>/ en backend/app/
   c) Emails de admin en código de producción fuera de los archivos permitidos
+  d) Instrucción de vocabulario peninsular en persona_system.md
 
 Mecanismo de escape: # HARDCODED_OK: <razón>
   Añadir este comentario en la línea del match O en la línea anterior lo marca
@@ -146,3 +147,33 @@ def test_no_hardcoded_admin_email_in_production_code() -> None:
                     f"'{m.group()}' — usa variable de entorno, "
                     "o añade # HARDCODED_OK: <razón>"
                 )
+
+
+# ---------------------------------------------------------------------------
+# d) Instrucción de vocabulario peninsular en persona_system.md
+# ---------------------------------------------------------------------------
+
+_PERSONA_SYSTEM = _PROMPTS / "persona_system.md"
+
+# Frases clave que deben estar presentes para garantizar el registro castellano.
+# Regresión: la instrucción fue añadida tras detectar que Haiku usaba "acá" en
+# lugar de "aquí" (2026-09-23). Si se elimina o reescribe perdiendo estas
+# anclas, el modelo puede volver a usar vocabulario latinoamericano.
+_PENINSULAR_ANCHORS = [
+    '"aquí" (no "acá")',
+    "castellano peninsular",
+]
+
+
+def test_persona_system_contains_peninsular_vocabulary_instruction() -> None:
+    """persona_system.md contiene la instrucción de vocabulario peninsular.
+
+    Verifica que las anclas clave del registro castellano estén presentes.
+    Test determinista — no requiere modelo real.
+    """
+    text = _PERSONA_SYSTEM.read_text(encoding="utf-8")
+    for anchor in _PENINSULAR_ANCHORS:
+        assert anchor in text, (
+            f"persona_system.md: instrucción de vocabulario peninsular ausente — "
+            f"falta la frase: {anchor!r}"
+        )
