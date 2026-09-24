@@ -89,7 +89,7 @@ fi
 
 echo "=== BORRAR DATOS DB ==="
 if $DRY_RUN; then
-  echo "  [dry-run] DELETE de 45 tablas en $DB (preserva user id=1 y personalityalter)"
+  echo "  [dry-run] DELETE de 44 tablas en $DB (preserva user id=1 y personalityalter)"
 else
   sqlite3 "$DB" <<'SQL'
 PRAGMA foreign_keys = OFF;
@@ -109,7 +109,6 @@ DELETE FROM goalmilestone;
 DELETE FROM initiativeevallog;
 DELETE FROM memoryfragment;
 DELETE FROM mentalstate;
-DELETE FROM newsitem;
 DELETE FROM notificationlog;
 DELETE FROM openloop;
 DELETE FROM pendingaction;
