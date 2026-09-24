@@ -92,6 +92,7 @@ def current_chat(
 
     messages = [
         ChatMessageItem(
+            id=row.id,
             role=row.role,
             text=row.text,
             trace_id=row.trace_id,

@@ -11,6 +11,7 @@ class ChatHistoryItem(BaseModel):
 
 
 class ChatMessageItem(BaseModel):
+    id: Optional[int] = None
     role: str
     text: str
     trace_id: Optional[str] = None

@@ -43,6 +43,7 @@ function uid(): string {
 }
 
 interface ApiHistoryMessage {
+  id?: number;
   role: string;
   text: string;
   created_at?: string;
@@ -97,6 +98,9 @@ export function useChat(userKey: string | null) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentTurnIdRef = useRef<string | null>(null);
   const bgFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the largest DB id seen in the last successful loadHistory(). Used by
+  // clearMessages() as the clear marker so it's immune to client/server clock skew.
+  const lastKnownDbIdRef = useRef<number>(0);
   // Always reflects the latest userKey so _listenTurn can validate events mid-flight.
   const userKeyRef = useRef<string | null>(userKey);
   userKeyRef.current = userKey;
@@ -201,14 +205,23 @@ export function useChat(userKey: string | null) {
       if (!res.ok) throw new Error('network');
       const data = await res.json() as { messages: ApiHistoryMessage[] };
 
-      const clearedAt = localStorage.getItem(`sity_chat_cleared_${userKey ?? 'unknown'}`);
+      // Update the last-known DB id so clearMessages() can use it as a marker.
+      if (data.messages.length > 0) {
+        const maxId = Math.max(...data.messages.map((m) => m.id ?? 0));
+        if (maxId > 0) lastKnownDbIdRef.current = maxId;
+      }
+
+      const lsKey = `sity_chat_cleared_${userKey ?? 'unknown'}`;
+      const storedVal = localStorage.getItem(lsKey);
+      // New format: a plain integer string ("12"). Old format: ISO date or anything
+      // else — delete it (migration) and show all messages so nothing is lost.
+      const clearedId = storedVal && /^\d+$/.test(storedVal) ? Number(storedVal) : null;
+      if (storedVal !== null && clearedId === null) {
+        localStorage.removeItem(lsKey);
+      }
 
       const msgs: ChatMessage[] = data.messages
-        .filter((m) => {
-          if (!clearedAt) return true;
-          if (!m.created_at) return true;
-          return m.created_at > clearedAt;
-        })
+        .filter((m) => clearedId === null || (m.id ?? 0) > clearedId)
         .map((m): ChatMessage => {
           const ts = m.created_at ? new Date(m.created_at) : new Date();
           const role = m.role === 'user' ? 'user' : 'assistant';
@@ -392,8 +405,9 @@ export function useChat(userKey: string | null) {
 
   function clearMessages() {
     // Key is scoped to userKey so that clearing as Guest never affects Admin's view.
+    // Store the last DB integer id (not a client timestamp) to avoid clock skew.
     const key = `sity_chat_cleared_${userKey ?? 'unknown'}`;
-    localStorage.setItem(key, new Date().toISOString());
+    localStorage.setItem(key, String(lastKnownDbIdRef.current));
     setMessages([]);
   }
 
