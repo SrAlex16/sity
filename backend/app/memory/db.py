@@ -363,8 +363,51 @@ def _verify_encryption_key(session: Session) -> None:
         ) from exc
 
 
+def _drop_stale_youtube_tables() -> None:
+    """Drop tables left over from the YouTube canal pipeline (eliminated 2026-07-08).
+
+    Must run BEFORE SQLModel.metadata.create_all() so that tables with name
+    collisions get recreated with the correct new schema.
+
+    episode: the YouTube pipeline used this table name for video production
+      records (columns: title, script_path, audio_path, video_path, youtube_id …).
+      The cognition system reuses the same name for episodic memory records
+      (columns: user_id, occurred_at, summary, salience_* …).
+      create_all() is idempotent and will not touch a table that already exists,
+      so the stale YouTube-schema table must be dropped first.
+      Detection: presence of 'title' column (not in the new schema).
+
+    newsitem: orphaned YouTube table; no model class, no code references it.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(episode)"))
+        cols = {row[1] for row in result.fetchall()}
+        if "title" in cols:
+            conn.execute(text("DROP TABLE episode"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"dropped_table": "episode",
+                               "reason": "stale YouTube schema; cognition Episode model takes over"})
+
+        result2 = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='newsitem'")
+        )
+        if result2.fetchone():
+            conn.execute(text("DROP TABLE newsitem"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"dropped_table": "newsitem",
+                               "reason": "orphaned YouTube canal table; no model or code references"})
+
+
 def _migrate_episode_semantically_processed() -> None:
-    """Add semantically_processed column to episode if absent (Fase 9 Paso 1)."""
+    """Add semantically_processed column to episode if absent.
+
+    No-op on fresh deployments or after _drop_stale_youtube_tables() ran:
+    create_all() will have created the table with the correct schema already.
+    Kept for installations that upgraded the cognition schema incrementally
+    (without the YouTube table collision) and may be missing the column.
+    """
     with engine.connect() as conn:
         result = conn.execute(text("PRAGMA table_info(episode)"))
         existing = {row[1] for row in result.fetchall()}
@@ -401,6 +444,7 @@ def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
         _configure_sqlite()
+        _drop_stale_youtube_tables()  # must run before create_all; drops mismatched legacy tables
         SQLModel.metadata.create_all(engine)
         _migrate_chatmessage()
         _migrate_user()
