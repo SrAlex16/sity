@@ -31,6 +31,7 @@ export default defineConfig(({ command }) => ({
       '/notifications': { target: 'http://localhost:8000', changeOrigin: true },
       '/uploads': { target: 'http://localhost:8000', changeOrigin: true },
       '/files': { target: 'http://localhost:8000', changeOrigin: true },
+      '/bug-report': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 }));

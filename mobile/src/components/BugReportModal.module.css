@@ -86,8 +86,8 @@
 .textarea:disabled { opacity: 0.5; }
 
 .select {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--color-border);
+  background: #0a0a0f;
+  border: 1px solid rgba(0, 245, 255, 0.25);
   border-radius: 8px;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -96,14 +96,15 @@
   width: 100%;
   cursor: pointer;
   transition: border-color 0.2s;
+  color-scheme: dark;
 }
 
 .select:focus {
   outline: none;
-  border-color: var(--neon-cyan);
+  border-color: rgba(0, 245, 255, 0.6);
 }
 
-.select:disabled { opacity: 0.5; }
+.select:disabled { opacity: 0.5; cursor: default; }
 
 .attachRow {
   display: flex;
