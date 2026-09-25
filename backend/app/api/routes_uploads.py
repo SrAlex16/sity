@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
-from app.auth.dependencies import CurrentUser, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.memory.db import get_session
 from app.memory.models import ChatMessage, FileArtifact
 
@@ -64,6 +64,37 @@ def get_uploaded_image(
                 raise HTTPException(status_code=404, detail="Upload not found")
         # chat_message_id IS NULL: brief window before wire_uploaded_images_to_message
         # runs in the background turn. user_id IS NULL scopes to guest uploads; allow.
+
+    suffix = path.suffix.lower()
+    media_type = (
+        "image/png" if suffix == ".png"
+        else "image/webp" if suffix == ".webp"
+        else "image/gif" if suffix == ".gif"
+        else "image/jpeg"
+    )
+    return FileResponse(path, media_type=media_type, filename=filename)
+
+
+@router.get("/bug-reports/{filename}")
+def get_bug_report_attachment(
+    filename: str,
+    current: CurrentUser = Depends(require_admin),
+):
+    """Serve a bug-report attachment image. Admin only."""
+    if "/" in filename or "\\" in filename or filename in {"", ".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    path = (UPLOADS_ROOT / "bug-reports" / filename).resolve()
+    root = (UPLOADS_ROOT / "bug-reports").resolve()
+
+    if root not in path.parents and path != root:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    if path.suffix.lower() not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Attachment not found")
 
     suffix = path.suffix.lower()
     media_type = (

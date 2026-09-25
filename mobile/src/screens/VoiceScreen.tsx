@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVoice, VOICE_DEFAULTS } from '../hooks/useVoice';
 import type { VoiceSettings } from '../hooks/useVoice';
 import { BugReportModal } from '../components/BugReportModal';
+import { BugReportsAdminPanel } from '../components/BugReportsAdminPanel';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import type { LanguageCode } from '../hooks/useLanguage';
 import { useInitiative } from '../hooks/useInitiative';
@@ -86,6 +87,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const [justConnected, setJustConnected] = useState<string | null>(null);
   const [bgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
   const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [bugReportsAdminOpen, setBugReportsAdminOpen] = useState(false);
 
   useEffect(() => {
     if (settings) setForm(settings);
@@ -921,7 +923,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           </div>
         )}
 
-        {/* ── Reportar un problema ─────────────────────────────────────────── */}
+        {/* ── Feedback (todos los roles) + ver reportes (solo admin) ────────── */}
         <div className={styles.section} style={{ borderBottom: 'none' }}>
           <button
             className={`${styles.sectionBtn} ${styles.btnSecondary}`}
@@ -929,10 +931,20 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           >
             Reportar un problema
           </button>
+          {role === 'admin' && (
+            <button
+              className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+              style={{ marginTop: 8 }}
+              onClick={() => setBugReportsAdminOpen(true)}
+            >
+              Ver reportes
+            </button>
+          )}
         </div>
       </div>
 
       <BugReportModal open={bugReportOpen} onClose={() => setBugReportOpen(false)} />
+      <BugReportsAdminPanel open={bugReportsAdminOpen} onClose={() => setBugReportsAdminOpen(false)} />
 
     </div>
   );
