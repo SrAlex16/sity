@@ -1,4 +1,4 @@
-"""Integration tests for POST /bug-report and GET /bug-reports* endpoints.
+"""Integration tests for POST /bug-report and GET/DELETE /bug-reports* endpoints.
 
 Properties verified:
 1.  POST /bug-report as Guest → 201, report saved with role="guest", user_id=None.
@@ -15,6 +15,15 @@ Properties verified:
 12. GET /bug-reports/{id}/download as Admin → JSON attachment with correct filename.
 13. has_attachments=False when no attachments submitted.
 14. has_attachments=True when attachment was submitted.
+15. DELETE /bug-reports/{id} as Guest → 403.
+16. DELETE /bug-reports/{id} as User → 403.
+17. DELETE /bug-reports/{id} as Admin → 200, report gone (404).
+18. DELETE /bug-reports/{id} with attachment → file removed from disk.
+19. DELETE /bug-reports/{id} for non-existent → 404.
+20. DELETE /bug-reports with empty ids → 422.
+21. DELETE /bug-reports as Admin (multiple ids) → 200, deleted=N, all gone.
+22. DELETE /bug-reports as Guest → 403.
+23. DELETE /bug-reports ignores non-existent ids in list.
 """
 from __future__ import annotations
 
@@ -243,3 +252,74 @@ class TestDownload:
         report_id = listing["reports"][0]["id"]
         resp = client.get(f"/bug-reports/{report_id}/download")
         assert resp.status_code == 403
+
+
+class TestDeleteBugReport:
+
+    def test_guest_cannot_delete(self, client: TestClient, admin_client: TestClient):
+        report_id = _submit(client).json()["id"]
+        resp = client.delete(f"/bug-reports/{report_id}")
+        assert resp.status_code == 403
+
+    def test_user_cannot_delete(self, user_client: TestClient, admin_client: TestClient):
+        report_id = _submit(user_client).json()["id"]
+        resp = user_client.delete(f"/bug-reports/{report_id}")
+        assert resp.status_code == 403
+
+    def test_admin_delete_200_and_gone(self, admin_client: TestClient):
+        report_id = _submit(admin_client).json()["id"]
+        del_resp = admin_client.delete(f"/bug-reports/{report_id}")
+        assert del_resp.status_code == 200
+        assert del_resp.json() == {"ok": True, "deleted": 1}
+        assert admin_client.get(f"/bug-reports/{report_id}").status_code == 404
+
+    def test_delete_removes_attachment_from_disk(
+        self, client: TestClient, admin_client: TestClient
+    ):
+        resp = client.post("/bug-report", json={
+            "observations": "Attachment delete test",
+            "severity": "baja",
+            "attachments": [{"data": _TINY_PNG_B64, "media_type": "image/png"}],
+        })
+        assert resp.status_code == 201
+        report_id = resp.json()["id"]
+
+        detail = admin_client.get(f"/bug-reports/{report_id}").json()
+        filename = detail["attachments"][0]["url"].split("/")[-1]
+        att_path = Path(__file__).resolve().parents[1] / "uploads" / "bug-reports" / filename
+        assert att_path.exists()
+
+        admin_client.delete(f"/bug-reports/{report_id}")
+        assert not att_path.exists()
+
+    def test_delete_404_for_missing(self, admin_client: TestClient):
+        resp = admin_client.delete("/bug-reports/999997")
+        assert resp.status_code == 404
+
+    def test_bulk_delete_empty_ids_422(self, admin_client: TestClient):
+        resp = admin_client.request("DELETE", "/bug-reports", json={"ids": []})
+        assert resp.status_code == 422
+
+    def test_bulk_delete_admin_200(self, admin_client: TestClient):
+        id1 = _submit(admin_client).json()["id"]
+        id2 = _submit(admin_client).json()["id"]
+
+        del_resp = admin_client.request("DELETE", "/bug-reports", json={"ids": [id1, id2]})
+        assert del_resp.status_code == 200
+        data = del_resp.json()
+        assert data["ok"] is True
+        assert data["deleted"] == 2
+
+        assert admin_client.get(f"/bug-reports/{id1}").status_code == 404
+        assert admin_client.get(f"/bug-reports/{id2}").status_code == 404
+
+    def test_bulk_delete_guest_403(self, client: TestClient, admin_client: TestClient):
+        report_id = _submit(client).json()["id"]
+        resp = client.request("DELETE", "/bug-reports", json={"ids": [report_id]})
+        assert resp.status_code == 403
+
+    def test_bulk_delete_ignores_missing_ids(self, admin_client: TestClient):
+        report_id = _submit(admin_client).json()["id"]
+        del_resp = admin_client.request("DELETE", "/bug-reports", json={"ids": [report_id, 999996]})
+        assert del_resp.status_code == 200
+        assert del_resp.json()["deleted"] == 1

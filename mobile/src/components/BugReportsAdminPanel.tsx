@@ -49,9 +49,23 @@ interface DetailModalProps {
   report: ReportDetail;
   onClose: () => void;
   onDownload: () => void;
+  onDelete: () => void;
 }
 
-function DetailModal({ report, onClose, onDownload }: DetailModalProps) {
+function DetailModal({ report, onClose, onDownload, onDelete }: DetailModalProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetch(`/bug-reports/${report.id}`, { method: 'DELETE', credentials: 'include' });
+      onDelete();
+    } catch { /* silent */ } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <motion.div
       className={styles.backdrop}
@@ -125,7 +139,28 @@ function DetailModal({ report, onClose, onDownload }: DetailModalProps) {
           )}
         </div>
 
-        <button className={styles.closeBtn} onClick={onClose}>Cerrar</button>
+        {!confirmDelete ? (
+          <div className={styles.footer}>
+            <button className={styles.btnDanger} onClick={() => setConfirmDelete(true)}>
+              Eliminar reporte
+            </button>
+            <button className={styles.closeBtn} onClick={onClose}>Cerrar</button>
+          </div>
+        ) : (
+          <div className={styles.confirmBar}>
+            <p className={styles.confirmText}>
+              ¿Eliminar este reporte? Esta acción no se puede deshacer.
+            </p>
+            <div className={styles.confirmActions}>
+              <button className={styles.closeBtn} onClick={() => setConfirmDelete(false)} disabled={deleting}>
+                Cancelar
+              </button>
+              <button className={styles.btnDanger} onClick={() => void handleDelete()} disabled={deleting}>
+                {deleting ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -141,17 +176,61 @@ export function BugReportsAdminPanel({ open, onClose }: BugReportsAdminPanelProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<ReportDetail | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const reloadReports = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const r = await fetch('/bug-reports', { credentials: 'include' });
+      const data = await r.json();
+      setReports(data.reports ?? []);
+    } catch {
+      setError('Error al cargar reportes.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
-    setError('');
-    fetch('/bug-reports', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data) => { setReports(data.reports ?? []); })
-      .catch(() => setError('Error al cargar reportes.'))
-      .finally(() => setLoading(false));
+    setCheckedIds(new Set());
+    setConfirmBulkDelete(false);
+    void reloadReports();
   }, [open]);
+
+  const toggleCheck = (id: number) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (checkedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      await fetch('/bug-reports', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...checkedIds] }),
+      });
+      setCheckedIds(new Set());
+      setConfirmBulkDelete(false);
+      await reloadReports();
+    } catch { /* silent */ } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDetailDeleted = async () => {
+    setSelected(null);
+    await reloadReports();
+  };
 
   const handleRowClick = async (id: number) => {
     try {
@@ -209,6 +288,7 @@ export function BugReportsAdminPanel({ open, onClose }: BugReportsAdminPanelProp
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th className={styles.checkCell}></th>
                       <th>Fecha</th>
                       <th>Severidad</th>
                       <th>Rol</th>
@@ -220,9 +300,20 @@ export function BugReportsAdminPanel({ open, onClose }: BugReportsAdminPanelProp
                     {reports.map((r) => (
                       <tr
                         key={r.id}
-                        className={styles.row}
+                        className={`${styles.row}${checkedIds.has(r.id) ? ` ${styles.rowChecked}` : ''}`}
                         onClick={() => void handleRowClick(r.id)}
                       >
+                        <td
+                          className={styles.checkCell}
+                          onClick={(e) => { e.stopPropagation(); toggleCheck(r.id); }}
+                        >
+                          <input
+                            type="checkbox"
+                            className={styles.checkbox}
+                            checked={checkedIds.has(r.id)}
+                            onChange={() => toggleCheck(r.id)}
+                          />
+                        </td>
                         <td className={styles.dateCell}>{fmtDate(r.created_at)}</td>
                         <td>
                           <span
@@ -250,7 +341,41 @@ export function BugReportsAdminPanel({ open, onClose }: BugReportsAdminPanelProp
               </div>
             )}
 
-            <button className={styles.closeBtn} onClick={onClose}>Cerrar</button>
+            {!confirmBulkDelete ? (
+              <div className={styles.footer}>
+                <button className={styles.closeBtn} onClick={onClose}>Cerrar</button>
+                {checkedIds.size > 0 && (
+                  <button
+                    className={styles.btnDanger}
+                    onClick={() => setConfirmBulkDelete(true)}
+                  >
+                    Eliminar seleccionados ({checkedIds.size})
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className={styles.confirmBar}>
+                <p className={styles.confirmText}>
+                  ¿Eliminar {checkedIds.size} reporte(s) seleccionado(s)? Esta acción no se puede deshacer.
+                </p>
+                <div className={styles.confirmActions}>
+                  <button
+                    className={styles.closeBtn}
+                    onClick={() => setConfirmBulkDelete(false)}
+                    disabled={deleting}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    className={styles.btnDanger}
+                    onClick={() => void handleBulkDelete()}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Eliminando…' : 'Eliminar'}
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
 
           <AnimatePresence>
@@ -259,6 +384,7 @@ export function BugReportsAdminPanel({ open, onClose }: BugReportsAdminPanelProp
                 report={selected}
                 onClose={() => setSelected(null)}
                 onDownload={() => void handleDownload(selected.id)}
+                onDelete={() => void handleDetailDeleted()}
               />
             )}
           </AnimatePresence>

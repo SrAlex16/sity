@@ -1,9 +1,11 @@
 """routes_bug_reports.py — user bug report submission and admin listing.
 
-POST /bug-report           submit a report (any role, including Guest)
-GET  /bug-reports          list reports (admin only)
-GET  /bug-reports/{id}     full report detail (admin only)
-GET  /bug-reports/{id}/download  JSON download (admin only)
+POST   /bug-report           submit a report (any role, including Guest)
+GET    /bug-reports          list reports (admin only)
+GET    /bug-reports/{id}     full report detail (admin only)
+GET    /bug-reports/{id}/download  JSON download (admin only)
+DELETE /bug-reports/{id}     delete one report + attachments (admin only)
+DELETE /bug-reports          body: {ids:[…]} — delete many (admin only)
 """
 from __future__ import annotations
 
@@ -314,3 +316,76 @@ def download_bug_report(
             "Content-Disposition": f'attachment; filename="bug-report-{report_id}.json"',
         },
     )
+
+
+# ── Deletion ──────────────────────────────────────────────────────────────────
+
+def _delete_report_attachments(report: BugReport) -> None:
+    try:
+        items = json.loads(report.attachments_json)
+    except Exception:
+        return
+    for item in items:
+        filename = item.get("filename", "")
+        if filename:
+            try:
+                (_ATTACHMENTS_DIR / filename).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+class BugReportBulkDeleteRequest(BaseModel):
+    ids: list[int]
+
+    @field_validator("ids")
+    @classmethod
+    def _non_empty(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("La lista de IDs no puede estar vacía.")
+        return v
+
+
+@router.delete("/bug-reports/{report_id}", status_code=200)
+def delete_bug_report(
+    report_id: int,
+    db: Session = Depends(get_session),
+    current: CurrentUser = Depends(require_admin),
+):
+    """Delete a single report and its disk attachments. Admin only."""
+    report = db.get(BugReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    _delete_report_attachments(report)
+    db.delete(report)
+    db.commit()
+    write_log(
+        level="INFO",
+        module="bug_reports",
+        event="bug_report_deleted",
+        payload={"report_id": report_id, "by": current.role},
+    )
+    return {"ok": True, "deleted": 1}
+
+
+@router.delete("/bug-reports", status_code=200)
+def delete_bug_reports_bulk(
+    body: BugReportBulkDeleteRequest,
+    db: Session = Depends(get_session),
+    current: CurrentUser = Depends(require_admin),
+):
+    """Delete multiple reports and their disk attachments. Admin only."""
+    deleted = 0
+    for rid in body.ids:
+        report = db.get(BugReport, rid)
+        if report is not None:
+            _delete_report_attachments(report)
+            db.delete(report)
+            deleted += 1
+    db.commit()
+    write_log(
+        level="INFO",
+        module="bug_reports",
+        event="bug_reports_bulk_deleted",
+        payload={"ids": body.ids, "deleted": deleted, "by": current.role},
+    )
+    return {"ok": True, "deleted": deleted}

@@ -296,3 +296,78 @@
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
+
+/* ── Checkboxes ──────────────────────────────────────────────────────────── */
+
+.checkCell {
+  width: 28px;
+  text-align: center;
+  padding: 8px 4px !important;
+}
+
+.checkbox {
+  cursor: pointer;
+  accent-color: var(--neon-cyan);
+  width: 14px;
+  height: 14px;
+}
+
+.rowChecked { background: rgba(0, 245, 255, 0.04); }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* ── Danger button ───────────────────────────────────────────────────────── */
+
+.btnDanger {
+  background: none;
+  border: 1px solid #f44336;
+  border-radius: 8px;
+  color: #f44336;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.btnDanger:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.12);
+  box-shadow: 0 0 10px rgba(244, 67, 54, 0.25);
+}
+
+.btnDanger:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Confirmation strip ──────────────────────────────────────────────────── */
+
+.confirmBar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  border-radius: 8px;
+  background: rgba(244, 67, 54, 0.06);
+}
+
+.confirmText {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #f44336;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
