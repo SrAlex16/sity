@@ -9,6 +9,7 @@
 #   - Archivos de audio TTS (data/audio/)
 #   - Logs de aplicación (data/logs/app-*.jsonl, audit-*.jsonl)
 #   - Contenido de data/file_backups/
+#   - Adjuntos de bug reports (uploads/bug-reports/)
 #   - Tokens OAuth (google_token.json, spotify_token.json) si existen
 #   - Bases de datos huérfanas (data/sity.db, data/db.sqlite3)
 #
@@ -159,6 +160,10 @@ echo "  -> data/logs/ limpio"
 echo "=== FILE BACKUPS ==="
 safe_rm "$REPO_ROOT/data/file_backups/*"
 echo "  -> data/file_backups/ limpio"
+
+echo "=== BUG REPORT UPLOADS ==="
+safe_rm "$REPO_ROOT/uploads/bug-reports/*"
+echo "  -> uploads/bug-reports/ limpio"
 
 echo "=== TOKENS OAuth ==="
 safe_rm "$REPO_ROOT/config/google_token.json"
