@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVoice, VOICE_DEFAULTS } from '../hooks/useVoice';
 import type { VoiceSettings } from '../hooks/useVoice';
+import { BugReportModal } from '../components/BugReportModal';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import type { LanguageCode } from '../hooks/useLanguage';
 import { useInitiative } from '../hooks/useInitiative';
@@ -84,6 +85,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [justConnected, setJustConnected] = useState<string | null>(null);
   const [bgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
+  const [bugReportOpen, setBugReportOpen] = useState(false);
 
   useEffect(() => {
     if (settings) setForm(settings);
@@ -919,6 +921,18 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           </div>
         )}
       </div>
+
+      {/* ── Reportar un problema ─────────────────────────────────────────── */}
+      <div className={styles.section} style={{ borderBottom: 'none' }}>
+        <button
+          className={styles.sectionBtn}
+          onClick={() => setBugReportOpen(true)}
+        >
+          Reportar un problema
+        </button>
+      </div>
+
+      <BugReportModal open={bugReportOpen} onClose={() => setBugReportOpen(false)} />
 
     </div>
   );

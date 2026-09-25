@@ -440,6 +440,33 @@ def _migrate_reflectionlog() -> None:
                                "added_columns": ["user_belief_updates_json"]})
 
 
+def _migrate_bugreport() -> None:
+    """Add user-submitted report columns to bugreport if absent (2026-09-25)."""
+    _NEW_COLS = [
+        ("observations",     "TEXT"),
+        ("session_id",       "TEXT"),
+        ("user_id",          "INTEGER"),
+        ("role",             "TEXT"),
+        ("user_agent",       "TEXT"),
+        ("git_commit",       "TEXT"),
+        ("attachments_json", "TEXT NOT NULL DEFAULT '[]'"),
+    ]
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(bugreport)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # not yet created; create_all handles full schema
+        added = []
+        for col, typedef in _NEW_COLS:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE bugreport ADD COLUMN {col} {typedef}"))
+                added.append(col)
+        if added:
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "bugreport", "added_columns": added})
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
@@ -457,6 +484,7 @@ def init_db() -> None:
         _migrate_fileartifact()
         _migrate_episode_semantically_processed()
         _migrate_reflectionlog()
+        _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()

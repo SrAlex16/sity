@@ -1,0 +1,209 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 200;
+}
+
+.modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 0 32px rgba(0, 255, 200, 0.08);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-cyan);
+  margin: 0;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.closeX {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.closeX:hover { color: var(--text-primary); }
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.textarea {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-body, sans-serif);
+  font-size: 0.9rem;
+  padding: 0.65rem 0.75rem;
+  resize: vertical;
+  min-height: 90px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.textarea:disabled { opacity: 0.5; }
+
+.select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+}
+
+.select:disabled { opacity: 0.5; }
+
+.attachRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attachBtn {
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.attachBtn:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.attachBtn:disabled { opacity: 0.4; cursor: default; }
+
+.clearAttach {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.clearAttach:hover { color: var(--text-primary); }
+
+.errorMsg {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #ff4d6d;
+  font-family: var(--font-mono);
+}
+
+.successMsg {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--neon-cyan);
+  font-family: var(--font-mono);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.btnSecondary {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.btnSecondary:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  color: var(--neon-cyan);
+}
+
+.btnSecondary:disabled { opacity: 0.4; cursor: default; }
+
+.btnPrimary {
+  background: rgba(0, 255, 200, 0.12);
+  border: 1px solid var(--neon-cyan);
+  border-radius: 8px;
+  color: var(--neon-cyan);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.5rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: rgba(0, 255, 200, 0.22);
+  box-shadow: 0 0 12px rgba(0, 255, 200, 0.3);
+}
+
+.btnPrimary:disabled { opacity: 0.4; cursor: default; }

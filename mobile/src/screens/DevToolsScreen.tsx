@@ -4,6 +4,7 @@ import { useDebug } from '../hooks/useDebug';
 import type { DatasetCaptureRequest } from '../hooks/useDataset';
 import type { TraceEvent, DatasetStats } from '../hooks/useDebug';
 import { HelpModal } from '../components/HelpModal';
+import { BugReportsAdminPanel } from '../components/BugReportsAdminPanel';
 import { TRANSLATIONS } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
 import styles from './DevToolsScreen.module.css';
@@ -185,6 +186,7 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
   const { recentEvents, lastTraceId, lastTraceEvents, datasetStats, isLoading: debugLoading, error: debugError, reload: reloadDebug } = useDebug();
 
   const [tab, setTab] = useState<DevTab>('dataset');
+  const [bugReportsOpen, setBugReportsOpen] = useState(false);
   const [form, setForm] = useState<CaptureForm>(() => captureToForm(null));
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -271,6 +273,12 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
           onClick={() => setTab('debug')}
         >
           Debug
+        </button>
+        <button
+          className={styles.tabBtn}
+          onClick={() => setBugReportsOpen(true)}
+        >
+          Bug Reports
         </button>
       </div>
 
@@ -450,7 +458,10 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
             )}
           </>
         )}
+
       </div>
+
+      <BugReportsAdminPanel open={bugReportsOpen} onClose={() => setBugReportsOpen(false)} />
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} title="Dev Tools">
         <p><strong>Dataset</strong> — configura la captura de conversaciones para el dataset LoRA y consulta estadísticas del dataset actual.</p>

@@ -64,6 +64,14 @@ class BugReport(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     resolved_at: Optional[datetime] = None
+    # User-submitted report fields (added 2026-09-25)
+    observations: Optional[str] = None
+    session_id: Optional[str] = Field(default=None, index=True)
+    user_id: Optional[int] = None
+    role: Optional[str] = None
+    user_agent: Optional[str] = None
+    git_commit: Optional[str] = None
+    attachments_json: str = Field(default="[]")
 
 
 class MemoryFragment(SQLModel, table=True):
