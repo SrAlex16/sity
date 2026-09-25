@@ -920,16 +920,16 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
             </div>
           </div>
         )}
-      </div>
 
-      {/* ── Reportar un problema ─────────────────────────────────────────── */}
-      <div className={styles.section} style={{ borderBottom: 'none' }}>
-        <button
-          className={styles.sectionBtn}
-          onClick={() => setBugReportOpen(true)}
-        >
-          Reportar un problema
-        </button>
+        {/* ── Reportar un problema ─────────────────────────────────────────── */}
+        <div className={styles.section} style={{ borderBottom: 'none' }}>
+          <button
+            className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+            onClick={() => setBugReportOpen(true)}
+          >
+            Reportar un problema
+          </button>
+        </div>
       </div>
 
       <BugReportModal open={bugReportOpen} onClose={() => setBugReportOpen(false)} />
