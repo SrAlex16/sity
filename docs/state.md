@@ -1520,6 +1520,55 @@ estático. Sin interacción con Sity en producción, sin modificar DB ni código
   primero en el código). No afecta producción. Fix: añadir teardown/cleanup de `cooldown_active`
   en los tests anteriores de `TestEvaluatorRateLimits`. Pendiente de sesión de mantenimiento.
 
+**Resueltos recientemente (2026-09-25):**
+
+- **AX-01 CERRADO — schema mismatch tabla `episode` heredada del canal de YouTube** (causa raíz
+  del bug intermitente "Sin respuesta del servidor" en conversaciones sustanciales):
+  La tabla `episode` de la versión del canal de YouTube (julio 2026, ya eliminada) permanecía en
+  la BD con columnas `title`, `url`, `published_at`... SQLite `create_all()` es idempotente — no
+  la sobreescribe — y el sistema de cognición intentaba usar esa tabla con el schema nuevo
+  (`content`, `episode_type`, `salience_level`…), causando fallos silenciosos. Fix: función
+  `_drop_stale_youtube_tables()` en `db.py` detecta el schema viejo por presencia de la columna
+  `title` en `episode` y hace DROP antes de `create_all()`. Mismo tratamiento para `newsitem`.
+  Commits `69aab56` + `0ac26b7`. 8 tests nuevos en `test_db_migration_episode.py`.
+
+- **Fix `clearMessages()` ID-based** — El historial del chat desaparecía al reconectar.
+  `clearMessages()` usaba el timestamp ISO del mensaje como filtro `DELETE WHERE created_at >= ?`,
+  que no coincidía con el valor real almacenado (zona horaria, precisión de milisegundos). Fix:
+  el endpoint `DELETE /chat/messages` guarda el `id` de BD en el mensaje de "chat limpiado" y
+  lo usa como `id_threshold` para el filtro `WHERE id >= ?`. Commit `3c5ae69`.
+
+- **No-hardcode sweep** — Eliminadas referencias al nombre del usuario en código fuente:
+  `persona_engine.py` (docstring), `admin_seeder.py` (display_name fijo), `message_metadata.py`
+  (campo `source`), `pytest.ini` (marcadores nominales). `local_persona_system.md` (asunción
+  "vives en casa de Alex"). Commits `6edc8d9`, `4b64731`, `5de5f9e`, `4750655`.
+  Nuevos tests: `test_no_hardcode.py` (5 tests: prompt files, persona engine, rutas absolutas,
+  admin email, vocabulario peninsular); cobertura de voseo ampliada; mock de `time.sleep`.
+
+- **Vocabulario peninsular guardrail** — `persona_system.md` y `local_persona_system.md`
+  reforzados: "aquí" en lugar de "acá", "vosotros" en lugar de "ustedes" (en España), etc.
+  Test guardrail `test_persona_system_contains_peninsular_vocabulary_instruction`. Commit `09b8dc8`.
+
+- **UI cosmética** — Badge de identidad eliminado de la cabecera (`844e831`). Presentación:
+  "IA doméstica / asistente casero" → "IA conversacional" (`4750655`).
+
+- **Sistema de bug reports — COMPLETO** (commits `9c42594` → `28fd562`):
+  - **Backend:** `POST /bug-report` (todos los roles incluyendo Guest), `GET /bug-reports`,
+    `GET /bug-reports/{id}`, `GET /bug-reports/{id}/download`, `DELETE /bug-reports/{id}`,
+    `DELETE /bug-reports` (bulk). Adjuntos guardados en `uploads/bug-reports/` via base64.
+    Endpoint `GET /uploads/bug-reports/{filename}` (admin-only). Migración idempotente
+    (`_migrate_bugreport()` en `db.py`) para 7 columnas nuevas en `BugReport`.
+  - **Frontend:** `BugReportModal` (textarea, severidad, adjuntos imagen, draft en
+    `localStorage`, animación framer-motion). `BugReportsAdminPanel` (tabla con checkboxes,
+    barra de confirmación inline para eliminación masiva; popup de detalle con thumbnails,
+    descarga JSON, botón "Eliminar reporte" con confirmación). Ambos en `VoiceScreen` (admin-only
+    para la vista de gestión). Rutas Caddy `/bug-report*` y Vite proxy añadidas.
+  - **Tests:** 30 tests en `test_routes_bug_reports.py` (envío, adjuntos, permisos por rol,
+    descarga, eliminación individual y masiva, eliminación de ficheros en disco).
+    7 tests de draft en `BugReportModal.draft.test.ts`.
+  - **reset-data.sh:** `DELETE FROM bugreport` ya presente; nuevo paso
+    `rm -f uploads/bug-reports/*` añadido (`28fd562`).
+
 **Resueltos recientemente (2026-09-14):**
 
 - **401 para guests en /settings/voice, /initiative, /location, /language** (regresión 15 días):
