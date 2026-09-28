@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -410,6 +411,10 @@ class TestRunAdaptiveCycleSync:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.behavior_regression
+@pytest.mark.skipif(
+    not os.getenv("ANTHROPIC_API_KEY"),
+    reason="ANTHROPIC_API_KEY not set — skipping real-model behavior tests",
+)
 class TestBehaviorRegression:
     """Sanity checks using the real Haiku model. Run with ANTHROPIC_API_KEY set."""
 
