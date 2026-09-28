@@ -33,7 +33,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlmodel import Session, desc, select
+from sqlmodel import Session, col, desc, select
 
 from app.audio.tts_service import maybe_attach_tts
 from app.cognition.goal_priority import compute_effective_priority
@@ -462,7 +462,7 @@ def _count_unanswered_initiatives(session_id: str, db: Session) -> int:
             NotificationLog.created_at >= cutoff,
             NotificationLog.delivery_status != "failed",
         )
-        .order_by(NotificationLog.created_at)
+        .order_by(col(NotificationLog.created_at))
     ).all()
 
     if not initiatives:
