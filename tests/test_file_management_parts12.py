@@ -251,8 +251,12 @@ class TestGuestUploadRestriction:
             "history": [],
             "images": [],
         }
-        with _client() as c:
-            resp = c.post("/chat/message", json=payload)
+        mock_limiter = MagicMock()
+        mock_limiter.is_allowed.return_value = True
+        with patch("app.api.routes_chat.get_guest_ip_rate_limiter", return_value=mock_limiter), \
+             patch("app.api.routes_chat._run_turn_in_background"):
+            with _client() as c:
+                resp = c.post("/chat/message", json=payload)
         assert resp.status_code != 403
 
     def test_registered_user_upload_not_blocked(self) -> None:
