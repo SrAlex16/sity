@@ -26,7 +26,7 @@ The goal is to build an AI that develops a real relationship with the user over 
 | TTS/STT | Piper (local) + faster-whisper (local) |
 | Integrations | Home Assistant · Google OAuth · Spotify |
 
-## Cognitive architecture (Operation Remake)
+## Cognitive architecture
 
 The full cognitive pipeline is documented in [`docs/remake/pipeline-cognitivo-completo.md`](docs/remake/pipeline-cognitivo-completo.md). Nine implemented phases:
 
