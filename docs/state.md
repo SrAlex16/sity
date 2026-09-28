@@ -153,6 +153,46 @@ explícita, el normalizador puede extenderse.
 
 ---
 
+## Completado recientemente (2026-09-28)
+
+- **Runner adaptativo de iniciativa — timing decidido por Haiku (commits `2fa96c0`→`ecb52c8`).**
+  El intervalo fijo de 6 horas del runner periódico fue reemplazado por un sistema event-driven
+  con timing controlado por Haiku en función del contexto completo del usuario.
+
+  **Arquitectura nueva (`initiative/runner.py`):**
+  - `threading.Event` como mecanismo de interrupción: `_runner_loop_sync` usa `event.wait(timeout)`
+    en lugar de `asyncio.sleep`; puede ser despertado inmediatamente sin esperar el timeout.
+  - `signal_if_urgent_goals(session_id, db)` — señal post-turno llamada desde `turn_runner.py` al
+    final de cada turno exitoso. Calcula `effective_priority` para cada Goal activa `long_term`; si
+    alguna supera 0.85 llama `_runner_wake_event.set()`. Nunca lanza excepción, jamás bloquea el turno.
+  - `_run_adaptive_cycle_sync(woken_by_signal)` — ciclo principal nuevo. Para cada sesión activa:
+    construye contexto enriquecido (hora local, franja horaria, días inactivo, iniciativas sin
+    respuesta, `MentalState`, `SocialProfile`, Goals activas con priority ≥ 0.75) → llama a Haiku
+    para obtener `{should_initiate, next_check_seconds, reasoning}` → si aprueba, corre el flujo
+    legacy (`IS_NOW_A_GOOD_TIME?` → detector → evaluator → dispatch). Devuelve
+    `min(next_check_seconds)` entre sesiones como próximo timeout del hilo.
+  - Regla madrugada en el system prompt de Haiku: *"evita iniciar contacto salvo que haya una
+    meta de bienestar muy urgente — el descanso del usuario tiene prioridad. No es una regla
+    absoluta: usa tu criterio."*
+  - `_run_cycle_sync()` mantenido intacto para compatibilidad con `test_initiative_step4.py`.
+
+  **Archivos modificados:**
+  - `backend/app/initiative/runner.py` — rediseño completo
+  - `backend/app/chat/turn_runner.py` — +5 líneas: llamada a `signal_if_urgent_goals` post-turno
+  - `tests/test_initiative_adaptive_runner.py` — nuevo, 19 tests + 2 behavior_regression (skip sin API key)
+  - `docs/remake/fase-2-appraisal-goals.md` — §11 documenta el adaptive runner
+
+  **Lección tests:** `_runner_wake_event` es un singleton de módulo; el daemon runner (iniciado por
+  `TestClient` de otro test) puede hacer `.clear()` entre el `.set()` y la aserción → race condition.
+  Solución: mockear el evento entero con `patch("app.initiative.runner._runner_wake_event")` y
+  verificar `.set.assert_called_once()`.
+
+- **Bug reports — eliminación individual y masiva (commits `f6fc32c`, `28fd562`).**
+  `DELETE /bug-reports/{id}` y `DELETE /bug-reports` (bulk con body JSON `{ids: [...]}`) con limpieza
+  de adjuntos en disco (`uploads/bug-reports/`). Frontend: checkboxes en `BugReportsAdminPanel`,
+  confirmación antes de borrar, botón de eliminar en modal de detalle. 9 tests nuevos (30 total).
+  `scripts/reset-data.sh` actualizado para limpiar la carpeta de adjuntos en el reset completo.
+
 ## Completado recientemente (2026-09-23)
 
 - **Cierre campaña de auditoría post-Remake rondas 1–10 — 50+ hallazgos procesados.**
