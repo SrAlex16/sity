@@ -153,6 +153,61 @@ explícita, el normalizador puede extenderse.
 
 ---
 
+## Completado recientemente (2026-09-29)
+
+- **Gestión de archivos — ampliación completa en 8 partes (commits `cd2fc39`→`4c57196`).**
+
+  **Parte 1 — campos nuevos en FileArtifact + settings:**
+  - `file_size_bytes`, `is_permanent`, `expires_at`, `semantic_extracted` en modelo.
+  - Migración idempotente vía `ALTER TABLE … ADD COLUMN` (PRAGMA table_info).
+  - `save_uploaded_image` y `register_capture_artifact` populan `file_size_bytes` y `expires_at`.
+  - `GET/PUT /settings/file-retention` (1–30 días, default 7, clamp server-side).
+
+  **Parte 2 — restricción upload invitado:**
+  - Guest con imágenes → 403 antes de cualquier procesado.
+
+  **Parte 3 — límite 500 MB por usuario:**
+  - `get_user_storage_bytes(db, user_id)` via `func.sum(file_size_bytes)`.
+  - Check antes del loop de uploads: si `_current + _incoming > _limit_bytes` → 507.
+  - Límite configurable en `default_config.yaml` (`storage.file_storage_limit_mb`).
+
+  **Parte 4 — borrado automático vía `expires_at`:**
+  - `delete_old_file_artifacts` ahora respeta `expires_at` por fila (si `is_permanent=True`, nunca borra).
+  - `_naive()` helper para comparar datetimes con SQLite (almacena sin tzinfo).
+  - Intervalo de ejecución: 1 h.
+
+  **Parte 5 — `PUT /files/{id}/permanent`:**
+  - Owner → `is_permanent=True`, `expires_at=None`, devuelve `{ok, is_permanent}`.
+  - No-owner o no-encontrado → 404. Guest → 401.
+
+  **Parte 6 — extracción semántica de imágenes subidas:**
+  - `app/chat/image_semantic_extractor.py` — `extract_image_semantic_facts()` llama Haiku vision,
+    crea hasta 3 `SemanticFact` por imagen, marca `semantic_extracted=True`. Nunca lanza excepción.
+  - `_parse_facts()`: parsea JSON `{facts:[...]}`, strip markdown, max 3 hechos, clamp 200 chars.
+  - Ejecutado en background (`loop.run_in_executor`) tras cada upload exitoso.
+
+  **Parte 7 — alerta de almacenamiento:**
+  - `app/notifications/storage_alert.py` — `maybe_send_storage_alert()`:
+    dispatch push notification a 90 % (level=`warning`) y 100 % (level=`full`).
+    `fact_id = f"storage_{level}_{user_id}_{today}"` previene duplicados diarios. Nunca lanza.
+
+  **Parte 8 — frontend: sección Almacenamiento en VoiceScreen:**
+  - Progress bar de uso (color dinámico: verde/amarillo/rojo), selector de retención,
+    badge "Permanente" y botón "Conservar" por archivo.
+  - 6 nuevas claves i18n en ES/EN/JA.
+
+  **Tests:** 47 tests nuevos distribuidos en 3 archivos (parts12, parts34, parts5678).
+  **Fix CI:** `test_guest_no_images_not_blocked` ahora mockea `get_guest_ip_rate_limiter` para
+  no consumir slots reales del singleton en memoria y evitar falsos 429 en `test_structural_refusal`.
+
+- **Personalización — campo de instrucciones libres del usuario (commit `bfea09d`).**
+  Campo de texto libre (`user_context`) almacenado en `Setting("user.context", session_id)`.
+  Inyectado en el prompt de sistema vía `{user_context_block}` en `persona_system.md`.
+  - `GET/PUT /settings/user-context` (max 500 chars, validación Pydantic).
+  - `PromptContextBuilder` inyecta el bloque cuando el campo no está vacío.
+  - Frontend: textarea en la sección Ajustes de VoiceScreen, guardado con debounce 800 ms.
+  - 8 tests nuevos.
+
 ## Completado recientemente (2026-09-28)
 
 - **Runner adaptativo de iniciativa — timing decidido por Haiku (commits `2fa96c0`→`ecb52c8`).**
