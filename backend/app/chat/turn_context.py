@@ -41,6 +41,7 @@ class TurnContext:
     session_id: str = "default"
     is_admin: bool = False
     language_override: str = "auto"
+    user_instructions: str = ""
 
 
 def build_turn_context(
@@ -61,6 +62,7 @@ def build_turn_context(
     # configure a language preference stored on the client (sessionStorage).
     if language_override == "auto" and request.language_override:
         language_override = request.language_override
+    user_instructions = settings_service.get_user_instructions(session_id=session_id)
 
     # Load MentalState for authenticated users; use defaults for guest sessions.
     mental_state: dict[str, float] = {}
@@ -131,4 +133,5 @@ def build_turn_context(
         session_id=session_id,
         is_admin=is_admin,
         language_override=language_override,
+        user_instructions=user_instructions,
     )

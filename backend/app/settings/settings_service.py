@@ -309,6 +309,35 @@ class SettingsService:
         self.set_setting("language.override", value, source=source, session_id=session_id)
         return self.get_language_override(session_id=session_id)
 
+    # ── User instructions ─────────────────────────────────────────────────────
+    # Per-session free-text field. Content reaches the model prompt directly —
+    # treat with the same trust level as user chat messages, not less, not more.
+
+    _USER_INSTRUCTIONS_MAX = 500
+
+    def get_user_instructions(self, session_id: Optional[str] = None) -> str:
+        row = None
+        if session_id is not None:
+            row = self.session.exec(
+                select(Setting).where(
+                    Setting.key == "user.instructions",
+                    Setting.session_id == session_id,
+                )
+            ).first()
+        if row is None:
+            return ""
+        return str(json.loads(row.value_json))
+
+    def set_user_instructions(
+        self,
+        value: str,
+        session_id: Optional[str] = None,
+        source: str = "ui",
+    ) -> str:
+        trimmed = value[: self._USER_INSTRUCTIONS_MAX]
+        self.set_setting("user.instructions", trimmed, source=source, session_id=session_id)
+        return self.get_user_instructions(session_id=session_id)
+
     # ── Location settings ──────────────────────────────────────────────────────
     # Per-session: session row first, fall back to global, then defaults.
 

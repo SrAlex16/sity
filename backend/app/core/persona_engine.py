@@ -376,6 +376,7 @@ class PersonaEngine:
         session_id: str = "",
         language_override: str = "auto",
         is_admin: bool = False,
+        user_instructions: str = "",
     ) -> PersonaDecision:
         """
         Build the system prompt and decide refusal_mode for this turn.
@@ -547,6 +548,18 @@ class PersonaEngine:
             "interlocutor_block":          interlocutor_block,
             "turn_load_instruction":       turn_load_instruction,
         }).strip()
+
+        # User-provided instructions — content comes directly from user input;
+        # apply same trust level as chat messages (not elevated). Clamped to
+        # 500 chars at SettingsService level; we re-clamp here as a safeguard.
+        _ui = user_instructions.strip()[:500] if user_instructions else ""
+        if _ui:
+            system_prompt += (
+                "\n\nEl usuario ha proporcionado el siguiente contexto sobre sí mismo "
+                "o instrucciones de interacción:\n"
+                + _ui
+                + "\nTenlo en cuenta como información complementaria."
+            )
 
         tone_snapshot = {
             "warmth":              round(warmth, 4),

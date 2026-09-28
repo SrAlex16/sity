@@ -334,6 +334,7 @@ def _chat_message_inner(
         session_id=ctx.session_id,
         language_override=ctx.language_override,
         is_admin=ctx.is_admin,
+        user_instructions=ctx.user_instructions,
     )
 
     # Classify the message when refusal_mode is active:
@@ -359,6 +360,7 @@ def _chat_message_inner(
                 session_id=ctx.session_id,
                 language_override=ctx.language_override,
                 is_admin=ctx.is_admin,
+                user_instructions=ctx.user_instructions,
             )
 
     persona_prompt = persona_decision.system_prompt

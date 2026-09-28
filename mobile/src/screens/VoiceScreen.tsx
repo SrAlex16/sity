@@ -88,10 +88,39 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const [bgValue] = useState<string>(() => localStorage.getItem('sity_bg') ?? '');
   const [bugReportOpen, setBugReportOpen] = useState(false);
   const [bugReportsAdminOpen, setBugReportsAdminOpen] = useState(false);
+  // User instructions
+  const [userInstructions, setUserInstructions] = useState('');
+  const [userInstructionsSaving, setUserInstructionsSaving] = useState(false);
+  const [userInstructionsSaved, setUserInstructionsSaved] = useState(false);
 
   useEffect(() => {
     if (settings) setForm(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (isGuest) return;
+    void fetch('/settings/user-instructions', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setUserInstructions(data.user_instructions ?? ''); })
+      .catch(() => {});
+  }, [isGuest]);
+
+  const handleSaveUserInstructions = async () => {
+    if (isGuest) return;
+    setUserInstructionsSaving(true);
+    try {
+      await fetch('/settings/user-instructions', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_instructions: userInstructions }),
+      });
+      setUserInstructionsSaved(true);
+      setTimeout(() => setUserInstructionsSaved(false), 2000);
+    } finally {
+      setUserInstructionsSaving(false);
+    }
+  };
 
   // ElevenLabs is only available for languages with a configured voice
   const elevenLabsAvailable = !langSettings || ELEVENLABS_LANGUAGES.has(langSettings.language_override);
@@ -631,6 +660,39 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
             </button>
           )}
         </div>
+
+        {/* Personalización — solo usuarios registrados */}
+        {!isGuest && (
+          <div className={styles.section}>
+            <p className={styles.sectionEs}>Personalización</p>
+            <p className={styles.sectionJp}>パーソナライズ</p>
+            <p className={styles.sectionHint}>
+              Escribe aquí información sobre ti o preferencias de interacción que quieras
+              que Sity tenga en cuenta. Por ejemplo: &quot;Soy desarrollador de software&quot;,
+              &quot;Prefiero respuestas concisas&quot;, &quot;Me interesa la música electrónica&quot;.
+            </p>
+            <textarea
+              className={styles.cleanupInput}
+              style={{ width: '100%', minHeight: 90, resize: 'vertical', boxSizing: 'border-box' }}
+              placeholder="Información opcional sobre ti o tus preferencias…"
+              maxLength={500}
+              value={userInstructions}
+              onChange={e => setUserInstructions(e.target.value)}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span className={styles.sectionHint} style={{ opacity: 0.5 }}>
+                {userInstructions.length}/500
+              </span>
+              <button
+                className={`${styles.sectionBtn} ${styles.btnCyan}`}
+                onClick={() => void handleSaveUserInstructions()}
+                disabled={userInstructionsSaving}
+              >
+                {userInstructionsSaved ? 'Guardado' : userInstructionsSaving ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Mensajes proactivos — visible para todos, editable solo por usuarios */}
         {initiativeSettings && (

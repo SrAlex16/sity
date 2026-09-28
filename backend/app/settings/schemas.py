@@ -86,6 +86,10 @@ class LocationSettings(BaseModel):
     source: Literal["manual", "browser", "auto", "denied", ""] = ""
 
 
+class UserInstructionsSettings(BaseModel):
+    user_instructions: str = ""
+
+
 class SityValuesSchema(BaseModel):
     value_autonomy:    float = Field(default=0.80, ge=0.0, le=1.0)
     value_honesty:     float = Field(default=0.75, ge=0.0, le=1.0)

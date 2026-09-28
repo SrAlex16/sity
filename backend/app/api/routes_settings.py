@@ -21,6 +21,7 @@ from app.settings.schemas import (
     SaveAlterRequest,
     SityValuesSchema,
     SUPPORTED_LANGUAGE_CODES,
+    UserInstructionsSettings,
     VoiceSettings,
 )
 from app.initiative.settings import (
@@ -226,6 +227,37 @@ def update_location_settings_endpoint(
     if body.source not in _VALID_LOCATION_SOURCES:
         raise HTTPException(status_code=422, detail=f"Fuente de ubicación no válida: {body.source!r}")
     return SettingsService(session).set_location_settings(body, session_id=current.session_id)
+
+
+# ---------------------------------------------------------------------------
+# User instructions — free-text personalization field (User/Admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/user-instructions", response_model=UserInstructionsSettings)
+def get_user_instructions(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Per-session free-text instructions/context provided by the user.
+    Used to inject complementary context into the system prompt."""
+    _require_non_guest(current)
+    value = SettingsService(session).get_user_instructions(session_id=current.session_id)
+    return UserInstructionsSettings(user_instructions=value)
+
+
+@router.put("/user-instructions", response_model=UserInstructionsSettings)
+def update_user_instructions(
+    body: UserInstructionsSettings,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Save per-session user instructions. Trimmed to 500 chars server-side."""
+    _require_non_guest(current)
+    value = SettingsService(session).set_user_instructions(
+        body.user_instructions,
+        session_id=current.session_id,
+    )
+    return UserInstructionsSettings(user_instructions=value)
 
 
 # ---------------------------------------------------------------------------

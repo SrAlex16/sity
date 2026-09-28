@@ -667,6 +667,7 @@ class ChatAIOrchestrator:
             session_id=ctx.session_id,
             language_override=ctx.language_override,
             is_admin=ctx.is_admin,
+            user_instructions=ctx.user_instructions,
         )
 
         # Register normal-path tool artifacts (camera/audio captures) in FileArtifact inventory.
