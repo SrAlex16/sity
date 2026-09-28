@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 
 from datetime import datetime, timezone
@@ -22,7 +23,8 @@ from app.audio.tts_service import (  # noqa: F401  (re-exported for test backwar
     _clean_text_for_tts,
 )
 from app.chat.chat_persistence import get_or_create_chat_session
-from app.chat.file_artifact import save_uploaded_image
+from app.chat.file_artifact import get_user_storage_bytes, save_uploaded_image
+from app.settings.config_loader import load_default_config
 from app.settings.settings_service import SettingsService
 from app.chat.turn_runner import _run_turn_in_background
 from app.core.cancellation import cancel_operation, register_operation
@@ -168,6 +170,23 @@ async def chat_message(
     image_artifact_ids: list[int] = []
     if request.images:
         user_id = current.user.id if current.user else None
+        if user_id is not None:
+            _cfg = load_default_config()
+            _limit_mb = int(_cfg.get("storage", {}).get("file_storage_limit_mb", 500))
+            _limit_bytes = _limit_mb * 1024 * 1024
+            _current = get_user_storage_bytes(db, user_id)
+            _incoming = sum(
+                len(base64.b64decode(img.data + "=="))
+                for img in request.images
+            )
+            if _current + _incoming > _limit_bytes:
+                raise HTTPException(
+                    status_code=507,
+                    detail=(
+                        f"Límite de almacenamiento alcanzado ({_limit_mb} MB). "
+                        "Elimina archivos en Ajustes antes de subir más."
+                    ),
+                )
         retention_days = SettingsService(db).get_file_retention_days(session_id=current.session_id)
         for img in request.images:
             try:

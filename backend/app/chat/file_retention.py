@@ -1,11 +1,11 @@
-"""file_retention.py — periodic cleanup of old FileArtifact rows and their files on disk.
+"""file_retention.py — periodic cleanup of expired FileArtifact rows and their files on disk.
 
-Fixed retention: 7 days (same convention as ElevenLabs cleanup and captures).
-Not admin-configurable for now — this is a simple default that fits the use case.
-If a configurable policy is needed later, follow the audio_cleanup_days pattern.
+Deletion rules (evaluated per row):
+  - is_permanent=True → never deleted
+  - expires_at IS NOT NULL → delete when expires_at < now()
+  - expires_at IS NULL     → delete when created_at < (now - older_than_days) [backward compat]
 
-The retention loop runs every 6 hours (same pattern as initiative/runner.py):
-  asyncio task → run_in_executor → _run_retention_sync → Session → delete_old_file_artifacts
+The retention loop runs every hour (asyncio task → run_in_executor → Session).
 """
 from __future__ import annotations
 
@@ -22,25 +22,34 @@ from app.trace.logger import write_log
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 _RETENTION_DAYS = 7
-_INTERVAL_HOURS = 6
+_INTERVAL_HOURS = 1
+
+
+def _naive(dt: datetime) -> datetime:
+    return dt if dt.tzinfo is None else dt.replace(tzinfo=None)
 
 
 def delete_old_file_artifacts(db: Session, *, older_than_days: int = _RETENTION_DAYS) -> dict:
-    """Delete FileArtifact rows and their files on disk older than `older_than_days` days.
+    """Delete expired FileArtifact rows and their on-disk files.
 
+    Respects is_permanent flag and per-file expires_at when set.
     Idempotent: missing files on disk are silently skipped.
     Returns {"ok": bool, "deleted": int, "errors": list[str]}.
     """
     older_than_days = max(1, min(int(older_than_days), 365))
-    # SQLite stores datetimes as naive strings — compare with naive UTC cutoff.
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=older_than_days)).replace(tzinfo=None)
+    now = _naive(datetime.now(timezone.utc))
+    cutoff = now - timedelta(days=older_than_days)
 
     rows = db.exec(select(FileArtifact)).all()
-    to_delete = [
-        row for row in rows
-        if row.created_at is not None
-        and (row.created_at if row.created_at.tzinfo is None else row.created_at.replace(tzinfo=None)) < cutoff
-    ]
+    to_delete: list[FileArtifact] = []
+    for row in rows:
+        if row.is_permanent:
+            continue
+        if row.expires_at is not None:
+            if _naive(row.expires_at) < now:
+                to_delete.append(row)
+        elif row.created_at is not None and _naive(row.created_at) < cutoff:
+            to_delete.append(row)
 
     deleted = 0
     errors: list[str] = []
@@ -88,7 +97,7 @@ def _run_retention_sync() -> None:
 
 
 async def file_retention_loop() -> None:
-    """Async loop started from main.py on_startup. Runs every 6 hours."""
+    """Async loop started from main.py on_startup. Runs every hour."""
     loop = asyncio.get_running_loop()
     while True:
         await asyncio.sleep(_INTERVAL_HOURS * 3600)

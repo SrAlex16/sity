@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlmodel import Session
+from sqlmodel import Session, func, select
 
 from app.api.schemas import ChatArtifact
 from app.memory.models import FileArtifact
@@ -150,6 +150,16 @@ def wire_uploaded_images_to_message(
             row.chat_message_id = chat_message_id
             db.add(row)
     db.commit()
+
+
+def get_user_storage_bytes(db: Session, user_id: int) -> int:
+    """Return total file_size_bytes across all FileArtifact rows for a user."""
+    result = db.exec(
+        select(func.sum(FileArtifact.file_size_bytes)).where(
+            FileArtifact.user_id == user_id
+        )
+    ).one()
+    return int(result or 0)
 
 
 def user_id_from_session(session_id: str) -> int | None:
