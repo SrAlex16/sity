@@ -152,15 +152,27 @@ def _migrate_userachievement() -> None:
 
 
 def _migrate_fileartifact() -> None:
-    """Ensure fileartifact table exists. create_all handles new deployments.
+    """Ensure fileartifact table exists and all columns are present.
 
-    No column-level migration needed — entirely new table.
+    create_all handles new deployments. For existing tables, add any new
+    columns introduced in Part 1 of the file management expansion.
     """
+    _NEW_COLS = [
+        ("file_size_bytes", "INTEGER NOT NULL DEFAULT 0"),
+        ("is_permanent", "INTEGER NOT NULL DEFAULT 0"),
+        ("expires_at", "DATETIME"),
+        ("semantic_extracted", "INTEGER NOT NULL DEFAULT 0"),
+    ]
     with engine.connect() as conn:
         result = conn.execute(text("PRAGMA table_info(fileartifact)"))
-        if not result.fetchall():
+        rows = result.fetchall()
+        if not rows:
             return  # not yet created; create_all handles full schema
-    # Table exists — nothing to migrate
+        existing = {row[1] for row in rows}
+        for col_name, col_type in _NEW_COLS:
+            if col_name not in existing:
+                conn.execute(text(f"ALTER TABLE fileartifact ADD COLUMN {col_name} {col_type}"))
+        conn.commit()
 
 
 def _migrate_social_reflection() -> None:

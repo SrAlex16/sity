@@ -399,14 +399,14 @@ class UserAchievement(SQLModel, table=True):
 class FileArtifact(SQLModel, table=True):
     """Inventory record for every file saved to disk (uploaded images, camera/audio captures).
 
-    user_id=None for guest sessions. rel_path is relative to PROJECT_ROOT so the
-    file can always be resolved as PROJECT_ROOT / rel_path regardless of deployment.
+    user_id=None for guest sessions (legacy; new uploads from guests are blocked).
+    rel_path is relative to PROJECT_ROOT so the file can always be resolved as
+    PROJECT_ROOT / rel_path regardless of deployment.
     source distinguishes how the file arrived: chat_upload = user-uploaded via the
     chat input; camera_capture = taken by the capture_camera_snapshot / record_audio_sample tools.
-    chat_message_id is reserved for Paso 2 (file manager frontend) — always NULL for now.
     """
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: Optional[int] = Field(default=None, index=True)  # None = guest
+    user_id: Optional[int] = Field(default=None, index=True)  # None = guest (legacy)
     artifact_type: str                    # "image" | "audio"
     filename: str
     rel_path: str                         # e.g. "uploads/images/abc.jpg"
@@ -414,6 +414,11 @@ class FileArtifact(SQLModel, table=True):
     source: str                           # "chat_upload" | "camera_capture"
     chat_message_id: Optional[int] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
+    # Storage management (added Parte 1)
+    file_size_bytes: int = Field(default=0)
+    is_permanent: bool = Field(default=False)
+    expires_at: Optional[datetime] = Field(default=None, index=True)
+    semantic_extracted: bool = Field(default=False)
 
 
 class MentalState(SQLModel, table=True):

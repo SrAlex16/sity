@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlmodel import Session
@@ -37,6 +38,7 @@ def save_uploaded_image(
     media_type: str,
     db: Session,
     user_id: int | None,
+    retention_days: int = 7,
 ) -> FileArtifact:
     """Decode base64 image, write to disk, register in FileArtifact.
 
@@ -53,6 +55,7 @@ def save_uploaded_image(
     raw = base64.b64decode(base64_data)
     file_path.write_bytes(raw)
 
+    expires_at = datetime.now(timezone.utc) + timedelta(days=retention_days)
     row = FileArtifact(
         user_id=user_id,
         artifact_type="image",
@@ -60,6 +63,8 @@ def save_uploaded_image(
         rel_path=rel_path,
         mime_type=media_type,
         source="chat_upload",
+        file_size_bytes=len(raw),
+        expires_at=expires_at,
     )
     db.add(row)
     db.commit()
@@ -78,6 +83,7 @@ def register_capture_artifact(
     artifact: ChatArtifact,
     db: Session,
     user_id: int | None,
+    retention_days: int = 7,
 ) -> FileArtifact | None:
     """Register an already-saved capture file (camera or audio) in FileArtifact.
 
@@ -94,6 +100,14 @@ def register_capture_artifact(
     rel_path = artifact.url.lstrip("/")
     artifact_type = "image" if artifact.type == "image" else "audio"
 
+    file_size = 0
+    abs_path = PROJECT_ROOT / rel_path
+    try:
+        file_size = abs_path.stat().st_size
+    except OSError:
+        pass
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=retention_days)
     row = FileArtifact(
         user_id=user_id,
         artifact_type=artifact_type,
@@ -101,6 +115,8 @@ def register_capture_artifact(
         rel_path=rel_path,
         mime_type=artifact.mime_type,
         source="camera_capture",
+        file_size_bytes=file_size,
+        expires_at=expires_at,
     )
     db.add(row)
     db.commit()

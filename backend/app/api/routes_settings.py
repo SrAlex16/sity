@@ -21,6 +21,7 @@ from app.settings.schemas import (
     SaveAlterRequest,
     SityValuesSchema,
     SUPPORTED_LANGUAGE_CODES,
+    FileRetentionSettings,
     UserInstructionsSettings,
     VoiceSettings,
 )
@@ -258,6 +259,31 @@ def update_user_instructions(
         session_id=current.session_id,
     )
     return UserInstructionsSettings(user_instructions=value)
+
+
+@router.get("/file-retention", response_model=FileRetentionSettings)
+def get_file_retention(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+) -> FileRetentionSettings:
+    _require_non_guest(current)
+    days = SettingsService(session).get_file_retention_days(session_id=current.session_id)
+    return FileRetentionSettings(file_retention_days=days)
+
+
+@router.put("/file-retention", response_model=FileRetentionSettings)
+def update_file_retention(
+    body: FileRetentionSettings,
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+) -> FileRetentionSettings:
+    """Set per-session file retention window in days (1–30). Clamped server-side."""
+    _require_non_guest(current)
+    days = SettingsService(session).set_file_retention_days(
+        body.file_retention_days,
+        session_id=current.session_id,
+    )
+    return FileRetentionSettings(file_retention_days=days)
 
 
 # ---------------------------------------------------------------------------

@@ -338,6 +338,38 @@ class SettingsService:
         self.set_setting("user.instructions", trimmed, source=source, session_id=session_id)
         return self.get_user_instructions(session_id=session_id)
 
+    # ── File retention setting ─────────────────────────────────────────────────
+
+    _FILE_RETENTION_MIN = 1
+    _FILE_RETENTION_MAX = 30
+    _FILE_RETENTION_DEFAULT = 7
+
+    def get_file_retention_days(self, session_id: Optional[str] = None) -> int:
+        row = None
+        if session_id is not None:
+            row = self.session.exec(
+                select(Setting).where(
+                    Setting.key == "file.retention_days",
+                    Setting.session_id == session_id,
+                )
+            ).first()
+        if row is None:
+            return self._FILE_RETENTION_DEFAULT
+        try:
+            return int(json.loads(row.value_json))
+        except Exception:
+            return self._FILE_RETENTION_DEFAULT
+
+    def set_file_retention_days(
+        self,
+        value: int,
+        session_id: Optional[str] = None,
+        source: str = "ui",
+    ) -> int:
+        clamped = max(self._FILE_RETENTION_MIN, min(self._FILE_RETENTION_MAX, value))
+        self.set_setting("file.retention_days", clamped, source=source, session_id=session_id)
+        return self.get_file_retention_days(session_id=session_id)
+
     # ── Location settings ──────────────────────────────────────────────────────
     # Per-session: session row first, fall back to global, then defaults.
 

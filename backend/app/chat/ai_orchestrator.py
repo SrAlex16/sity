@@ -54,13 +54,14 @@ def _register_capture_artifacts(
     session: Session,
     session_id: str,
     artifacts: list[ChatArtifact],
+    retention_days: int = 7,
 ) -> None:
     """Register camera/audio capture artifacts in FileArtifact.  Best-effort."""
     uid = user_id_from_session(session_id)
     for art in artifacts:
         if art.type in ("image", "audio"):
             try:
-                register_capture_artifact(art, session, uid)
+                register_capture_artifact(art, session, uid, retention_days=retention_days)
             except Exception:
                 pass
 
@@ -630,7 +631,7 @@ class ChatAIOrchestrator:
                 tone_meta=json.dumps(persona_decision.tone_snapshot),
             )
             # Register sensor artifacts (camera/audio captures) in FileArtifact inventory.
-            _register_capture_artifacts(self.session, ctx.session_id, _loop.sensor_artifacts)
+            _register_capture_artifacts(self.session, ctx.session_id, _loop.sensor_artifacts, ctx.file_retention_days)
             return _ToolBranchOutcome(
                 early_return=micro_reaction_response(
                     trace_id=ctx.trace_id,
@@ -671,7 +672,7 @@ class ChatAIOrchestrator:
         )
 
         # Register normal-path tool artifacts (camera/audio captures) in FileArtifact inventory.
-        _register_capture_artifacts(self.session, ctx.session_id, _loop.artifacts)
+        _register_capture_artifacts(self.session, ctx.session_id, _loop.artifacts, ctx.file_retention_days)
         return _ToolBranchOutcome(
             early_return=None,
             tool_results=_loop.tool_results_for_claude,

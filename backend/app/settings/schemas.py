@@ -90,6 +90,10 @@ class UserInstructionsSettings(BaseModel):
     user_instructions: str = ""
 
 
+class FileRetentionSettings(BaseModel):
+    file_retention_days: int = Field(default=7, ge=1, le=30)
+
+
 class SityValuesSchema(BaseModel):
     value_autonomy:    float = Field(default=0.80, ge=0.0, le=1.0)
     value_honesty:     float = Field(default=0.75, ge=0.0, le=1.0)

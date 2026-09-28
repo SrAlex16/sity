@@ -42,6 +42,7 @@ class TurnContext:
     is_admin: bool = False
     language_override: str = "auto"
     user_instructions: str = ""
+    file_retention_days: int = 7
 
 
 def build_turn_context(
@@ -63,6 +64,7 @@ def build_turn_context(
     if language_override == "auto" and request.language_override:
         language_override = request.language_override
     user_instructions = settings_service.get_user_instructions(session_id=session_id)
+    file_retention_days = settings_service.get_file_retention_days(session_id=session_id)
 
     # Load MentalState for authenticated users; use defaults for guest sessions.
     mental_state: dict[str, float] = {}
@@ -134,4 +136,5 @@ def build_turn_context(
         is_admin=is_admin,
         language_override=language_override,
         user_instructions=user_instructions,
+        file_retention_days=file_retention_days,
     )

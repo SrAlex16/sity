@@ -150,6 +150,8 @@ storage:
   data_dir: data
   export_dir: data/exports
   tts_voice_speaker: female
+  file_retention_days: 7       # default auto-delete window for uploaded files (1-30)
+  file_storage_limit_mb: 500   # per-user hard cap in megabytes
 
 web_search:
   ddg_url: "https://html.duckduckgo.com/html/"

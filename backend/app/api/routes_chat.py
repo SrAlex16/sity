@@ -23,6 +23,7 @@ from app.audio.tts_service import (  # noqa: F401  (re-exported for test backwar
 )
 from app.chat.chat_persistence import get_or_create_chat_session
 from app.chat.file_artifact import save_uploaded_image
+from app.settings.settings_service import SettingsService
 from app.chat.turn_runner import _run_turn_in_background
 from app.core.cancellation import cancel_operation, register_operation
 from app.core.realtime_events import (
@@ -157,15 +158,20 @@ async def chat_message(
     if err := _validate_images(request.images):
         raise HTTPException(status_code=400, detail=err)
 
+    # Guests may not upload files.
+    if current.is_guest and request.images:
+        raise HTTPException(status_code=403, detail="Los invitados no pueden subir archivos.")
+
     # Persist uploaded images to disk and register in FileArtifact inventory.
     # Collect IDs so we can link them to the user's ChatMessage once it's saved.
     # Non-blocking: a failure here must never prevent the chat turn from running.
     image_artifact_ids: list[int] = []
     if request.images:
         user_id = current.user.id if current.user else None
+        retention_days = SettingsService(db).get_file_retention_days(session_id=current.session_id)
         for img in request.images:
             try:
-                fa = save_uploaded_image(img.data, img.media_type, db, user_id)
+                fa = save_uploaded_image(img.data, img.media_type, db, user_id, retention_days=retention_days)
                 assert fa.id is not None  # id always set after DB commit
                 image_artifact_ids.append(fa.id)
             except Exception:
