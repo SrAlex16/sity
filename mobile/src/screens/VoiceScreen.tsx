@@ -671,11 +671,11 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           )}
 
           {/* Manual input */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, maxWidth: 320 }}>
             <input
               type="text"
               className={styles.cleanupInput}
-              style={{ flex: 1 }}
+              style={{ flex: 1, width: '100%' }}
               placeholder={tl.locationPlaceholder}
               value={locationInput}
               disabled={isGuest}
@@ -719,7 +719,7 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
             </p>
             <textarea
               className={styles.cleanupInput}
-              style={{ width: '100%', minHeight: 90, resize: 'vertical', boxSizing: 'border-box' }}
+              style={{ width: '100%', maxWidth: 320, minHeight: 90, resize: 'vertical', boxSizing: 'border-box' }}
               placeholder="Información opcional sobre ti o tus preferencias…"
               maxLength={500}
               value={userInstructions}

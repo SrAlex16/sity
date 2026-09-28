@@ -9,25 +9,40 @@ to disk and registered in the `FileArtifact` inventory table.
 in prior_messages when Claude generates responses, so the model can see images from
 recent turns. The `FileArtifact.chat_message_id` field is populated and used for this.
 
-Paso 3 (frontend: list, delete individually/in bulk, export as zip) is deferred.
+**Paso 3** (2026-09-07): frontend file manager — list, delete individually/in bulk,
+export as zip. See §Paso 3 below.
+
+**Ampliación en 8 partes** (2026-09-29): storage limits, retention policy, semantic
+extraction, push alerts, permanent flag, storage stats endpoint. See §Ampliación below.
 
 ## FileArtifact table
 
 ```
 fileartifact
 ────────────────────────────────────────────────────────────────────
-id              INTEGER PRIMARY KEY
-user_id         INTEGER  NULL    — None for guest sessions; indexed
-artifact_type   TEXT             — "image" | "audio"
-filename        TEXT             — bare filename, e.g. "a1b2.jpg"
-rel_path        TEXT             — path relative to PROJECT_ROOT
-                                   e.g. "uploads/images/a1b2.jpg"
-                                        "captures/camera/snap.jpg"
-mime_type       TEXT  NULL
-source          TEXT             — "chat_upload" | "camera_capture"
-chat_message_id INTEGER NULL     — id of the ChatMessage that owns this file
-                                   (wired in Paso 2; used for image history)
-created_at      DATETIME
+id                INTEGER PRIMARY KEY
+user_id           INTEGER  NULL    — None for guest sessions; indexed
+artifact_type     TEXT             — "image" | "audio"
+filename          TEXT             — bare filename, e.g. "a1b2.jpg"
+rel_path          TEXT             — path relative to PROJECT_ROOT
+                                     e.g. "uploads/images/a1b2.jpg"
+                                          "captures/camera/snap.jpg"
+mime_type         TEXT  NULL
+source            TEXT             — "chat_upload" | "camera_capture"
+chat_message_id   INTEGER NULL     — id of the ChatMessage that owns this file
+                                     (wired in Paso 2; used for image history)
+created_at        DATETIME
+
+— Added in Ampliación (2026-09-29) —
+file_size_bytes   INTEGER  NOT NULL DEFAULT 0
+                                   — populated from len(raw_bytes) on upload or
+                                     path.stat().st_size for capture artifacts
+is_permanent      INTEGER  NOT NULL DEFAULT 0  (bool)
+                                   — True → exempt from auto-deletion
+expires_at        DATETIME NULL    — computed as now + retention_days at upload time;
+                                     NULL means use the legacy created_at cutoff
+semantic_extracted INTEGER NOT NULL DEFAULT 0  (bool)
+                                   — True → Haiku has already run image analysis
 ```
 
 The same `user_id` isolation criterion already applied in `UserAchievement`,
@@ -135,14 +150,15 @@ Caddy routes: `handle /files* { reverse_proxy localhost:8000 }` added to both `:
 
 ### Retention (`backend/app/chat/file_retention.py`)
 
-Fixed at 7 days (same convention as ElevenLabs cleanup and captures retention). Not
-admin-configurable — simple default that fits the use case. If a configurable policy
-is needed later, follow the `audio_cleanup_days` pattern in `VoiceSettings`.
+Per-file retention policy (configurable, default 7 days). See §Ampliación below for
+the updated behavior using `expires_at`. Legacy fallback: rows without `expires_at`
+are deleted when `created_at < now - older_than_days`.
 
-- `delete_old_file_artifacts(db, older_than_days=7)` — deletes rows older than cutoff
-  plus their files on disk. Idempotent: missing files on disk are silently skipped.
+- `delete_old_file_artifacts(db)` — respects `is_permanent` (never deleted) and
+  `expires_at` per row. Falls back to `created_at` cutoff for rows without `expires_at`.
+  Idempotent: missing files on disk are silently skipped.
 - `file_retention_loop()` / `start_file_retention_loop(loop)` — asyncio loop, runs
-  every 6 hours (same pattern as `initiative/runner.py`). Started from `main.py on_startup`.
+  every hour. Started from `main.py on_startup`.
 
 ### Frontend (`mobile/src/screens/VoiceScreen.tsx`)
 
@@ -156,3 +172,109 @@ The "Gestión de archivos" section (previously a placeholder) now shows:
 i18n: new keys added to all 3 languages (`filesLoading`, `filesEmpty`, `filesDelete`,
 `filesDeleteAll`, `filesDeleteAllConfirm`, `filesDeleteAllYes`, `filesExport`,
 `filesExporting`). Existing `filesHint` updated from "Próximamente…" to the real description.
+
+---
+
+## Ampliación — 8 partes (2026-09-29)
+
+### Parte 1 — campos nuevos en FileArtifact + settings de retención
+
+`file_size_bytes`, `is_permanent`, `expires_at`, `semantic_extracted` added to the
+model (see §FileArtifact table above). Migration: idempotent `ALTER TABLE … ADD COLUMN`
+guarded by `PRAGMA table_info`.
+
+`save_uploaded_image()` now accepts `retention_days` (default 7) and populates:
+- `file_size_bytes = len(raw_bytes)`
+- `expires_at = now + timedelta(days=retention_days)`
+
+`register_capture_artifact()` similarly populates `file_size_bytes = path.stat().st_size`
+and `expires_at`.
+
+New endpoints in `routes_settings.py`:
+- `GET /settings/file-retention` → `{file_retention_days: int}` (401 for guests)
+- `PUT /settings/file-retention` → accepts `{file_retention_days: int}`, clamped 1–30
+
+Config: `config/default_config.yaml` § `storage`:
+```yaml
+storage:
+  file_retention_days: 7        # default auto-delete window (1–30 days)
+  file_storage_limit_mb: 500    # per-user hard cap in megabytes
+```
+
+### Parte 2 — restricción de upload para invitados
+
+`POST /chat/message` now returns 403 immediately when a guest sends images.
+Registered users are unaffected.
+
+### Parte 3 — límite de almacenamiento de 500 MB por usuario
+
+New utility: `get_user_storage_bytes(db, user_id) -> int` — `func.sum(file_size_bytes)`
+filtered by `user_id`.
+
+Before saving any upload, `routes_chat.py` computes `_current + _incoming` bytes. If
+the total exceeds `file_storage_limit_mb * 1024 * 1024`, the route returns 507
+Insufficient Storage with a human-readable detail message. The limit is read from
+`default_config.yaml` at request time; defaults to 500 MB.
+
+### Parte 4 — borrado automático vía `expires_at`
+
+`delete_old_file_artifacts()` rewritten:
+- If `is_permanent=True`: row is never deleted.
+- If `expires_at` is set: deleted when `expires_at < now` (timezone-naive comparison
+  via `_naive()` helper — SQLite stores datetimes without tzinfo).
+- Fallback: `created_at < now - older_than_days` for rows without `expires_at`.
+
+Retention loop interval: **1 hour** (was 6 hours in the original Paso 3).
+
+### Parte 5 — `PUT /files/{id}/permanent`
+
+```
+PUT /files/{id}/permanent
+  Auth: User/Admin only (401 for guest, 404 for not-found or other user's file)
+  Effect: is_permanent=True, expires_at=None
+  Response: {ok: true, is_permanent: true}
+```
+
+### Parte 6 — extracción semántica asíncrona de imágenes
+
+`backend/app/chat/image_semantic_extractor.py` — `extract_image_semantic_facts()`:
+- Skipped when `ANTHROPIC_API_KEY` is not set or artifact is already `semantic_extracted`.
+- Called in background (`loop.run_in_executor`) after each successful upload in `routes_chat.py`.
+- Sends the image to Haiku via `provider.generate(AIRequest(..., images=[...]))` with
+  a system prompt that extracts up to 3 stable facts about the user.
+- Parses `{"facts": [...]}` JSON from the response; strips markdown fences; clamps each
+  fact to 200 chars; keeps at most 3.
+- Creates one `SemanticFact` row per fact; sets `FileArtifact.semantic_extracted=True`.
+- Never raises — all errors are logged as WARN.
+
+`_parse_facts(text) -> list[str]`: handles valid JSON, bad JSON, empty list, and
+markdown-wrapped JSON blocks.
+
+### Parte 7 — alerta de almacenamiento por push
+
+`backend/app/notifications/storage_alert.py` — `maybe_send_storage_alert()`:
+- No-op when `used_bytes / limit_bytes < 0.90`.
+- Dispatches a push notification at ≥ 90 % (level `"warning"`) and ≥ 100 % (level `"full"`).
+- Daily deduplication: `fact_id = f"storage_{level}_{user_id}_{today}"`.
+- Called in `routes_chat.py` after all uploads are saved, using the post-upload total.
+- Never raises.
+
+### Parte 8 — sección Almacenamiento en frontend
+
+`mobile/src/screens/VoiceScreen.tsx` additions:
+- Progress bar showing `used_bytes / limit_bytes` with dynamic color (green → yellow →
+  red at 90 %+).
+- Retention selector (1 / 3 / 7 / 14 / 30 days) that calls `PUT /settings/file-retention`.
+- Per-file "Conservar" button calls `PUT /files/{id}/permanent`; replaced by "Permanente"
+  badge once marked.
+- New GET endpoints consumed: `GET /files/storage-stats` (see below).
+
+### New endpoints (Parte 5 + 8)
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| `GET` | `/files/storage-stats` | User/Admin | `{used_bytes, limit_bytes, file_count, permanent_count}` |
+| `PUT` | `/files/{id}/permanent` | User/Admin | Mark file as permanent (no expiry) |
+
+i18n: 6 new keys in 3 languages (`storageSection`, `storageUsed`, `storageRetentionLabel`,
+`storageRetentionHint`, `storagePermanent`, `storageMarkPermanent`).

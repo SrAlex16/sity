@@ -14,7 +14,7 @@ Para estado actual ver `docs/state.md`.
 ## Motivación y concepto
 
 Un Alter es un "archivo de guardado" de personalidad — una foto completa de los
-14 parámetros de personalidad de Sity, almacenada bajo un nombre elegido por el
+13 rasgos de personalidad de Sity, almacenada bajo un nombre elegido por el
 usuario y recuperable en cualquier momento.
 
 ### Por qué es distinto de la personalidad activa por sesión (Fase 2b)
@@ -27,7 +27,7 @@ forma de "volver a la configuración que tenía antes" salvo reajustar manualmen
 
 Los Alters resuelven esto: el usuario puede guardar una configuración con nombre
 ("Modo trabajo", "Modo noche", "Modo amigos"), y recuperarla con un solo gesto.
-La activación de un Alter es equivalente a mover los 14 sliders a mano hasta esos
+La activación de un Alter es equivalente a mover los 13 sliders a mano hasta esos
 valores — no hay magia adicional, solo una escritura en bulk.
 
 ### Por qué es independiente de la memoria social (SocialProfile)
@@ -51,7 +51,7 @@ id               INTEGER PK autoincrement
 user_id          INTEGER  indexed  — FK lógico a User.id
 slot             INTEGER            — 1 a 5
 name             TEXT     nullable  — None = slot vacío
-parameters_json  TEXT     nullable  — JSON dict[str, float] de 14 parámetros, None = slot vacío
+parameters_json  TEXT     nullable  — JSON dict[str, float] de 13 rasgos, None = slot vacío
 created_at       DATETIME utc
 updated_at       DATETIME utc
 UniqueConstraint("user_id", "slot")
@@ -67,16 +67,16 @@ siguen al usuario, no al dispositivo o pestaña.
 
 **5 slots fijos, no un número configurable:** 5 es un límite de producto (interfaz
 con 5 botones fijos en el frontend), no un umbral operativo que deba ajustarse sin
-deploy. El mismo criterio que el número de roles fijos (Guest/User/Admin) o los 14
-parámetros de personalidad — no vive en `default_config.yaml`. La constante
+deploy. El mismo criterio que el número de roles fijos (Guest/User/Admin) o los 13
+rasgos de personalidad — no vive en `default_config.yaml`. La constante
 `_MAX_SLOTS = 5` vive en `alter_service.py` como un único punto de verdad en código.
 
-**`parameters_json` como JSON en vez de columnas individuales:** Los 14 parámetros
+**`parameters_json` como JSON en vez de columnas individuales:** Los 13 rasgos
 son un bloque atómico — siempre se leen todos juntos y se escriben todos juntos.
-Columnas individuales solo servirían si necesitáramos queries por parámetro concreto
-(ej. "dáme todos los Alters donde sarcasm_level > 0.5"), que no es un caso de uso
+Columnas individuales solo servirían si necesitáramos queries por rasgo concreto
+(ej. "dáme todos los Alters donde playfulness > 0.5"), que no es un caso de uso
 previsto. El JSON compacto ocupa menos espacio y es más fácil de mantener si el
-conjunto de parámetros cambia.
+conjunto de rasgos cambia.
 
 **Slots como filas opcionales (no pre-creadas):** Solo existen filas para slots
 que han sido guardados al menos una vez. `list_alters()` sintetiza los slots vacíos
@@ -102,7 +102,7 @@ si no).
 
 Lee el JSON de parámetros del slot y los aplica a `session_id` via
 `set_all_personality()`. Devuelve el estado resultante de la personalidad de la
-sesión (los 14 valores tras aplicar el Alter).
+sesión (los 13 valores tras aplicar el Alter).
 
 **Casos límite:** slot vacío → `ValueError("Slot N is empty — nothing to load")`.
 No crashea, no aplica valores basura. El slot de otro usuario es inaccessible porque
@@ -160,9 +160,9 @@ más complejo sin ningún beneficio real.
 
 ### `set_all_personality()` en `SettingsService`
 
-Método añadido en el Paso 1 para soportar `load_alter`. Aplica los 14 parámetros
-de golpe en una sola llamada, evitando que el frontend tenga que hacer 14 llamadas
-HTTP separadas. Valida que el dict sea completo (exactamente los 14 keys de
+Método añadido en el Paso 1 para soportar `load_alter`. Aplica los 13 rasgos
+de golpe en una sola llamada, evitando que el frontend tenga que hacer 13 llamadas
+HTTP separadas. Valida que el dict sea completo (exactamente los 13 keys de
 `PERSONALITY_KEYS`) y clampea cada valor a [0, 1].
 
 ---
@@ -245,7 +245,7 @@ Todos devuelven 401 para Guest. La validación de rango (1-5) es enforced por Fa
 
 **CRUD básico:**
 - `list_alters` devuelve exactamente 5 slots vacíos por defecto
-- `save_alter` almacena los 14 parámetros de la sesión actual
+- `save_alter` almacena los 13 rasgos de la sesión actual
 - `list_alters` después de `save_alter` muestra el slot lleno y los otros vacíos
 - `save_alter` sobre un slot existente sobrescribe (idempotente, sin filas duplicadas)
 
@@ -254,7 +254,7 @@ Todos devuelven 401 para Guest. La validación de rango (1-5) es enforced por Fa
 
 **`load_alter`:**
 - Slot vacío lanza `ValueError` con mensaje que contiene "empty"
-- Aplica exactamente los 14 valores guardados a la sesión destino
+- Aplica exactamente los 13 valores guardados a la sesión destino
 - No afecta a otras sesiones (ni del mismo usuario ni de otro)
 
 **`rename_alter`:**
@@ -274,7 +274,7 @@ Todos devuelven 401 para Guest. La validación de rango (1-5) es enforced por Fa
 - Slots 0, 6, -1, 99 lanzan `ValueError` con mensaje que contiene "Slot"
 
 **`set_all_personality` (SettingsService):**
-- Aplica los 14 valores correctamente a la sesión destino
+- Aplica los 13 valores correctamente a la sesión destino
 - Rechaza un dict con una key desconocida (`ValueError("Unknown")`)
 - Rechaza un dict con keys faltantes (`ValueError("Missing")`)
 - No afecta a otras sesiones al escribir sobre una sesión concreta
@@ -318,7 +318,7 @@ Un tab bar con dos pestañas — **Rasgos** (sliders existentes) y **Alters** (p
 ### Interacción con el estado de sliders
 
 Cuando se carga un Alter:
-1. `AlterService.load_alter()` escribe los 14 parámetros en la DB vía `set_all_personality`.
+1. `AlterService.load_alter()` escribe los 13 rasgos en la DB vía `set_all_personality`.
 2. El endpoint `/settings/alters/{slot}/load` retorna 200.
 3. `handleAlterLoaded` en `PersonalityScreen` llama a `reload()` de `usePersonality`.
 4. `usePersonality.load()` re-fetcha `/settings/personality` y actualiza `settings`.

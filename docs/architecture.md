@@ -4,17 +4,19 @@
 
 ## Resumen
 
-Sity es una IA doméstica que corre en una Raspberry Pi 4.
+Sity es una IA conversacional personal que corre en una Raspberry Pi 4.
 El backend (FastAPI) es el único punto de verdad — el modelo
 propone acciones, el backend las valida y ejecuta.
 
 ```
-Usuario → PWA/Panel → FastAPI → Claude API → Tools → Respuesta
+Usuario → PWA móvil → FastAPI → Claude API → Tools → Respuesta
                                     ↓
                           Home Assistant → Dispositivos IoT
                                     ↓
                           Google APIs → Gmail/Calendar/Drive
 ```
+
+_(El panel de administración `panel/` es una herramienta secundaria de monitorización para uso interno; no es un frontend de usuario equivalente a la PWA.)_
 
 Este documento describe la arquitectura objetivo y la implementada.
 

@@ -11,7 +11,7 @@ Módulos implementados:
 - `backend/app/initiative/open_loop_hook.py` — detección fire-and-forget por turno (Haiku)
 - `backend/app/initiative/detector.py` — 3 trigger checks sin Haiku
 - `backend/app/initiative/evaluator.py` — SHOULD_I_TALK? (rate limits + Haiku + EvalLog)
-- `backend/app/initiative/runner.py` — job periódico 6h, pipeline completo
+- `backend/app/initiative/runner.py` — adaptive runner (daemon thread + Haiku timing gate), pipeline completo
 - `backend/app/initiative/_json_utils.py` — `strip_json_fences()` compartida (añadida en verificación)
 - `backend/app/main.py` — `start_initiative_runner` en `on_startup`
 - Tests: 128 tests en `test_initiative_step1/2/3/4.py`
@@ -22,12 +22,15 @@ Módulos implementados:
 
 El sistema responde a un problema concreto observado en uso real: Sity no inicia
 conversación aunque haya una razón genuina para hacerlo (pregunta sin retomar,
-días sin hablar, intención mencionada y olvidada). La solución es mínima —
-tres triggers, un job de 6 horas, una llamada barata a Haiku — y reutiliza al
+días sin hablar, intención mencionada y olvidada). La solución reutiliza al
 100% la infraestructura de notificaciones ya construida. Nada de Initiative Score
 matemático, nada de aprendizaje de horarios, nada de feedback loop automático.
 Si esta base demuestra valor, cada capa futura responde a un problema observado,
 no a una arquitectura teóricamente bonita.
+
+El runner original usaba un intervalo fijo de 6h. En 2026-09-28 fue reemplazado
+por un runner adaptativo donde Haiku decide cuándo volver a revisar
+(`next_check_seconds` dinámico por sesión). Ver §17 para el diseño completo.
 
 ---
 
@@ -37,7 +40,7 @@ no a una arquitectura teóricamente bonita.
 |---|---|
 | **Roles** | Solo `User` y `Admin`. Guest nunca — no tiene continuidad entre sesiones, no tiene `SocialProfile`. |
 | **Triggers** | Tres: `conversation_abandoned`, `long_inactivity`, `open_loop`. |
-| **Mecanismo** | Job en background cada 6h + una llamada a Haiku por usuario candidato. |
+| **Mecanismo** | Daemon thread con timing dinámico decidido por Haiku (`next_check_seconds`) + señal event-driven post-turno. |
 | **Límites duros** | Los ya existentes en `default_config.yaml §notifications` — no se crea un sistema paralelo. |
 | **Entrega** | `proactive_initiative` ya reconocido por `dispatcher.py` — este sistema es el tercer emisor, no un canal nuevo. |
 | **Configuración** | Un toggle maestro + 3 sub-toggles por sesión, opt-out (todos activos por defecto). |
@@ -102,7 +105,7 @@ Haiku nunca se llama.
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  CAPA 3 — MOTOR DE DECISIÓN                                     │
-│  initiative/runner.py — job 6h, IS_NOW_A_GOOD_TIME?            │
+│  initiative/runner.py — adaptive daemon, IS_NOW_A_GOOD_TIME?   │
 │  initiative/evaluator.py — llamada Haiku, SHOULD_I_TALK?        │
 │  Límites duros: silence_hours + trust + dispatcher rate limit   │
 └──────────────────────────────┬──────────────────────────────────┘
@@ -277,35 +280,31 @@ el mismo patrón que `get_voice_settings` / `set_voice_settings`.
 
 ## 6. Capa 3 — Motor de decisión
 
-### 6.1 `runner.py` — job de 6 horas
+### 6.1 `runner.py` — runner original (loop fijo) y adaptive runner (actual)
 
-Corrutina asyncio iniciada en `main.py on_startup`, mismo patrón que
-`timers/runner.py:start_runner(loop)` y `notifications_gc_loop()`.
-
-**Pseudocódigo del loop:**
+**Loop original** (deprecado — descrito aquí por referencia histórica y
+compatibilidad con `test_initiative_step4.py`). `_run_cycle_sync()` mantiene
+la lógica original intacta:
 
 ```
-cada 6h:
+ciclo:
   1. GC: marcar expired los OpenLoop expirados
-  2. Consultar todos los session_id con initiative.enabled = True (de Setting)
-     + filtrar solo User y Admin (session_id.startswith("user:"))
+  2. Consultar todos los session_id con initiative.enabled = True
+     + filtrar solo User y Admin
   3. Para cada session_id:
-     a. IS_NOW_A_GOOD_TIME? — verificaciones baratas:
-        - initiative.enabled == True → ya garantizado (paso 2)
-        - last message in session < initiative_silence_hours → skip
-        - SocialProfile.trust < initiative_min_trust → skip
-        - dispatcher ya entregó proactive_initiative hoy → skip (query NotificationLog)
-     b. detector.get_trigger_candidates(session_id, db) → list[TriggerCandidate]
-        - filtra por sub-toggles activos
-        Si vacía → skip (log: "no_trigger_condition")
-     c. Priorizar candidatos: open_loop > conversation_abandoned > long_inactivity
-        (si hay varios, solo evaluar el de mayor prioridad para esta ronda)
-     d. SHOULD_I_TALK? — evaluator.evaluate(candidate, db) → EvalResult
-     e. Persistir InitiativeEvalLog (siempre, sea send o skip)
-     f. Si decision="send":
-        - Construir NotificationFact y llamar dispatcher.dispatch()
-        - Si trigger_type="open_loop": marcar OpenLoop.status="dispatched"
+     a. IS_NOW_A_GOOD_TIME? (verificaciones baratas)
+     b. detector.get_trigger_candidates() → list[TriggerCandidate]
+     c. Priorizar: open_loop > conversation_abandoned > long_inactivity
+     d. SHOULD_I_TALK? → evaluator.evaluate() → EvalResult
+     e. Persistir InitiativeEvalLog
+     f. Si decision="send": dispatch + marcar OpenLoop
 ```
+
+**Adaptive runner** (activo desde 2026-09-28) — ver §17 para el diseño completo.
+El daemon thread ahora duerme en `threading.Event.wait(timeout=next_check_seconds)`
+en lugar de un asyncio sleep fijo. Haiku decide cuánto esperar antes de la próxima
+revisión. La señal `_runner_wake_event` permite interrupción inmediata cuando hay
+metas urgentes detectadas post-turno.
 
 **Logging en cada paso del job:**
 
@@ -510,7 +509,8 @@ Sección nueva `initiative:`:
 
 ```yaml
 initiative:
-  job_interval_hours: 6                  # frecuencia del runner
+  job_interval_hours: 6                  # legacy — used only by _run_cycle_sync() for compat tests
+                                         # actual timing is decided dynamically by Haiku
   conversation_abandoned_min_hours: 24   # trigger activo desde esta antigüedad
   conversation_abandoned_max_days: 4     # trigger inactivo después de esta ventana
   long_inactivity_min_days: 5            # trigger activo después de N días sin mensajes
@@ -562,11 +562,13 @@ Mismo patrón que la sección de voz/idioma en `VoiceScreen.tsx`.
 ```
 backend/app/initiative/
     __init__.py            # vacío
-    models.py              # OpenLoop, InitiativeEvalLog (añadir a memory/models.py)
+    models.py              # OpenLoop, InitiativeEvalLog (en memory/models.py)
     settings.py            # InitiativeSettings schema + get/set service
     detector.py            # TriggerCandidate, get_trigger_candidates(session_id, db)
     evaluator.py           # EvalResult, evaluate(candidate, db) → EvalResult
-    runner.py              # asyncio loop cada 6h — iniciado en main.py on_startup
+    runner.py              # daemon thread adaptativo — threading.Event + Haiku timing gate
+                           # signal_if_urgent_goals(), _run_adaptive_cycle_sync(), _runner_loop_sync()
+                           # _run_cycle_sync() mantenido para compatibilidad con tests
     open_loop_hook.py      # schedule_open_loop_detection() — fire-and-forget asyncio task
                            # llama a Haiku por turno para clasificar intenciones futuras
 ```
@@ -595,7 +597,7 @@ Todos los eventos importantes loguean con `module="initiative"`.
 
 | Event | Level | Cuándo |
 |---|---|---|
-| `runner_cycle_start` | INFO | Al inicio de cada ciclo de 6h |
+| `runner_cycle_start` | INFO | Al inicio de cada ciclo (adaptive o legacy) |
 | `runner_cycle_done` | INFO | Al final del ciclo — elapsed, stats |
 | `session_skipped_silence` | INFO | Usuario habló hace < silence_hours |
 | `session_skipped_trust` | INFO | Trust < initiative_min_trust |
@@ -795,3 +797,68 @@ El pipeline completo fue verificado de principio a fin en producción:
 - Mensaje proactivo entregado como push notification + SSE ✓
 - Mensaje proactivo sintetizado con TTS según preferencia del usuario ✓
 - Config TEMPORAL revertida a producción (2026-08-24) ✓
+
+---
+
+## 17. Adaptive runner (2026-09-28)
+
+Rediseño completo de `runner.py`. El intervalo fijo de 6h fue reemplazado por un
+sistema event-driven donde Haiku decide cuándo volver a revisar en función del
+contexto real del usuario.
+
+### Mecanismo de interrupción — `threading.Event`
+
+```python
+_runner_wake_event = threading.Event()
+_MIN_CHECK_SECONDS = 60
+_MAX_CHECK_SECONDS = 86400
+```
+
+`_runner_loop_sync()` es un daemon thread (no corrutina asyncio) que duerme con:
+
+```python
+woken_by_signal = _runner_wake_event.wait(timeout=next_check_seconds)
+_runner_wake_event.clear()
+next_check = float(_run_adaptive_cycle_sync(woken_by_signal=woken_by_signal))
+```
+
+Puede ser interrumpido inmediatamente por `signal_if_urgent_goals()` sin esperar
+que transcurra el timeout.
+
+### `signal_if_urgent_goals(session_id, db)` — señal post-turno
+
+Llamado desde `turn_runner.py` al final de cada turno exitoso (User/Admin). Calcula
+`effective_priority` de las Goals activas `long_term` de la sesión; si alguna supera
+0.85 llama `_runner_wake_event.set()`. Nunca lanza excepción, nunca bloquea el turno.
+
+### `_run_adaptive_cycle_sync(woken_by_signal)` — ciclo adaptativo
+
+Para cada sesión activa con `initiative.enabled=True`:
+
+1. IS_NOW_A_GOOD_TIME? — verificaciones baratas (silence, trust, rate-limit, toggles).
+2. Construye contexto enriquecido: hora local, franja horaria (mañana / tarde / noche /
+   madrugada), días inactivo, iniciativas recientes sin respuesta, `MentalState`,
+   `SocialProfile`, Goals activas con `priority ≥ 0.75`.
+3. Llama a Haiku (timing gate) con ese contexto → `{should_initiate, next_check_seconds, reasoning}`.
+4. Si `should_initiate=true`: ejecuta el flujo de evaluación/dispatch legacy
+   (`IS_NOW_A_GOOD_TIME?` → detector → evaluator → dispatch).
+5. Devuelve `min(next_check_seconds)` de todas las sesiones como próximo timeout del
+   hilo. El valor se clampea a `[_MIN_CHECK_SECONDS, _MAX_CHECK_SECONDS]` = `[60, 86400]`.
+
+Devuelve `_FALLBACK_CHECK_SECONDS` si todas las sesiones fallan o no hay sesiones.
+
+### Orientación de madrugada
+
+El system prompt de Haiku incluye:
+
+> "Durante la madrugada (franja 'madrugada'), evita iniciar contacto salvo que haya
+> una meta de bienestar muy urgente — el descanso del usuario tiene prioridad.
+> No es una regla absoluta: usa tu criterio."
+
+### Lección de tests
+
+`_runner_wake_event` es un singleton de módulo; el daemon runner iniciado por
+`TestClient` en otro test puede llamar a `.clear()` entre el `.set()` y la
+aserción del test → race condition. Solución: mockear el evento entero con
+`patch("app.initiative.runner._runner_wake_event")` y verificar
+`.set.assert_called_once()` sobre el mock.
