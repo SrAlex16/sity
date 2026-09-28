@@ -312,3 +312,28 @@ trigger para forzar el requisito de inactividad: la compuerta de runner ya lo ga
 | `5811080` | Paso 4 Part 1 — GoalMilestone table + state machine                 |
 | `279784c` | Paso 4 Parts 2-4 — hitos + auto-expiración 24h + documentación     |
 | `3d1f527` | Ajuste — cierre primario por logout (resolve_short_term_on_logout)  |
+
+---
+
+## 11. Runner adaptativo (post-Fase 2)
+
+El intervalo fijo de 6h del runner fue reemplazado por un sistema event-driven + timing dinámico controlado por Haiku.
+
+**Arquitectura nueva (`initiative/runner.py`):**
+
+- `_runner_wake_event = threading.Event()` — singleton de módulo.
+- `signal_if_urgent_goals(session_id, db)` — llamada post-turno desde `turn_runner.py`; si alguna Goal activa de la sesión tiene `effective_priority >= 0.85`, establece el evento. Nunca lanza excepción.
+- `_runner_loop_sync(initial_delay)` — hilo daemon. Usa `event.wait(timeout)` en lugar de `asyncio.sleep`; retorna `True` si fue señalizado antes del timeout.
+- `_run_adaptive_cycle_sync(woken_by_signal)` — ciclo principal. Para cada sesión activa: construye contexto enriquecido (hora local, franja, `MentalState`, `SocialProfile`, Goals) → llama a Haiku (`_call_timing_haiku`) para obtener `{should_initiate, next_check_seconds, reasoning}` → si aprueba, corre el flujo legacy (IS_NOW_A_GOOD_TIME? → detector → evaluator → dispatch). Devuelve `min(next_check_seconds)` entre sesiones.
+- `_run_cycle_sync()` mantenido intacto para compatibilidad con `test_initiative_step4.py`.
+
+**Regla madrugada (en system prompt de Haiku):**
+> Durante la madrugada (franja 'madrugada'), evita iniciar contacto salvo que haya una meta de bienestar muy urgente — el descanso del usuario tiene prioridad. No es una regla absoluta: usa tu criterio.
+
+**Archivos modificados:**
+
+| Archivo | Cambio |
+|---|---|
+| `backend/app/initiative/runner.py` | Rediseño completo — threading.Event + Haiku timing gate |
+| `backend/app/chat/turn_runner.py` | +`signal_if_urgent_goals` call post-turno exitoso |
+| `tests/test_initiative_adaptive_runner.py` | 19 tests nuevos (+ 2 behavior_regression) |

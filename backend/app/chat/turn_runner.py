@@ -257,6 +257,11 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                             )
                         except Exception:
                             pass
+                    try:
+                        from app.initiative.runner import signal_if_urgent_goals
+                        signal_if_urgent_goals(session_id, session)
+                    except Exception:
+                        pass
 
                 # Skip "response" event for cancelled turns — the frontend already
                 # shows a cancelled bubble from the abort handler; emitting here
