@@ -1,86 +1,116 @@
 # Sity
 
-IA doméstica personal corriendo en una Raspberry Pi 4.
-Backend FastAPI + PWA móvil React/TypeScript.
-Licencia AGPL-3.0.
+A conversational AI with its own personality, deployed on a Raspberry Pi 4.
+FastAPI backend + React/TypeScript PWA + multi-layer cognitive pipeline (Operation Remake).
 
-**Acceso:** https://sity.aletm.com
-**Repo:** https://github.com/SrAlex16/sity
+**Live demo:** https://sity.aletm.com · **License:** AGPL-3.0
+
+---
+
+## What is Sity
+
+Sity is a personal AI assistant where the backend, cognitive logic, TTS/STT and all data run locally on a Raspberry Pi 4B. The language model is Claude Haiku via the Anthropic API — not a ChatGPT wrapper.
+
+Every conversation turn goes through a 15-step pipeline that includes perception, emotional appraisal, goal management, utility-based decision making, episodic and semantic memory, and metacognitive reflection.
+
+The goal is to build an AI that develops a real relationship with the user over time, with persistent memory, configurable personality, and the ability to take initiative.
 
 ## Stack
 
-| Capa | Tecnología |
-|------|-----------|
-| Backend | FastAPI + SQLite + Claude Haiku |
-| PWA móvil | React 18 + TypeScript + Vite + Framer Motion |
-| Panel | Electron + TypeScript |
-| Infraestructura | Caddy + Cloudflare Tunnel |
-| Domótica | Home Assistant (Docker) |
-| TTS/STT | Piper + faster-whisper |
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI + SQLite + SQLModel |
+| Language model | Claude Haiku (Anthropic API) |
+| Mobile PWA | React 18 + TypeScript + Vite + Framer Motion |
+| Infrastructure | Caddy + Cloudflare Tunnel |
+| TTS/STT | Piper (local) + faster-whisper (local) |
+| Integrations | Home Assistant · Google OAuth · Spotify |
 
-## Arranque rápido
+## Cognitive architecture (Operation Remake)
+
+The full cognitive pipeline is documented in [`docs/remake/pipeline-cognitivo-completo.md`](docs/remake/pipeline-cognitivo-completo.md). Nine implemented phases:
+
+| Phase | Module | What it does |
+|-------|--------|-------------|
+| 1 | Personality | 13 orthogonal traits + MentalState |
+| 2 | Perception + Appraisal + Goals | Intent classification, emotional appraisal, goal system |
+| 3 | SocialProfile | 11-dimensional relationship model |
+| 4 | Episodic memory | Episodes with 7-factor salience + autobiographical narrative |
+| 5 | Decision (Action Policy) | Utility engine U(action) with 22 signals × 10 actions |
+| 6 | Self-model + Values | Self-beliefs, own values, metacognition |
+| 7 | Procedural memory | Behavioural patterns by context and user |
+| 8 | User Model + ToM | User knowledge, belief attribution, expectations |
+| 9 | Semantic consolidation | SemanticFact with dynamic confidence |
+
+## Quick start
 
 ```bash
-# Backend
-cd backend && source .venv/bin/activate
+# 1. Clone and configure
+git clone https://github.com/SrAlex16/sity.git
+cd sity
+cp .env.example .env  # fill in your keys
+
+# 2. Backend
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# PWA (desarrollo)
-cd mobile && npm run dev
-
-# Panel
-cd panel && npm run build && DISPLAY=:0 npx electron . --no-sandbox
+# 3. PWA (development)
+cd mobile && npm install && npm run dev
 ```
 
-Ver docs/operations/development.md para el flujo completo.
+See [`docs/operations/development.md`](docs/operations/development.md) for the full setup including Caddy and Cloudflare Tunnel.
 
-## Documentación
+## Required environment variables
 
-| Archivo | Contenido |
-|---------|-----------|
-| docs/state.md | Estado actual del sistema |
-| docs/architecture.md | Arquitectura y módulos |
-| docs/decisions.md | Decisiones de diseño y lecciones aprendidas |
-| docs/operations/development.md | Flujo de desarrollo |
-| docs/operations/dataset-capture.md | Captura de dataset |
-## Roadmap
+```env
+ANTHROPIC_API_KEY=        # Anthropic API key (Claude Haiku)
+SITY_SECRET_KEY=          # JWT secret (generate with: openssl rand -hex 32)
+SITY_ADMIN_EMAIL=         # Admin user email
+SITY_ADMIN_PASSWORD=      # Admin password
+SITY_PROJECT_ROOT=        # Absolute path to the project root directory
 
-### ✅ Completado
+# Optional
+SITY_SMTP_HOST=           # SMTP for emails (password reset, verification)
+RECAPTCHA_SECRET_KEY=     # reCAPTCHA v3 (fail-closed if not set)
+```
 
-- Backend FastAPI + SQLite + Claude Haiku
-- PWA móvil cyberpunk (https://sity.aletm.com)
-- Panel de control Electron (monitorización + alertas)
-- Sistema de personalidad (14 parámetros, sliders)
-- Tool loop (web_search, file tools, memory, camera, audio)
-- Prompt caching + Model Router semi-automático
-- Google OAuth (Gmail readonly, Calendar rw, Drive readonly)
-- Domótica via Home Assistant (Tapo P100, bombillas Gleco)
-- Visión — imágenes adjuntas en el chat
-- Caché web_search con TTL decidido por el modelo
-- Refactor 202+SSE (tareas largas sin timeout de Cloudflare)
-- Auditoría de literales hardcodeados (batch 1 y 2)
-- Limpieza del sistema y repo
-- Spotify (playlists, URI directo, resume previous)
-- Audio STT — faster-whisper local, voz en chat
-- Bucle multi-turno — tool chaining genérico (lectura → acción en 1 turno)
-- Cancelación mid-stream — botón parar, SSE limpio
-- task_context — memoria estructurada entre turnos para tareas multi-paso
-- Tareas largas en background — respuesta inmediata + notificación al terminar
-- Observabilidad Fase 1 — logging universal tools + APIs + retención 14 días
-- Refactorización persona_engine — completada 2026-06-29
+## Tests
 
-### 📋 Pendiente
+```bash
+# Full suite (no real model calls)
+ANTHROPIC_API_KEY= pytest tests/ -m "not behavior_regression"
 
-- **Sistema de alertas del panel** — ampliar: disco >95%, RAM >90%,
-  temperatura 70-80°C, zombies >5
-  Sacar uso de recursos de la cuenta de Claude mediante la implementación de [https://github.com/phuryn/claude-usage.git] y API de anthropic (Claude permite sacar métricas del uso mediante la api).
-- **Análisis Docker completo** — qué más dockerizar y sandbox para
-  ejecución de código generado por el modelo
+# With real Haiku calls (costs tokens)
+pytest tests/ -m "behavior_regression"
 
-### 🔮 Futuro
+# CI: ~2m30s, 3213 tests
+```
 
-- Fine-tuning Gemma 3 4B + LoRA (cuando el dataset esté maduro)
-- Dataset de audio ElevenLabs (cuando haya modelo local)
-- ❌ Canal de divulgación Tech & IA — descartado (2026-07-08)
-- Domótica avanzada — dispositivos sin integración HA
-- Soporte Matter
+## Security
+
+Multiple layers of protection documented in [`docs/response-integrity.md`](docs/response-integrity.md):
+
+- **Access control**: `_ADMIN_ONLY_TOOL_NAMES` at toolset construction + gate in `ToolExecutor._dispatch_tool_call`
+- **Post-generation verification**: `response_integrity.py` detects capability_overclaim, memory_fabrication, internal_leak, architecture_disclosure
+- **Rate limiting**: per IP and per email on auth endpoints
+- **reCAPTCHA v3**: fail-closed (rejects login if not configured)
+
+## Documentation
+
+| File | Contents |
+|------|----------|
+| [`docs/state.md`](docs/state.md) | Current state, decision history, known bugs |
+| [`docs/architecture.md`](docs/architecture.md) | Architecture and modules |
+| [`docs/remake/`](docs/remake/) | Full documentation of the 9 cognitive phases |
+| [`docs/response-integrity.md`](docs/response-integrity.md) | Response verification system |
+| [`docs/turn-queue.md`](docs/turn-queue.md) | Per-session turn queue |
+
+## Current status
+
+Public beta under testing with real users. The full cognitive system is implemented and stable. See [`docs/state.md`](docs/state.md) for detailed status and known bugs.
+
+---
+
+Copyright (C) 2026 Alejandro Tubio · AGPL-3.0
