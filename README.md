@@ -113,4 +113,6 @@ Public beta under testing with real users. The full cognitive system is implemen
 
 ---
 
+**Started:** May 2026 · **Status:** Public beta
+
 Copyright (C) 2026 Alejandro Tubio · AGPL-3.0
