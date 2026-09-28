@@ -96,7 +96,7 @@ def extract_image_semantic_facts(
                 tools_enabled=False,
                 images=[{"media_type": media_type, "data": base64_data}],
             )
-            response = provider.run_chat(request)
+            response = provider.generate(request)
 
             if not response.ok or not response.text:
                 write_log(

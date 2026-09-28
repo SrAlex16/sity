@@ -195,7 +195,7 @@ class TestExtractImageSemanticFacts:
         mock_response.ok = True
         mock_response.text = '{"facts": ["User is a software developer", "User works from home"]}'
         mock_provider = MagicMock()
-        mock_provider.run_chat.return_value = mock_response
+        mock_provider.generate.return_value = mock_response
 
         with patch("app.chat.image_semantic_extractor.engine", eng), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}), \
