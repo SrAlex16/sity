@@ -86,6 +86,13 @@ export interface T {
     filesDeleteAllYes: string;
     filesExport: string;
     filesExporting: string;
+    // Storage stats
+    storageSection: string;
+    storageUsed: (usedMb: string, limitMb: string, pct: number) => string;
+    storageRetentionLabel: string;
+    storageRetentionHint: string;
+    storagePermanent: string;
+    storageMarkPermanent: string;
     // Status
     justConnected: (name: string) => string;
     // Initiative — proactive messaging
@@ -336,6 +343,12 @@ const es: T = {
     filesDeleteAllYes: 'Sí, eliminar todo',
     filesExport: 'Exportar archivos (.zip)',
     filesExporting: 'Exportando…',
+    storageSection: 'Almacenamiento',
+    storageUsed: (usedMb, limitMb, pct) => `${usedMb} MB de ${limitMb} MB usados (${pct}%)`,
+    storageRetentionLabel: 'Retención automática',
+    storageRetentionHint: 'Los archivos se eliminan automáticamente pasados este número de días.',
+    storagePermanent: 'Permanente',
+    storageMarkPermanent: 'Conservar',
     justConnected: (name) => `${name} conectado correctamente.`,
     initiativeSection: 'Mensajes proactivos',
     initiativeMasterLabel: 'Permitir que Sity te escriba primero',
@@ -583,6 +596,12 @@ const en: T = {
     filesDeleteAllYes: 'Yes, delete all',
     filesExport: 'Export files (.zip)',
     filesExporting: 'Exporting…',
+    storageSection: 'Storage',
+    storageUsed: (usedMb, limitMb, pct) => `${usedMb} MB of ${limitMb} MB used (${pct}%)`,
+    storageRetentionLabel: 'Auto-retention',
+    storageRetentionHint: 'Files are automatically deleted after this many days.',
+    storagePermanent: 'Permanent',
+    storageMarkPermanent: 'Keep',
     justConnected: (name) => `${name} connected successfully.`,
     initiativeSection: 'Proactive messages',
     initiativeMasterLabel: 'Allow Sity to message you first',
@@ -830,6 +849,12 @@ const ja: T = {
     filesDeleteAllYes: 'はい、すべて削除',
     filesExport: 'ファイルをエクスポート（.zip）',
     filesExporting: 'エクスポート中…',
+    storageSection: 'ストレージ',
+    storageUsed: (usedMb, limitMb, pct) => `${limitMb} MBのうち${usedMb} MB使用 (${pct}%)`,
+    storageRetentionLabel: '自動削除設定',
+    storageRetentionHint: '指定した日数が経過すると、ファイルは自動的に削除されます。',
+    storagePermanent: '永続保存',
+    storageMarkPermanent: '保存',
     justConnected: (name) => `${name}が正常に接続されました。`,
     initiativeSection: 'プロアクティブメッセージ',
     initiativeMasterLabel: 'Sityからのメッセージを許可する',

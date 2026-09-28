@@ -24,6 +24,8 @@ from app.audio.tts_service import (  # noqa: F401  (re-exported for test backwar
 )
 from app.chat.chat_persistence import get_or_create_chat_session
 from app.chat.file_artifact import get_user_storage_bytes, save_uploaded_image
+from app.chat.image_semantic_extractor import extract_image_semantic_facts
+from app.notifications.storage_alert import maybe_send_storage_alert
 from app.settings.config_loader import load_default_config
 from app.settings.settings_service import SettingsService
 from app.chat.turn_runner import _run_turn_in_background
@@ -170,6 +172,7 @@ async def chat_message(
     image_artifact_ids: list[int] = []
     if request.images:
         user_id = current.user.id if current.user else None
+        _limit_bytes: int = 500 * 1024 * 1024  # default; overwritten below when user_id is known
         if user_id is not None:
             _cfg = load_default_config()
             _limit_mb = int(_cfg.get("storage", {}).get("file_storage_limit_mb", 500))
@@ -188,13 +191,25 @@ async def chat_message(
                     ),
                 )
         retention_days = SettingsService(db).get_file_retention_days(session_id=current.session_id)
+        _uploaded_any = False
         for img in request.images:
             try:
                 fa = save_uploaded_image(img.data, img.media_type, db, user_id, retention_days=retention_days)
                 assert fa.id is not None  # id always set after DB commit
                 image_artifact_ids.append(fa.id)
+                if user_id is not None:
+                    _uploaded_any = True
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(
+                        None,
+                        extract_image_semantic_facts,
+                        img.data, img.media_type, user_id, fa.id,
+                    )
             except Exception:
                 pass  # best-effort; model still gets the image via base64 in request
+        if _uploaded_any and user_id is not None:
+            _new_total = get_user_storage_bytes(db, user_id)
+            maybe_send_storage_alert(current.session_id, user_id, _new_total, _limit_bytes, db)
 
     if current.is_guest:
         ip = get_real_client_ip(http_request)

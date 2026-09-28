@@ -24,6 +24,8 @@ interface FileItem {
   source: string;
   size_bytes: number | null;
   created_at: string | null;
+  is_permanent?: boolean;
+  expires_at?: string | null;
 }
 
 function _fmtSize(bytes: number): string {
@@ -93,6 +95,11 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
   const [userInstructionsSaving, setUserInstructionsSaving] = useState(false);
   const [userInstructionsSaved, setUserInstructionsSaved] = useState(false);
 
+  // Storage stats + retention
+  const [storageStats, setStorageStats] = useState<{ used_bytes: number; limit_bytes: number; file_count: number; permanent_count: number } | null>(null);
+  const [retentionDays, setRetentionDays] = useState(7);
+  const [retentionSaving, setRetentionSaving] = useState(false);
+
   useEffect(() => {
     if (settings) setForm(settings);
   }, [settings]);
@@ -120,6 +127,45 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
     } finally {
       setUserInstructionsSaving(false);
     }
+  };
+
+  useEffect(() => {
+    if (role === 'guest') return;
+    void fetch('/files/storage-stats', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setStorageStats(data); })
+      .catch(() => {});
+    void fetch('/settings/file-retention', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setRetentionDays(data.file_retention_days ?? 7); })
+      .catch(() => {});
+  }, [role]);
+
+  const handleSaveRetention = async (days: number) => {
+    setRetentionSaving(true);
+    try {
+      const resp = await fetch('/settings/file-retention', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_retention_days: days }),
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { file_retention_days: number };
+        setRetentionDays(data.file_retention_days);
+      }
+    } finally {
+      setRetentionSaving(false);
+    }
+  };
+
+  const handleMarkPermanent = async (fileId: number) => {
+    try {
+      const resp = await fetch(`/files/${fileId}/permanent`, { method: 'PUT', credentials: 'include' });
+      if (resp.ok) {
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, is_permanent: true } : f));
+      }
+    } catch { /* silent */ }
   };
 
   // ElevenLabs is only available for languages with a configured voice
@@ -894,6 +940,44 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
           </div>
         )}
 
+        {/* Almacenamiento — User/Admin only */}
+        {role !== 'guest' && (
+          <div className={styles.section}>
+            <p className={styles.sectionEs}>{tl.storageSection}</p>
+            <p className={styles.sectionJp}>ストレージ</p>
+            {storageStats && (() => {
+              const usedMb = (storageStats.used_bytes / (1024 * 1024)).toFixed(1);
+              const limitMb = (storageStats.limit_bytes / (1024 * 1024)).toFixed(0);
+              const pct = Math.min(100, Math.round(storageStats.used_bytes / storageStats.limit_bytes * 100));
+              const barColor = pct >= 100 ? '#e63550' : pct >= 90 ? '#f4a03a' : '#4fc3a1';
+              return (
+                <>
+                  <p className={styles.sectionHint} style={{ marginBottom: 6 }}>
+                    {tl.storageUsed(usedMb, limitMb, pct)}
+                  </p>
+                  <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 4, height: 6, width: '100%', overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width 0.3s' }} />
+                  </div>
+                </>
+              );
+            })()}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
+              <p className={styles.sectionHint} style={{ margin: 0, flex: 1 }}>{tl.storageRetentionLabel}</p>
+              <select
+                value={retentionDays}
+                disabled={retentionSaving}
+                onChange={e => void handleSaveRetention(Number(e.target.value))}
+                style={{ background: 'rgba(255,255,255,0.10)', color: 'inherit', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '4px 8px', fontSize: '0.85rem' }}
+              >
+                {[1, 3, 7, 14, 30].map(d => (
+                  <option key={d} value={d}>{d}d</option>
+                ))}
+              </select>
+            </div>
+            <p className={styles.sectionHint} style={{ opacity: 0.6, marginTop: 4 }}>{tl.storageRetentionHint}</p>
+          </div>
+        )}
+
         {/* Gestión de archivos — User/Admin only */}
         {role !== 'guest' && (
           <div className={styles.section}>
@@ -933,6 +1017,20 @@ export function VoiceScreen({ role, uiLang, onUiLangChange }: SettingsScreenProp
                         {f.size_bytes != null ? ` · ${_fmtSize(f.size_bytes)}` : ''}
                       </p>
                     </div>
+                    {f.is_permanent ? (
+                      <span className={styles.sectionHint} style={{ flexShrink: 0, opacity: 0.6, fontSize: '0.75rem' }}>
+                        {tl.storagePermanent}
+                      </span>
+                    ) : (
+                      <button
+                        className={`${styles.sectionBtn} ${styles.btnSecondary}`}
+                        style={{ flexShrink: 0, fontSize: '0.78rem', padding: '3px 8px' }}
+                        onClick={() => void handleMarkPermanent(f.id)}
+                        title={tl.storageMarkPermanent}
+                      >
+                        {tl.storageMarkPermanent}
+                      </button>
+                    )}
                     <button
                       className={`${styles.sectionBtn} ${styles.btnMagenta}`}
                       style={{ flexShrink: 0 }}

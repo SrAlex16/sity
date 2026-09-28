@@ -25,6 +25,7 @@ from sqlmodel import Session, col, func, select
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.memory.db import get_session
 from app.memory.models import FileArtifact
+from app.settings.config_loader import load_default_config
 from app.trace.logger import write_log
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -54,6 +55,15 @@ class FileItem(BaseModel):
     source: str
     size_bytes: Optional[int] = None
     created_at: Optional[datetime] = None
+    is_permanent: bool = False
+    expires_at: Optional[datetime] = None
+
+
+class StorageStatsResponse(BaseModel):
+    used_bytes: int
+    limit_bytes: int
+    file_count: int
+    permanent_count: int
 
 
 class FilesListResponse(BaseModel):
@@ -66,7 +76,7 @@ class FilesListResponse(BaseModel):
 
 def _to_item(fa: FileArtifact) -> FileItem:
     path = PROJECT_ROOT / fa.rel_path
-    size_bytes: Optional[int] = None
+    size_bytes: Optional[int] = fa.file_size_bytes or None
     try:
         if path.exists():
             size_bytes = path.stat().st_size
@@ -80,6 +90,9 @@ def _to_item(fa: FileArtifact) -> FileItem:
     created = fa.created_at
     if created is not None and created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
+    expires = fa.expires_at
+    if expires is not None and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
     return FileItem(
         id=fa.id,  # type: ignore[arg-type]
         artifact_type=fa.artifact_type,
@@ -89,6 +102,8 @@ def _to_item(fa: FileArtifact) -> FileItem:
         source=fa.source,
         size_bytes=size_bytes,
         created_at=created,
+        is_permanent=bool(fa.is_permanent),
+        expires_at=expires,
     )
 
 
@@ -169,6 +184,63 @@ def list_files(
         size=size,
         files=[_to_item(fa) for fa in rows],
     )
+
+
+@router.get("/storage-stats", response_model=StorageStatsResponse)
+def get_storage_stats(
+    db: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+) -> StorageStatsResponse:
+    """Return storage usage for the current user."""
+    user_id = _require_user(current)
+    cfg = load_default_config()
+    limit_mb = int(cfg.get("storage", {}).get("file_storage_limit_mb", 500))
+
+    used_bytes: int = db.exec(
+        select(func.sum(FileArtifact.file_size_bytes)).where(FileArtifact.user_id == user_id)
+    ).one() or 0
+
+    file_count: int = db.exec(
+        select(func.count()).select_from(FileArtifact).where(FileArtifact.user_id == user_id)
+    ).one()
+
+    permanent_count: int = db.exec(
+        select(func.count()).select_from(FileArtifact).where(
+            FileArtifact.user_id == user_id,
+            FileArtifact.is_permanent == True,  # noqa: E712
+        )
+    ).one()
+
+    return StorageStatsResponse(
+        used_bytes=int(used_bytes),
+        limit_bytes=limit_mb * 1024 * 1024,
+        file_count=int(file_count),
+        permanent_count=int(permanent_count),
+    )
+
+
+@router.put("/{file_id}/permanent", status_code=200)
+def mark_file_permanent(
+    file_id: int,
+    db: Session = Depends(get_session),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Mark a file as permanent — exempt from auto-deletion."""
+    user_id = _require_user(current)
+    fa = db.get(FileArtifact, file_id)
+    if fa is None or fa.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    fa.is_permanent = True
+    fa.expires_at = None
+    db.add(fa)
+    db.commit()
+    write_log(
+        level="INFO",
+        module="files",
+        event="file_marked_permanent",
+        payload={"file_id": file_id, "user_id": user_id},
+    )
+    return {"ok": True, "id": file_id, "is_permanent": True}
 
 
 @router.delete("/{file_id}", status_code=200)
