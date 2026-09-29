@@ -22,8 +22,11 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import Goal, PasswordResetToken, User, EmailVerificationToken
-from app.memory.models import utc_now
+from app.memory.models import (
+    ChatMessage, ChatSession, EmailVerificationToken, FileArtifact,
+    Goal, GoalMilestone, PasswordResetToken, Setting, SocialProfile,
+    RelationshipSnapshot, SocialReflection, UserAchievement, User, utc_now,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +458,83 @@ def test_delete_account_login_fails_after():
     with _client() as c:
         resp = c.post("/auth/login", json={"email": email, "password": "Str0ngPass1"})
     assert resp.status_code == 401
+
+
+def test_delete_account_purges_all_associated_data(tmp_path):
+    """DELETE /auth/me must erase every row tied to that user across all tables."""
+    import tempfile
+    from pathlib import Path
+    from app.api.routes_auth import _PROJECT_ROOT
+
+    email = _email("del_purge")
+
+    # Register and grab user_id + session_id
+    with _client() as c:
+        data = _register(c, email)
+        user_id: int = data["id"]
+        sid = f"user:{user_id}"
+
+        # Insert representative rows into each category of table
+        goal_id: int
+        profile_id: int
+        with Session(engine) as s:
+            # session_id-keyed
+            s.add(ChatSession(id=sid))
+            s.add(ChatMessage(session_id=sid, role="user", text="hola"))
+            s.add(Setting(session_id=sid, key="test_key", value_json='"v"'))
+
+            # user_id-keyed
+            g = Goal(user_id=user_id, scope="short_term", description="t", origin="autonomous")
+            s.add(g)
+            s.flush()
+            assert g.id is not None
+            goal_id = g.id
+            s.add(GoalMilestone(goal_id=goal_id, description="step"))
+
+            sp = SocialProfile(user_id=user_id)
+            s.add(sp)
+            s.flush()
+            assert sp.id is not None
+            profile_id = sp.id
+            s.add(RelationshipSnapshot(profile_id=profile_id, affinity=0.1, conflict=0.0, trust_avg=0.5))
+            s.add(SocialReflection(
+                profile_id=profile_id, content="test", affinity_at_gen=0.0, conflict_at_gen=0.0,
+                trust_avg_at_gen=0.5, attachment_at_gen=0.0,
+                expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7),
+            ))
+            s.add(UserAchievement(user_id=user_id, slug="test_ach", unlocked_at=utc_now()))
+
+            # FileArtifact + physical file on disk
+            real_path = _PROJECT_ROOT / "uploads" / "images" / "del_purge_test.jpg"
+            real_path.parent.mkdir(parents=True, exist_ok=True)
+            real_path.write_bytes(b"fake")
+            s.add(FileArtifact(
+                user_id=user_id, artifact_type="image", filename="del_purge_test.jpg",
+                rel_path="uploads/images/del_purge_test.jpg",
+                mime_type="image/jpeg", source="chat_upload",
+            ))
+            s.commit()
+
+        # Delete the account
+        resp = c.delete("/auth/me")
+        assert resp.status_code == 200
+
+    # Verify all rows are gone
+    with Session(engine) as s:
+        assert s.get(User, user_id) is None
+        assert s.exec(select(ChatMessage).where(ChatMessage.session_id == sid)).first() is None
+        assert s.exec(select(Setting).where(Setting.session_id == sid, Setting.key == "test_key")).first() is None
+        assert s.exec(select(ChatSession).where(ChatSession.id == sid)).first() is None
+        assert s.exec(select(Goal).where(Goal.user_id == user_id)).first() is None
+        assert s.exec(select(GoalMilestone).where(GoalMilestone.goal_id == goal_id)).first() is None
+        assert s.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first() is None
+        assert s.exec(select(RelationshipSnapshot).where(RelationshipSnapshot.profile_id == profile_id)).first() is None
+        assert s.exec(select(SocialReflection).where(SocialReflection.profile_id == profile_id)).first() is None
+        assert s.exec(select(UserAchievement).where(UserAchievement.user_id == user_id)).first() is None
+        assert s.exec(select(FileArtifact).where(FileArtifact.user_id == user_id)).first() is None
+
+    # Physical file must be gone
+    assert not (_PROJECT_ROOT / "uploads" / "images" / "del_purge_test.jpg").exists()
 
 
 # ---------------------------------------------------------------------------

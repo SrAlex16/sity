@@ -21,9 +21,10 @@ Admin account:
   Created at startup via admin_seeder.py from SITY_ADMIN_EMAIL / SITY_ADMIN_PASSWORD.
   No endpoint promotes a User to Admin. There is exactly one Admin row.
 
-Phase limits:
-  DELETE /auth/me only deletes the User row. ChatMessage/Setting association
-  with a real user_id is done in Fase 2 — a TODO comment marks the gap.
+Account deletion:
+  DELETE /auth/me calls _purge_user_data() which erases all rows in every
+  table keyed by user_id or session_id, deletes physical files, then removes
+  the User row itself.
 """
 
 from __future__ import annotations
@@ -34,9 +35,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, delete as _bulk_delete, select
 
 from app.api.schemas_auth import (
     ForgotPasswordRequest,
@@ -54,7 +57,17 @@ from app.auth.jwt_utils import create_token
 from app.auth.recaptcha import verify_recaptcha_token
 from app.core.runtime_config import get_public_base_url
 from app.memory.db import get_session
-from app.memory.models import EmailVerificationToken, PasswordResetToken, User, utc_now
+from app.memory.models import (
+    AIUsage, AutobiographicalNarrative, BeliefAttribution, BugReport,
+    ChatMessage, ChatSession, DailyMessageUsage, DailyTtsUsage,
+    EmailVerificationToken, Episode, Expectation, FileArtifact,
+    Goal, GoalMilestone, InitiativeEvalLog, MentalState, NotificationLog,
+    OpenLoop, PasswordResetToken, PendingAction, PersonalityAlter,
+    ProceduralObservation, ProceduralPattern, PushSubscription,
+    ReflectionLog, RelationshipSnapshot, ScheduledTask, SemanticFact,
+    Setting, SharedConversation, SocialProfile, SocialReflection,
+    User, UserAchievement, UserIntegration, UserKnowledge, utc_now,
+)
 from app.trace.logger import new_trace_id, write_log
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -465,6 +478,84 @@ def resend_verification(
     return {"ok": True}
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _purge_user_data(db: Session, user_id: int) -> None:
+    """Delete every row associated with user_id before removing the User row.
+
+    Order: disk files → child-FK tables → user_id tables → session_id tables
+    → ChatSession row.  SQLite does not enforce FK constraints, but the order
+    prevents orphan rows in dependent tables for engines that do.
+    """
+    sid = f"user:{user_id}"
+
+    # ── Physical files on disk ────────────────────────────────────────────
+    for fa in db.exec(select(FileArtifact).where(FileArtifact.user_id == user_id)).all():
+        path = (_PROJECT_ROOT / fa.rel_path).resolve()
+        try:
+            if path.exists() and path.is_file():
+                path.unlink()
+        except Exception:
+            pass
+
+    # ── Child tables (no direct user_id; FK to parent) ───────────────────
+    goal_ids = [
+        r.id for r in db.exec(select(Goal).where(Goal.user_id == user_id)).all()
+        if r.id is not None
+    ]
+    if goal_ids:
+        db.exec(_bulk_delete(GoalMilestone).where(GoalMilestone.goal_id.in_(goal_ids)))  # type: ignore[call-overload]
+
+    profile_ids = [
+        r.id for r in db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).all()
+        if r.id is not None
+    ]
+    if profile_ids:
+        db.exec(_bulk_delete(RelationshipSnapshot).where(RelationshipSnapshot.profile_id.in_(profile_ids)))  # type: ignore[call-overload]
+        db.exec(_bulk_delete(SocialReflection).where(SocialReflection.profile_id.in_(profile_ids)))  # type: ignore[call-overload]
+
+    # ── Tables keyed by user_id ───────────────────────────────────────────
+    db.exec(_bulk_delete(FileArtifact).where(FileArtifact.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(EmailVerificationToken).where(EmailVerificationToken.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(UserIntegration).where(UserIntegration.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(PersonalityAlter).where(PersonalityAlter.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(UserAchievement).where(UserAchievement.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(MentalState).where(MentalState.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(Goal).where(Goal.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(Episode).where(Episode.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(AutobiographicalNarrative).where(AutobiographicalNarrative.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(ReflectionLog).where(ReflectionLog.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(ProceduralObservation).where(ProceduralObservation.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(ProceduralPattern).where(ProceduralPattern.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(UserKnowledge).where(UserKnowledge.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(BeliefAttribution).where(BeliefAttribution.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(Expectation).where(Expectation.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(SemanticFact).where(SemanticFact.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(BugReport).where(BugReport.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(SocialProfile).where(SocialProfile.user_id == user_id))  # type: ignore[call-overload]
+
+    # ── Tables keyed by session_id ────────────────────────────────────────
+    db.exec(_bulk_delete(Setting).where(Setting.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(AIUsage).where(AIUsage.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(ChatMessage).where(ChatMessage.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(DailyMessageUsage).where(DailyMessageUsage.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(DailyTtsUsage).where(DailyTtsUsage.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(SharedConversation).where(SharedConversation.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(NotificationLog).where(NotificationLog.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(PushSubscription).where(PushSubscription.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(ScheduledTask).where(ScheduledTask.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(OpenLoop).where(OpenLoop.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(InitiativeEvalLog).where(InitiativeEvalLog.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(PendingAction).where(PendingAction.session_id == sid))  # type: ignore[call-overload]
+
+    # ── ChatSession row (PK = session_id string) ──────────────────────────
+    cs = db.get(ChatSession, sid)
+    if cs:
+        db.delete(cs)
+
+
 @router.delete("/me")
 def delete_account(
     response: Response,
@@ -479,10 +570,7 @@ def delete_account(
     user_id = current.user_id
     user = session.get(User, user_id)
     if user:
-        # TODO (Fase 2): también borrar ChatMessage, Setting (task_context,
-        # previous_context de Spotify, etc.) asociados al session_id derivado
-        # de este user_id. En Fase 1 solo existe la fila de User — la
-        # asociación del historial de chat con un user_id real llega en Fase 2.
+        _purge_user_data(session, user_id)
         session.delete(user)
         session.commit()
 
