@@ -504,50 +504,50 @@ def _purge_user_data(db: Session, user_id: int) -> None:
         if r.id is not None
     ]
     if goal_ids:
-        db.exec(_bulk_delete(GoalMilestone).where(GoalMilestone.goal_id.in_(goal_ids)))  # type: ignore[call-overload]
+        db.exec(_bulk_delete(GoalMilestone).where(GoalMilestone.goal_id.in_(goal_ids)))  # type: ignore[call-overload, attr-defined]
 
     profile_ids = [
         r.id for r in db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).all()
         if r.id is not None
     ]
     if profile_ids:
-        db.exec(_bulk_delete(RelationshipSnapshot).where(RelationshipSnapshot.profile_id.in_(profile_ids)))  # type: ignore[call-overload]
-        db.exec(_bulk_delete(SocialReflection).where(SocialReflection.profile_id.in_(profile_ids)))  # type: ignore[call-overload]
+        db.exec(_bulk_delete(RelationshipSnapshot).where(RelationshipSnapshot.profile_id.in_(profile_ids)))  # type: ignore[call-overload, attr-defined]
+        db.exec(_bulk_delete(SocialReflection).where(SocialReflection.profile_id.in_(profile_ids)))  # type: ignore[call-overload, attr-defined]
 
     # ── Tables keyed by user_id ───────────────────────────────────────────
-    db.exec(_bulk_delete(FileArtifact).where(FileArtifact.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(EmailVerificationToken).where(EmailVerificationToken.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(UserIntegration).where(UserIntegration.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(PersonalityAlter).where(PersonalityAlter.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(UserAchievement).where(UserAchievement.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(MentalState).where(MentalState.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(Goal).where(Goal.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(Episode).where(Episode.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(AutobiographicalNarrative).where(AutobiographicalNarrative.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(ReflectionLog).where(ReflectionLog.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(ProceduralObservation).where(ProceduralObservation.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(ProceduralPattern).where(ProceduralPattern.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(UserKnowledge).where(UserKnowledge.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(BeliefAttribution).where(BeliefAttribution.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(Expectation).where(Expectation.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(SemanticFact).where(SemanticFact.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(BugReport).where(BugReport.user_id == user_id))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(SocialProfile).where(SocialProfile.user_id == user_id))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(FileArtifact).where(FileArtifact.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(EmailVerificationToken).where(EmailVerificationToken.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(UserIntegration).where(UserIntegration.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(PersonalityAlter).where(PersonalityAlter.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(UserAchievement).where(UserAchievement.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(MentalState).where(MentalState.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(Goal).where(Goal.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(Episode).where(Episode.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(AutobiographicalNarrative).where(AutobiographicalNarrative.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(ReflectionLog).where(ReflectionLog.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(ProceduralObservation).where(ProceduralObservation.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(ProceduralPattern).where(ProceduralPattern.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(UserKnowledge).where(UserKnowledge.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(BeliefAttribution).where(BeliefAttribution.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(Expectation).where(Expectation.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(SemanticFact).where(SemanticFact.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(BugReport).where(BugReport.user_id == user_id))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(SocialProfile).where(SocialProfile.user_id == user_id))  # type: ignore[call-overload, arg-type]
 
     # ── Tables keyed by session_id ────────────────────────────────────────
-    db.exec(_bulk_delete(Setting).where(Setting.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(AIUsage).where(AIUsage.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(ChatMessage).where(ChatMessage.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(DailyMessageUsage).where(DailyMessageUsage.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(DailyTtsUsage).where(DailyTtsUsage.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(SharedConversation).where(SharedConversation.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(NotificationLog).where(NotificationLog.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(PushSubscription).where(PushSubscription.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(ScheduledTask).where(ScheduledTask.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(OpenLoop).where(OpenLoop.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(InitiativeEvalLog).where(InitiativeEvalLog.session_id == sid))  # type: ignore[call-overload]
-    db.exec(_bulk_delete(PendingAction).where(PendingAction.session_id == sid))  # type: ignore[call-overload]
+    db.exec(_bulk_delete(Setting).where(Setting.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(AIUsage).where(AIUsage.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(ChatMessage).where(ChatMessage.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(DailyMessageUsage).where(DailyMessageUsage.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(DailyTtsUsage).where(DailyTtsUsage.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(SharedConversation).where(SharedConversation.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(NotificationLog).where(NotificationLog.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(PushSubscription).where(PushSubscription.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(ScheduledTask).where(ScheduledTask.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(OpenLoop).where(OpenLoop.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(InitiativeEvalLog).where(InitiativeEvalLog.session_id == sid))  # type: ignore[call-overload, arg-type]
+    db.exec(_bulk_delete(PendingAction).where(PendingAction.session_id == sid))  # type: ignore[call-overload, arg-type]
 
     # ── ChatSession row (PK = session_id string) ──────────────────────────
     cs = db.get(ChatSession, sid)
@@ -569,7 +569,7 @@ def delete_account(
     user_id = current.user_id
     user = session.get(User, user_id)
     if user:
-        _purge_user_data(session, user_id)
+        _purge_user_data(session, user_id)  # type: ignore[arg-type]
         session.delete(user)
         session.commit()
 
