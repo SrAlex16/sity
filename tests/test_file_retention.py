@@ -29,7 +29,7 @@ def retention_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _make_artifact(
     db: Session,
     *,
-    user_id: int = 1,
+    user_id: int = 90001,
     tmp_path: Path,
     created_at: datetime,
     write_file: bool = True,
@@ -125,9 +125,9 @@ class TestDeleteOldFileArtifacts:
         old_ts = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10)
         recent_ts = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
 
-        _make_artifact(db_session, tmp_path=retention_root, created_at=old_ts, user_id=91)
-        _make_artifact(db_session, tmp_path=retention_root, created_at=old_ts, user_id=91)
-        _make_artifact(db_session, tmp_path=retention_root, created_at=recent_ts, user_id=91)
+        _make_artifact(db_session, tmp_path=retention_root, created_at=old_ts, user_id=90091)
+        _make_artifact(db_session, tmp_path=retention_root, created_at=old_ts, user_id=90091)
+        _make_artifact(db_session, tmp_path=retention_root, created_at=recent_ts, user_id=90091)
 
         result = delete_old_file_artifacts(db_session, older_than_days=7)
 
@@ -139,7 +139,7 @@ class TestDeleteOldFileArtifacts:
         from app.chat.file_retention import delete_old_file_artifacts
 
         ts_3days = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=3)
-        fa, _ = _make_artifact(db_session, tmp_path=retention_root, created_at=ts_3days, user_id=92)
+        fa, _ = _make_artifact(db_session, tmp_path=retention_root, created_at=ts_3days, user_id=90092)
 
         # With older_than_days=7: should NOT be deleted
         delete_old_file_artifacts(db_session, older_than_days=7)

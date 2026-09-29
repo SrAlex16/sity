@@ -31,7 +31,7 @@ def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_save_uploaded_image_creates_file(db_session: Session, upload_dir: Path) -> None:
     from app.chat.file_artifact import save_uploaded_image
 
-    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=1)
+    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=90001)
 
     saved = upload_dir / row.filename
     assert saved.exists(), "File must be written to disk"
@@ -41,7 +41,7 @@ def test_save_uploaded_image_creates_file(db_session: Session, upload_dir: Path)
 def test_save_uploaded_image_correct_extension(db_session: Session, upload_dir: Path) -> None:
     from app.chat.file_artifact import save_uploaded_image
 
-    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=1)
+    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=90001)
     assert row.filename.endswith(".png")
 
 
@@ -49,11 +49,11 @@ def test_save_uploaded_image_db_row_fields(db_session: Session, upload_dir: Path
     from app.chat.file_artifact import save_uploaded_image
     from app.memory.models import FileArtifact
 
-    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=42)
+    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=90042)
 
     persisted = db_session.get(FileArtifact, row.id)
     assert persisted is not None
-    assert persisted.user_id == 42
+    assert persisted.user_id == 90042
     assert persisted.artifact_type == "image"
     assert persisted.source == "chat_upload"
     assert persisted.mime_type == "image/png"
@@ -83,7 +83,7 @@ def test_register_capture_artifact_image(db_session: Session) -> None:
         filename="snap_001.jpg",
         mime_type="image/jpeg",
     )
-    row = register_capture_artifact(artifact, db_session, user_id=7)
+    row = register_capture_artifact(artifact, db_session, user_id=90007)
 
     assert row is not None
     persisted = db_session.get(FileArtifact, row.id)
@@ -92,7 +92,7 @@ def test_register_capture_artifact_image(db_session: Session) -> None:
     assert persisted.source == "camera_capture"
     assert persisted.rel_path == "captures/camera/snap_001.jpg"
     assert persisted.filename == "snap_001.jpg"
-    assert persisted.user_id == 7
+    assert persisted.user_id == 90007
 
 
 def test_register_capture_artifact_audio(db_session: Session) -> None:
@@ -105,7 +105,7 @@ def test_register_capture_artifact_audio(db_session: Session) -> None:
         filename="rec_001.wav",
         mime_type="audio/wav",
     )
-    row = register_capture_artifact(artifact, db_session, user_id=7)
+    row = register_capture_artifact(artifact, db_session, user_id=90007)
 
     assert row is not None
     assert row.artifact_type == "audio"
@@ -123,7 +123,7 @@ def test_register_capture_artifact_invalid_url_returns_none(db_session: Session)
         filename="foo.jpg",
         mime_type="image/jpeg",
     )
-    result = register_capture_artifact(artifact, db_session, user_id=1)
+    result = register_capture_artifact(artifact, db_session, user_id=90001)
     assert result is None
 
 
