@@ -51,6 +51,8 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [resendSent, setResendSent] = useState(false);
 
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStatus, setForgotStatus] = useState<'idle' | 'sent' | 'error'>('idle');
@@ -148,7 +150,14 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
   return (
     <div className={styles.screen}>
       <p className={styles.logo}>SITY</p>
-      <p className={styles.tagline}>// SISTEMA DE IA PERSONAL</p>
+      <p className={styles.tagline}>//Synthetic Intelligence TechnologY</p>
+      <button
+        type="button"
+        className={styles.infoBtn}
+        onClick={() => setOnboardingOpen(true)}
+      >
+        ⓘ {tla.onboardingBtn}
+      </button>
 
       <div className={styles.card}>
         <p className={styles.cardTitle}>{tla.signInTitle}</p>
@@ -279,6 +288,22 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
             <button type="submit" className={styles.btnPrimary}>{tla.sendLink}</button>
           </form>
         )}
+      </HelpModal>
+
+      {/* Onboarding / What is Sity? modal */}
+      <HelpModal
+        open={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        title={tla.onboardingTitle}
+      >
+        <p className={styles.modalText}>{tla.onboardingP1}</p>
+        <p className={styles.modalText} style={{ marginTop: '0.75rem' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>▸ </strong>{tla.onboardingP2}
+        </p>
+        <p className={styles.modalText} style={{ marginTop: '0.5rem' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>▸ </strong>{tla.onboardingP3}
+        </p>
+        <p className={styles.modalText} style={{ marginTop: '0.75rem', opacity: 0.55, fontSize: '0.72rem' }}>{tla.onboardingP4}</p>
       </HelpModal>
 
       {/* Reset password modal — opens automatically when the app detects /reset-password?token= in the URL */}

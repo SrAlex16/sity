@@ -271,6 +271,12 @@ export interface T {
     resendVerification: string;
     resendVerificationSent: string;
     loginUnverified: string;
+    onboardingBtn: string;
+    onboardingTitle: string;
+    onboardingP1: string;
+    onboardingP2: string;
+    onboardingP3: string;
+    onboardingP4: string;
   };
 }
 
@@ -531,6 +537,12 @@ const es: T = {
     resendVerification: 'Reenviar enlace de verificación',
     resendVerificationSent: 'Enlace enviado. Revisa tu bandeja de entrada.',
     loginUnverified: 'Debes verificar tu email antes de iniciar sesión.',
+    onboardingBtn: '¿Qué es Sity?',
+    onboardingTitle: '¿Qué es Sity?',
+    onboardingP1: 'Sity es una IA conversacional con personalidad propia. No es un chatbot genérico — tiene memoria, construye una relación contigo a lo largo del tiempo, y puede tomar iniciativa.',
+    onboardingP2: 'Modo invitado — pruébala sin registrarte. Sin memoria entre sesiones.',
+    onboardingP3: 'Cuenta gratuita — memoria persistente, personalización y acceso completo.',
+    onboardingP4: 'Beta pública en pruebas. Proyecto open source (AGPL-3.0).',
   },
 };
 
@@ -791,6 +803,12 @@ const en: T = {
     resendVerification: 'Resend verification link',
     resendVerificationSent: 'Link sent. Check your inbox.',
     loginUnverified: 'You must verify your email before signing in.',
+    onboardingBtn: 'What is Sity?',
+    onboardingTitle: 'What is Sity?',
+    onboardingP1: 'Sity is a conversational AI with its own personality. It\'s not a generic chatbot — it has memory, builds a relationship with you over time, and can take initiative.',
+    onboardingP2: 'Guest mode — try it without signing up. No memory between sessions.',
+    onboardingP3: 'Free account — persistent memory, personalization and full access.',
+    onboardingP4: 'Public beta under testing. Open source project (AGPL-3.0).',
   },
 };
 
@@ -1051,6 +1069,12 @@ const ja: T = {
     resendVerification: '確認リンクを再送',
     resendVerificationSent: 'リンクを送信しました。受信箱を確認してください。',
     loginUnverified: 'ログインする前にメールを確認してください。',
+    onboardingBtn: 'Sityとは？',
+    onboardingTitle: 'Sityとは？',
+    onboardingP1: 'Sityは独自のパーソナリティを持つ会話型AIです。汎用チャットボットではありません — 記憶を持ち、時間をかけてあなたとの関係を築き、自ら行動を起こすこともあります。',
+    onboardingP2: 'ゲストモード — 登録なしでお試しいただけます。セッション間の記憶はありません。',
+    onboardingP3: '無料アカウント — 永続的な記憶、カスタマイズ、フル機能へのアクセス。',
+    onboardingP4: 'パブリックベータテスト中。オープンソースプロジェクト（AGPL-3.0）。',
   },
 };
 
