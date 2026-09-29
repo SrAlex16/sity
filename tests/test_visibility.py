@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
 import app.core.realtime_events as re_mod
 from app.core.realtime_events import (
@@ -26,6 +27,8 @@ from app.core.realtime_events import (
     set_session_visibility,
 )
 from app.main import app
+from app.memory.db import engine
+from app.memory.models import User
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +57,15 @@ def _register_and_login(client: TestClient) -> tuple[str, int]:
     email = f"vis_{_uid()}@sity-test.invalid"
     resp = client.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
     assert resp.status_code == 201, resp.text
-    return resp.cookies["sity_session"], resp.json()["id"]
+    user_id: int = resp.json()["id"]
+    with Session(engine) as _db:
+        _u = _db.exec(select(User).where(User.email == email)).first()
+        if _u:
+            _u.is_verified = True
+            _db.add(_u)
+            _db.commit()
+    cookie = client.post("/auth/login", json={"email": email, "password": "Str0ngPass1"}).cookies["sity_session"]
+    return cookie, user_id
 
 
 # ---------------------------------------------------------------------------

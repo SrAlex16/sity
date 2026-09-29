@@ -441,7 +441,6 @@ def resend_verification(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    ip = get_real_client_ip(request)
     allowed, retry_after = get_auth_rate_limiter().check_resend_email(body.email)
     if not allowed:
         raise HTTPException(

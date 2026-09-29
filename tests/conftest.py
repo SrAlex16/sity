@@ -111,6 +111,19 @@ def _reset_auth_rate_limiter(monkeypatch) -> None:
     monkeypatch.setattr("app.api.routes_auth.get_auth_rate_limiter", lambda: _high)
 
 
+@pytest.fixture(autouse=True)
+def _reset_guest_ip_rate_limiter(monkeypatch) -> None:
+    """Replace the guest IP rate limiter with a high-limit instance per test.
+
+    Without this, guest /chat/message calls from "testclient" accumulate in the
+    process-wide singleton and start returning 429 mid-suite, causing
+    structural_refusal and other tests that send many guest requests to fail.
+    """
+    from app.auth.ip_rate_limiter import GuestIPRateLimiter
+    _high = GuestIPRateLimiter(limit_per_hour=100_000)
+    monkeypatch.setattr("app.api.routes_chat.get_guest_ip_rate_limiter", lambda: _high)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_database() -> None:
     """Initialize the test SQLite DB once per session (idempotent).

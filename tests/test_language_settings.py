@@ -12,8 +12,11 @@ from __future__ import annotations
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlmodel import Session, select
 
 from app.main import app
+from app.memory.db import engine
+from app.memory.models import User
 
 
 def _client() -> TestClient:
@@ -25,12 +28,17 @@ def _email() -> str:
 
 
 def _register(client: TestClient) -> str:
-    """Register a fresh user, return sity_session cookie."""
-    resp = client.post("/auth/register", json={"email": _email(), "password": "Str0ngPass1"})
+    """Register a fresh user, auto-verify, login, return sity_session cookie."""
+    email = _email()
+    resp = client.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
     assert resp.status_code == 201, resp.text
-    cookie = resp.cookies.get("sity_session")
-    assert cookie
-    return cookie
+    with Session(engine) as _db:
+        _u = _db.exec(select(User).where(User.email == email)).first()
+        if _u:
+            _u.is_verified = True
+            _db.add(_u)
+            _db.commit()
+    return client.post("/auth/login", json={"email": email, "password": "Str0ngPass1"}).cookies["sity_session"]
 
 
 def test_default_language_is_auto() -> None:

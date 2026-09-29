@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import ChatMessage
+from app.memory.models import ChatMessage, User
 from app.memory.search import search_conversation_history
 
 
@@ -44,6 +44,13 @@ def _email(tag: str = "") -> str:
 def _register(client: TestClient, email: str, password: str = "Str0ngPass1") -> dict:
     resp = client.post("/auth/register", json={"email": email, "password": password})
     assert resp.status_code == 201, resp.text
+    with Session(engine) as _db:
+        _u = _db.exec(select(User).where(User.email == email)).first()
+        if _u:
+            _u.is_verified = True
+            _db.add(_u)
+            _db.commit()
+    client.post("/auth/login", json={"email": email, "password": password})
     return resp.json()
 
 

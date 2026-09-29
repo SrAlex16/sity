@@ -20,11 +20,11 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import ChatMessage, FileArtifact
+from app.memory.models import ChatMessage, FileArtifact, User
 
 _ROOT = Path(__file__).resolve().parents[1]
 _UPLOADS_DIR = _ROOT / "uploads" / "images"
@@ -50,6 +50,13 @@ def _client() -> TestClient:
 def _register_and_login(client: TestClient, email: str, password: str = "Str0ngPass1") -> None:
     resp = client.post("/auth/register", json={"email": email, "password": password})
     assert resp.status_code == 201, resp.text
+    with Session(engine) as _db:
+        _u = _db.exec(select(User).where(User.email == email)).first()
+        if _u:
+            _u.is_verified = True
+            _db.add(_u)
+            _db.commit()
+    client.post("/auth/login", json={"email": email, "password": password})
 
 
 def _write_dummy_image(filename: str) -> Path:

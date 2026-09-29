@@ -18,7 +18,7 @@ from app.trace.trace_reader import (
     get_last_trace_id,
     get_recent_events,
 )
-from app.auth.dependencies import CurrentUser, get_current_user, require_admin
+from app.auth.dependencies import CurrentUser, require_admin
 from app.chat.chat_persistence import get_today_token_usage
 from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureService
 from app.training.dataset_stats import compute_dataset_stats

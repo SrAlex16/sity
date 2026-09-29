@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import FileArtifact
+from app.memory.models import FileArtifact, User
 
 
 def _uid() -> str:
@@ -31,7 +31,15 @@ def _register_and_login(client: TestClient) -> tuple[str, int]:
     email = f"files_{_uid()}@sity-test.invalid"
     resp = client.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
     assert resp.status_code == 201, resp.text
-    return resp.cookies["sity_session"], resp.json()["id"]
+    user_id: int = resp.json()["id"]
+    with Session(engine) as _db:
+        _u = _db.exec(select(User).where(User.email == email)).first()
+        if _u:
+            _u.is_verified = True
+            _db.add(_u)
+            _db.commit()
+    cookie = client.post("/auth/login", json={"email": email, "password": "Str0ngPass1"}).cookies["sity_session"]
+    return cookie, user_id
 
 
 def _insert_artifact(

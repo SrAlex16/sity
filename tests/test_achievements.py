@@ -37,7 +37,7 @@ from app.achievements.catalog import CATALOG, AchievementDef, VALID_SLUGS, get_b
 from app.achievements.unlock import get_user_achievements, try_unlock_achievement
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import UserAchievement
+from app.memory.models import User, UserAchievement
 
 
 # ---------------------------------------------------------------------------
@@ -57,10 +57,17 @@ def _client() -> TestClient:
 
 
 def _register_and_login(client: TestClient) -> tuple[str, int]:
-    resp = client.post("/auth/register", json={"email": _email(), "password": "Str0ngPass1"})
+    email = _email()
+    resp = client.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
     assert resp.status_code == 201, resp.text
-    cookie = resp.cookies["sity_session"]
     user_id: int = resp.json()["id"]
+    with Session(engine) as _db:
+        _u = _db.exec(select(User).where(User.email == email)).first()
+        if _u:
+            _u.is_verified = True
+            _db.add(_u)
+            _db.commit()
+    cookie = client.post("/auth/login", json={"email": email, "password": "Str0ngPass1"}).cookies["sity_session"]
     return cookie, user_id
 
 
