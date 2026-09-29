@@ -55,8 +55,8 @@ def _setup_user(engine: Any, uid: int, display_name: str | None = None) -> None:
         )
         conn.execute(
             sa_text(
-                "INSERT INTO user (id, email, password_hash, role, is_active, display_name, created_at)"
-                " VALUES (:uid, :email, 'x', 'user', 1, :dn, :now)"
+                "INSERT INTO user (id, email, password_hash, role, is_active, is_verified, display_name, created_at)"
+                " VALUES (:uid, :email, 'x', 'user', 1, 1, :dn, :now)"
             ),
             {"uid": uid, "email": f"user{uid}@test.local",
              "dn": display_name, "now": _utcnow().isoformat()},
