@@ -213,3 +213,22 @@ def test_budget_user_403(user: TestClient) -> None:
 
 def test_budget_admin_ok(admin: TestClient) -> None:
     assert admin.get("/debug/budget").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /debug/dataset-stats
+# ---------------------------------------------------------------------------
+
+
+def test_dataset_stats_guest_403(guest: TestClient) -> None:
+    assert guest.get("/debug/dataset-stats").status_code == 403
+
+
+def test_dataset_stats_user_403(user: TestClient) -> None:
+    assert user.get("/debug/dataset-stats").status_code == 403
+
+
+def test_dataset_stats_admin_ok(admin: TestClient) -> None:
+    resp = admin.get("/debug/dataset-stats")
+    assert resp.status_code == 200
+    assert "total_pairs" in resp.json()

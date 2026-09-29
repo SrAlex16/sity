@@ -225,7 +225,7 @@ def budget(
 @router.get("/dataset-stats")
 def dataset_stats(
     session: Session = Depends(get_session),
-    current: CurrentUser = Depends(get_current_user),
+    current: CurrentUser = Depends(require_admin),
 ):
     """Return read-only dataset statistics for the single Sity timeline.
 

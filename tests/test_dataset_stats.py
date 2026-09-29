@@ -427,8 +427,12 @@ def test_recent_pairs_at_most_five() -> None:
 
 def test_endpoint_dataset_stats_ok() -> None:
     from app.main import app
+    from helpers import make_admin_token
     with TestClient(app, raise_server_exceptions=True) as client:
-        resp = client.get("/debug/dataset-stats")
+        resp = client.get(
+            "/debug/dataset-stats",
+            cookies={"sity_session": make_admin_token()},
+        )
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True

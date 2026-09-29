@@ -19,7 +19,10 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 
 @router.get("/chat/{client_turn_id}")
-async def chat_events(client_turn_id: str):
+async def chat_events(
+    client_turn_id: str,
+    _: CurrentUser = Depends(get_current_user),
+):
     async def event_stream():
         async for event in subscribe(client_turn_id):
             if event is None:
@@ -31,7 +34,10 @@ async def chat_events(client_turn_id: str):
 
 
 @router.post("/chat/{client_turn_id}/cancel")
-def cancel_chat_operation(client_turn_id: str):
+def cancel_chat_operation(
+    client_turn_id: str,
+    _: CurrentUser = Depends(get_current_user),
+):
     ok = cancel_operation(client_turn_id)
     publish_event_sync(client_turn_id, {
         "type": "cancelled",
@@ -93,7 +99,10 @@ def report_visibility(
 
 
 @router.get("/session/{session_id}/jobs")
-def list_session_jobs(session_id: str):
+def list_session_jobs(
+    session_id: str,
+    _: CurrentUser = Depends(get_current_user),
+):
     from app.core.job_manager import get_job_manager
     jobs = get_job_manager().list_for_session(session_id)
     return {
