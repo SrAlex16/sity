@@ -80,6 +80,28 @@ def _migrate_user() -> None:
                       payload={"added_columns": ["display_name"], "table": "user"})
 
 
+def _migrate_user_is_verified() -> None:
+    """Add is_verified column to user table if absent.
+
+    Existing users are marked verified (is_verified=1) so no live account
+    is locked out by this migration.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(user)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return
+        if "is_verified" not in existing:
+            conn.execute(text("ALTER TABLE user ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0"))
+            # All pre-existing accounts are considered verified — they registered
+            # before this feature existed, so we cannot retroactively require them
+            # to re-verify. Setting DEFAULT 0 above only affects future rows.
+            conn.execute(text("UPDATE user SET is_verified=1 WHERE is_verified=0"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"added_columns": ["is_verified"], "table": "user"})
+
+
 def _migrate_setting() -> None:
     """Convert Setting from (key UNIQUE) to (key, session_id UNIQUE) composite key.
 
@@ -487,6 +509,7 @@ def init_db() -> None:
         SQLModel.metadata.create_all(engine)
         _migrate_chatmessage()
         _migrate_user()
+        _migrate_user_is_verified()
         _migrate_setting()
         _migrate_pendingaction()
         _migrate_social_reflection()

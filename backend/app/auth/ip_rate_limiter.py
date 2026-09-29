@@ -116,6 +116,7 @@ class AuthRateLimiter:
         register_ip_limit: int = 10,
         forgot_ip_limit: int = 5,
         reset_ip_limit: int = 10,
+        resend_email_limit: int = 3,
     ) -> None:
         self._window = window_secs
         self._login_ip_limit = login_ip_limit
@@ -123,11 +124,13 @@ class AuthRateLimiter:
         self._register_ip_limit = register_ip_limit
         self._forgot_ip_limit = forgot_ip_limit
         self._reset_ip_limit = reset_ip_limit
+        self._resend_email_limit = resend_email_limit
         self._login_ip: dict[str, list[float]] = {}
         self._login_email: dict[str, list[float]] = {}
         self._register_ip: dict[str, list[float]] = {}
         self._forgot_ip: dict[str, list[float]] = {}
         self._reset_ip: dict[str, list[float]] = {}
+        self._resend_email: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
     def _check_and_record(
@@ -202,6 +205,22 @@ class AuthRateLimiter:
     def check_reset_ip(self, ip: str) -> tuple[bool, int]:
         return self._check_and_record(self._reset_ip, ip, self._reset_ip_limit)
 
+    def check_resend_email(self, email: str) -> tuple[bool, int]:
+        """Rate-limit resend-verification by email: 3 per hour (independent 3600s window)."""
+        now = time.monotonic()
+        resend_window = 3600.0
+        cutoff = now - resend_window
+        key = email.lower()
+        with self._lock:
+            ts = [t for t in self._resend_email.get(key, []) if t > cutoff]
+            if len(ts) >= self._resend_email_limit:
+                retry_after = max(1, int(ts[0] + resend_window - now) + 1)
+                self._resend_email[key] = ts
+                return False, retry_after
+            ts.append(now)
+            self._resend_email[key] = ts
+            return True, 0
+
 
 _auth_rate_limiter: AuthRateLimiter | None = None
 _auth_rate_limiter_lock = threading.Lock()
@@ -222,5 +241,6 @@ def get_auth_rate_limiter() -> AuthRateLimiter:
                     register_ip_limit=int(auth_cfg.get("register_ip_limit", 10)),
                     forgot_ip_limit=int(auth_cfg.get("forgot_ip_limit", 5)),
                     reset_ip_limit=int(auth_cfg.get("reset_ip_limit", 10)),
+                    resend_email_limit=int(auth_cfg.get("resend_email_limit", 3)),
                 )
     return _auth_rate_limiter

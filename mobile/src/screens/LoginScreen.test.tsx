@@ -21,6 +21,7 @@ const mockAuth: UseAuthResult = {
   register: vi.fn().mockResolvedValue({ ok: true }),
   forgotPassword: vi.fn().mockResolvedValue({ ok: true }),
   resetPassword: vi.fn().mockResolvedValue({ ok: true }),
+  resendVerification: vi.fn().mockResolvedValue({ ok: true }),
   continueAsGuest: vi.fn(),
   logout: vi.fn(),
   refreshUser: vi.fn().mockResolvedValue(undefined),

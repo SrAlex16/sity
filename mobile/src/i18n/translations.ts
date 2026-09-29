@@ -264,6 +264,13 @@ export interface T {
     privacyTitle: string;
     showPassword: string;
     hidePassword: string;
+    verifyEmailPending: string;
+    verifyEmailPendingDesc: string;
+    verifyEmailSuccess: string;
+    verifyEmailError: string;
+    resendVerification: string;
+    resendVerificationSent: string;
+    loginUnverified: string;
   };
 }
 
@@ -517,6 +524,13 @@ const es: T = {
     privacyTitle: 'Política de privacidad',
     showPassword: 'Mostrar contraseña',
     hidePassword: 'Ocultar contraseña',
+    verifyEmailPending: 'Verifica tu email',
+    verifyEmailPendingDesc: 'Te hemos enviado un enlace de verificación. Haz clic en él para activar tu cuenta.',
+    verifyEmailSuccess: '¡Email verificado! Ya puedes iniciar sesión.',
+    verifyEmailError: 'El enlace de verificación no es válido o ha expirado. Solicita uno nuevo.',
+    resendVerification: 'Reenviar enlace de verificación',
+    resendVerificationSent: 'Enlace enviado. Revisa tu bandeja de entrada.',
+    loginUnverified: 'Debes verificar tu email antes de iniciar sesión.',
   },
 };
 
@@ -770,6 +784,13 @@ const en: T = {
     privacyTitle: 'Privacy policy',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
+    verifyEmailPending: 'Verify your email',
+    verifyEmailPendingDesc: 'We have sent you a verification link. Click it to activate your account.',
+    verifyEmailSuccess: 'Email verified! You can now sign in.',
+    verifyEmailError: 'The verification link is invalid or has expired. Request a new one.',
+    resendVerification: 'Resend verification link',
+    resendVerificationSent: 'Link sent. Check your inbox.',
+    loginUnverified: 'You must verify your email before signing in.',
   },
 };
 
@@ -1023,6 +1044,13 @@ const ja: T = {
     privacyTitle: 'プライバシーポリシー',
     showPassword: 'パスワードを表示',
     hidePassword: 'パスワードを非表示',
+    verifyEmailPending: 'メールを確認してください',
+    verifyEmailPendingDesc: '確認リンクを送信しました。クリックしてアカウントを有効化してください。',
+    verifyEmailSuccess: 'メール確認完了！ログインできます。',
+    verifyEmailError: '確認リンクが無効または期限切れです。新しいリンクをリクエストしてください。',
+    resendVerification: '確認リンクを再送',
+    resendVerificationSent: 'リンクを送信しました。受信箱を確認してください。',
+    loginUnverified: 'ログインする前にメールを確認してください。',
   },
 };
 

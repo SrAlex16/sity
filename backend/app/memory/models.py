@@ -134,6 +134,7 @@ class User(SQLModel, table=True):
     password_hash: str
     role: str = Field(default="user")       # "user" | "admin" — Guest has no row
     is_active: bool = Field(default=True)
+    is_verified: bool = Field(default=False)  # False until email verified
     display_name: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utc_now)
     last_login_at: Optional[datetime] = Field(default=None)
@@ -144,6 +145,21 @@ class PasswordResetToken(SQLModel, table=True):
     token: str = Field(index=True, unique=True)
     user_id: int = Field(index=True)
     expires_at: datetime                            # naive UTC, see routes_auth._naive_utc_now
+    used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class EmailVerificationToken(SQLModel, table=True):
+    """One-time token sent to a newly registered user to confirm their email address.
+
+    A separate table from PasswordResetToken to keep the two flows independent.
+    Token is a UUID4 string; expires_at is naive UTC (1 hour from creation).
+    used_at is set when the token is consumed — prevents replay.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token: str = Field(index=True, unique=True)
+    user_id: int = Field(index=True)
+    expires_at: datetime                            # naive UTC
     used_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now)
 

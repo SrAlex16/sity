@@ -27,6 +27,7 @@ interface Props {
   onSwitchToRegister: () => void;
   initialResetToken?: string | null;
   onResetTokenConsumed?: () => void;
+  emailVerifiedStatus?: 'success' | 'error' | null;
   uiLang?: UiLang;
 }
 
@@ -38,7 +39,7 @@ function checkPasswordStrength(password: string, tla: T['auth']): string | null 
   return null;
 }
 
-export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onResetTokenConsumed, uiLang = 'es' }: Props) {
+export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onResetTokenConsumed, emailVerifiedStatus, uiLang = 'es' }: Props) {
   const tla = TRANSLATIONS[uiLang].auth;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,6 +48,8 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
   const [showLoginPw, setShowLoginPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resendSent, setResendSent] = useState(false);
 
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -88,7 +91,21 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     const token = await getRecaptchaToken('login');
     const result = await auth.login(email, password, token);
     setLoading(false);
-    if (!result.ok) setError(result.error ?? tla.loginError);
+    if (!result.ok) {
+      if (result.unverified) {
+        setUnverifiedEmail(email);
+        setError('');
+      } else {
+        setUnverifiedEmail(null);
+        setError(result.error ?? tla.loginError);
+      }
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!unverifiedEmail) return;
+    const result = await auth.resendVerification(unverifiedEmail);
+    if (result.ok) setResendSent(true);
   }
 
   async function handleForgot(e: React.FormEvent) {
@@ -136,7 +153,28 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
       <div className={styles.card}>
         <p className={styles.cardTitle}>{tla.signInTitle}</p>
 
-        {error && <div className={styles.errorBanner}>{error}</div>}
+        {emailVerifiedStatus === 'success' && (
+          <div className={styles.errorBanner} style={{ background: 'rgba(0,200,80,0.12)', borderColor: 'rgba(0,200,80,0.35)', color: '#00c850' }}>
+            {tla.verifyEmailSuccess}
+          </div>
+        )}
+        {emailVerifiedStatus === 'error' && (
+          <div className={styles.errorBanner}>{tla.verifyEmailError}</div>
+        )}
+        {unverifiedEmail ? (
+          <div>
+            <div className={styles.errorBanner}>{tla.loginUnverified}</div>
+            {resendSent ? (
+              <p style={{ fontSize: '0.78rem', color: 'var(--accent)', margin: '0.5rem 0 0' }}>{tla.resendVerificationSent}</p>
+            ) : (
+              <button type="button" className={styles.btnSecondary} style={{ marginTop: '0.5rem' }} onClick={handleResendVerification}>
+                {tla.resendVerification}
+              </button>
+            )}
+          </div>
+        ) : (
+          error && <div className={styles.errorBanner}>{error}</div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
           <div className={styles.field}>

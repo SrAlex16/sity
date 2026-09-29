@@ -30,11 +30,15 @@ def seed_admin() -> None:
     with Session(engine) as session:
         existing = session.exec(select(User).where(User.role == "admin")).first()
         if existing:
-            # Backfill display_name: correct if absent or stale (e.g. left over from
-            # a hardcoded value that predates deriving it from the email prefix).
+            changed = False
             expected = existing.email.split("@")[0]
             if existing.display_name != expected:
                 existing.display_name = expected
+                changed = True
+            if not existing.is_verified:
+                existing.is_verified = True
+                changed = True
+            if changed:
                 session.add(existing)
                 session.commit()
             return
@@ -44,6 +48,7 @@ def seed_admin() -> None:
             password_hash=hash_password(password),
             role="admin",
             display_name=email.split("@")[0],
+            is_verified=True,
         )
         session.add(admin)
         session.commit()

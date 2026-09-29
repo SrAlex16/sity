@@ -29,6 +29,8 @@ export function RegisterScreen({ auth, onSwitchToLogin, uiLang = 'es' }: Props) 
   const [rgpdOpen, setRgpdOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [resendSent, setResendSent] = useState(false);
 
   useEffect(() => { void loadRecaptchaScript(); }, []);
 
@@ -50,7 +52,43 @@ export function RegisterScreen({ auth, onSwitchToLogin, uiLang = 'es' }: Props) 
     const token = await getRecaptchaToken('register');
     const result = await auth.register(email, password, token);
     setLoading(false);
-    if (!result.ok) setError(result.error ?? tla.registerError);
+    if (result.ok && result.pendingVerification) {
+      setPendingEmail(email);
+    } else if (!result.ok) {
+      setError(result.error ?? tla.registerError);
+    }
+  }
+
+  async function handleResend() {
+    if (!pendingEmail) return;
+    const result = await auth.resendVerification(pendingEmail);
+    if (result.ok) setResendSent(true);
+  }
+
+  if (pendingEmail) {
+    return (
+      <div className={styles.screen}>
+        <p className={styles.logo}>SITY</p>
+        <p className={styles.tagline}>// SISTEMA DE IA PERSONAL</p>
+        <div className={styles.card}>
+          <p className={styles.cardTitle}>{tla.verifyEmailPending}</p>
+          <p className={styles.modalText}>{tla.verifyEmailPendingDesc}</p>
+          <p className={styles.modalText} style={{ opacity: 0.6, fontSize: '0.78rem' }}>{pendingEmail}</p>
+          {resendSent ? (
+            <p className={styles.modalText} style={{ color: 'var(--accent)' }}>{tla.resendVerificationSent}</p>
+          ) : (
+            <button type="button" className={styles.btnSecondary} onClick={handleResend}>
+              {tla.resendVerification}
+            </button>
+          )}
+          <p className={styles.switchRow}>
+            <button type="button" className={styles.switchLink} onClick={onSwitchToLogin}>
+              {tla.signIn}
+            </button>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

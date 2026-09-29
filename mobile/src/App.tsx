@@ -115,6 +115,16 @@ export default function App() {
     }
     return null;
   });
+
+  // Detect ?email_verified=success|error after redirect from GET /auth/verify-email
+  const [emailVerifiedStatus] = useState<'success' | 'error' | null>(() => {
+    const ev = new URLSearchParams(window.location.search).get('email_verified');
+    if (ev === 'success' || ev === 'error') {
+      window.history.replaceState({}, '', '/');
+      return ev;
+    }
+    return null;
+  });
   const userKey = auth.currentUser == null
     ? null
     : auth.currentUser.role === 'guest'
@@ -183,6 +193,7 @@ export default function App() {
                 onSwitchToRegister={() => setAuthView('register')}
                 initialResetToken={initialResetToken}
                 onResetTokenConsumed={() => setInitialResetToken(null)}
+                emailVerifiedStatus={emailVerifiedStatus}
                 uiLang={uiLang}
               />
             ) : (

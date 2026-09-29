@@ -35,6 +35,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
 
 from app.api.schemas_auth import (
@@ -42,16 +43,18 @@ from app.api.schemas_auth import (
     LoginRequest,
     MeResponse,
     RegisterRequest,
+    ResendVerificationRequest,
     ResetPasswordRequest,
 )
 from app.auth.dependencies import CurrentUser, get_current_user
-from app.auth.email_stub import send_password_reset_email
+from app.auth.email_stub import send_password_reset_email, send_verification_email
 from app.auth.hashing import hash_password, verify_password
 from app.auth.ip_rate_limiter import get_auth_rate_limiter, get_real_client_ip
 from app.auth.jwt_utils import create_token
 from app.auth.recaptcha import verify_recaptcha_token
+from app.core.runtime_config import get_public_base_url
 from app.memory.db import get_session
-from app.memory.models import PasswordResetToken, User, utc_now
+from app.memory.models import EmailVerificationToken, PasswordResetToken, User, utc_now
 from app.trace.logger import new_trace_id, write_log
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -136,7 +139,6 @@ def _check_password_strength(password: str) -> Optional[str]:
 @router.post("/register", status_code=201)
 def register(
     body: RegisterRequest,
-    response: Response,
     request: Request,
     session: Session = Depends(get_session),
 ):
@@ -169,20 +171,33 @@ def register(
         password_hash=hash_password(body.password),
         role="user",
         display_name=body.email.split("@")[0],
+        is_verified=False,
     )
     session.add(user)
     session.commit()
     session.refresh(user)
 
+    assert user.id is not None  # guaranteed after commit+refresh
+
+    token_str = str(uuid.uuid4())
+    verification_token = EmailVerificationToken(
+        token=token_str,
+        user_id=user.id,
+        expires_at=_naive_utc_now() + timedelta(hours=1),
+    )
+    session.add(verification_token)
+    session.commit()
+
+    try:
+        send_verification_email(to_email=user.email, token=token_str)
+    except Exception:
+        pass  # email_stub already logged the error; preserve the 201 response
+
     write_log(
         level="AUDIT", module="auth", event="user_registered",
         trace_id=trace_id, payload={"user_id": user.id}, audit=True,
     )
-
-    assert user.id is not None  # guaranteed after commit+refresh
-    _set_cookie(response, create_token(user.id, user.role))
-    _clear_guest_cookie(response)
-    return {"ok": True, "id": user.id, "email": user.email, "role": user.role}
+    return {"ok": True, "pending_verification": True, "id": user.id, "email": user.email, "role": user.role}
 
 
 @router.post("/login")
@@ -224,6 +239,9 @@ def login(
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Cuenta desactivada")
+
+    if not user.is_verified:
+        raise HTTPException(status_code=403, detail="Email sin verificar")
 
     limiter.reset_login_email(email_norm)
 
@@ -370,6 +388,81 @@ def reset_password(
         trace_id=trace_id, payload={"user_id": user.id}, audit=True,
     )
     return {"ok": True, "message": "Contraseña actualizada correctamente"}
+
+
+@router.get("/verify-email")
+def verify_email(
+    token: str,
+    session: Session = Depends(get_session),
+):
+    base_url = get_public_base_url()
+    _bad = RedirectResponse(url=f"{base_url}/?email_verified=error", status_code=302)
+
+    vt = session.exec(
+        select(EmailVerificationToken).where(EmailVerificationToken.token == token)
+    ).first()
+
+    if not vt or vt.used_at is not None or _naive_utc_now() > vt.expires_at:
+        return _bad
+
+    user = session.get(User, vt.user_id)
+    if not user:
+        return _bad
+
+    user.is_verified = True
+    vt.used_at = _naive_utc_now()
+    session.add(user)
+    session.add(vt)
+    session.commit()
+
+    write_log(
+        level="AUDIT", module="auth", event="email_verified",
+        payload={"user_id": user.id}, audit=True,
+    )
+    return RedirectResponse(url=f"{base_url}/?email_verified=success", status_code=302)
+
+
+@router.post("/resend-verification")
+def resend_verification(
+    body: ResendVerificationRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    ip = get_real_client_ip(request)
+    allowed, retry_after = get_auth_rate_limiter().check_resend_email(body.email)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    user = session.exec(select(User).where(User.email == body.email)).first()
+    if user and user.is_active and not user.is_verified:
+        old_tokens = session.exec(
+            select(EmailVerificationToken)
+            .where(EmailVerificationToken.user_id == user.id)
+            .where(EmailVerificationToken.used_at == None)  # noqa: E711
+        ).all()
+        for ot in old_tokens:
+            ot.used_at = _naive_utc_now()
+            session.add(ot)
+
+        token_str = str(uuid.uuid4())
+        vt = EmailVerificationToken(
+            token=token_str,
+            user_id=user.id,
+            expires_at=_naive_utc_now() + timedelta(hours=1),
+        )
+        session.add(vt)
+        session.commit()
+        try:
+            send_verification_email(to_email=user.email, token=token_str)
+        except Exception:
+            pass
+
+    # Always 200 — never reveal whether the email exists (anti-enumeration)
+    return {"ok": True}
 
 
 @router.delete("/me")

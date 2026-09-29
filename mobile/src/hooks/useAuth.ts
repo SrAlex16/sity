@@ -12,6 +12,8 @@ export interface CurrentUser {
 interface AuthResult {
   ok: boolean;
   error?: string;
+  pendingVerification?: boolean;
+  unverified?: boolean;
 }
 
 const API_BASE = '';
@@ -19,7 +21,7 @@ const API_BASE = '';
 async function apiFetch<T>(
   path: string,
   options?: RequestInit,
-): Promise<{ data?: T; error?: string }> {
+): Promise<{ data?: T; error?: string; status?: number }> {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       credentials: 'include',
@@ -28,14 +30,14 @@ async function apiFetch<T>(
     });
     if (res.ok) {
       const data = (await res.json()) as T;
-      return { data };
+      return { data, status: res.status };
     }
     let error = `Error ${res.status}`;
     try {
       const body = (await res.json()) as { detail?: string };
       if (body.detail) error = body.detail;
     } catch { /* ignore */ }
-    return { error };
+    return { error, status: res.status };
   } catch {
     return { error: 'Sin conexión con el servidor' };
   }
@@ -89,7 +91,7 @@ export function useAuth() {
   }
 
   async function login(email: string, password: string, recaptchaToken = ''): Promise<AuthResult> {
-    const { data, error } = await apiFetch<{ ok: boolean; role: string }>('/auth/login', {
+    const { data, error, status } = await apiFetch<{ ok: boolean; role: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
     });
@@ -97,19 +99,32 @@ export function useAuth() {
       await fetchMe();
       return { ok: true };
     }
-    return { ok: false, error: error ?? 'Error al iniciar sesión' };
+    const isUnverified = status === 403 && (error ?? '').toLowerCase().includes('verificar');
+    return { ok: false, error: error ?? 'Error al iniciar sesión', unverified: isUnverified };
   }
 
   async function register(email: string, password: string, recaptchaToken = ''): Promise<AuthResult> {
-    const { data, error } = await apiFetch<{ ok: boolean }>('/auth/register', {
+    const { data, error } = await apiFetch<{ ok: boolean; pending_verification?: boolean }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, recaptcha_token: recaptchaToken }),
     });
     if (data?.ok) {
+      if (data.pending_verification) {
+        return { ok: true, pendingVerification: true };
+      }
       await fetchMe();
       return { ok: true };
     }
     return { ok: false, error: error ?? 'Error al registrarse' };
+  }
+
+  async function resendVerification(email: string): Promise<AuthResult> {
+    const { data, error } = await apiFetch<{ ok: boolean }>('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+    if (data?.ok) return { ok: true };
+    return { ok: false, error: error ?? 'Error al reenviar el enlace' };
   }
 
   async function logout(): Promise<void> {
@@ -151,6 +166,7 @@ export function useAuth() {
     logout,
     forgotPassword,
     resetPassword,
+    resendVerification,
     continueAsGuest,
     refreshUser: fetchMe,
   };

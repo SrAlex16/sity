@@ -22,7 +22,7 @@ from sqlmodel import Session, select
 
 from app.main import app
 from app.memory.db import engine
-from app.memory.models import Goal, PasswordResetToken, User
+from app.memory.models import Goal, PasswordResetToken, User, EmailVerificationToken
 from app.memory.models import utc_now
 
 
@@ -48,7 +48,17 @@ def _client() -> TestClient:
 def _register(client: TestClient, email: str, password: str = "Str0ngPass1") -> dict:
     resp = client.post("/auth/register", json={"email": email, "password": password})
     assert resp.status_code == 201, resp.text
-    return resp.json()
+    data = resp.json()
+    # Auto-verify so subsequent login calls work in tests (production requires email link)
+    with Session(engine) as session:
+        user = session.exec(select(User).where(User.email == email)).first()
+        if user and not user.is_verified:
+            user.is_verified = True
+            session.add(user)
+            session.commit()
+    # Login to set the session cookie (register no longer sets it — email verification required)
+    client.post("/auth/login", json={"email": email, "password": password})
+    return data
 
 
 def _make_reset_token(email: str, hours_offset: float = 1.0) -> str:
@@ -77,18 +87,22 @@ def test_register_success():
     assert data["ok"] is True
     assert data["email"] == email
     assert data["role"] == "user"
-    assert "sity_session" in resp.cookies
+    assert data["pending_verification"] is True
+    # No session cookie — user must verify email before logging in
+    assert "sity_session" not in resp.cookies
 
 
 def test_register_creates_db_row():
     email = _email("reg_db")
     with _client() as c:
-        _register(c, email)
+        resp = c.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
+        assert resp.status_code == 201
     with Session(engine) as session:
         user = session.exec(select(User).where(User.email == email)).first()
     assert user is not None
     assert user.role == "user"
     assert user.is_active is True
+    assert user.is_verified is False  # not verified yet
 
 
 def test_register_duplicate_email():
@@ -191,6 +205,18 @@ def test_login_inactive_account():
     with _client() as c:
         resp = c.post("/auth/login", json={"email": email, "password": "Str0ngPass1"})
     assert resp.status_code == 403
+
+
+def test_login_unverified_account():
+    """is_verified=False → 403 with 'sin verificar' detail."""
+    email = _email("login_unverif")
+    with _client() as c:
+        c.post("/auth/register", json={"email": email, "password": "Str0ngPass1"})
+    # Do NOT verify — just try to login directly
+    with _client() as c:
+        resp = c.post("/auth/login", json={"email": email, "password": "Str0ngPass1"})
+    assert resp.status_code == 403
+    assert "verificar" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
