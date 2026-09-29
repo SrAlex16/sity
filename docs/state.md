@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-23 (Cierre campaña auditoría post-Remake rondas 1–10: R5-02c, R11-01, R11-02, R11-03, test flaky A9 resuelto).
+Última actualización: 2026-09-29 (Preparación beta pública: permisos, email verification, onboarding, delete_account purge, GTM/GA, privacy policy; fix suite 3357 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3211 tests en verde (pytest, 30 skipped) — CI verde en `45d96dc` (2026-09-23)
+- 3357 tests en verde (pytest, 6 skipped) — CI verde en `d637ad1` (2026-09-29)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -154,6 +154,52 @@ explícita, el normalizador puede extenderse.
 ---
 
 ## Completado recientemente (2026-09-29)
+
+- **Fix suite de tests — email verification + GuestIPRateLimiter (commit `d637ad1`).**
+  Todos los `_register`/`_register_and_login` en 12 archivos de test fallaban con
+  `KeyError: 'sity_session'` porque la feature de verificación de email (5a42b6b) eliminó
+  la cookie de registro automático. Fix: auto-verifica `is_verified=True` en DB + llama a
+  login explícito antes de devolver la cookie (mismo patrón que `test_auth.py`).
+  Segundo fix: fixture autouse `_reset_guest_ip_rate_limiter` en conftest.py para evitar
+  falsos 429 en `test_structural_refusal` y otros en suite completa.
+  Pyflakes: eliminado `get_current_user` unused en `routes_debug.py`; eliminada variable `ip`
+  sin usar en `resend-verification`. Suite local: **3357 passed, 6 skipped, 0 failed**.
+
+- **Preparación beta pública — permisos, onboarding, privacy, purga de datos (commits `852f554`→`0d605d1`).**
+
+  - **Revisión de permisos por rol (commit `852f554`):** 3 endpoints de `/events/*` sin
+    autenticación ahora requieren `get_current_user`; `GET /debug/dataset-stats` restringido
+    a `require_admin`; `GET /settings/sity-values` restringido a `require_admin`. 6 tests
+    de cobertura nuevos en `test_require_admin.py`.
+
+  - **Verificación de email al registrarse (commit `5a42b6b`):** modelo `EmailVerificationToken`,
+    endpoint `GET /auth/verify-email?token=`, `POST /auth/resend-verification`, SMTP stub
+    (`app/auth/email_stub.py`), flag `is_verified` en `User`. Login devuelve 403 hasta
+    verificación. 15 tests nuevos en `test_email_verification.py`.
+
+  - **Pop-up de onboarding en login (commit `46ea60e`):** botón `ⓘ ¿Qué es Sity?` debajo
+    del tagline abre `HelpModal` con descripción de la app, modos guest/cuenta y nota beta.
+    Tagline cambiado a `//Synthetic Intelligence TechnologY`. i18n es/en/ja.
+
+  - **delete_account() — purga completa (commit `ec58910`):** `_purge_user_data()` borra
+    archivos físicos, tablas hijo (GoalMilestone, RelationshipSnapshot, SocialReflection),
+    31 tablas user_id-keyed y session_id-keyed, y la fila ChatSession antes de borrar User.
+    Singletons globales (SelfModel, SelfBelief, SityValues, MemoryFragment) no se borran.
+    Test de cobertura `test_delete_account_purges_all_associated_data`.
+
+  - **Google Tag Manager + Analytics (commit `ec58910`):** GTM-PF6VCCHC + GA4 G-HDMZ300YR8
+    inyectados en `mobile/index.html` vía snippet estándar.
+
+  - **Política de privacidad (commit `0d605d1`):** `privacy.html` copiada a `mobile/public/`
+    para que Vite la incluya en el build → accesible en `/privacy.html` via Caddy. Enlace
+    discreto en LoginScreen (junto al botón ⓘ) y en VoiceScreen/Ajustes (junto a
+    `Código fuente`). Nueva clave i18n `settings.privacyPolicy` (es/en/ja).
+
+  - **README actualizado:** descripción correcta del stack, backronym SITY explicado en inglés.
+
+  - **Documentación:** 4 archivos de docs actualizados (`architecture.md`,
+    `file-management-architecture.md`, `proactive-initiative-architecture.md`,
+    `personality-alters.md`).
 
 - **Gestión de archivos — ampliación completa en 8 partes (commits `cd2fc39`→`4c57196`).**
 
