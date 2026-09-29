@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Política de Privacidad — Sity</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --border: #1e1e2e;
+      --cyan: #00f5ff;
+      --text: #c0c0d0;
+      --text-dim: #6b6b80;
+      --heading: #e0e0f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .lang-switch {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .lang-switch button {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.3rem 0.8rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .lang-switch button.active {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 2.5rem;
+    }
+    .logo-text {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+    h1 {
+      font-size: 1.6rem;
+      color: var(--heading);
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+    }
+    .updated {
+      color: var(--text-dim);
+      font-size: 13px;
+      margin-bottom: 2.5rem;
+    }
+    h2 {
+      font-size: 1rem;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    p { margin-bottom: 1rem; }
+    ul {
+      padding-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    li { margin-bottom: 0.4rem; }
+    strong { color: var(--heading); }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back {
+      display: inline-block;
+      margin-top: 3rem;
+      color: var(--text-dim);
+      font-size: 13px;
+      border: 1px solid var(--border);
+      padding: 0.4rem 1rem;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .back:hover { border-color: var(--cyan); color: var(--cyan); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="logo">
+      <span class="logo-text">Sity</span>
+    </div>
+
+    <div class="lang-switch">
+      <button class="active" onclick="setLang('es')">Español</button>
+      <button onclick="setLang('en')">English</button>
+    </div>
+
+    <!-- ESPAÑOL -->
+    <div class="section active" id="lang-es">
+      <h1>Política de Privacidad</h1>
+      <p class="updated">Última actualización: septiembre de 2026</p>
+
+      <h2>1. Quién es el responsable</h2>
+      <p>Sity es un proyecto independiente desarrollado y operado por Alejandro Tubio. Para cualquier consulta sobre privacidad, contacta en: <a href="mailto:sity@aletm.com">sity@aletm.com</a></p>
+
+      <h2>2. Qué datos recopilamos</h2>
+      <p><strong>Cuando te registras:</strong></p>
+      <ul>
+        <li>Dirección de email</li>
+        <li>Contraseña (almacenada cifrada, nunca en texto plano)</li>
+      </ul>
+      <p><strong>Cuando usas Sity:</strong></p>
+      <ul>
+        <li>Mensajes que envías en el chat</li>
+        <li>Archivos e imágenes que subes voluntariamente</li>
+        <li>Ubicación aproximada (ciudad o región), solo si la configuras tú manualmente</li>
+        <li>Preferencias de personalización que escribes en Ajustes</li>
+      </ul>
+      <p><strong>Datos técnicos automáticos:</strong></p>
+      <ul>
+        <li>Navegador y sistema operativo (user agent)</li>
+        <li>Dirección IP (en logs técnicos, no vinculada a tu perfil)</li>
+        <li>Métricas de uso anónimas vía Google Analytics (páginas visitadas, tiempo en la app)</li>
+      </ul>
+      <p><strong>En modo invitado:</strong></p>
+      <ul>
+        <li>No se recopila email ni se crea ningún perfil persistente</li>
+        <li>Los datos de la sesión se pierden al cerrar el navegador</li>
+      </ul>
+
+      <h2>3. Para qué usamos tus datos</h2>
+      <ul>
+        <li>Proporcionarte el servicio de conversación con Sity</li>
+        <li>Mantener tu memoria y personalización entre sesiones</li>
+        <li>Enviarte emails de verificación o recuperación de contraseña</li>
+        <li>Mejorar el servicio mediante métricas de uso anónimas</li>
+      </ul>
+
+      <h2>4. Con quién compartimos tus datos</h2>
+      <p><strong>Anthropic (proveedor del modelo de IA):</strong><br>
+      Los mensajes que envías a Sity se transmiten a la API de Anthropic para generar respuestas. Anthropic procesa estos mensajes según su propia política de privacidad: <a href="https://anthropic.com/privacy" target="_blank" rel="noopener">anthropic.com/privacy</a>. No se transmiten tu email ni datos de perfil.</p>
+      <p><strong>Google Analytics:</strong><br>
+      Usamos Google Analytics para medir el uso de la app de forma anónima. No se transmiten mensajes del chat ni datos de identificación personal.</p>
+      <p>No vendemos ni compartimos tus datos con ningún otro tercero.</p>
+
+      <h2>5. Dónde se almacenan tus datos</h2>
+      <p>Todos tus datos (mensajes, perfil, archivos) se almacenan en un servidor privado ubicado en España (Europa), cubierto por la normativa GDPR.</p>
+
+      <h2>6. Tus derechos (GDPR)</h2>
+      <p>Tienes derecho a:</p>
+      <ul>
+        <li><strong>Acceder</strong> a tus datos</li>
+        <li><strong>Rectificarlos</strong> si son incorrectos</li>
+        <li><strong>Eliminarlos</strong> — puedes eliminar tu cuenta desde Ajustes → Eliminar cuenta. Esto borra permanentemente todos tus datos.</li>
+        <li><strong>Portabilidad</strong> — puedes solicitar una copia de tus datos por email</li>
+        <li><strong>Oponerte</strong> al tratamiento de tus datos</li>
+      </ul>
+      <p>Para ejercer cualquiera de estos derechos, contacta en: <a href="mailto:sity@aletm.com">sity@aletm.com</a></p>
+
+      <h2>7. Retención de datos</h2>
+      <p>Tus datos se conservan mientras tu cuenta esté activa. Al eliminar tu cuenta, todos los datos asociados se borran permanentemente e irreversiblemente.</p>
+      <p>Los logs técnicos se rotan automáticamente y no se conservan más de 30 días.</p>
+
+      <h2>8. Cookies</h2>
+      <p>Sity usa una cookie de sesión estrictamente necesaria para mantenerte autenticado. No usamos cookies de seguimiento propias.</p>
+      <p>Google Analytics puede usar cookies propias para medir el uso de la app de forma anónima.</p>
+
+      <h2>9. Cambios en esta política</h2>
+      <p>Si realizamos cambios relevantes, lo notificaremos en la app. La fecha de última actualización siempre estará visible al inicio de este documento.</p>
+    </div>
+
+    <!-- ENGLISH -->
+    <div class="section" id="lang-en">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: September 2026</p>
+
+      <h2>1. Who is responsible</h2>
+      <p>Sity is an independent project developed and operated by Alejandro Tubio. For any privacy-related enquiries, contact: <a href="mailto:sity@aletm.com">sity@aletm.com</a></p>
+
+      <h2>2. What data we collect</h2>
+      <p><strong>When you register:</strong></p>
+      <ul>
+        <li>Email address</li>
+        <li>Password (stored encrypted, never in plain text)</li>
+      </ul>
+      <p><strong>When you use Sity:</strong></p>
+      <ul>
+        <li>Messages you send in the chat</li>
+        <li>Files and images you voluntarily upload</li>
+        <li>Approximate location (city or region), only if you configure it manually</li>
+        <li>Personalisation preferences you write in Settings</li>
+      </ul>
+      <p><strong>Automatic technical data:</strong></p>
+      <ul>
+        <li>Browser and operating system (user agent)</li>
+        <li>IP address (in technical logs, not linked to your profile)</li>
+        <li>Anonymous usage metrics via Google Analytics (pages visited, time in app)</li>
+      </ul>
+      <p><strong>In guest mode:</strong></p>
+      <ul>
+        <li>No email is collected and no persistent profile is created</li>
+        <li>Session data is lost when you close the browser</li>
+      </ul>
+
+      <h2>3. How we use your data</h2>
+      <ul>
+        <li>To provide the Sity conversation service</li>
+        <li>To maintain your memory and personalisation between sessions</li>
+        <li>To send verification or password recovery emails</li>
+        <li>To improve the service through anonymous usage metrics</li>
+      </ul>
+
+      <h2>4. Who we share your data with</h2>
+      <p><strong>Anthropic (AI model provider):</strong><br>
+      Messages you send to Sity are transmitted to the Anthropic API to generate responses. Anthropic processes these messages under their own privacy policy: <a href="https://anthropic.com/privacy" target="_blank" rel="noopener">anthropic.com/privacy</a>. Your email and profile data are never transmitted.</p>
+      <p><strong>Google Analytics:</strong><br>
+      We use Google Analytics to measure app usage anonymously. No chat messages or personally identifiable data are transmitted.</p>
+      <p>We do not sell or share your data with any other third party.</p>
+
+      <h2>5. Where your data is stored</h2>
+      <p>All your data (messages, profile, files) is stored on a private server located in Spain (Europe), covered by GDPR regulations.</p>
+
+      <h2>6. Your rights (GDPR)</h2>
+      <p>You have the right to:</p>
+      <ul>
+        <li><strong>Access</strong> your data</li>
+        <li><strong>Rectify</strong> it if incorrect</li>
+        <li><strong>Erase</strong> it — you can delete your account from Settings → Delete account. This permanently deletes all your data.</li>
+        <li><strong>Data portability</strong> — you can request a copy of your data by email</li>
+        <li><strong>Object</strong> to the processing of your data</li>
+      </ul>
+      <p>To exercise any of these rights, contact: <a href="mailto:sity@aletm.com">sity@aletm.com</a></p>
+
+      <h2>7. Data retention</h2>
+      <p>Your data is kept for as long as your account is active. When you delete your account, all associated data is permanently and irreversibly deleted.</p>
+      <p>Technical logs are automatically rotated and kept for no more than 30 days.</p>
+
+      <h2>8. Cookies</h2>
+      <p>Sity uses a strictly necessary session cookie to keep you authenticated. We do not use any proprietary tracking cookies.</p>
+      <p>Google Analytics may use its own cookies to measure app usage anonymously.</p>
+
+      <h2>9. Changes to this policy</h2>
+      <p>If we make relevant changes, we will notify you in the app. The last updated date will always be visible at the top of this document.</p>
+    </div>
+
+    <a href="/" class="back">← Volver a Sity / Back to Sity</a>
+
+  </div>
+
+  <script>
+    function setLang(lang) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.lang-switch button').forEach(b => b.classList.remove('active'));
+      document.getElementById('lang-' + lang).classList.add('active');
+      event.target.classList.add('active');
+    }
+  </script>
+</body>
+</html>

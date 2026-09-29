@@ -116,6 +116,7 @@ export interface T {
     locationClear: string;
     locationSourceLabel: (source: string) => string;
     guestRegisterHint: string;
+    privacyPolicy: string;
   };
   chat: {
     guest: string;
@@ -386,6 +387,7 @@ const es: T = {
       source === 'auto'    ? 'Detectada por Sity' :
       source === 'denied'  ? 'Acceso denegado' : '',
     guestRegisterHint: 'Regístrate para personalizar la configuración.',
+    privacyPolicy: 'Política de privacidad',
   },
   chat: {
     guest: 'Invitado',
@@ -652,6 +654,7 @@ const en: T = {
       source === 'auto'    ? 'Detected by Sity' :
       source === 'denied'  ? 'Access denied' : '',
     guestRegisterHint: 'Sign up to customize your settings.',
+    privacyPolicy: 'Privacy policy',
   },
   chat: {
     guest: 'Guest',
@@ -918,6 +921,7 @@ const ja: T = {
       source === 'auto'    ? 'Sityが検出' :
       source === 'denied'  ? 'アクセス拒否' : '',
     guestRegisterHint: '設定をカスタマイズするには登録してください。',
+    privacyPolicy: 'プライバシーポリシー',
   },
   chat: {
     guest: 'ゲスト',

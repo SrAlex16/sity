@@ -309,6 +309,19 @@
   margin: 0;
 }
 
+/* Onboarding info button row — below tagline */
+.infoBtnRow {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0 0 1.5rem;
+}
+
+.infoBtnRow .infoBtn {
+  margin: 0;
+  text-decoration: none;
+}
+
 /* Onboarding info button — below tagline */
 .infoBtn {
   background: none;

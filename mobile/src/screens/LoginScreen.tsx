@@ -151,13 +151,23 @@ export function LoginScreen({ auth, onSwitchToRegister, initialResetToken, onRes
     <div className={styles.screen}>
       <p className={styles.logo}>SITY</p>
       <p className={styles.tagline}>//Synthetic Intelligence TechnologY</p>
-      <button
-        type="button"
-        className={styles.infoBtn}
-        onClick={() => setOnboardingOpen(true)}
-      >
-        ⓘ {tla.onboardingBtn}
-      </button>
+      <div className={styles.infoBtnRow}>
+        <button
+          type="button"
+          className={styles.infoBtn}
+          onClick={() => setOnboardingOpen(true)}
+        >
+          ⓘ {tla.onboardingBtn}
+        </button>
+        <a
+          href="/privacy.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.infoBtn}
+        >
+          {tla.privacyTitle}
+        </a>
+      </div>
 
       <div className={styles.card}>
         <p className={styles.cardTitle}>{tla.signInTitle}</p>
