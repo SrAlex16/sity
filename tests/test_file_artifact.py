@@ -158,7 +158,7 @@ def test_wire_uploaded_images_to_message(db_session: Session, upload_dir: Path) 
     from app.chat.file_artifact import save_uploaded_image, wire_uploaded_images_to_message
     from app.memory.models import FileArtifact
 
-    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=1)
+    row = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=90001)
     assert row.chat_message_id is None  # not linked yet
 
     wire_uploaded_images_to_message(db_session, [row.id], chat_message_id=999)
@@ -184,14 +184,14 @@ def test_file_artifact_user_isolation(db_session: Session, upload_dir: Path) -> 
     from app.chat.file_artifact import save_uploaded_image
     from app.memory.models import FileArtifact
 
-    row_a = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=101)
-    row_b = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=202)
+    row_a = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=90101)
+    row_b = save_uploaded_image(_PNG_B64, "image/png", db_session, user_id=90202)
 
     user_a_rows = db_session.exec(
-        select(FileArtifact).where(FileArtifact.user_id == 101)
+        select(FileArtifact).where(FileArtifact.user_id == 90101)
     ).all()
     user_b_rows = db_session.exec(
-        select(FileArtifact).where(FileArtifact.user_id == 202)
+        select(FileArtifact).where(FileArtifact.user_id == 90202)
     ).all()
 
     a_ids = {r.id for r in user_a_rows}

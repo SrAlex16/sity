@@ -43,7 +43,7 @@ def _mem_db():
 def _add_artifact(
     db: Session,
     *,
-    user_id: int = 1,
+    user_id: int = 90001,
     file_size_bytes: int = 100,
     is_permanent: bool = False,
     expires_at: datetime | None = None,
@@ -166,7 +166,7 @@ class TestDeleteWithExpiresAt:
     def test_past_expires_at_deletes_row(self, db_session: Session, retention_root: Path) -> None:
         from app.chat.file_retention import delete_old_file_artifacts
         past = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
-        fa = _add_artifact(db_session, expires_at=past, user_id=20)
+        fa = _add_artifact(db_session, expires_at=past, user_id=90020)
         result = delete_old_file_artifacts(db_session)
         assert result["deleted"] >= 1
         assert db_session.get(FileArtifact, fa.id) is None
@@ -174,14 +174,14 @@ class TestDeleteWithExpiresAt:
     def test_future_expires_at_keeps_row(self, db_session: Session, retention_root: Path) -> None:
         from app.chat.file_retention import delete_old_file_artifacts
         future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=5)
-        fa = _add_artifact(db_session, expires_at=future, user_id=21)
+        fa = _add_artifact(db_session, expires_at=future, user_id=90021)
         delete_old_file_artifacts(db_session)
         assert db_session.get(FileArtifact, fa.id) is not None
 
     def test_permanent_file_never_deleted(self, db_session: Session, retention_root: Path) -> None:
         from app.chat.file_retention import delete_old_file_artifacts
         past = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
-        fa = _add_artifact(db_session, expires_at=past, is_permanent=True, user_id=22)
+        fa = _add_artifact(db_session, expires_at=past, is_permanent=True, user_id=90022)
         result = delete_old_file_artifacts(db_session)
         assert db_session.get(FileArtifact, fa.id) is not None
 
@@ -189,7 +189,7 @@ class TestDeleteWithExpiresAt:
         from app.chat.file_retention import delete_old_file_artifacts
         # No expires_at, created_at 10 days ago → should be deleted with older_than_days=7
         old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10)
-        fa = _add_artifact(db_session, created_at=old, user_id=23)
+        fa = _add_artifact(db_session, created_at=old, user_id=90023)
         result = delete_old_file_artifacts(db_session, older_than_days=7)
         assert result["deleted"] >= 1
         assert db_session.get(FileArtifact, fa.id) is None
@@ -197,7 +197,7 @@ class TestDeleteWithExpiresAt:
     def test_legacy_recent_row_not_deleted(self, db_session: Session, retention_root: Path) -> None:
         from app.chat.file_retention import delete_old_file_artifacts
         recent = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
-        fa = _add_artifact(db_session, created_at=recent, user_id=24)
+        fa = _add_artifact(db_session, created_at=recent, user_id=90024)
         delete_old_file_artifacts(db_session, older_than_days=7)
         assert db_session.get(FileArtifact, fa.id) is not None
 
