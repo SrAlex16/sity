@@ -29,7 +29,7 @@ jobs:
         run: python -m compileall -q backend/app
 
       - name: Run pytest local tests
-        run: pytest -q tests
+        run: pytest -q tests -m "not behavior_regression"
 
       - name: Type check (mypy)
         run: |

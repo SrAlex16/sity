@@ -281,11 +281,25 @@ class TestReflectionFutureCommitments:
 
 class TestProceduralPatternExpectation:
     def test_eligible_pattern_creates_expectation(self, db_session: Session) -> None:
-        from app.memory.models import ProceduralObservation
+        from app.memory.models import ProceduralObservation, ProceduralPattern
+        from app.cognition.procedural_service import _compute_confidence
         _clean(db_session, _UID)
         db_session.exec(sql_delete(ProceduralObservation).where(ProceduralObservation.user_id == _UID))  # type: ignore[call-overload]
+        db_session.exec(sql_delete(ProceduralPattern).where(ProceduralPattern.user_id == _UID))  # type: ignore[call-overload]
         db_session.commit()
-        # Create 3 unprocessed observations so synthesis fires
+
+        # Seed an existing pattern (simulates a prior synthesis run) with occurrence_count=5
+        # so that after 3 new observations → total=8 → confidence(8)=0.65 >= 0.55
+        seed_pattern = ProceduralPattern(
+            user_id=_UID,
+            context_type="ask_question",
+            strategy_description="Old strategy",
+            confidence=_compute_confidence(5),
+            evidence_trail_json="[]",
+            occurrence_count=5,
+        )
+        db_session.add(seed_pattern)
+        # Add 3 unprocessed observations (≥ _PROCEDURAL_THRESHOLD=3 to trigger synthesis)
         for i in range(3):
             obs = ProceduralObservation(
                 user_id=_UID, context_type="ask_question",
@@ -299,7 +313,8 @@ class TestProceduralPatternExpectation:
             from app.cognition.procedural_service import _run_pattern_synthesis
             _run_pattern_synthesis(_UID, "ask_question", "test-trace")
 
-        # Expectation should now exist
+        # Expire session cache so we see data committed by _run_pattern_synthesis's own session
+        db_session.expire_all()
         exp = db_session.exec(
             __import__("sqlmodel").select(Expectation)
             .where(Expectation.user_id == _UID)
