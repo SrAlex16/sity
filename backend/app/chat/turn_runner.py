@@ -546,6 +546,22 @@ def _chat_message_inner(
         if _goals_block:
             persona_prompt += f"\n\n{_goals_block}"
 
+        # Episodic memory: inject high-score recalled episodes into persona_prompt
+        # so Expression has access to relevant past context (MINI-REMAKE v2.0 Punto 1).
+        if _cognition_result.recalled_episodes:
+            from app.cognition.episode_service import (
+                EPISODE_PROMPT_MIN_SCORE,
+                build_recalled_episodes_block,
+            )
+            _high_score_eps = [
+                r for r in _cognition_result.recalled_episodes
+                if r.recall_score > EPISODE_PROMPT_MIN_SCORE
+            ]
+            if _high_score_eps:
+                _ep_block = build_recalled_episodes_block(_high_score_eps)
+                if _ep_block:
+                    persona_prompt += f"\n\n{_ep_block}"
+
         # Expression: inject Decision action instruction into persona_prompt.
         # "wait" cannot be a real synchronous action — fall through to answer + log.
         # All other actions (including "refuse") are expressed via instruction block.

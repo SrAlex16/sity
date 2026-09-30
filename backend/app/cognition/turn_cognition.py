@@ -35,7 +35,12 @@ from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
 from app.cognition.decision import DecisionResult, run_decision
-from app.cognition.episode_service import compute_salience, maybe_create_episode
+from app.cognition.episode_service import (
+    RecalledEpisode,
+    compute_salience,
+    maybe_create_episode,
+    retrieve_relevant_episodes,
+)
 from app.cognition.procedural_service import load_active_patterns, maybe_trigger_pattern_synthesis
 from app.cognition.semantic_service import load_active_facts
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
@@ -64,6 +69,7 @@ class CognitionTurnResult:
     active_goals: list[Goal] = field(default_factory=list)
     decision: DecisionResult | None = None
     reflection: ReflectionResult | None = None
+    recalled_episodes: list[RecalledEpisode] = field(default_factory=list)
 
 
 def run_cognition_turn(
@@ -96,6 +102,27 @@ def run_cognition_turn(
         })
 
     perception = run_perception(user_message, trace_id=trace_id)
+
+    # Step 3b: retrieve relevant episodes — run immediately after Perception so
+    # context_type and rough topic keywords are available; Decision uses them.
+    _recalled_episodes: list[RecalledEpisode] = []
+    try:
+        _current_topics = [w.lower() for w in user_message.split() if len(w) >= 4][:10]
+        _recalled_episodes = retrieve_relevant_episodes(
+            session,
+            user_id,
+            current_topics=_current_topics,
+            context_type=perception.context_type,
+            limit=3,
+        )
+    except Exception as _retr_exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="episode_retrieval_failed",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(_retr_exc)[:200]},
+        )
 
     # Load the SQLModel row (not the dict) to apply deltas in-place
     ms_row = settings_service.get_or_create_mental_state(user_id)
@@ -157,6 +184,7 @@ def run_cognition_turn(
             perception=perception,
             appraisal=appraisal,
             source_message_ids=[],
+            context_type=perception.context_type,
             trace_id=trace_id,
         )
     except Exception as ep_exc:
@@ -235,6 +263,7 @@ def run_cognition_turn(
             values=_values_dict,
             procedural_patterns=_proc_patterns or None,
             active_expectations=_active_exps or None,
+            recalled_episodes=_recalled_episodes or None,
         )
     except Exception as dec_exc:
         write_log(
@@ -306,4 +335,5 @@ def run_cognition_turn(
         active_goals=active_goals,
         decision=decision_result,
         reflection=reflection_result,
+        recalled_episodes=_recalled_episodes,
     )

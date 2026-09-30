@@ -572,6 +572,7 @@ class Episode(SQLModel, table=True):
     recall_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=utc_now)
     semantically_processed: bool = Field(default=False)   # True once consumed by semantic consolidation (Fase 9)
+    context_type: str = Field(default="")                 # Perception context_type at episode creation time
 
 
 class AutobiographicalNarrative(SQLModel, table=True):

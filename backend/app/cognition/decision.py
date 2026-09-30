@@ -25,6 +25,7 @@ from app.cognition.appraisal import AppraisalResult
 from app.cognition.perception import PerceptionResult
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
+from app.cognition.episode_service import RecalledEpisode
 from app.memory.models import Expectation, ProceduralPattern
 from app.settings.settings_service import clamp_01
 from app.trace.logger import write_log
@@ -551,6 +552,7 @@ def _build_decision_context(
     python_scores: dict[str, float],
     signals_summary: dict,
     pattern_hint: str = "",
+    recalled_episodes: list[RecalledEpisode] | None = None,
 ) -> str:
     top_action = max(python_scores, key=lambda a: python_scores[a])
     top_score = python_scores[top_action]
@@ -563,6 +565,14 @@ def _build_decision_context(
     )
     if pattern_hint:
         base += f"\n\nLEARNED PATTERN ({signals_summary.get('context_type', '')}): {pattern_hint}"
+    if recalled_episodes:
+        lines = []
+        for r in recalled_episodes[:3]:
+            ep = r.episode
+            ts = ep.occurred_at.strftime("%Y-%m-%d") if ep.occurred_at else "?"
+            summary = ep.summary[:100] + ("…" if len(ep.summary) > 100 else "")
+            lines.append(f"- [{ts}] {summary} (salience: {ep.salience_total:.2f})")
+        base += "\n\nEPISODIOS RELEVANTES DE CONVERSACIONES ANTERIORES:\n" + "\n".join(lines)
     return base
 
 
@@ -708,6 +718,7 @@ def run_decision(
     values: dict[str, float] | None = None,
     procedural_patterns: list[ProceduralPattern] | None = None,
     active_expectations: list[Expectation] | None = None,
+    recalled_episodes: list[RecalledEpisode] | None = None,
 ) -> DecisionResult | None:
     """Run the Decision module for this turn.
 
@@ -765,7 +776,9 @@ def run_decision(
                 pattern_hint = _p.strategy_description[:120]
                 break
 
-    context = _build_decision_context(user_message, python_scores, signals_summary, pattern_hint)
+    context = _build_decision_context(
+        user_message, python_scores, signals_summary, pattern_hint, recalled_episodes
+    )
     try:
         haiku_result = _call_decision_haiku(context, trace_id=trace_id)
     except Exception as exc:

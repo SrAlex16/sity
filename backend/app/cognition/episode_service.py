@@ -30,11 +30,13 @@ Haiku call (max_tokens=150) is made ONLY when salience ≥ 0.25.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from app.cognition.appraisal import AppraisalResult
 from app.cognition.perception import PerceptionResult
@@ -64,6 +66,28 @@ _STRENGTH_ALTA  = 1.00
 # Special rule: explicit_importance above this floor forces salience ≥ _EXPLICIT_FLOOR_VALUE
 _EXPLICIT_FLOOR_TRIGGER = 0.70
 _EXPLICIT_FLOOR_VALUE   = 0.45
+
+
+# ---------------------------------------------------------------------------
+# Retrieval constants
+# ---------------------------------------------------------------------------
+
+# RecencyBoost: f(d) = 1 / (1 + (d/τ)^α) — calibrated so f(0)=1.0, f(30)≈0.5, f(365)≈0.1
+_RECENCY_HALF_LIFE_DAYS: float = 30.0
+# α = ln(9) / ln(365/30) ≈ 0.879 — derived from the two calibration points above
+_RECENCY_POWER: float = math.log(9.0) / math.log(365.0 / 30.0)
+_RECENCY_FLOOR: float = 0.05              # very old episodes still contribute slightly
+
+_CONTEXT_MATCH_SCORE: float = 1.0        # same context_type
+_CONTEXT_MISMATCH_SCORE: float = 0.6     # different or unknown context_type
+
+_TOPIC_SIMILARITY_BASE: float = 0.20     # similarity floor when no topic overlap
+
+# Minimum RecallScore required to inject an episode into persona_prompt
+EPISODE_PROMPT_MIN_SCORE: float = 0.60
+
+# How many recent episodes to score for retrieval
+_RETRIEVAL_CANDIDATE_POOL: int = 50
 
 
 def _clamp01(v: float) -> float:
@@ -105,6 +129,13 @@ class EpisodeSummaryResult:
     topics: list[str] = field(default_factory=list)
     emotional_valence: float = 0.0
     emotional_arousal: float = 0.0
+
+
+@dataclass
+class RecalledEpisode:
+    """An episode retrieved by relevance scoring, bundled with its recall score."""
+    episode: Episode
+    recall_score: float
 
 
 _SUMMARY_SYSTEM = (
@@ -229,6 +260,125 @@ def compute_salience(
     )
 
 
+# ---------------------------------------------------------------------------
+# Retrieval helpers
+# ---------------------------------------------------------------------------
+
+def _recency_boost(occurred_at: datetime) -> float:
+    """Smooth recency decay: today=1.0, 30 days≈0.5, 1 year≈0.1, floor=0.05.
+
+    Strips timezone from the reference so subtraction works whether occurred_at
+    was just created (aware) or read back from SQLite (naive).
+    """
+    now_naive = utc_now().replace(tzinfo=None)
+    occ_naive = occurred_at.replace(tzinfo=None)
+    age_days = max(0.0, (now_naive - occ_naive).total_seconds() / 86400.0)
+    raw = 1.0 / (1.0 + (age_days / _RECENCY_HALF_LIFE_DAYS) ** _RECENCY_POWER)
+    return max(_RECENCY_FLOOR, raw)
+
+
+def _topic_similarity(topics_json: str, current_topics: list[str]) -> float:
+    """Word-level overlap between episode topics and current turn topics.
+
+    Returns _TOPIC_SIMILARITY_BASE (0.20) when there is no overlap so the
+    episode can still score via salience, strength and recency.
+    """
+    if not current_topics:
+        return _TOPIC_SIMILARITY_BASE
+    try:
+        ep_topics = {t.lower().strip() for t in json.loads(topics_json) if t}
+    except (json.JSONDecodeError, TypeError):
+        return _TOPIC_SIMILARITY_BASE
+    if not ep_topics:
+        return _TOPIC_SIMILARITY_BASE
+    current_lower = {t.lower().strip() for t in current_topics}
+    overlap = len(ep_topics & current_lower)
+    return min(1.0, _TOPIC_SIMILARITY_BASE + (1.0 - _TOPIC_SIMILARITY_BASE) * overlap / len(ep_topics))
+
+
+def _compute_recall_score(
+    episode: Episode,
+    *,
+    current_topics: list[str],
+    context_type: str,
+) -> float:
+    """RecallScore = Similarity × Salience × Strength × RecencyBoost × ContextRelevance."""
+    similarity      = _topic_similarity(episode.topics_json, current_topics)
+    salience        = episode.salience_total
+    strength        = episode.strength
+    recency         = _recency_boost(episode.occurred_at)
+    ctx_relevance   = (
+        _CONTEXT_MATCH_SCORE
+        if (episode.context_type and episode.context_type == context_type)
+        else _CONTEXT_MISMATCH_SCORE
+    )
+    return similarity * salience * strength * recency * ctx_relevance
+
+
+# ---------------------------------------------------------------------------
+# Public retrieval entry point
+# ---------------------------------------------------------------------------
+
+def retrieve_relevant_episodes(
+    session: Session,
+    user_id: int,
+    *,
+    current_topics: list[str],
+    context_type: str,
+    limit: int = 3,
+) -> list[RecalledEpisode]:
+    """Return up to `limit` episodes ranked by RecallScore.
+
+    Loads the most recent _RETRIEVAL_CANDIDATE_POOL episodes, scores each,
+    returns the top-scoring ones. Also increments recall_count and sets
+    last_recalled_at on every returned episode.
+    """
+    candidates = session.exec(
+        select(Episode)
+        .where(Episode.user_id == user_id)
+        .order_by(col(Episode.occurred_at).desc())
+        .limit(_RETRIEVAL_CANDIDATE_POOL)
+    ).all()
+
+    if not candidates:
+        return []
+
+    scored = [
+        RecalledEpisode(
+            episode=ep,
+            recall_score=_compute_recall_score(
+                ep, current_topics=current_topics, context_type=context_type
+            ),
+        )
+        for ep in candidates
+    ]
+    scored.sort(key=lambda r: r.recall_score, reverse=True)
+    top = scored[:limit]
+
+    now = utc_now()
+    for r in top:
+        r.episode.recall_count = (r.episode.recall_count or 0) + 1
+        r.episode.last_recalled_at = now
+        session.add(r.episode)
+    if top:
+        session.commit()
+
+    return top
+
+
+def build_recalled_episodes_block(recalled: list[RecalledEpisode]) -> str:
+    """Format retrieved episodes as a persona_prompt block."""
+    if not recalled:
+        return ""
+    lines = []
+    for r in recalled:
+        ep = r.episode
+        ts = ep.occurred_at.strftime("%Y-%m-%d") if ep.occurred_at else "?"
+        summary = ep.summary[:100] + ("…" if len(ep.summary) > 100 else "")
+        lines.append(f"- [{ts}] {summary} (salience: {ep.salience_total:.2f})")
+    return "EPISODIOS RELEVANTES RECORDADOS:\n" + "\n".join(lines)
+
+
 def maybe_create_episode(
     session: Session,
     user_id: int,
@@ -237,6 +387,7 @@ def maybe_create_episode(
     appraisal: AppraisalResult,
     source_message_ids: list[int],
     *,
+    context_type: str = "",
     trace_id: str = "",
 ) -> Optional[Episode]:
     """Evaluate salience and, when sufficient, create an Episode row.
@@ -270,6 +421,7 @@ def maybe_create_episode(
         relationship_effect_json="{}",
         strength=sal.strength,
         recall_count=0,
+        context_type=context_type,
         created_at=utc_now(),
     )
     session.add(episode)

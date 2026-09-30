@@ -457,6 +457,20 @@ def _migrate_episode_semantically_processed() -> None:
                                "added_columns": ["semantically_processed"]})
 
 
+def _migrate_episode_context_type() -> None:
+    """Add context_type column to episode if absent (MINI-REMAKE v2.0 Punto 1)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(episode)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # table not yet created; create_all handles full schema
+        if "context_type" not in existing:
+            conn.execute(text("ALTER TABLE episode ADD COLUMN context_type TEXT NOT NULL DEFAULT ''"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "episode", "added_columns": ["context_type"]})
+
+
 def _migrate_reflectionlog() -> None:
     """Add user_belief_updates_json column to reflectionlog if absent (Fase 8 Paso 2)."""
     with engine.connect() as conn:
@@ -518,6 +532,7 @@ def init_db() -> None:
         _migrate_userachievement()
         _migrate_fileartifact()
         _migrate_episode_semantically_processed()
+        _migrate_episode_context_type()
         _migrate_reflectionlog()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
