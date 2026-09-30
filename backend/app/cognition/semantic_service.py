@@ -385,14 +385,73 @@ def _run_fact_synthesis(*, user_id: int, trace_id: str = "") -> None:
         )
 
 
+_SEMANTIC_PASSIVE_DECAY: float = 0.02       # confidence penalty per cycle for unstable facts
+_SEMANTIC_PASSIVE_DECAY_MIN_CONFIDENCE: float = 0.65
+_SEMANTIC_PASSIVE_DECAY_MIN_REINFORCEMENTS: int = 3
+
+
+def apply_semantic_fact_decay(*, user_id: int, trace_id: str = "") -> None:
+    """Apply passive confidence decay to under-reinforced, low-confidence facts.
+
+    Targets: active facts where confidence < 0.65 AND reinforcement_count < 3
+    AND stability != "stable". Deactivates any fact whose confidence drops below
+    SEMANTIC_DEACTIVATION_THRESHOLD after decay.
+
+    Called from maybe_trigger_semantic_consolidation() every synthesis cycle.
+    Never raises.
+    """
+    try:
+        with Session(engine) as db:
+            stmt = select(SemanticFact).where(
+                SemanticFact.user_id == user_id,
+                SemanticFact.is_active == True,  # noqa: E712
+                SemanticFact.confidence < _SEMANTIC_PASSIVE_DECAY_MIN_CONFIDENCE,
+                SemanticFact.reinforcement_count < _SEMANTIC_PASSIVE_DECAY_MIN_REINFORCEMENTS,
+                SemanticFact.stability != "stable",
+            )
+            facts = db.exec(stmt).all()
+            if not facts:
+                return
+            decayed = 0
+            deactivated = 0
+            for fact in facts:
+                fact.confidence = max(0.0, fact.confidence - _SEMANTIC_PASSIVE_DECAY)
+                if fact.confidence < SEMANTIC_DEACTIVATION_THRESHOLD:
+                    fact.is_active = False
+                    deactivated += 1
+                else:
+                    decayed += 1
+                db.add(fact)
+            db.commit()
+            if decayed or deactivated:
+                write_log(
+                    level="INFO",
+                    module="cognition",
+                    event="semantic_passive_decay_applied",
+                    trace_id=trace_id,
+                    payload={"user_id": user_id, "decayed": decayed, "deactivated": deactivated},
+                )
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="semantic_passive_decay_failed",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(exc)[:200]},
+        )
+
+
 def maybe_trigger_semantic_consolidation(*, user_id: int, trace_id: str = "") -> None:
     """Check unprocessed episode count; run synthesis inline if threshold reached.
 
     Called from social/update.py _run_social_update (already in a daemon thread).
     Opens its own Session for the count check, then delegates to _run_fact_synthesis.
+    Also applies passive fact decay each cycle.
     Never raises.
     """
     try:
+        apply_semantic_fact_decay(user_id=user_id, trace_id=trace_id)
+
         with Session(engine) as db:
             count = db.execute(
                 sa_text(

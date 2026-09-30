@@ -790,6 +790,7 @@ class SemanticFact(SQLModel, table=True):
     last_contradicted_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now)
     is_active: bool = Field(default=True)
+    stability: str = Field(default="normal")        # "volatile" | "normal" | "stable"
 
 
 class SityValues(SQLModel, table=True):

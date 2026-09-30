@@ -488,6 +488,20 @@ def _migrate_reflectionlog() -> None:
                                "added_columns": ["user_belief_updates_json"]})
 
 
+def _migrate_semanticfact_stability() -> None:
+    """Add stability column to semanticfact if absent (MINI-REMAKE v2.0 Punto 4-B)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(semanticfact)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # table not yet created; create_all handles full schema
+        if "stability" not in existing:
+            conn.execute(text("ALTER TABLE semanticfact ADD COLUMN stability TEXT NOT NULL DEFAULT 'normal'"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "semanticfact", "added_columns": ["stability"]})
+
+
 def _migrate_bugreport() -> None:
     """Add user-submitted report columns to bugreport if absent (2026-09-25)."""
     _NEW_COLS = [
@@ -534,6 +548,7 @@ def init_db() -> None:
         _migrate_episode_semantically_processed()
         _migrate_episode_context_type()
         _migrate_reflectionlog()
+        _migrate_semanticfact_stability()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts

@@ -35,6 +35,7 @@ from sqlmodel import Session
 
 from app.cognition.appraisal import AppraisalResult, apply_appraisal_to_mental_state, run_appraisal
 from app.cognition.decision import DecisionResult, run_decision
+from app.cognition.temporal_decay import apply_mental_state_decay
 from app.cognition.episode_service import (
     RecalledEpisode,
     compute_salience,
@@ -56,7 +57,7 @@ from app.cognition.goal_service import (
     resolve_expired_short_term_goals,
 )
 from app.cognition.perception import PerceptionResult, run_perception
-from app.memory.models import Goal
+from app.memory.models import Goal, utc_now
 from app.settings.settings_service import SettingsService
 from app.social.social_service import apply_appraisal_to_social_profile, get_or_create_social_profile
 from app.trace.logger import write_log
@@ -126,6 +127,7 @@ def run_cognition_turn(
 
     # Load the SQLModel row (not the dict) to apply deltas in-place
     ms_row = settings_service.get_or_create_mental_state(user_id)
+    apply_mental_state_decay(ms_row, now=utc_now())
     mental_state_dict = {
         "interest":          ms_row.interest,
         "frustration":       ms_row.frustration,
