@@ -488,6 +488,47 @@ def _migrate_reflectionlog() -> None:
                                "added_columns": ["user_belief_updates_json"]})
 
 
+def _migrate_expectation_punto5() -> None:
+    """Add Punto 5 fields to expectation table (MINI-REMAKE v2.0 Punto 5)."""
+    _NEW_COLS = [
+        ("expectation_type", "TEXT NOT NULL DEFAULT 'event'"),
+        ("source",           "TEXT NOT NULL DEFAULT 'reflection'"),
+        ("due_at",           "DATETIME"),
+        ("importance",       "REAL NOT NULL DEFAULT 0.5"),
+        ("observability",    "TEXT NOT NULL DEFAULT 'direct'"),
+        ("status",           "TEXT NOT NULL DEFAULT 'pending'"),
+        ("proposition",      "TEXT NOT NULL DEFAULT ''"),
+    ]
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(expectation)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return  # table not yet created; create_all handles full schema
+        added = []
+        for col, typedef in _NEW_COLS:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE expectation ADD COLUMN {col} {typedef}"))
+                added.append(col)
+        if added:
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "expectation", "added_columns": added})
+
+
+def _migrate_proceduralpattern_behavioral_priors() -> None:
+    """Add behavioral_priors_json column to proceduralpattern (MINI-REMAKE v2.0 Punto 5)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(proceduralpattern)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return
+        if "behavioral_priors_json" not in existing:
+            conn.execute(text("ALTER TABLE proceduralpattern ADD COLUMN behavioral_priors_json TEXT"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "proceduralpattern", "added_columns": ["behavioral_priors_json"]})
+
+
 def _migrate_semanticfact_stability() -> None:
     """Add stability column to semanticfact if absent (MINI-REMAKE v2.0 Punto 4-B)."""
     with engine.connect() as conn:
@@ -548,6 +589,8 @@ def init_db() -> None:
         _migrate_episode_semantically_processed()
         _migrate_episode_context_type()
         _migrate_reflectionlog()
+        _migrate_expectation_punto5()
+        _migrate_proceduralpattern_behavioral_priors()
         _migrate_semanticfact_stability()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.

@@ -17,6 +17,8 @@ Confidence policy:
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from typing import Optional
 
 from sqlmodel import Session, select
 
@@ -250,6 +252,12 @@ def upsert_expectation(
     expected_behavior: str,
     probability: float,
     trace_id: str = "",
+    expectation_type: str = "event",
+    source: str = "reflection",
+    due_at: Optional[datetime] = None,
+    importance: float = 0.5,
+    observability: str = "direct",
+    proposition: str = "",
 ) -> Expectation | None:
     """Create or update an Expectation for (user_id, context_type, expected_behavior).
 
@@ -284,6 +292,12 @@ def upsert_expectation(
             existing.occurrence_count += 1
             existing.evidence_trail_json = json.dumps(old_trail[:50], ensure_ascii=False)
             existing.last_observed_at = utc_now()
+            if due_at is not None:
+                existing.due_at = due_at
+            existing.importance = max(0.0, min(1.0, importance))
+            existing.observability = observability
+            if proposition:
+                existing.proposition = proposition[:300]
             session.add(existing)
             session.commit()
             session.refresh(existing)
@@ -297,6 +311,12 @@ def upsert_expectation(
             probability=clamped_prob,
             evidence_trail_json=json.dumps(trail, ensure_ascii=False),
             occurrence_count=1,
+            expectation_type=expectation_type,
+            source=source,
+            due_at=due_at,
+            importance=max(0.0, min(1.0, importance)),
+            observability=observability,
+            proposition=proposition[:300] if proposition else "",
         )
         session.add(row)
         session.commit()

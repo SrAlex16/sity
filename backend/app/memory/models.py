@@ -686,6 +686,7 @@ class ProceduralPattern(SQLModel, table=True):
     last_observed_at: datetime = Field(default_factory=utc_now)
     created_at: datetime = Field(default_factory=utc_now)
     is_active: bool = Field(default=True)
+    behavioral_priors_json: Optional[str] = Field(default=None)  # JSON dict — structured priors
 
 
 class UserKnowledge(SQLModel, table=True):
@@ -760,6 +761,31 @@ class Expectation(SQLModel, table=True):
     last_observed_at: datetime = Field(default_factory=utc_now)
     created_at: datetime = Field(default_factory=utc_now)
     is_active: bool = Field(default=True)
+    # Punto 5 fields
+    expectation_type: str = Field(default="event")          # "event" | "pattern"
+    source: str = Field(default="reflection")               # "reflection" | "procedural"
+    due_at: Optional[datetime] = Field(default=None)        # deadline hint, type="event" only
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    observability: str = Field(default="direct")            # "direct" | "indirect" | "unobservable"
+    status: str = Field(default="pending")                  # "pending"|"fulfilled"|"violated"|"expired_unknown"|"cancelled"
+    proposition: str = Field(default="")                    # free-text description (event expectations)
+
+
+class ExpectationResolution(SQLModel, table=True):
+    """Audit record for every resolved Expectation (Punto 5).
+
+    Created when an Expectation transitions from 'pending' to any terminal status.
+    Stores the prediction error (y − p) and information-theoretic surprise
+    (−log2(P(outcome))) for downstream Appraisal and trust_reliability signals.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    expectation_id: int = Field(index=True)
+    turn_id: str = Field(default="")                        # trace_id of the resolving turn
+    outcome: str                                            # "fulfilled"|"violated"|"expired_unknown"|"cancelled"
+    predicted_probability: float
+    prediction_error: float                                 # y − p  (y=1 if fulfilled, else 0)
+    surprise: float                                         # −log2(P(outcome_observed))
+    resolved_at: datetime = Field(default_factory=utc_now)
 
 
 class SemanticFact(SQLModel, table=True):

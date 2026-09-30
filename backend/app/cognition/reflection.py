@@ -4,11 +4,12 @@ Conditional Haiku call (#5 per turn) only when salience_total >= _REFLECTION_SAL
 
 Architecture (sección 56):
   1. Build context from turn data (perception, appraisal, decision, salience).
-  2. Haiku answers 10 introspective questions and returns structured JSON.
+  2. Haiku answers 11 introspective questions and returns structured JSON.
   3. Save ReflectionLog to DB (full traceability for sección 57).
   4. Extract belief_updates → add_belief_candidate() with source="metacognition", confidence=0.40.
   5. Extract user_belief_updates → add_belief_attribution() with confidence=0.35 (Fase 8).
-  6. Return ReflectionResult or None on any failure.
+  6. Extract future_commitments → upsert_expectation() (Punto 5).
+  7. Return ReflectionResult or None on any failure.
 
 sección 57 invariant: outputs are NEVER auto-applied as facts. Belief candidates
 require explicit promotion by the caller — confidence 0.40 is the metacognition floor.
@@ -20,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from sqlmodel import Session
 
@@ -27,10 +29,14 @@ from app.cognition.appraisal import AppraisalResult
 from app.cognition.decision import DecisionResult
 from app.cognition.perception import PerceptionResult
 from app.cognition.self_model_service import add_belief_candidate, get_or_create_self_model
-from app.cognition.user_model_service import add_belief_attribution
+from app.cognition.user_model_service import (
+    VALID_EXPECTED_BEHAVIORS,
+    add_belief_attribution,
+    upsert_expectation,
+)
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
-from app.memory.models import ReflectionLog
+from app.memory.models import ReflectionLog, utc_now
 from app.trace.logger import write_log
 
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
@@ -38,6 +44,26 @@ _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 # Equals _THR_MEDIA from episode_service — the same "significant turn" threshold.
 # Defined here without import to keep modules decoupled.
 _REFLECTION_SALIENCE_MIN: float = 0.45
+
+# Approximate timedeltas for due_at_hint → datetime conversion
+_DUE_AT_HINT_MAP: dict[str, timedelta] = {
+    "hoy":            timedelta(hours=6),
+    "today":          timedelta(hours=6),
+    "mañana":         timedelta(hours=24),
+    "tomorrow":       timedelta(hours=24),
+    "esta semana":    timedelta(days=7),
+    "this week":      timedelta(days=7),
+    "próxima semana": timedelta(days=14),
+    "next week":      timedelta(days=14),
+    "pronto":         timedelta(days=3),
+    "soon":           timedelta(days=3),
+    "este mes":       timedelta(days=30),
+    "this month":     timedelta(days=30),
+}
+
+# context_type → expected_behavior mapping for event expectations
+# Uses the closest behavioral match from VALID_EXPECTED_BEHAVIORS
+_COMMITMENT_BEHAVIOR = "plan_together"  # best fit for explicit future commitments
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +76,8 @@ class ReflectionResult:
 
     All list fields are observations (strings), never commands.
     sección 57: belief_updates are candidates — they require explicit promotion.
+    future_commitments: list of dicts with keys proposition, due_at_hint, importance,
+      observability — converted to Expectation rows by run_reflection().
     """
     success_estimate: float
     memory_candidates: list[str] = field(default_factory=list)
@@ -58,6 +86,7 @@ class ReflectionResult:
     goal_updates: list[str] = field(default_factory=list)
     self_model_updates: list[str] = field(default_factory=list)
     user_belief_updates: list[str] = field(default_factory=list)
+    future_commitments: list[dict] = field(default_factory=list)
     log_id: int | None = None  # set after DB save
 
 
@@ -67,7 +96,7 @@ class ReflectionResult:
 
 _REFLECTION_SYSTEM = (
     "You are Sity's internal reflection module. Analyze the conversational turn "
-    "provided and answer 10 introspective questions.\n\n"
+    "provided and answer 11 introspective questions.\n\n"
     "Return ONLY a JSON object — no markdown, no explanation:\n"
     '{"success_estimate": <float 0-1, how well this turn went>,\n'
     ' "memory_candidates": [<moments worth remembering, may be empty>],\n'
@@ -75,7 +104,17 @@ _REFLECTION_SYSTEM = (
     ' "relationship_evidence": [<observations about this relationship>],\n'
     ' "goal_updates": [<goal-related observations>],\n'
     ' "self_model_updates": [<observations about capabilities, limits, or roles>],\n'
-    ' "user_belief_updates": [<what Sity now believes the user believes — Theory of Mind>]}\n\n'
+    ' "user_belief_updates": [<what Sity now believes the user believes — Theory of Mind>],\n'
+    ' "future_commitments": [<objects — ONLY if user EXPLICITLY stated they will do something>]}\n\n'
+    "future_commitments object format (all fields required):\n"
+    '{"proposition": "<what the user committed to, max 200 chars>",\n'
+    ' "due_at_hint": "<temporal hint: mañana|hoy|esta semana|pronto|etc., or empty string>",\n'
+    ' "importance": <float 0-1, estimated urgency/importance>,\n'
+    ' "observability": "direct" | "indirect"}\n\n'
+    "IMPORTANT for future_commitments: only include EXPLICIT commitments "
+    "('mañana termino X', 'voy a hacer Y esta semana'). "
+    "Do NOT include vague intentions, desires, or hypotheticals. "
+    "If no explicit commitment was made, return empty [].\n\n"
     "Internal questions to answer:\n"
     "1. What happened this turn?\n"
     "2. What did Sity try to do?\n"
@@ -87,8 +126,9 @@ _REFLECTION_SYSTEM = (
     "8. Did a new goal surface? → goal_updates\n"
     "9. Was anything inconsistent with Sity's self-model? → self_model_updates\n"
     "10. What does Sity now believe the user believes? → user_belief_updates\n"
-    "    (e.g. 'User believes testing matters less than shipping')\n\n"
-    "Keep each entry under 120 characters. All list fields may be empty [].\n"
+    "    (e.g. 'User believes testing matters less than shipping')\n"
+    "11. Did the user explicitly commit to doing something in the future? → future_commitments\n\n"
+    "Keep each string entry under 120 characters. All list fields may be empty [].\n"
     "Output only valid JSON."
 )
 
@@ -117,6 +157,32 @@ def _parse_reflection_response(text: str) -> ReflectionResult | None:
                 return []
             return [str(item).strip()[:200] for item in raw if item and str(item).strip()]
 
+        # Parse future_commitments — list of dicts with required keys
+        raw_fc = data.get("future_commitments", [])
+        future_commitments: list[dict] = []
+        if isinstance(raw_fc, list):
+            for item in raw_fc:
+                if not isinstance(item, dict):
+                    continue
+                prop = str(item.get("proposition", "")).strip()[:200]
+                if not prop:
+                    continue
+                hint = str(item.get("due_at_hint", "")).strip()[:50]
+                try:
+                    imp = float(item.get("importance", 0.5))
+                    imp = max(0.0, min(1.0, imp))
+                except (TypeError, ValueError):
+                    imp = 0.5
+                obs = str(item.get("observability", "direct")).strip()
+                if obs not in ("direct", "indirect", "unobservable"):
+                    obs = "direct"
+                future_commitments.append({
+                    "proposition": prop,
+                    "due_at_hint": hint,
+                    "importance": imp,
+                    "observability": obs,
+                })
+
         return ReflectionResult(
             success_estimate=success_estimate,
             memory_candidates=_clean_list("memory_candidates"),
@@ -125,6 +191,7 @@ def _parse_reflection_response(text: str) -> ReflectionResult | None:
             goal_updates=_clean_list("goal_updates"),
             self_model_updates=_clean_list("self_model_updates"),
             user_belief_updates=_clean_list("user_belief_updates"),
+            future_commitments=future_commitments,
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
@@ -168,7 +235,7 @@ def _call_reflection_haiku(context: str, *, trace_id: str) -> ReflectionResult |
             task_type="reflection",
             system_prompt=_REFLECTION_SYSTEM,
             user_message=context,
-            max_tokens=380,
+            max_tokens=450,
             tools_enabled=False,
         )
         response = provider.generate(request)
@@ -286,6 +353,31 @@ def run_reflection(
                     trace_id=trace_id,
                 )
 
+    # Extract future commitments → create Expectations (Punto 5)
+    _commitments_created = 0
+    if result.future_commitments:
+        _now = utc_now()
+        for fc in result.future_commitments:
+            hint = fc.get("due_at_hint", "").lower().strip()
+            delta = _DUE_AT_HINT_MAP.get(hint)
+            due_at = (_now + delta) if delta is not None else None
+            exp = upsert_expectation(
+                session,
+                user_id=user_id,
+                context_type=perception.context_type,
+                expected_behavior=_COMMITMENT_BEHAVIOR,
+                probability=min(1.0, fc.get("importance", 0.5) * 0.8 + 0.3),
+                trace_id=trace_id,
+                expectation_type="event",
+                source="reflection",
+                due_at=due_at,
+                importance=fc.get("importance", 0.5),
+                observability=fc.get("observability", "direct"),
+                proposition=fc.get("proposition", ""),
+            )
+            if exp is not None:
+                _commitments_created += 1
+
     write_log(
         level="INFO",
         module="cognition",
@@ -297,6 +389,7 @@ def run_reflection(
             "success_estimate": round(result.success_estimate, 3),
             "belief_updates_count": len(result.belief_updates),
             "user_belief_updates_count": len(result.user_belief_updates),
+            "future_commitments_created": _commitments_created,
             "log_id": log_row.id,
         },
     )

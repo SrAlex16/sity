@@ -33,6 +33,7 @@ import threading
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from app.cognition.user_model_service import VALID_EXPECTED_BEHAVIORS, upsert_expectation
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
 from app.memory.db import engine
@@ -231,6 +232,24 @@ def _run_pattern_synthesis(user_id: int, context_type: str, trace_id: str) -> No
                 db.add(obs)
 
             db.commit()
+
+            # Create/update a pattern Expectation when pattern is established enough
+            _final_count = existing.occurrence_count if existing else len(obs_rows)
+            _final_conf = _compute_confidence(_final_count)
+            if _final_count >= _PROCEDURAL_THRESHOLD and _final_conf >= PROCEDURAL_CONFIDENCE_MIN:
+                if context_type in VALID_EXPECTED_BEHAVIORS:
+                    upsert_expectation(
+                        db,
+                        user_id=user_id,
+                        context_type=context_type,
+                        expected_behavior=context_type,
+                        probability=_final_conf,
+                        trace_id=trace_id,
+                        expectation_type="pattern",
+                        source="procedural",
+                        observability="direct",
+                        proposition=strategy[:200] if strategy else "",
+                    )
 
             write_log(
                 level="INFO",

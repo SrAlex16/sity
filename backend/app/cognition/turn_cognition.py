@@ -42,6 +42,11 @@ from app.cognition.episode_service import (
     maybe_create_episode,
     retrieve_relevant_episodes,
 )
+from app.cognition.expectation_service import (
+    ExpectationEvalResult,
+    apply_prediction_error_to_trust,
+    evaluate_pending_expectations,
+)
 from app.cognition.procedural_service import load_active_patterns, maybe_trigger_pattern_synthesis
 from app.cognition.semantic_service import load_active_facts
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
@@ -125,6 +130,25 @@ def run_cognition_turn(
             payload={"user_id": user_id, "error": str(_retr_exc)[:200]},
         )
 
+    # Step 3c: evaluate pending expectations — BEFORE Appraisal so prediction_error
+    # signal is available when computing salience and updating trust_reliability.
+    _exp_eval: ExpectationEvalResult | None = None
+    try:
+        _exp_eval = evaluate_pending_expectations(
+            session,
+            user_id=user_id,
+            perception=perception,
+            current_turn_id=trace_id,
+        )
+    except Exception as _exp_exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="expectation_eval_failed",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(_exp_exc)[:200]},
+        )
+
     # Load the SQLModel row (not the dict) to apply deltas in-place
     ms_row = settings_service.get_or_create_mental_state(user_id)
     apply_mental_state_decay(ms_row, now=utc_now())
@@ -162,6 +186,9 @@ def run_cognition_turn(
         perception_challenge=perception.challenge,
         personality=personality,
     )
+    # Prediction error → trust_reliability nudge (Punto 5 downstream)
+    if _exp_eval and _exp_eval.prediction_errors:
+        apply_prediction_error_to_trust(sp_row, _exp_eval.prediction_errors)
     session.add(sp_row)
     session.commit()
 
@@ -176,6 +203,10 @@ def run_cognition_turn(
 
     # Step 10: compute salience (pure Python) — used for both Episode and Reflection gates
     _salience = compute_salience(perception, appraisal)
+    # Boost effective salience when high-surprise prediction error occurred (Punto 5)
+    _effective_salience = _salience.total
+    if _exp_eval and _exp_eval.max_surprise > 0.30:
+        _effective_salience = min(1.0, _effective_salience + _exp_eval.max_surprise * 0.10)
 
     # Step 11: episodic memory — conditional Haiku call only when salience ≥ 0.25
     try:
@@ -290,7 +321,7 @@ def run_cognition_turn(
         _semantic_facts = []
 
     reflection_result: ReflectionResult | None = None
-    if _salience.total >= _REFLECTION_SALIENCE_MIN:
+    if _effective_salience >= _REFLECTION_SALIENCE_MIN:
         try:
             reflection_result = run_reflection(
                 session,
@@ -299,7 +330,7 @@ def run_cognition_turn(
                 perception=perception,
                 appraisal=appraisal,
                 decision=decision_result,
-                salience_total=_salience.total,
+                salience_total=_effective_salience,
                 trace_id=trace_id,
                 semantic_facts=_semantic_facts or None,
             )
