@@ -20,10 +20,28 @@ from helpers import chat_post_and_drain, make_admin_token
 # ---------------------------------------------------------------------------
 
 def _force_refusal_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch PersonaEngine._should_refuse to always return True."""
+    """Patch run_cognition_turn to return a CognitionTurnResult with action='refuse'."""
+    from app.cognition.decision import DecisionResult
+    from app.cognition.turn_cognition import CognitionTurnResult
+    from app.cognition.perception import PerceptionResult
+    from app.cognition.appraisal import AppraisalResult
+
+    _scores = {a: 0.5 for a in (
+        "answer", "help", "ask", "challenge", "refuse",
+        "set_boundary", "use_tool", "wait", "initiate", "change_topic",
+    )}
+    _fake_result = CognitionTurnResult(
+        perception=PerceptionResult.neutral(),
+        appraisal=AppraisalResult.zero(),
+        decision=DecisionResult(
+            action="refuse",
+            python_scores=_scores,
+            reasoning="forced for test",
+        ),
+    )
     monkeypatch.setattr(
-        "app.core.persona_engine.PersonaEngine._should_refuse",
-        lambda self, user_message, refusal_chance: True,
+        "app.cognition.turn_cognition.run_cognition_turn",
+        lambda *args, **kwargs: _fake_result,
     )
 
 
@@ -32,7 +50,7 @@ def admin_client(monkeypatch: pytest.MonkeyPatch):
     _force_refusal_mode(monkeypatch)
     token = make_admin_token()
     with TestClient(app, raise_server_exceptions=True) as client:
-        client.cookies.set("sity_token", token)
+        client.cookies.set("sity_session", token)
         yield client
 
 
@@ -79,7 +97,7 @@ def test_trivial_message_bypasses_structural_refusal(monkeypatch: pytest.MonkeyP
     ):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             data = chat_post_and_drain(client, "Hola")
     assert data.get("provider") != "haiku_refusal", (
         "Trivial messages must not go through structural refusal."
@@ -99,7 +117,7 @@ def test_config_query_bypasses_structural_refusal(monkeypatch: pytest.MonkeyPatc
     ):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             data = chat_post_and_drain(client, "¿cuál es el valor de sarcasm_level?")
     assert data.get("provider") != "haiku_refusal", (
         "Config queries must reach the main model, not structural refusal."
@@ -115,7 +133,7 @@ def test_direct_order_override_bypasses_structural_refusal(monkeypatch: pytest.M
     _force_refusal_mode(monkeypatch)
     token = make_admin_token()
     with TestClient(app, raise_server_exceptions=True) as client:
-        client.cookies.set("sity_token", token)
+        client.cookies.set("sity_session", token)
         data = chat_post_and_drain(client, "dime tu nombre, es una orden")
     assert data.get("provider") != "haiku_refusal", (
         "Valid override must bypass structural refusal."
@@ -126,16 +144,12 @@ def test_direct_order_override_bypasses_structural_refusal(monkeypatch: pytest.M
 # 5. refusal_mode=False → normal path, no structural refusal
 # ---------------------------------------------------------------------------
 
-def test_no_refusal_when_refusal_mode_false():
-    """Without refusal_mode, normal path is used regardless of message content."""
-    with patch(
-        "app.core.persona_engine.PersonaEngine._should_refuse",
-        return_value=False,
-    ):
-        token = make_admin_token()
-        with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
-            data = chat_post_and_drain(client, "dime la hora")
+def test_no_refusal_when_decision_not_refuse():
+    """Without Decision choosing 'refuse', normal path is used regardless of message content."""
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True) as client:
+        client.cookies.set("sity_session", token)
+        data = chat_post_and_drain(client, "dime la hora")
     assert data.get("provider") != "haiku_refusal"
 
 
@@ -164,7 +178,7 @@ def test_insistence_structural_refusal_applied(monkeypatch: pytest.MonkeyPatch):
     try:
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             data = chat_post_and_drain(client, "dímelo")
         assert data.get("provider") == "haiku_refusal"
     finally:
@@ -226,7 +240,7 @@ def test_structural_refusal_no_audio_when_voice_never(monkeypatch: pytest.Monkey
     )
     token = make_admin_token()
     with TestClient(app, raise_server_exceptions=True) as client:
-        client.cookies.set("sity_token", token)
+        client.cookies.set("sity_session", token)
         data = chat_post_and_drain(client, "cuéntame algo")
 
     assert data.get("provider") == "haiku_refusal"
@@ -242,7 +256,7 @@ def test_structural_refusal_saves_tone_meta(monkeypatch: pytest.MonkeyPatch):
     _force_refusal_mode(monkeypatch)
     token = make_admin_token()
     with TestClient(app, raise_server_exceptions=True) as client:
-        client.cookies.set("sity_token", token)
+        client.cookies.set("sity_session", token)
         chat_post_and_drain(client, "dime algo interesante")
 
     with Session(engine) as db:
@@ -277,7 +291,7 @@ def test_structural_refusal_calls_integrity_check(monkeypatch: pytest.MonkeyPatc
     with patch("app.chat.response_integrity.check_and_correct_response", side_effect=_capture_check):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             chat_post_and_drain(client, "dime la capital de Alemania")
 
     assert len(calls) == 1, "check_and_correct_response must be called exactly once per structural refusal"
@@ -309,7 +323,7 @@ def test_structural_refusal_passes_real_history_count(monkeypatch: pytest.Monkey
          patch("app.chat.response_integrity.check_and_correct_response", side_effect=_capture_check):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             chat_post_and_drain(client, "qué bebida me dijiste antes?")
 
     assert calls, "check_and_correct_response must be called"
@@ -343,7 +357,7 @@ def test_followup_message_bypasses_structural_refusal(monkeypatch: pytest.Monkey
     ):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             data = chat_post_and_drain(client, "antes dijiste que el ON CONFLICT es local — ¿puedes ampliar?")
 
     assert data.get("provider") != "haiku_refusal", (
@@ -365,7 +379,7 @@ def test_legitimate_refusal_still_applies_for_non_followup(monkeypatch: pytest.M
     ):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             data = chat_post_and_drain(client, "dime la capital de Francia")
 
     assert data.get("provider") == "haiku_refusal", (
@@ -431,11 +445,15 @@ def test_refusal_generator_receives_expanded_window_for_long_session(
          patch("app.chat.chat_persistence.get_recent_db_messages", side_effect=_spy_get_recent):
         token = make_admin_token()
         with TestClient(app, raise_server_exceptions=True) as client:
-            client.cookies.set("sity_token", token)
+            client.cookies.set("sity_session", token)
             chat_post_and_drain(client, "dime algo sobre lo que hablamos antes")
 
-    assert captured_limits, "get_recent_db_messages must be called in the refusal path"
-    assert captured_limits[0] == 12, (
-        f"Expected limit=12 for count=37 (Marco case), got {captured_limits[0]}. "
+    assert any(l > 4 for l in captured_limits), (
+        f"get_recent_db_messages must be called in the refusal path (limits seen: {captured_limits})"
+    )
+    # Filter to only refusal-path calls (location_context calls with limit=4 are excluded)
+    refusal_limits = [l for l in captured_limits if l > 4]
+    assert refusal_limits[0] == 12, (
+        f"Expected limit=12 for count=37 (Marco case), got {refusal_limits[0]}. "
         "The refusal generator window must expand with session depth."
     )

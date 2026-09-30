@@ -78,30 +78,7 @@ def test_template_no_hardcoded_service(template_source: str) -> None:
 
 
 # ------------------------------------------------------------------ #
-# 3. _should_refuse — deterministic paths                             #
-# ------------------------------------------------------------------ #
-
-def test_order_override_blocks_refusal(engine: PersonaEngine) -> None:
-    assert not engine._should_refuse("es una orden hazlo", 1.0)
-
-
-def test_refusal_chance_zero_never_refuses(engine: PersonaEngine) -> None:
-    assert not engine._should_refuse("cuéntame algo trivial", 0.0)
-
-
-def test_refusal_chance_one_always_refuses(engine: PersonaEngine) -> None:
-    assert engine._should_refuse("cuéntame algo trivial", 1.0)
-
-
-def test_refusal_chance_one_always_refuses_on_any_message(engine: PersonaEngine) -> None:
-    # _should_refuse is purely probabilistic — the model decides about trivial messages
-    # via the natural language instruction in _REFUSAL_ACTIVE, not via Python logic.
-    assert engine._should_refuse("Hola", 1.0)
-    assert engine._should_refuse("Ok", 1.0)
-
-
-# ------------------------------------------------------------------ #
-# 4. build_persona_prompt — refusal_mode_override                     #
+# 3. build_persona_prompt — refusal_mode_override                     #
 # ------------------------------------------------------------------ #
 
 def test_refusal_override_true(engine: PersonaEngine) -> None:
@@ -119,9 +96,8 @@ def test_refusal_override_false_suppresses_refusal(engine: PersonaEngine) -> Non
     assert "refusal_mode está DESACTIVADO" in result.system_prompt
 
 
-def test_refusal_override_none_uses_derived_propensity_zero(engine: PersonaEngine) -> None:
-    # helpfulness=1.0, assertiveness=0.0, independence=0.0 →
-    # propensity = 0.20*0 + 0.15*0 - 0.40*1.0 + 0.20 = -0.20 → clamped to 0 → never refuses
+def test_refusal_override_none_defaults_to_false(engine: PersonaEngine) -> None:
+    # Without refusal_mode_override, Decision is the authority — persona_engine always returns False
     traits = {"helpfulness": 1.0, "assertiveness": 0.0, "independence": 0.0}
     result = engine.build_persona_prompt(traits, "cuéntame algo")
     assert result.refusal_mode is False
@@ -140,19 +116,6 @@ def test_refusal_override_false_never_activates(engine: PersonaEngine) -> None:
         result = engine.build_persona_prompt({}, "hola", refusal_mode_override=False)
         assert result.refusal_mode is False
 
-
-def test_refusal_propensity_probabilistic_from_traits(engine: PersonaEngine) -> None:
-    """Traits that give ~50% propensity produce ~50% refusal_mode over many trials.
-    Formula: 0.20*assertiveness + 0.15*independence - 0.40*helpfulness + 0.20
-    With assertiveness=1.0, independence=1.0, helpfulness=0.125: propensity = 0.50
-    """
-    traits = {"assertiveness": 1.0, "independence": 1.0, "helpfulness": 0.125}
-    results = [
-        engine.build_persona_prompt(traits, "dime algo").refusal_mode
-        for _ in range(1000)
-    ]
-    ratio = sum(results) / len(results)
-    assert 0.40 <= ratio <= 0.60, f"Expected ~0.5 ratio, got {ratio:.3f}"
 
 
 def test_refusal_active_prompt_is_unconditional(engine: PersonaEngine) -> None:

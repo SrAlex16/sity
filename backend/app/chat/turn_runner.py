@@ -337,12 +337,16 @@ def _chat_message_inner(
         user_instructions=ctx.user_instructions,
     )
 
-    # Classify the message when refusal_mode is active:
-    # - trivial messages bypass refusal_mode entirely.
-    # - config_query bypasses refusal_mode; main model answers with verified values.
+    # Classify the message when Decision chose "refuse":
+    # - trivial messages bypass structural refusal (Decision's context lacks triviality signals).
+    # - config_query bypasses structural refusal; main model answers with verified values.
     # This is a structural check — the main model has no vote on this decision.
     _classification = None
-    if persona_decision.refusal_mode:
+    if (
+        _cognition_result is not None
+        and _cognition_result.decision is not None
+        and _cognition_result.decision.action == "refuse"
+    ):
         from app.core.message_classifier import classify_message
         _last_refusal_data = get_last_refusal(ctx.session_id)
         _classification = classify_message(
@@ -350,18 +354,6 @@ def _chat_message_inner(
             trace_id=ctx.trace_id,
             last_was_refusal=_last_refusal_data is not None,
         )
-        if not _classification.is_real_request:
-            # Trivial message — reset refusal_mode.
-            persona_decision = PersonaEngine().build_persona_prompt(
-                ctx.personality, request.message,
-                comm_prefs=ctx.comm_prefs,
-                mental_state=ctx.mental_state,
-                refusal_mode_override=False,
-                session_id=ctx.session_id,
-                language_override=ctx.language_override,
-                is_admin=ctx.is_admin,
-                user_instructions=ctx.user_instructions,
-            )
 
     persona_prompt = persona_decision.system_prompt
 
@@ -410,11 +402,13 @@ def _chat_message_inner(
     if response := pre_ai.try_handle(request):
         return response
 
-    # STRUCTURAL REFUSAL: when refusal_mode is active for a real (non-config) request
+    # STRUCTURAL REFUSAL: when Decision chose "refuse" for a real (non-config) request
     # and no valid override exists, the main model never sees this turn.
     # Haiku generates a personality-driven refusal directly.
     if (
-        persona_decision.refusal_mode
+        _cognition_result is not None
+        and _cognition_result.decision is not None
+        and _cognition_result.decision.action == "refuse"
         and _classification is not None
         and _classification.is_real_request
         and not _classification.is_config_query

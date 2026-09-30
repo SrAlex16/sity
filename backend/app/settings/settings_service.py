@@ -66,7 +66,6 @@ _DEPRECATED_KEYS = frozenset({
     "personality.frialdad_afectiva_level",
     "personality.contrarian_level",
     "personality.patience_level",
-    "personality.refusal_chance",
     "personality.helpfulness_level",
     "personality.verbosity_level",
     "personality.melancholy_level",

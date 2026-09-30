@@ -57,16 +57,10 @@ def local_ai_client(monkeypatch: pytest.MonkeyPatch):
 
     Cloud provider stays as 'mock' (set by conftest).
     Local provider is 'ollama', backed by patched httpx.post.
-    refusal_mode is forced off so routing tests are not affected by the
-    probabilistic refusal roll.
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
     monkeypatch.setenv("SITY_OLLAMA_MODEL", "gemma3:4b-it-qat")
-    monkeypatch.setattr(
-        "app.core.persona_engine.PersonaEngine._should_refuse",
-        lambda self, user_message, refusal_chance: False,
-    )
     captured: list[dict] = []
 
     def _fake_post(url: str, *, json: Any = None, **kwargs: Any) -> Any:
@@ -303,16 +297,10 @@ def test_local_ai_missing_model_returns_provider_not_configured(monkeypatch):
     The route must return a controlled error (ok=False, error_type=provider_not_configured)
     rather than raising an exception or using the cloud model string for Ollama.
     httpx.post is guarded to ensure no real Ollama call goes out.
-    _should_refuse is forced off so the structural-refusal gate (which returns ok=True)
-    does not fire before the routing decision is reached — same as local_ai_client fixture.
     """
     monkeypatch.setenv("SITY_LOCAL_AI_ENABLED", "true")
     monkeypatch.setenv("SITY_LOCAL_AI_PROVIDER", "ollama")
     monkeypatch.delenv("SITY_OLLAMA_MODEL", raising=False)
-    monkeypatch.setattr(
-        "app.core.persona_engine.PersonaEngine._should_refuse",
-        lambda self, user_message, refusal_chance: False,
-    )
 
     def _should_not_be_called(*a, **kw):
         raise AssertionError("httpx.post called — Ollama should not be reached when model is missing")

@@ -1,5 +1,4 @@
 import functools
-import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -429,16 +428,9 @@ class PersonaEngine:
             melancholy=melancholy,
         )
 
-        # refusal_propensity derived from traits (Remake Fase 1 — provisional formula).
-        # Will be replaced by Action Policy in a later phase.
-        refusal_propensity = max(0.0, min(1.0,
-            0.20 * assertiveness + 0.15 * independence - 0.40 * helpfulness + 0.20
-        ))
-
-        if refusal_mode_override is not None:
-            refusal_mode = refusal_mode_override
-        else:
-            refusal_mode = self._should_refuse(user_message=user_message, refusal_chance=refusal_propensity)
+        # Decision module is now the sole authority for structural refusal (MINI-REMAKE v2.0 Punto 2).
+        # refusal_mode_override kept for deterministic testing only.
+        refusal_mode = refusal_mode_override if refusal_mode_override is not None else False
         order_override_active = has_direct_order_override(user_message)
 
         order_override_instruction = _ORDER_OVERRIDE if order_override_active else ""
@@ -743,14 +735,3 @@ class PersonaEngine:
             return "Hasta 3 párrafos si aporta valor."
         return "Puedes extenderte cuando el contenido lo justifique."
 
-    def _should_refuse(self, user_message: str, refusal_chance: float) -> bool:
-        if has_direct_order_override(user_message):
-            return False
-
-        if refusal_chance <= 0:
-            return False
-
-        if refusal_chance >= 1:
-            return True
-
-        return random.random() < refusal_chance

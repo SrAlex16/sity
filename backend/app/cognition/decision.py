@@ -14,6 +14,9 @@ Utility formula (approved in Fase 5 design review):
 
 Never raises — returns None on any failure. Logs all fallback events with
   module="cognition", event="decision_fallback_triggered".
+  Note: "decision_fallback_triggered" is a diagnostic-only log (technical failure).
+  When None is returned, turn_runner proceeds without structural refusal — there is
+  no fallback system; the main model handles the turn normally.
 """
 from __future__ import annotations
 
