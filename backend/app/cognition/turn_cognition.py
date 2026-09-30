@@ -64,7 +64,11 @@ from app.cognition.goal_service import (
 from app.cognition.perception import PerceptionResult, run_perception
 from app.memory.models import Goal, utc_now
 from app.settings.settings_service import SettingsService
-from app.social.social_service import apply_appraisal_to_social_profile, get_or_create_social_profile
+from app.social.social_service import (
+    apply_appraisal_to_social_profile,
+    apply_reflection_relationship_evidence,
+    get_or_create_social_profile,
+)
 from app.trace.logger import write_log
 
 
@@ -341,6 +345,20 @@ def run_cognition_turn(
                 event="reflection_failed",
                 trace_id=trace_id,
                 payload={"user_id": user_id, "error": str(refl_exc)[:200]},
+            )
+
+    # Step 13b: Apply Reflection relationship evidence to SocialProfile (Punto 6 Part 2).
+    # Only when reflection ran and created RelationshipEvidence rows.
+    if reflection_result is not None:
+        try:
+            apply_reflection_relationship_evidence(session, user_id, trace_id)
+        except Exception as _rre_exc:
+            write_log(
+                level="WARN",
+                module="cognition",
+                event="reflection_relationship_evidence_failed",
+                trace_id=trace_id,
+                payload={"user_id": user_id, "error": str(_rre_exc)[:200]},
             )
 
     # Step 15: Procedural memory — record observation; fire daemon synthesis if threshold reached.

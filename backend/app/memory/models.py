@@ -788,6 +788,43 @@ class ExpectationResolution(SQLModel, table=True):
     resolved_at: datetime = Field(default_factory=utc_now)
 
 
+class RelationshipEvidence(SQLModel, table=True):
+    """Trazable relationship signal from Reflection (Punto 6).
+
+    Applied to SocialProfile at 30% strength (Appraisal dominates same-turn dimension).
+    applied=False until processed by apply_reflection_relationship_evidence().
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    dimension: str                                  # SocialProfile field name
+    direction: str                                  # "positive" | "negative"
+    strength: float = Field(default=0.5, ge=0.0, le=1.0)
+    source: str = Field(default="reflection")       # "reflection" (future: "appraisal")
+    turn_id: str = Field(default="", index=True)    # trace_id of the originating turn
+    reason: str = Field(default="")
+    created_at: datetime = Field(default_factory=utc_now)
+    applied: bool = Field(default=False)
+
+
+class GoalCandidate(SQLModel, table=True):
+    """Hypothesis for a goal change, produced by Reflection (Punto 6).
+
+    Candidates are promoted to Goals when:
+    - They appear in >= 2 turns (reinforcement), or
+    - A subsequent turn confirms them explicitly.
+    Exception: evidence_type="explicit" + confidence >= 0.70 → direct Goal creation.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    operation: str                                  # "create" | "update" | "abandon"
+    goal_description: str
+    confidence: float = Field(default=0.40, ge=0.0, le=1.0)
+    source_turn_id: str = Field(default="")
+    evidence_type: str = Field(default="inferred")  # "explicit" | "inferred"
+    created_at: datetime = Field(default_factory=utc_now)
+    status: str = Field(default="pending")          # "pending" | "promoted" | "rejected"
+
+
 class SemanticFact(SQLModel, table=True):
     """A stable fact Sity has extracted about a specific user from episodic memory.
 
@@ -817,6 +854,8 @@ class SemanticFact(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now)
     is_active: bool = Field(default=True)
     stability: str = Field(default="normal")        # "volatile" | "normal" | "stable"
+    inference_type: str = Field(default="explicit") # "explicit" | "inferred" (Punto 6)
+    candidate: bool = Field(default=False)          # True until promoted to active fact
 
 
 class SityValues(SQLModel, table=True):

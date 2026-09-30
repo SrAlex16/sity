@@ -385,6 +385,83 @@ def _run_fact_synthesis(*, user_id: int, trace_id: str = "") -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Reflection candidate upsert (Punto 6)
+# ---------------------------------------------------------------------------
+
+_REFLECTION_INFERRED_CONFIDENCE_MAX: float = 0.45   # cap for "inferred" candidates
+_REFLECTION_CANDIDATE_PROMOTE_REINFORCEMENTS: int = 2
+_REFLECTION_CANDIDATE_PROMOTE_CONFIDENCE: float = 0.55
+
+
+def upsert_semantic_candidate(
+    session: Session,
+    *,
+    user_id: int,
+    proposition: str,
+    inference_type: str = "inferred",
+    confidence: float,
+    trace_id: str = "",
+) -> SemanticFact:
+    """Create or reinforce a SemanticFact candidate from Reflection output.
+
+    Confidence is clamped to _REFLECTION_INFERRED_CONFIDENCE_MAX (0.45) for "inferred"
+    facts. Auto-promotes (candidate=False) when reinforcement_count >= 2 or
+    confidence >= 0.55.
+
+    Deduplication: exact proposition match (lowercased). Never raises.
+    """
+    if inference_type not in ("inferred", "explicit"):
+        inference_type = "inferred"
+    if inference_type == "inferred":
+        confidence = min(_REFLECTION_INFERRED_CONFIDENCE_MAX, confidence)
+    confidence = max(0.0, min(1.0, confidence))
+    prop_clean = proposition.strip()[:300]
+
+    try:
+        existing = session.exec(
+            select(SemanticFact)
+            .where(SemanticFact.user_id == user_id)
+            .where(SemanticFact.proposition == prop_clean)
+            .where(SemanticFact.is_active == True)  # noqa: E712
+        ).first()
+
+        if existing is not None:
+            existing.confidence = min(SEMANTIC_CONFIDENCE_MAX, existing.confidence + _SEMANTIC_REINFORCE_DELTA)
+            existing.reinforcement_count += 1
+            existing.last_confirmed_at = utc_now()
+            if existing.candidate and (
+                existing.reinforcement_count >= _REFLECTION_CANDIDATE_PROMOTE_REINFORCEMENTS
+                or existing.confidence >= _REFLECTION_CANDIDATE_PROMOTE_CONFIDENCE
+            ):
+                existing.candidate = False
+            session.add(existing)
+            session.commit()
+            return existing
+
+        fact = SemanticFact(
+            user_id=user_id,
+            proposition=prop_clean,
+            confidence=confidence,
+            inference_type=inference_type,
+            candidate=True,
+            source_episode_ids_json="[]",
+        )
+        session.add(fact)
+        session.commit()
+        session.refresh(fact)
+        return fact
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="semantic_candidate_upsert_failed",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(exc)[:200]},
+        )
+        return SemanticFact(user_id=user_id, proposition=prop_clean, confidence=confidence)
+
+
 _SEMANTIC_PASSIVE_DECAY: float = 0.02       # confidence penalty per cycle for unstable facts
 _SEMANTIC_PASSIVE_DECAY_MIN_CONFIDENCE: float = 0.65
 _SEMANTIC_PASSIVE_DECAY_MIN_REINFORCEMENTS: int = 3

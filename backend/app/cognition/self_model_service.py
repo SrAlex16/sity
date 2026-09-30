@@ -150,6 +150,57 @@ def update_belief_confidence(
     return belief
 
 
+def add_self_model_observation(
+    session: Session,
+    observation: str,
+    *,
+    trace_id: str = "",
+) -> SelfBelief | None:
+    """Create or reinforce a SelfBelief from a self_model_update string (Punto 6).
+
+    confidence=0.30 for new entries (lower than belief_updates' 0.40 — self-model
+    observations are more tentative). Matches existing beliefs by exact proposition.
+    Returns None on any error.
+    """
+    prop_clean = observation.strip()[:300]
+    if not prop_clean:
+        return None
+    try:
+        sm = get_or_create_self_model(session)
+        if sm.id is None:
+            return None
+
+        existing = session.exec(
+            select(SelfBelief)
+            .where(SelfBelief.self_model_id == sm.id)
+            .where(SelfBelief.proposition == prop_clean)
+            .where(SelfBelief.is_active == True)  # noqa: E712
+        ).first()
+
+        if existing is not None and existing.id is not None:
+            return update_belief_confidence(
+                session,
+                belief_id=existing.id,
+                new_confidence=min(1.0, existing.confidence + 0.05),
+                trace_id=trace_id,
+                evidence_type="self_model_reflection",
+                evidence_description=f"repeated: {prop_clean[:60]}",
+            )
+
+        return add_belief_candidate(
+            session,
+            self_model_id=sm.id,
+            proposition=prop_clean,
+            confidence=0.30,
+            source="self_model_reflection",
+            trace_id=trace_id,
+            evidence_type="self_model_reflection",
+            evidence_description="first observation",
+        )
+    except Exception:
+        return None
+
+
 def deactivate_belief(session: Session, belief_id: int) -> None:
     """Mark a SelfBelief as inactive (superseded or retracted). No-op if not found."""
     belief = session.get(SelfBelief, belief_id)

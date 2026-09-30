@@ -28,7 +28,12 @@ from sqlmodel import Session
 from app.cognition.appraisal import AppraisalResult
 from app.cognition.decision import DecisionResult
 from app.cognition.perception import PerceptionResult
-from app.cognition.self_model_service import add_belief_candidate, get_or_create_self_model
+from app.cognition.self_model_service import (
+    add_belief_candidate,
+    add_self_model_observation,
+    get_or_create_self_model,
+)
+from app.cognition.semantic_service import upsert_semantic_candidate
 from app.cognition.user_model_service import (
     VALID_EXPECTED_BEHAVIORS,
     add_belief_attribution,
@@ -36,7 +41,7 @@ from app.cognition.user_model_service import (
 )
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
-from app.memory.models import ReflectionLog, utc_now
+from app.memory.models import GoalCandidate, Goal, RelationshipEvidence, ReflectionLog, utc_now
 from app.trace.logger import write_log
 
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
@@ -74,10 +79,10 @@ _COMMITMENT_BEHAVIOR = "plan_together"  # best fit for explicit future commitmen
 class ReflectionResult:
     """Parsed output of one Reflection Step.
 
-    All list fields are observations (strings), never commands.
+    String list fields (memory_candidates, relationship_evidence, goal_updates) are
+    kept for backwards compatibility with ReflectionLog. The structured counterparts
+    (_typed, _structured) carry the downstream-actionable data (Punto 6).
     sección 57: belief_updates are candidates — they require explicit promotion.
-    future_commitments: list of dicts with keys proposition, due_at_hint, importance,
-      observability — converted to Expectation rows by run_reflection().
     """
     success_estimate: float
     memory_candidates: list[str] = field(default_factory=list)
@@ -87,6 +92,10 @@ class ReflectionResult:
     self_model_updates: list[str] = field(default_factory=list)
     user_belief_updates: list[str] = field(default_factory=list)
     future_commitments: list[dict] = field(default_factory=list)
+    # Punto 6 structured fields
+    memory_candidates_typed: list[dict] = field(default_factory=list)
+    relationship_evidence_structured: list[dict] = field(default_factory=list)
+    goal_updates_structured: list[dict] = field(default_factory=list)
     log_id: int | None = None  # set after DB save
 
 
@@ -99,36 +108,44 @@ _REFLECTION_SYSTEM = (
     "provided and answer 11 introspective questions.\n\n"
     "Return ONLY a JSON object — no markdown, no explanation:\n"
     '{"success_estimate": <float 0-1, how well this turn went>,\n'
-    ' "memory_candidates": [<moments worth remembering, may be empty>],\n'
+    ' "memory_candidates_typed": [<objects — moments worth remembering>],\n'
     ' "belief_updates": [<short sentences about what Sity learned about herself>],\n'
-    ' "relationship_evidence": [<observations about this relationship>],\n'
-    ' "goal_updates": [<goal-related observations>],\n'
+    ' "relationship_evidence_structured": [<objects — observations about this relationship>],\n'
+    ' "goal_updates_structured": [<objects — goal-related observations>],\n'
     ' "self_model_updates": [<observations about capabilities, limits, or roles>],\n'
     ' "user_belief_updates": [<what Sity now believes the user believes — Theory of Mind>],\n'
     ' "future_commitments": [<objects — ONLY if user EXPLICITLY stated they will do something>]}\n\n'
+    "memory_candidates_typed object format:\n"
+    '{"proposition": "<what to remember, max 200 chars>",\n'
+    ' "inference_type": "explicit" | "inferred"}\n'
+    "  explicit = directly stated; inferred = Sity's interpretation\n\n"
+    "relationship_evidence_structured object format:\n"
+    '{"dimension": "affinity"|"trust_honesty"|"trust_intentions"|"comfort"|"respect"|"conflict"|"attachment"|"uncertainty",\n'
+    ' "direction": "positive" | "negative",\n'
+    ' "strength": <float 0-1>,\n'
+    ' "reason": "<why, max 120 chars>"}\n\n'
+    "goal_updates_structured object format:\n"
+    '{"operation": "create" | "update" | "abandon",\n'
+    ' "goal_description": "<description, max 200 chars>",\n'
+    ' "confidence": <float 0-1>,\n'
+    ' "evidence_type": "explicit" | "inferred"}\n\n'
     "future_commitments object format (all fields required):\n"
     '{"proposition": "<what the user committed to, max 200 chars>",\n'
     ' "due_at_hint": "<temporal hint: mañana|hoy|esta semana|pronto|etc., or empty string>",\n'
     ' "importance": <float 0-1, estimated urgency/importance>,\n'
     ' "observability": "direct" | "indirect"}\n\n'
-    "IMPORTANT for future_commitments: only include EXPLICIT commitments "
-    "('mañana termino X', 'voy a hacer Y esta semana'). "
-    "Do NOT include vague intentions, desires, or hypotheticals. "
-    "If no explicit commitment was made, return empty [].\n\n"
-    "Internal questions to answer:\n"
-    "1. What happened this turn?\n"
-    "2. What did Sity try to do?\n"
-    "3. Did it work? → success_estimate\n"
+    "IMPORTANT for future_commitments: only EXPLICIT commitments. "
+    "IMPORTANT for goal_updates_structured: only if a genuine goal emerged or changed. "
+    "All list fields may be empty []. Keep string entries under 120 chars.\n"
+    "Internal questions:\n"
+    "1. What happened? 2. What did Sity try? 3. Did it work? → success_estimate\n"
     "4. What did Sity learn about herself? → belief_updates\n"
-    "5. Did the relationship with this person change? → relationship_evidence\n"
-    "6. Did any belief shift? → belief_updates\n"
-    "7. Is anything worth remembering? → memory_candidates\n"
-    "8. Did a new goal surface? → goal_updates\n"
-    "9. Was anything inconsistent with Sity's self-model? → self_model_updates\n"
-    "10. What does Sity now believe the user believes? → user_belief_updates\n"
-    "    (e.g. 'User believes testing matters less than shipping')\n"
-    "11. Did the user explicitly commit to doing something in the future? → future_commitments\n\n"
-    "Keep each string entry under 120 characters. All list fields may be empty [].\n"
+    "5. Did the relationship change? → relationship_evidence_structured\n"
+    "6. Belief shift? → belief_updates  7. Worth remembering? → memory_candidates_typed\n"
+    "8. New goal surfaced? → goal_updates_structured\n"
+    "9. Self-model inconsistency? → self_model_updates\n"
+    "10. What does Sity think the user believes? → user_belief_updates\n"
+    "11. Explicit future commitment? → future_commitments\n"
     "Output only valid JSON."
 )
 
@@ -138,7 +155,12 @@ _REFLECTION_SYSTEM = (
 # ---------------------------------------------------------------------------
 
 def _parse_reflection_response(text: str) -> ReflectionResult | None:
-    """Parse Haiku JSON into ReflectionResult. Returns None on any failure."""
+    """Parse Haiku JSON into ReflectionResult. Returns None on any failure.
+
+    Accepts both old format (memory_candidates: [str], relationship_evidence: [str],
+    goal_updates: [str]) and new structured format (Punto 6). New format takes
+    precedence when present; falls back to old format for backwards compatibility.
+    """
     try:
         stripped = text.strip()
         if stripped.startswith("```"):
@@ -157,7 +179,93 @@ def _parse_reflection_response(text: str) -> ReflectionResult | None:
                 return []
             return [str(item).strip()[:200] for item in raw if item and str(item).strip()]
 
-        # Parse future_commitments — list of dicts with required keys
+        # ── memory_candidates_typed (new) / memory_candidates (legacy) ───────
+        raw_mct = data.get("memory_candidates_typed", [])
+        memory_candidates_typed: list[dict] = []
+        if isinstance(raw_mct, list) and raw_mct:
+            for item in raw_mct:
+                if not isinstance(item, dict):
+                    continue
+                prop = str(item.get("proposition", "")).strip()[:200]
+                if not prop:
+                    continue
+                itype = str(item.get("inference_type", "inferred")).strip()
+                if itype not in ("explicit", "inferred"):
+                    itype = "inferred"
+                memory_candidates_typed.append({"proposition": prop, "inference_type": itype})
+        memory_candidates = (
+            [c["proposition"] for c in memory_candidates_typed]
+            if memory_candidates_typed
+            else _clean_list("memory_candidates")
+        )
+        if not memory_candidates_typed and memory_candidates:
+            memory_candidates_typed = [
+                {"proposition": p, "inference_type": "inferred"} for p in memory_candidates
+            ]
+
+        # ── relationship_evidence_structured (new) / relationship_evidence (legacy) ─
+        raw_re = data.get("relationship_evidence_structured", [])
+        relationship_evidence_structured: list[dict] = []
+        _valid_dims = {
+            "trust_honesty", "trust_intentions", "trust_competence", "trust_reliability",
+            "affinity", "comfort", "respect", "attachment", "conflict", "uncertainty", "familiarity",
+        }
+        if isinstance(raw_re, list) and raw_re:
+            for item in raw_re:
+                if not isinstance(item, dict):
+                    continue
+                dim = str(item.get("dimension", "")).strip()
+                if not dim or dim not in _valid_dims:
+                    continue
+                direction = str(item.get("direction", "positive")).strip()
+                if direction not in ("positive", "negative"):
+                    direction = "positive"
+                try:
+                    strength = max(0.0, min(1.0, float(item.get("strength", 0.5))))
+                except (TypeError, ValueError):
+                    strength = 0.5
+                reason = str(item.get("reason", "")).strip()[:200]
+                relationship_evidence_structured.append({
+                    "dimension": dim, "direction": direction,
+                    "strength": strength, "reason": reason,
+                })
+        relationship_evidence = (
+            [f"{e['dimension']}:{e['direction']}:{e['reason']}" for e in relationship_evidence_structured]
+            if relationship_evidence_structured
+            else _clean_list("relationship_evidence")
+        )
+
+        # ── goal_updates_structured (new) / goal_updates (legacy) ────────────
+        raw_gu = data.get("goal_updates_structured", [])
+        goal_updates_structured: list[dict] = []
+        if isinstance(raw_gu, list) and raw_gu:
+            for item in raw_gu:
+                if not isinstance(item, dict):
+                    continue
+                desc = str(item.get("goal_description", "")).strip()[:200]
+                if not desc:
+                    continue
+                op = str(item.get("operation", "create")).strip()
+                if op not in ("create", "update", "abandon"):
+                    op = "create"
+                try:
+                    conf = max(0.0, min(1.0, float(item.get("confidence", 0.40))))
+                except (TypeError, ValueError):
+                    conf = 0.40
+                etype = str(item.get("evidence_type", "inferred")).strip()
+                if etype not in ("explicit", "inferred"):
+                    etype = "inferred"
+                goal_updates_structured.append({
+                    "operation": op, "goal_description": desc,
+                    "confidence": conf, "evidence_type": etype,
+                })
+        goal_updates = (
+            [g["goal_description"] for g in goal_updates_structured]
+            if goal_updates_structured
+            else _clean_list("goal_updates")
+        )
+
+        # ── future_commitments ───────────────────────────────────────────────
         raw_fc = data.get("future_commitments", [])
         future_commitments: list[dict] = []
         if isinstance(raw_fc, list):
@@ -169,29 +277,29 @@ def _parse_reflection_response(text: str) -> ReflectionResult | None:
                     continue
                 hint = str(item.get("due_at_hint", "")).strip()[:50]
                 try:
-                    imp = float(item.get("importance", 0.5))
-                    imp = max(0.0, min(1.0, imp))
+                    imp = max(0.0, min(1.0, float(item.get("importance", 0.5))))
                 except (TypeError, ValueError):
                     imp = 0.5
                 obs = str(item.get("observability", "direct")).strip()
                 if obs not in ("direct", "indirect", "unobservable"):
                     obs = "direct"
                 future_commitments.append({
-                    "proposition": prop,
-                    "due_at_hint": hint,
-                    "importance": imp,
-                    "observability": obs,
+                    "proposition": prop, "due_at_hint": hint,
+                    "importance": imp, "observability": obs,
                 })
 
         return ReflectionResult(
             success_estimate=success_estimate,
-            memory_candidates=_clean_list("memory_candidates"),
+            memory_candidates=memory_candidates,
             belief_updates=_clean_list("belief_updates"),
-            relationship_evidence=_clean_list("relationship_evidence"),
-            goal_updates=_clean_list("goal_updates"),
+            relationship_evidence=relationship_evidence,
+            goal_updates=goal_updates,
             self_model_updates=_clean_list("self_model_updates"),
             user_belief_updates=_clean_list("user_belief_updates"),
             future_commitments=future_commitments,
+            memory_candidates_typed=memory_candidates_typed,
+            relationship_evidence_structured=relationship_evidence_structured,
+            goal_updates_structured=goal_updates_structured,
         )
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
@@ -235,7 +343,7 @@ def _call_reflection_haiku(context: str, *, trace_id: str) -> ReflectionResult |
             task_type="reflection",
             system_prompt=_REFLECTION_SYSTEM,
             user_message=context,
-            max_tokens=450,
+            max_tokens=600,
             tools_enabled=False,
         )
         response = provider.generate(request)
@@ -353,6 +461,98 @@ def run_reflection(
                     trace_id=trace_id,
                 )
 
+    # Punto 6 — Part 1: memory_candidates_typed → SemanticFact candidates
+    _mem_created = 0
+    for mc in result.memory_candidates_typed:
+        prop = mc.get("proposition", "").strip()
+        itype = mc.get("inference_type", "inferred")
+        if not prop:
+            continue
+        conf = 0.35 if itype == "inferred" else 0.45
+        try:
+            upsert_semantic_candidate(
+                session,
+                user_id=user_id,
+                proposition=prop,
+                inference_type=itype,
+                confidence=conf,
+                trace_id=trace_id,
+            )
+            _mem_created += 1
+        except Exception:
+            pass
+
+    # Punto 6 — Part 2: relationship_evidence_structured → RelationshipEvidence rows
+    _re_created = 0
+    for ev in result.relationship_evidence_structured:
+        try:
+            re_row = RelationshipEvidence(
+                user_id=user_id,
+                dimension=ev["dimension"],
+                direction=ev["direction"],
+                strength=ev["strength"],
+                reason=ev.get("reason", ""),
+                turn_id=trace_id,
+                source="reflection",
+            )
+            session.add(re_row)
+            _re_created += 1
+        except Exception:
+            pass
+    if _re_created:
+        session.commit()
+
+    # Punto 6 — Part 3: goal_updates_structured → GoalCandidate or direct Goal
+    _gc_created = 0
+    for gu in result.goal_updates_structured:
+        desc = gu.get("goal_description", "").strip()
+        if not desc:
+            continue
+        conf = gu.get("confidence", 0.40)
+        etype = gu.get("evidence_type", "inferred")
+        op = gu.get("operation", "create")
+        try:
+            if etype == "explicit" and conf >= 0.70 and op == "create":
+                # Direct Goal creation
+                goal = Goal(
+                    user_id=user_id,
+                    scope="short_term",
+                    description=desc,
+                    origin="autonomous",
+                    base_importance=min(1.0, conf),
+                    status="active",
+                )
+                session.add(goal)
+                session.commit()
+            else:
+                # GoalCandidate — inferred or low-confidence
+                if etype == "inferred":
+                    conf = max(0.35, min(0.45, conf))
+                gc = GoalCandidate(
+                    user_id=user_id,
+                    operation=op,
+                    goal_description=desc,
+                    confidence=conf,
+                    source_turn_id=trace_id,
+                    evidence_type=etype,
+                )
+                session.add(gc)
+            _gc_created += 1
+        except Exception:
+            pass
+    if _gc_created:
+        session.commit()
+
+    # Punto 6 — Part 4: self_model_updates → SelfBelief (lower confidence)
+    _sm_created = 0
+    for obs in result.self_model_updates:
+        if obs.strip():
+            try:
+                add_self_model_observation(session, obs.strip(), trace_id=trace_id)
+                _sm_created += 1
+            except Exception:
+                pass
+
     # Extract future commitments → create Expectations (Punto 5)
     _commitments_created = 0
     if result.future_commitments:
@@ -390,6 +590,10 @@ def run_reflection(
             "belief_updates_count": len(result.belief_updates),
             "user_belief_updates_count": len(result.user_belief_updates),
             "future_commitments_created": _commitments_created,
+            "memory_candidates_created": _mem_created,
+            "relationship_evidence_created": _re_created,
+            "goal_candidates_created": _gc_created,
+            "self_model_observations_created": _sm_created,
             "log_id": log_row.id,
         },
     )

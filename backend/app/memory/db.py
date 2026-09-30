@@ -543,6 +543,28 @@ def _migrate_semanticfact_stability() -> None:
                       payload={"table": "semanticfact", "added_columns": ["stability"]})
 
 
+def _migrate_semanticfact_punto6() -> None:
+    """Add inference_type and candidate columns to semanticfact (MINI-REMAKE v2.0 Punto 6)."""
+    _NEW_COLS = [
+        ("inference_type", "TEXT NOT NULL DEFAULT 'explicit'"),
+        ("candidate",      "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(semanticfact)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return
+        added = []
+        for col, typedef in _NEW_COLS:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE semanticfact ADD COLUMN {col} {typedef}"))
+                added.append(col)
+        if added:
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "semanticfact", "added_columns": added})
+
+
 def _migrate_bugreport() -> None:
     """Add user-submitted report columns to bugreport if absent (2026-09-25)."""
     _NEW_COLS = [
@@ -592,6 +614,7 @@ def init_db() -> None:
         _migrate_expectation_punto5()
         _migrate_proceduralpattern_behavioral_priors()
         _migrate_semanticfact_stability()
+        _migrate_semanticfact_punto6()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts

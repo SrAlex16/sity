@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from sqlmodel import Session, select
 
-from app.memory.models import SocialProfile, utc_now
+from app.memory.models import RelationshipEvidence, SocialProfile, utc_now
 
 
 def get_or_create_social_profile(session: Session, user_id: int) -> SocialProfile:
@@ -95,4 +95,57 @@ def apply_appraisal_to_social_profile(
     profile.conflict        = _clamp(profile.conflict        + (max(0.0, fd) * 0.1 + ch * 0.04) * (1.0 - pa * 0.4))
     profile.uncertainty     = _clamp(profile.uncertainty     - te * 0.3 - ss * 0.01)
 
-    profile.last_updated_at = utc_now()
+    profile.last_updated_at = utc_now()  # noqa: E302 — kept inline for apply_appraisal_to_social_profile
+
+
+_VALID_RELATIONSHIP_DIMENSIONS: frozenset[str] = frozenset({
+    "trust_honesty", "trust_intentions", "trust_competence", "trust_reliability",
+    "affinity", "comfort", "respect", "attachment", "conflict", "uncertainty", "familiarity",
+})
+
+_REFLECTION_EVIDENCE_SCALE: float = 0.015  # 30% of ~0.05 typical Appraisal scale
+
+
+def apply_reflection_relationship_evidence(
+    session: Session,
+    user_id: int,
+    trace_id: str = "",
+) -> None:
+    """Apply unapplied RelationshipEvidence rows for this turn to SocialProfile.
+
+    Reflection evidence is applied at 30% strength since Appraisal already ran this
+    turn for the same dimensions. Marks each evidence row applied=True.
+    No-op if no unapplied rows exist for this trace_id.
+    Never raises.
+    """
+    try:
+        rows = list(session.exec(
+            select(RelationshipEvidence)
+            .where(RelationshipEvidence.user_id == user_id)
+            .where(RelationshipEvidence.turn_id == trace_id)
+            .where(RelationshipEvidence.applied == False)  # noqa: E712
+        ).all())
+        if not rows:
+            return
+
+        profile = get_or_create_social_profile(session, user_id)
+        for ev in rows:
+            if ev.dimension in _VALID_RELATIONSHIP_DIMENSIONS:
+                sign = 1.0 if ev.direction == "positive" else -1.0
+                current = float(getattr(profile, ev.dimension, 0.5))
+                setattr(profile, ev.dimension, _clamp(current + sign * ev.strength * _REFLECTION_EVIDENCE_SCALE))
+            ev.applied = True
+            session.add(ev)
+
+        profile.last_updated_at = utc_now()
+        session.add(profile)
+        session.commit()
+    except Exception as exc:
+        from app.trace.logger import write_log
+        write_log(
+            level="WARN",
+            module="social",
+            event="relationship_evidence_apply_failed",
+            trace_id=trace_id,
+            payload={"user_id": user_id, "error": str(exc)[:200]},
+        )
