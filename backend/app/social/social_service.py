@@ -56,6 +56,12 @@ def _clamp(v: float) -> float:
     return max(0.0, min(1.0, v))
 
 
+_APPRAISAL_EVIDENCE_DIMS: tuple[str, ...] = (
+    "familiarity", "trust_honesty", "trust_intentions",
+    "affinity", "comfort", "respect", "attachment", "conflict", "uncertainty",
+)
+
+
 def apply_appraisal_to_social_profile(
     profile: SocialProfile,
     appraisal_trust_evidence: float,
@@ -64,11 +70,18 @@ def apply_appraisal_to_social_profile(
     perception_social_signal: float,
     perception_challenge: float,
     personality: dict,
+    *,
+    session: Session | None = None,
+    trace_id: str = "",
 ) -> None:
     """Update the 11 SocialProfile dimensions in-place from Appraisal + Perception signals.
 
     Caller is responsible for session.add(profile) + session.commit() after this call.
     All values are clamped to [0, 1].
+
+    Punto 5: when session + trace_id are provided, writes a RelationshipEvidence row
+    (source="appraisal", applied=True) for every dimension with a non-zero delta.
+    These rows are added to the session but NOT committed — the caller's commit covers them.
     """
     te  = appraisal_trust_evidence       # [0, 0.05]
     id_ = appraisal_interest_delta       # [-0.3, 0.3]
@@ -84,6 +97,13 @@ def apply_appraisal_to_social_profile(
 
     trust_mod = 1.0 - sk * 0.4     # [0.6, 1.0] — skeptical Sity trusts less readily
 
+    # Capture pre-update values to compute actual deltas for evidence trail
+    before: dict[str, float] = (
+        {d: float(getattr(profile, d, 0.5)) for d in _APPRAISAL_EVIDENCE_DIMS}
+        if session is not None and trace_id
+        else {}
+    )
+
     profile.familiarity     = _clamp(profile.familiarity     + 0.005 + ss * 0.003)
     profile.trust_honesty   = _clamp(profile.trust_honesty   + te * 0.5 * trust_mod)
     profile.trust_intentions = _clamp(profile.trust_intentions + te * 0.5 * trust_mod - ch * 0.015)
@@ -96,6 +116,24 @@ def apply_appraisal_to_social_profile(
     profile.uncertainty     = _clamp(profile.uncertainty     - te * 0.3 - ss * 0.01)
 
     profile.last_updated_at = utc_now()  # noqa: E302 — kept inline for apply_appraisal_to_social_profile
+
+    if session is not None and trace_id and profile.user_id is not None:
+        now = utc_now()
+        for dim in _APPRAISAL_EVIDENCE_DIMS:
+            delta = float(getattr(profile, dim, 0.5)) - before[dim]
+            if abs(delta) < 1e-9:
+                continue
+            ev = RelationshipEvidence(
+                user_id=profile.user_id,
+                dimension=dim,
+                direction="positive" if delta > 0 else "negative",
+                strength=abs(delta),
+                source="appraisal",
+                turn_id=trace_id,
+                applied=True,
+                created_at=now,
+            )
+            session.add(ev)
 
 
 _VALID_RELATIONSHIP_DIMENSIONS: frozenset[str] = frozenset({
@@ -130,11 +168,26 @@ def apply_reflection_relationship_evidence(
 
         profile = get_or_create_social_profile(session, user_id)
         for ev in rows:
-            if ev.dimension in _VALID_RELATIONSHIP_DIMENSIONS:
+            # Punto 5 dedup: if Appraisal already wrote evidence for this (turn, dimension),
+            # Appraisal dominates — record the row for traceability but do NOT apply delta.
+            appraisal_dominated = False
+            if ev.dimension in _VALID_RELATIONSHIP_DIMENSIONS and trace_id:
+                appraisal_ev = session.exec(
+                    select(RelationshipEvidence)
+                    .where(RelationshipEvidence.user_id == user_id)
+                    .where(RelationshipEvidence.turn_id == trace_id)
+                    .where(RelationshipEvidence.dimension == ev.dimension)
+                    .where(RelationshipEvidence.source == "appraisal")
+                ).first()
+                if appraisal_ev is not None:
+                    appraisal_dominated = True
+
+            if not appraisal_dominated and ev.dimension in _VALID_RELATIONSHIP_DIMENSIONS:
                 sign = 1.0 if ev.direction == "positive" else -1.0
                 current = float(getattr(profile, ev.dimension, 0.5))
                 setattr(profile, ev.dimension, _clamp(current + sign * ev.strength * _REFLECTION_EVIDENCE_SCALE))
-            ev.applied = True
+
+            ev.applied = not appraisal_dominated
             session.add(ev)
 
         profile.last_updated_at = utc_now()

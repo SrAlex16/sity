@@ -190,6 +190,8 @@ def run_cognition_turn(
         perception_social_signal=perception.social_signal,
         perception_challenge=perception.challenge,
         personality=personality,
+        session=session,
+        trace_id=trace_id,
     )
     # Prediction error → trust_reliability nudge (Punto 5 downstream)
     if _exp_eval and _exp_eval.prediction_errors:

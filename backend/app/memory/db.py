@@ -565,6 +565,19 @@ def _migrate_semanticfact_punto6() -> None:
                       payload={"table": "semanticfact", "added_columns": added})
 
 
+def _migrate_punto5() -> None:
+    """Add composite index on (user_id, turn_id, dimension) in relationshipevidence (Punto 5)."""
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(relationshipevidence)")).fetchall()}
+        if not existing:
+            return
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_re_user_turn_dim"
+            " ON relationshipevidence (user_id, turn_id, dimension)"
+        ))
+        conn.commit()
+
+
 def _migrate_punto4() -> None:
     """Add Punto 4 columns to selfbelief and semanticfact (MINI-REMAKE v2.0 Punto 4B)."""
     _SF_COLS = [
@@ -646,6 +659,7 @@ def init_db() -> None:
         _migrate_semanticfact_stability()
         _migrate_semanticfact_punto6()
         _migrate_punto4()
+        _migrate_punto5()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
