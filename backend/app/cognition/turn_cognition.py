@@ -51,7 +51,7 @@ from app.cognition.procedural_service import load_active_patterns, maybe_trigger
 from app.cognition.semantic_service import load_active_facts
 from app.cognition.reflection import ReflectionResult, _REFLECTION_SALIENCE_MIN, run_reflection
 from app.cognition.user_model_service import load_active_expectations
-from app.cognition.self_model_service import load_values_dict
+from app.cognition.self_model_service import get_relevant_self_beliefs, load_values_dict
 from app.cognition.goal_priority import compute_effective_priority
 from app.cognition.goal_service import (
     apply_goal_intents,
@@ -285,6 +285,12 @@ def run_cognition_turn(
             )
         except Exception:
             _active_exps = []
+        try:
+            _active_self_beliefs = get_relevant_self_beliefs(
+                session, user_id=user_id, context_type=perception.context_type
+            )
+        except Exception:
+            _active_self_beliefs = []
         decision_result = run_decision(
             user_message=user_message,
             perception=perception,
@@ -301,6 +307,7 @@ def run_cognition_turn(
             procedural_patterns=_proc_patterns or None,
             active_expectations=_active_exps or None,
             recalled_episodes=_recalled_episodes or None,
+            active_self_beliefs=_active_self_beliefs or None,
         )
     except Exception as dec_exc:
         write_log(

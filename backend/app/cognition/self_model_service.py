@@ -209,3 +209,31 @@ def deactivate_belief(session: Session, belief_id: int) -> None:
         belief.updated_at = utc_now()
         session.add(belief)
         session.commit()
+
+
+def get_relevant_self_beliefs(
+    session: Session,
+    user_id: int,  # noqa: ARG001 — accepted for call-site consistency; SelfBelief is global
+    *,
+    context_type: str = "",  # noqa: ARG001 — reserved for future context-type filtering
+    min_confidence: float = 0.60,
+    limit: int = 5,
+) -> list[SelfBelief]:
+    """Return active SelfBelief rows with confidence ≥ min_confidence, sorted desc.
+
+    SelfBelief rows belong to the global SelfModel (not per-user). user_id and
+    context_type are accepted for call-site consistency with other service functions
+    but are not used as filters today.
+    Returns [] when no SelfModel row exists yet.
+    """
+    sm = session.exec(select(SelfModel)).first()
+    if sm is None or sm.id is None:
+        return []
+    return list(session.exec(
+        select(SelfBelief)
+        .where(SelfBelief.self_model_id == sm.id)
+        .where(SelfBelief.is_active == True)  # noqa: E712
+        .where(SelfBelief.confidence >= min_confidence)
+        .order_by(SelfBelief.confidence.desc())  # type: ignore[attr-defined,arg-type]
+        .limit(limit)
+    ).all())

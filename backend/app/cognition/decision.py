@@ -36,7 +36,7 @@ from app.cognition.perception import PerceptionResult
 from app.cortex.providers.factory import build_ai_provider
 from app.cortex.schemas import AIRequest
 from app.cognition.episode_service import RecalledEpisode
-from app.memory.models import Expectation, ProceduralPattern
+from app.memory.models import Expectation, ProceduralPattern, SelfBelief
 from app.settings.settings_service import clamp_01
 from app.trace.logger import write_log
 
@@ -768,6 +768,7 @@ def run_decision(
     active_expectations: list[Expectation] | None = None,
     recalled_episodes: list[RecalledEpisode] | None = None,
     initiative_context: str = "",
+    active_self_beliefs: list[SelfBelief] | None = None,
 ) -> DecisionResult | None:
     """Run the Decision module for this turn.
 
@@ -808,6 +809,22 @@ def run_decision(
         procedural_patterns=procedural_patterns,
         active_expectations=active_expectations,
     )
+
+    # Pass 6: SelfModel metacognitive adjustments (Punto 7)
+    if active_self_beliefs and not _initiative_mode:
+        try:
+            from app.cognition.metacognitive_evaluator import compute_metacognitive_adjustments
+            _meta_adj = compute_metacognitive_adjustments(
+                active_self_beliefs,
+                perception.context_type,
+                perception,
+                mental_state,
+                trace_id=trace_id,
+            )
+            for _action, _delta in _meta_adj.items():
+                python_scores[_action] = clamp_01(python_scores.get(_action, 0.0) + _delta)
+        except Exception:
+            pass  # metacognitive failure must never affect the main pipeline
 
     if _initiative_mode:
         python_scores = {a: python_scores[a] for a in _INITIATIVE_ACTIONS if a in python_scores}
