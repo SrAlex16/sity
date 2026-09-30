@@ -1,6 +1,6 @@
 # Pipeline Cognitivo Completo — Mapa Maestro
 
-**Fecha:** 2026-09-12 (post-Operación Remake Fases 1–9 + ajuste goal_urgent)
+**Fecha:** 2026-09-30 (post-Operación Remake Fases 1–9 + MINI-REMAKE v2.0 Puntos 1–7)
 
 Este documento describe el orden real de ejecución de todo el pipeline cognitivo por turno,
 con las llamadas Haiku exactas, sus condiciones de activación, y los procesos de fondo.
@@ -57,6 +57,28 @@ Clasifica el mensaje del usuario en 6 dimensiones:
 | `context_type`  | str   | 8 valores: task / emotional / social / creative / learning / planning / casual / other |
 
 → _Diseño: docs/remake/fase-2-appraisal-goals.md §1, docs/remake/fase-7-memoria-procedimental.md_
+
+---
+
+### Paso 3b — Retrieval episódico (puro DB)
+`retrieve_relevant_episodes(session, user_id, current_topics, context_type, limit=3)`
+Rankea episodios previos usando `RecallScore = Similarity × Salience × Strength × RecencyBoost × ContextRelevance`.
+Carga top-50 por `occurred_at DESC`, rankea y devuelve top-3 con score ≥ 0.60.
+Los episodios recuperados se pasan a Decision (Paso 12) para enriquecer el contexto Haiku.
+Almacenados en `CognitionTurnResult.recalled_episodes`. Sin Haiku.
+→ _Diseño: docs/remake/fase-4-memoria-episodica-autobiografica.md_
+
+---
+
+### Paso 3c — Evaluación de Expectativas pendientes (puro DB + Python)
+`evaluate_pending_expectations(session, user_id, perception, current_turn_id)`
+Compara la `Expectation` activa más reciente del usuario con las señales de Perception actuales.
+Produce `ExpectationEvalResult` con dos efectos downstream:
+1. `prediction_errors` → `apply_prediction_error_to_trust(sp_row, ...)` en Paso 8 (nudge en `trust_reliability`)
+2. `max_surprise` → boost de `_effective_salience` en Paso 10 si `max_surprise > 0.30`
+
+Sin Haiku. Se ejecuta antes de Appraisal para que la señal de prediction_error esté disponible.
+→ _Diseño: docs/remake/fase-8-usermodel-teoria-mente-expectativas.md_
 
 ---
 
@@ -119,7 +141,10 @@ emotional_depth.
 `apply_appraisal_to_social_profile(...)` + `session.commit()`
 Aplica señales de Appraisal (trust_evidence, interest/frustration deltas) y Perception
 (social_signal, challenge) sobre las 11 dimensiones relacionales.
-→ _Diseño: docs/remake/fase-3-relacion-multidimensional.md_
+
+Si `_exp_eval.prediction_errors` existe (Paso 3c):
+`apply_prediction_error_to_trust(sp_row, prediction_errors)` — nudge adicional en `trust_reliability`.
+→ _Diseño: docs/remake/fase-3-relacion-multidimensional.md, docs/remake/fase-8-usermodel-teoria-mente-expectativas.md_
 
 ---
 
@@ -141,7 +166,11 @@ salience = 0.20*novelty + 0.15*emotional_intensity + 0.25*goal_relevance
 ```
 Regla especial: si `explicit_importance > 0.70` → `salience = max(salience, 0.45)`
 
-Este valor `salience.total` actúa como **compuerta dual**:
+**`_effective_salience`:** si `_exp_eval.max_surprise > 0.30` (Paso 3c):
+`_effective_salience = min(1.0, salience.total + max_surprise × 0.10)`
+En ausencia de prediction error de alta sorpresa, `_effective_salience == salience.total`.
+
+Este valor `_effective_salience` actúa como **compuerta dual**:
 - `≥ 0.25` → activa Haiku #3 (Episode)
 - `≥ 0.45` → activa Haiku #6 (Reflection)
 
@@ -175,8 +204,10 @@ Pre-trabajo (puro DB, antes de las llamadas Haiku):
 - `load_values_dict(session)` → `SityValues` (6 valores)
 - `load_active_patterns(session, user_id, context_type)` → `ProceduralPattern` activos
 - `load_active_expectations(session, user_id, context_type)` → `Expectation` activos
+- `get_relevant_self_beliefs(session, user_id, context_type, min_confidence=0.60)` → `SelfBelief` activas
+- `recalled_episodes` ya disponible desde Paso 3b
 
-**`compute_utility_scores()` — 4 passes independientes:**
+**`compute_utility_scores()` — 4 passes independientes (puro Python):**
 
 | Pass | Fuente                  | Señales                                     |
 |------|-------------------------|---------------------------------------------|
@@ -185,12 +216,19 @@ Pre-trabajo (puro DB, antes de las llamadas Haiku):
 | 3    | ProceduralPatterns      | `_PROCEDURAL_ACTION_HINTS` — 8 context_types, guard `confidence ≥ 0.55` |
 | 4    | Expectations            | `_EXPECTATION_ACTION_MAP` — guard `probability ≥ 0.60` |
 
-→ Haiku #4 selecciona 1 de 10 acciones: `answer`, `ask_question`, `emotional_support`,
-`change_topic`, `share_opinion`, `wait`, `tell_story`, `self_disclose`, `validate`, `challenge`.
+**Pass 5 — SelfModel metacognitive (después de `compute_utility_scores()`, antes de Haiku #4):**
+`compute_metacognitive_adjustments(self_beliefs, context_type, perception, mental_state)` — Haiku
+evalúa si las self-beliefs activas aplican al contexto y propone ajustes; fórmula de bounds:
+`modifier = proposed × max_conf × 0.05 × weight` (weight=1.5 si `max_conf ≥ 0.80`).
+Returns `{}` en cualquier error. No opera en initiative mode.
+
+→ Haiku #4 selecciona 1 de 10 acciones: `answer`, `help`, `ask`, `challenge`, `refuse`,
+`set_boundary`, `use_tool`, `wait`, `initiate`, `change_topic`.
 
 → Haiku #5 verifica coherencia: rechaza si la acción es manifiestamente incoherente.
+En initiative mode (user_message=None), Haiku #5 se omite — solo acciones `initiate`/`wait`.
 
-Resultado: `DecisionResult(action, reasoning, coherence_passed)` | `None`.
+Resultado: `DecisionResult(action, python_scores, reasoning)` | `None`.
 
 → _Diseño: docs/remake/fase-5-decision-expression.md, fase-6, fase-7, fase-8_
 
@@ -206,17 +244,21 @@ Solo lectura; se pasa a Reflection como contexto. Sin Haiku.
 ### Paso 13b — **Haiku #6: Reflection** (condicional: salience ≥ 0.45)
 ```
 Módulo:      app/cognition/reflection.py → run_reflection()
-max_tokens:  380
-Condición:   salience.total ≥ 0.45
+max_tokens:  600
+Condición:   _effective_salience ≥ 0.45
 ```
 10 preguntas introspectivas retrospectivas (sobre el turno actual + sesión).
 Recibe SemanticFacts como sección "KNOWN USER FACTS" — **zero coste marginal**
 (inyectado en el contexto Haiku ya existente).
 
-Outputs:
-- `ReflectionLog` persistido en DB
-- `SelfBelief` candidatas (`confidence=0.40, source="metacognition"`) — **nunca auto-hechos**
-- `BeliefAttribution` updates (`confidence=0.35, source="reflection"`) — ToM del usuario
+Outputs persistidos en DB:
+- `ReflectionLog` — registro completo del turno
+- `SelfBelief` candidatas vía `belief_updates` (`confidence=0.40, source="metacognition"`) — **nunca auto-hechos**
+- `BeliefAttribution` updates vía `user_belief_updates` (`confidence=0.35, source="reflection"`) — ToM del usuario
+- `SemanticFact` candidatas vía `memory_candidates_typed` → `upsert_semantic_candidate()` (candidate=True, conf ≤ 0.45)
+- `RelationshipEvidence` rows vía `relationship_evidence_structured` (applied=False, escala 0.015)
+- `GoalCandidate` (pending) o `Goal` directo vía `goal_updates_structured` (directo solo si explicit + conf ≥ 0.70)
+- `SelfBelief` refuerzo vía `self_model_updates` → `add_self_model_observation()` (conf=0.30)
 
 → _Diseño: docs/remake/fase-6-selfmodel-valores-metacognicion.md §Paso 3,
   docs/remake/fase-8-usermodel-teoria-mente-expectativas.md §Paso 2,
@@ -224,9 +266,20 @@ Outputs:
 
 ---
 
+### Paso 13c — Aplica RelationshipEvidence al SocialProfile (puro DB, condicional)
+`apply_reflection_relationship_evidence(session, user_id, trace_id)`
+Ejecutado solo cuando `reflection_result is not None`.
+Carga las filas `RelationshipEvidence` sin aplicar (`applied=False`) para este `trace_id`,
+aplica `sign × strength × 0.015` sobre la dimensión correspondiente de `SocialProfile`,
+y marca `applied=True`. Escala reducida (0.015) porque Appraisal ya actualizó el perfil
+en Paso 8 — evita doble conteo.
+Sin Haiku.
+
+---
+
 ### Paso 14 — Retorno de CognitionTurnResult
 ```python
-CognitionTurnResult(perception, appraisal, active_goals, decision, reflection)
+CognitionTurnResult(perception, appraisal, active_goals, decision, reflection, recalled_episodes)
 ```
 `run_cognition_turn()` retorna. Control vuelve a `turn_runner.py`.
 
@@ -252,7 +305,9 @@ Si `decision.action` is not None:
 - Excepción: `action="answer"` → sin instrucción (comportamiento por defecto)
 - Excepción: `action="wait"` → fallback a "answer" + log
 
-Si `decision is None` (fallback): se usa el sistema antiguo (toolset_selector + refusal_mode).
+Si `decision is None` (fallback técnico): el turno continúa sin instrucción de acción — el modelo
+principal responde normalmente. No existe "sistema antiguo"; el rechazo (`refuse`) solo llega
+vía `decision.action == "refuse"` (Punto 2 Mini-Remake v2.0).
 
 **Main LLM call** (Sonnet o Haiku vía model router): esta es la llamada principal
 que genera la respuesta visible al usuario. No contada en el presupuesto Haiku de cognición.
@@ -299,24 +354,25 @@ Anti-duplicación via contexto (no pasada de fusión explícita).
 
 ## Resumen de llamadas Haiku por turno
 
-| # | Módulo      | Condición         | max_tokens | Función                            |
-|---|-------------|-------------------|------------|------------------------------------|
-| 1 | perception  | siempre           | 110        | Clasificar turno en 6 dimensiones  |
-| 2 | appraisal   | siempre           | 350        | Evaluar impacto en estado+metas    |
-| 3 | episode     | salience ≥ 0.25   | 150        | Crear memoria episódica            |
-| 4 | decision    | siempre¹          | 120        | Seleccionar acción entre 10        |
-| 5 | coherence   | siempre¹          | 40         | Verificar coherencia de acción     |
-| 6 | reflection  | salience ≥ 0.45   | 380        | Revisión introspectiva del turno   |
+| # | Módulo           | Condición                  | max_tokens | Función                              |
+|---|------------------|----------------------------|------------|--------------------------------------|
+| 1 | perception       | siempre                    | 110        | Clasificar turno en 6 dimensiones    |
+| 2 | appraisal        | siempre                    | 350        | Evaluar impacto en estado+metas      |
+| 3 | episode          | _effective_salience ≥ 0.25 | 150        | Crear memoria episódica              |
+| 4 | decision         | siempre¹                   | 120        | Seleccionar acción entre 10          |
+| 4b| metacognitive    | si self-beliefs activas¹   | 120        | Ajustar scores con self-beliefs      |
+| 5 | coherence        | siempre¹                   | 40         | Verificar coherencia de acción       |
+| 6 | reflection       | _effective_salience ≥ 0.45 | 600        | Revisión introspectiva del turno     |
 
-¹ Haiku #4 y #5 se saltan únicamente en caso de error técnico en la orquestación de Decision
-  (excepción en turn_cognition.py paso 12). En operación normal siempre corren.
+¹ Haiku #4, #4b y #5 se saltan únicamente en caso de error técnico en la orquestación de Decision.
+  Haiku #4b (metacognitive) solo se llama cuando hay `SelfBelief` activas con confidence ≥ 0.60.
 
-**Por turno normal (sin errores técnicos):**
-- **Mínimo: 4 llamadas Haiku** — cuando salience < 0.25 (ni Episode ni Reflection)
-- **Máximo: 6 llamadas Haiku** — cuando salience ≥ 0.45 (Episode + Reflection ambos activos)
+**Por turno normal (sin errores técnicos, sin self-beliefs):**
+- **Mínimo: 4 llamadas Haiku** — cuando _effective_salience < 0.25 (ni Episode ni Reflection)
+- **Máximo: 6 llamadas Haiku** — cuando _effective_salience ≥ 0.45 + self-beliefs activas
 
 **Budget de tokens por turno (máximo, solo Haiku de cognición):**
-110 + 350 + 150 + 120 + 40 + 380 = **1.150 max_tokens de salida** (Haiku, no Expression)
+110 + 350 + 150 + 120 + 120 + 40 + 600 = **1.490 max_tokens de salida** (Haiku, no Expression)
 
 **Nota:** la llamada principal de Expression (Sonnet/Haiku vía model router) no está
 incluida en estos conteos — es la llamada que genera la respuesta visible al usuario.
@@ -327,16 +383,21 @@ incluida en estos conteos — es la llamada que genera la respuesta visible al u
 
 ```
 user_message ──► [Paso 1-2: Goal maintenance]
-                 [Paso 3: Haiku#1 Perception  ] ──► user_intent, tone, context_type
-                 [Paso 4-5: Haiku#2 Appraisal ] ──► deltas emocionales, goal_updates, surprise
-                 [Paso 6-9: Persist deltas    ] ──► MentalState, SocialProfile, Goals DB
-                 [Paso 10:  Salience (Python) ] ──► compuerta dual (0.25 / 0.45)
-                 [Paso 11:  Haiku#3 Episode   ] (si ≥0.25) ──► Episode DB
-                 [Paso 12:  Haiku#4+#5 Decision] ──► 4 passes → acción elegida
-                 [Paso 13a: SemanticFacts DB   ] ──► contexto para Reflection
-                 [Paso 13b: Haiku#6 Reflection ] (si ≥0.45) ──► SelfBelief, BeliefAttribution
-                 [Paso 14:  CognitionTurnResult] ──► devuelve al turn_runner
-                 [Paso 15:  ProceduralObs     ] ──► daemon thread si umbral
+                 [Paso 3:   Haiku#1 Perception   ] ──► user_intent, tone, context_type
+                 [Paso 3b:  Episode retrieval DB  ] ──► recalled_episodes (top-3)
+                 [Paso 3c:  ExpectationEval DB    ] ──► prediction_errors, max_surprise
+                 [Paso 4-5: Haiku#2 Appraisal    ] ──► deltas emocionales, goal_updates, surprise
+                 [Paso 6-9: Persist deltas        ] ──► MentalState, SocialProfile+trust_reliability, Goals DB
+                 [Paso 10:  Salience (Python)     ] ──► _effective_salience (boost si max_surprise>0.30)
+                 [Paso 11:  Haiku#3 Episode       ] (si ≥0.25) ──► Episode DB
+                 [Paso 12:  Haiku#4b+#4+#5 Decision] ──► 4 passes + metacognitive Pass 5 → acción elegida
+                 [Paso 13a: SemanticFacts DB       ] ──► contexto para Reflection
+                 [Paso 13b: Haiku#6 Reflection     ] (si ≥0.45) ──► ReflectionLog, SelfBelief, BeliefAttribution,
+                                                                      SemanticFact candidates, RelationshipEvidence,
+                                                                      GoalCandidate/Goal, add_self_model_observation
+                 [Paso 13c: RelationshipEvidence   ] ──► apply_reflection_relationship_evidence()
+                 [Paso 14:  CognitionTurnResult    ] ──► devuelve al turn_runner
+                 [Paso 15:  ProceduralObs          ] ──► daemon thread si umbral
                        │
                        ▼
               [Expression: persona_prompt + ACCIÓN DECIDIDA]

@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-29 (Preparación beta pública: permisos, email verification, onboarding, delete_account purge, GTM/GA, privacy policy; fix suite 3357 tests).
+Última actualización: 2026-09-30 (MINI-REMAKE v2.0 completa — 7 puntos del pipeline cognitivo; suite 3487 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,9 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3357 tests en verde (pytest, 6 skipped) — CI verde en `d637ad1` (2026-09-29)
+- 3487 tests en verde (pytest, 6 skipped, 32 deselected) — CI verde en `f86f844` (2026-09-30)
+- Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
+  `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
 - 8 módulos críticos llevados a 94-100%: auth, chat core, tool executor,
   toolset selector, routing decision, pending action runner, social memory, turn persistence
@@ -152,6 +154,57 @@ sesiones `auto`. Si en el futuro se añade detección de variante dialectal por 
 explícita, el normalizador puede extenderse.
 
 ---
+
+## Completado recientemente (2026-09-30) — MINI-REMAKE v2.0
+
+7 puntos que completan el pipeline cognitivo (Fases 2–9 → entidad autónoma).
+
+- **Punto 1 — Retrieval episódico real (commit `8436f3d`).**
+  `retrieve_relevant_episodes()`: RecallScore = Similarity × Salience × Strength × RecencyBoost ×
+  ContextRelevance. Top-50 por `occurred_at DESC`, rankea, devuelve top-3. Episodios inyectados en
+  Decision context y en persona_prompt (min_score=0.60). `CognitionTurnResult.recalled_episodes`.
+  `Episode.context_type` añadido con migración idempotente. Paso 3b en el pipeline.
+
+- **Punto 2 — Decision como única autoridad de rechazo (commit `80cdcc8`).**
+  `_should_refuse()` y `refusal_propensity` eliminados de PersonaEngine. La puerta de rechazo es
+  exclusivamente `decision.action == "refuse"` en turn_runner.py. Si Decision devuelve None el
+  turno continúa normalmente sin instrucción de acción (no hay "sistema antiguo"). Bug preexistente
+  corregido: cookie `sity_token` → `sity_session` en test_structural_refusal.
+
+- **Punto 3 — Initiative como wake-up mechanism (commit `d7243d7`).**
+  `run_decision(user_message=None)` en modo initiative: acciones restringidas a `{initiate, wait}`,
+  coherence Haiku omitido. `_DECISION_SYSTEM_INITIATIVE`. `_run_initiative_decision()` en runner.py.
+  20 tests en `tests/test_decision_initiative.py`.
+
+- **Punto 4 — Temporal decay MentalState (commit `eed4142`).**
+  `temporal_decay.py`: `apply_mental_state_decay()` con medio-tiempo de 24 h (exponencial).
+  `SemanticFact.stability` + `apply_semantic_fact_decay()`. Aplicado antes de Appraisal en
+  turn_cognition.py. 28 tests en `tests/test_temporal_decay.py`.
+
+- **Punto 5 — Prediction error + Expectation lifecycle (commit `5ed49c1`).**
+  `evaluate_pending_expectations()`: Paso 3c del pipeline (después de retrieval episódico, antes de
+  Appraisal). `ExpectationEvalResult.prediction_errors + max_surprise`. Dos efectos downstream:
+  (a) `apply_prediction_error_to_trust()` → nudge en `trust_reliability` de SocialProfile;
+  (b) `_effective_salience` boost si `max_surprise > 0.30` (+ max_surprise × 0.10).
+  Test corregido en CI: `test_eligible_pattern_creates_expectation` (cold DB fix).
+
+- **Punto 6 — Cerrar outputs de Reflection (commit `0a43383`).**
+  4 outputs de Reflection ahora persisten en DB:
+  (1) `memory_candidates_typed` → `upsert_semantic_candidate()` (SemanticFact candidate=True, conf ≤ 0.45);
+  (2) `relationship_evidence_structured` → `RelationshipEvidence` rows (scale 0.015, applied async);
+  (3) `goal_updates_structured` → `GoalCandidate` (pending) o `Goal` directo (explicit + conf ≥ 0.70);
+  (4) `self_model_updates` → `add_self_model_observation()` (SelfBelief conf=0.30).
+  Step 13c: `apply_reflection_relationship_evidence()` después de Reflection en turn_cognition.py.
+  Reflection max_tokens 450→600. Backwards compat en `_parse_reflection_response`.
+  20 tests en `tests/test_reflection_outputs.py`.
+
+- **Punto 7 — SelfModel → autorregulación / Pass 6 (commit `f86f844`).**
+  `get_relevant_self_beliefs(session, user_id, *, context_type, min_confidence=0.60, limit=5)`.
+  `metacognitive_evaluator.py` (nuevo): `compute_metacognitive_adjustments()` — Haiku evalúa si
+  self-beliefs activas aplican al contexto; fórmula de bounds: `modifier = proposed × max_conf ×
+  0.05 × weight` (weight=1.5 si conf ≥ 0.80). Pass 6 en Decision: aplicado después de
+  `compute_utility_scores()`, antes de Haiku #4. Returns {} en cualquier error.
+  21 tests en `tests/test_metacognitive.py`.
 
 ## Completado recientemente (2026-09-29)
 

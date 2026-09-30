@@ -35,7 +35,6 @@ from app.cognition.self_model_service import (
 )
 from app.cognition.semantic_service import upsert_semantic_candidate
 from app.cognition.user_model_service import (
-    VALID_EXPECTED_BEHAVIORS,
     add_belief_attribution,
     upsert_expectation,
 )
