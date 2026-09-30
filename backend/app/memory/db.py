@@ -565,6 +565,36 @@ def _migrate_semanticfact_punto6() -> None:
                       payload={"table": "semanticfact", "added_columns": added})
 
 
+def _migrate_punto4() -> None:
+    """Add Punto 4 columns to selfbelief and semanticfact (MINI-REMAKE v2.0 Punto 4B)."""
+    _SF_COLS = [
+        ("evidence_trail_json", "TEXT NOT NULL DEFAULT '[]'"),
+        ("related_belief_id",   "INTEGER"),
+    ]
+    _SB_COLS = [
+        ("related_belief_id", "INTEGER"),
+    ]
+    with engine.connect() as conn:
+        sf_info = conn.execute(text("PRAGMA table_info(semanticfact)"))
+        sf_existing = {row[1] for row in sf_info.fetchall()}
+        sb_info = conn.execute(text("PRAGMA table_info(selfbelief)"))
+        sb_existing = {row[1] for row in sb_info.fetchall()}
+
+        added: list[str] = []
+        for col, typedef in _SF_COLS:
+            if sf_existing and col not in sf_existing:
+                conn.execute(text(f"ALTER TABLE semanticfact ADD COLUMN {col} {typedef}"))
+                added.append(f"semanticfact.{col}")
+        for col, typedef in _SB_COLS:
+            if sb_existing and col not in sb_existing:
+                conn.execute(text(f"ALTER TABLE selfbelief ADD COLUMN {col} {typedef}"))
+                added.append(f"selfbelief.{col}")
+        if added:
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"added_columns": added})
+
+
 def _migrate_bugreport() -> None:
     """Add user-submitted report columns to bugreport if absent (2026-09-25)."""
     _NEW_COLS = [
@@ -615,6 +645,7 @@ def init_db() -> None:
         _migrate_proceduralpattern_behavioral_priors()
         _migrate_semanticfact_stability()
         _migrate_semanticfact_punto6()
+        _migrate_punto4()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts

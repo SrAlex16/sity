@@ -7,12 +7,18 @@ Public API:
   get_active_beliefs         — active SelfBelief rows for a SelfModel
   add_belief_candidate       — create a new SelfBelief with evidence entry
   update_belief_confidence   — adjust confidence + append to evidence_trail
+  reinforce_belief           — confidence += (1-confidence)*_BELIEF_REINFORCE_RATE
+  contradict_belief          — confidence -= confidence*_BELIEF_CONTRADICT_RATE
   deactivate_belief          — mark a belief is_active=False (superseded/retracted)
 
 Design principle (sección 57):
   Beliefs from metacognition enter with confidence ≤ 0.40 and source="metacognition".
   They are NEVER auto-applied as facts — the caller is responsible for deciding
   whether to promote a candidate. This module only provides the persistence layer.
+
+Confidence formula (Punto 4C — diminishing returns):
+  Reinforcement: confidence += (1 - confidence) * _BELIEF_REINFORCE_RATE  (0.20)
+  Contradiction: confidence -= confidence * _BELIEF_CONTRADICT_RATE        (0.15)
 """
 from __future__ import annotations
 
@@ -21,6 +27,9 @@ import json
 from sqlmodel import Session, select
 
 from app.memory.models import SelfBelief, SelfModel, SityValues, utc_now
+
+_BELIEF_REINFORCE_RATE: float = 0.20   # learning rate for diminishing-returns reinforcement
+_BELIEF_CONTRADICT_RATE: float = 0.15  # relative rate for contradiction
 
 
 # ---------------------------------------------------------------------------
@@ -92,11 +101,13 @@ def add_belief_candidate(
     trace_id: str = "",
     evidence_type: str = "reflection",
     evidence_description: str = "",
+    related_belief_id: int | None = None,
 ) -> SelfBelief:
     """Create a new SelfBelief with an initial evidence entry.
 
     confidence defaults to 0.40 for metacognition candidates (sección 57 principle).
     Use source="initial" or "configuration" for seed beliefs with higher confidence.
+    related_belief_id: set when semantic resolution returned RELATED (Punto 4A).
     """
     evidence: list[dict] = []
     if trace_id or evidence_description:
@@ -111,6 +122,7 @@ def add_belief_candidate(
         confidence=max(0.0, min(1.0, confidence)),
         source=source,
         evidence_trail_json=json.dumps(evidence),
+        related_belief_id=related_belief_id,
     )
     session.add(belief)
     session.commit()
@@ -178,10 +190,11 @@ def add_self_model_observation(
         ).first()
 
         if existing is not None and existing.id is not None:
+            new_conf = min(1.0, existing.confidence + (1 - existing.confidence) * _BELIEF_REINFORCE_RATE)
             return update_belief_confidence(
                 session,
                 belief_id=existing.id,
-                new_confidence=min(1.0, existing.confidence + 0.05),
+                new_confidence=new_conf,
                 trace_id=trace_id,
                 evidence_type="self_model_reflection",
                 evidence_description=f"repeated: {prop_clean[:60]}",
@@ -199,6 +212,56 @@ def add_self_model_observation(
         )
     except Exception:
         return None
+
+
+def reinforce_belief(
+    session: Session,
+    belief_id: int,
+    *,
+    trace_id: str = "",
+    evidence_description: str = "",
+) -> SelfBelief | None:
+    """Increase confidence with diminishing returns: confidence += (1-confidence)*0.20.
+
+    Returns updated belief or None if not found. Appends to evidence_trail_json.
+    """
+    belief = session.get(SelfBelief, belief_id)
+    if belief is None:
+        return None
+    new_conf = min(1.0, belief.confidence + (1 - belief.confidence) * _BELIEF_REINFORCE_RATE)
+    return update_belief_confidence(
+        session,
+        belief_id=belief_id,
+        new_confidence=new_conf,
+        trace_id=trace_id,
+        evidence_type="reinforcement",
+        evidence_description=evidence_description or "semantic match",
+    )
+
+
+def contradict_belief(
+    session: Session,
+    belief_id: int,
+    *,
+    trace_id: str = "",
+    evidence_description: str = "",
+) -> SelfBelief | None:
+    """Reduce confidence: confidence -= confidence * 0.15.
+
+    Returns updated belief or None if not found. Appends to evidence_trail_json.
+    """
+    belief = session.get(SelfBelief, belief_id)
+    if belief is None:
+        return None
+    new_conf = max(0.0, belief.confidence - belief.confidence * _BELIEF_CONTRADICT_RATE)
+    return update_belief_confidence(
+        session,
+        belief_id=belief_id,
+        new_confidence=new_conf,
+        trace_id=trace_id,
+        evidence_type="contradiction",
+        evidence_description=evidence_description or "semantic contradiction",
+    )
 
 
 def deactivate_belief(session: Session, belief_id: int) -> None:

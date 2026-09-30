@@ -628,6 +628,7 @@ class SelfBelief(SQLModel, table=True):
     confidence: float = Field(default=0.40, ge=0.0, le=1.0)
     source: str = Field(default="metacognition")
     evidence_trail_json: str = Field(default="[]")         # [{trace_id, type, description}]
+    related_belief_id: Optional[int] = Field(default=None) # ID of a related SelfBelief (RELATED resolution)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -829,24 +830,25 @@ class SemanticFact(SQLModel, table=True):
     """A stable fact Sity has extracted about a specific user from episodic memory.
 
     Created by the background semantic consolidation job (Fase 9) when enough
-    unprocessed episodes accumulate. Confidence evolves asymmetrically:
-      Reinforcement: min(0.85, confidence + 0.05)
-      Contradiction: max(0.00, confidence - 0.10)
-      Deactivation: confidence < 0.20 → is_active = False
+    unprocessed episodes accumulate. Confidence evolves with diminishing returns:
+      Reinforcement: confidence += (1 - confidence) * 0.20
+      Contradiction: confidence -= confidence * 0.15
+      Deactivation:  confidence < 0.20 → is_active = False
 
     source_episode_ids_json: JSON list[int] of Episode IDs that produced this fact.
-    No unique constraint on proposition — the synthesis Haiku is responsible for
-    deduplication via anti-duplication context injection.
+    evidence_trail_json: JSON list[dict] of individual evidence entries per update.
+    No unique constraint on proposition — semantic deduplication via resolve_candidate().
 
     Top-N high-confidence facts are injected (read-only) into the Reflection Step
     prompt so metacognition has user context. Never feeds Decision/compute_utility_scores.
-    Remake Fase 9.
+    Remake Fase 9. Punto 4B: evidence_trail_json, related_belief_id.
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
     proposition: str                                               # max 300 chars (enforced in service)
     confidence: float = Field(default=0.40, ge=0.0, le=1.0)
     source_episode_ids_json: str = Field(default="[]")            # list[int]
+    evidence_trail_json: str = Field(default="[]")                # list[{turn_id, relation, strength, source, timestamp}]
     reinforcement_count: int = Field(default=0)
     contradiction_count: int = Field(default=0)
     last_confirmed_at: Optional[datetime] = Field(default=None)
@@ -856,6 +858,7 @@ class SemanticFact(SQLModel, table=True):
     stability: str = Field(default="normal")        # "volatile" | "normal" | "stable"
     inference_type: str = Field(default="explicit") # "explicit" | "inferred" (Punto 6)
     candidate: bool = Field(default=False)          # True until promoted to active fact
+    related_belief_id: Optional[int] = Field(default=None)  # ID of a related SemanticFact (RELATED resolution)
 
 
 class SityValues(SQLModel, table=True):

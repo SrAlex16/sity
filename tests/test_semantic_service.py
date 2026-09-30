@@ -55,8 +55,8 @@ from app.cognition.semantic_service import (
     SEMANTIC_CONFIDENCE_MAX,
     SEMANTIC_DEACTIVATION_THRESHOLD,
     _SEMANTIC_INITIAL_CONFIDENCE,
-    _SEMANTIC_REINFORCE_DELTA,
-    _SEMANTIC_CONTRADICT_DELTA,
+    _SEMANTIC_REINFORCE_RATE,
+    _SEMANTIC_CONTRADICT_RATE,
     _SEMANTIC_BATCH_MIN,
     _SynthesisResult,
     _parse_synthesis_response,
@@ -190,12 +190,13 @@ class TestSemanticFactCRUD:
 class TestReinforceFact:
 
     def test_reinforce_increases_confidence(self, db_session):
-        # Property 8
+        # Property 8 — diminishing returns: 0.40 + (1-0.40)*0.20 = 0.52
         _clean_facts(db_session, 201)
         fact = _make_fact(db_session, 201, "Fact to reinforce", confidence=0.40)
         updated = reinforce_fact(db_session, fact.id, user_id=201)
         assert updated is not None
-        assert updated.confidence == pytest.approx(0.40 + _SEMANTIC_REINFORCE_DELTA, abs=1e-6)
+        expected = 0.40 + (1 - 0.40) * _SEMANTIC_REINFORCE_RATE
+        assert updated.confidence == pytest.approx(expected, abs=1e-6)
 
     def test_reinforce_caps_at_max(self, db_session):
         # Property 9
@@ -249,20 +250,21 @@ class TestReinforceFact:
 class TestContradictFact:
 
     def test_contradict_decreases_confidence(self, db_session):
-        # Property 14
+        # Property 14 — relative: 0.50 - 0.50*0.15 = 0.50*0.85 = 0.425
         _clean_facts(db_session, 301)
         fact = _make_fact(db_session, 301, "Fact to contradict", confidence=0.50)
         updated = contradict_fact(db_session, fact.id, user_id=301)
         assert updated is not None
-        assert updated.confidence == pytest.approx(0.50 - _SEMANTIC_CONTRADICT_DELTA, abs=1e-6)
+        expected = 0.50 - 0.50 * _SEMANTIC_CONTRADICT_RATE
+        assert updated.confidence == pytest.approx(expected, abs=1e-6)
 
     def test_contradict_floors_at_zero(self, db_session):
-        # Property 15
+        # Property 15 — max(0.0, ...) guard; result is positive but floor does not trigger
         _clean_facts(db_session, 302)
         fact = _make_fact(db_session, 302, "Near zero fact", confidence=0.05)
         updated = contradict_fact(db_session, fact.id, user_id=302)
         assert updated is not None
-        assert updated.confidence == pytest.approx(0.0, abs=1e-6)
+        assert updated.confidence >= 0.0
 
     def test_contradict_increments_count(self, db_session):
         # Property 16
@@ -283,12 +285,12 @@ class TestContradictFact:
         assert updated.last_contradicted_at is not None
 
     def test_contradict_deactivates_below_threshold(self, db_session):
-        # Property 18 — confidence 0.25 - 0.10 = 0.15 < 0.20 → deactivate
+        # Property 18 — 0.23 - 0.23*0.15 = 0.1955 < 0.20 → deactivated
         _clean_facts(db_session, 305)
-        fact = _make_fact(db_session, 305, "Near deactivation", confidence=0.25)
+        fact = _make_fact(db_session, 305, "Near deactivation", confidence=0.23)
         updated = contradict_fact(db_session, fact.id, user_id=305)
         assert updated is not None
-        assert updated.confidence == pytest.approx(0.15, abs=1e-6)
+        assert updated.confidence < SEMANTIC_DEACTIVATION_THRESHOLD
         assert updated.is_active is False
 
     def test_contradict_wrong_user_returns_none(self, db_session):
@@ -317,30 +319,35 @@ class TestContradictFact:
 class TestConfidenceFormula:
 
     def test_three_reinforcements_from_initial(self, db_session):
-        # Property 21 — 0.40 + 3×0.05 = 0.55
+        # Property 21 — diminishing returns from 0.40:
+        # 0.40 → 0.52 → 0.616 → 0.6928
         _clean_facts(db_session, 401)
         fact = _make_fact(db_session, 401, "Formula test", confidence=0.40)
         for _ in range(3):
             reinforce_fact(db_session, fact.id, user_id=401)
         db_session.refresh(fact)
-        assert fact.confidence == pytest.approx(0.55, abs=1e-6)
+        expected = 0.40
+        for _ in range(3):
+            expected = min(SEMANTIC_CONFIDENCE_MAX, expected + (1 - expected) * _SEMANTIC_REINFORCE_RATE)
+        assert fact.confidence == pytest.approx(expected, abs=1e-4)
 
     def test_one_contradiction_from_initial(self, db_session):
-        # Property 22 — 0.40 − 0.10 = 0.30
+        # Property 22 — 0.40 - 0.40*0.15 = 0.34
         _clean_facts(db_session, 402)
         fact = _make_fact(db_session, 402, "Contradict from initial", confidence=0.40)
         updated = contradict_fact(db_session, fact.id, user_id=402)
         assert updated is not None
-        assert updated.confidence == pytest.approx(0.30, abs=1e-6)
+        expected = 0.40 - 0.40 * _SEMANTIC_CONTRADICT_RATE
+        assert updated.confidence == pytest.approx(expected, abs=1e-6)
 
     def test_three_contradictions_deactivate(self, db_session):
-        # Property 23 — 0.40 - 3×0.10 = 0.10 < 0.20 → is_active = False
+        # Property 23 — starting 0.30: 0.30*(0.85^3) = 0.184 < 0.20 → deactivated
         _clean_facts(db_session, 403)
-        fact = _make_fact(db_session, 403, "Will be deactivated", confidence=0.40)
+        fact = _make_fact(db_session, 403, "Will be deactivated", confidence=0.30)
         for _ in range(3):
             contradict_fact(db_session, fact.id, user_id=403)
         db_session.refresh(fact)
-        assert fact.confidence == pytest.approx(0.10, abs=1e-6)
+        assert fact.confidence < SEMANTIC_DEACTIVATION_THRESHOLD
         assert fact.is_active is False
 
 

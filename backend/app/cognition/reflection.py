@@ -31,9 +31,19 @@ from app.cognition.perception import PerceptionResult
 from app.cognition.self_model_service import (
     add_belief_candidate,
     add_self_model_observation,
+    contradict_belief,
+    get_active_beliefs,
     get_or_create_self_model,
+    reinforce_belief,
 )
-from app.cognition.semantic_service import upsert_semantic_candidate
+from app.cognition.semantic_service import (
+    contradict_fact,
+    load_active_facts,
+    maybe_trigger_volume_consolidation,
+    reinforce_fact,
+    upsert_semantic_candidate,
+)
+from app.cognition.semantic_resolver import SemanticResolution, resolve_candidate
 from app.cognition.user_model_service import (
     add_belief_attribution,
     upsert_expectation,
@@ -429,11 +439,33 @@ def run_reflection(
     result.log_id = log_row.id
 
     # Extract belief candidates (sección 57: never auto-facts, always candidates)
+    # Punto 4A: resolve semantic relation before inserting to avoid duplicates.
     if result.belief_updates:
         sm = get_or_create_self_model(session)
         if sm.id is not None:
+            existing_beliefs = get_active_beliefs(session, sm.id)
             for proposition in result.belief_updates:
-                if proposition.strip():
+                if not proposition.strip():
+                    continue
+                resolution = resolve_candidate(
+                    proposition.strip(), "self_belief", existing_beliefs,
+                    trace_id=trace_id,
+                )
+                if resolution.relation == "match" and resolution.target_id is not None:
+                    reinforce_belief(
+                        session, resolution.target_id,
+                        trace_id=trace_id,
+                        evidence_description=f"reflection match, salience={salience_total:.2f}",
+                    )
+                elif resolution.relation == "contradict" and resolution.target_id is not None:
+                    contradict_belief(
+                        session, resolution.target_id,
+                        trace_id=trace_id,
+                        evidence_description=f"reflection contradiction, salience={salience_total:.2f}",
+                    )
+                else:
+                    # NEW or RELATED — insert as new candidate
+                    rel_id = resolution.target_id if resolution.relation == "related" else None
                     add_belief_candidate(
                         session,
                         self_model_id=sm.id,
@@ -443,7 +475,10 @@ def run_reflection(
                         trace_id=trace_id,
                         evidence_type="reflection",
                         evidence_description=f"salience={salience_total:.2f}",
+                        related_belief_id=rel_id,
                     )
+                    # Refresh list so next iteration sees the new entry
+                    existing_beliefs = get_active_beliefs(session, sm.id)
 
     # Extract user belief attribution candidates (Fase 8 — Theory of Mind)
     # confidence=0.35: more conservative than self-belief (0.40) — sección 57 stricter for ToM
@@ -461,25 +496,46 @@ def run_reflection(
                 )
 
     # Punto 6 — Part 1: memory_candidates_typed → SemanticFact candidates
+    # Punto 4A: resolve semantic relation before inserting.
     _mem_created = 0
-    for mc in result.memory_candidates_typed:
-        prop = mc.get("proposition", "").strip()
-        itype = mc.get("inference_type", "inferred")
-        if not prop:
-            continue
-        conf = 0.35 if itype == "inferred" else 0.45
-        try:
-            upsert_semantic_candidate(
-                session,
-                user_id=user_id,
-                proposition=prop,
-                inference_type=itype,
-                confidence=conf,
-                trace_id=trace_id,
-            )
-            _mem_created += 1
-        except Exception:
-            pass
+    if result.memory_candidates_typed:
+        existing_facts = load_active_facts(session, user_id)
+        for mc in result.memory_candidates_typed:
+            prop = mc.get("proposition", "").strip()
+            itype = mc.get("inference_type", "inferred")
+            if not prop:
+                continue
+            conf = 0.35 if itype == "inferred" else 0.45
+            try:
+                resolution = resolve_candidate(
+                    prop, "semantic_fact", existing_facts, trace_id=trace_id
+                )
+                if resolution.relation == "match" and resolution.target_id is not None:
+                    reinforce_fact(
+                        session, resolution.target_id,
+                        user_id=user_id, trace_id=trace_id, source="reflection",
+                    )
+                elif resolution.relation == "contradict" and resolution.target_id is not None:
+                    contradict_fact(
+                        session, resolution.target_id,
+                        user_id=user_id, trace_id=trace_id, source="reflection",
+                    )
+                else:
+                    rel_id = resolution.target_id if resolution.relation == "related" else None
+                    upsert_semantic_candidate(
+                        session,
+                        user_id=user_id,
+                        proposition=prop,
+                        inference_type=itype,
+                        confidence=conf,
+                        trace_id=trace_id,
+                        related_belief_id=rel_id,
+                    )
+                    existing_facts = load_active_facts(session, user_id)
+                _mem_created += 1
+            except Exception:
+                pass
+        maybe_trigger_volume_consolidation(user_id=user_id, trace_id=trace_id)
 
     # Punto 6 — Part 2: relationship_evidence_structured → RelationshipEvidence rows
     _re_created = 0
