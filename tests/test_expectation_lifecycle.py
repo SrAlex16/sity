@@ -47,6 +47,7 @@ Trust downstream:
 """
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -59,6 +60,9 @@ from app.cognition.expectation_service import (
     PredictionErrorEntry,
     _PATTERN_PROB_HIT,
     _PATTERN_PROB_MISS,
+    _SEMANTIC_FULFILLED_MIN_CONF,
+    _parse_semantic_eval,
+    _should_semantically_evaluate,
     apply_prediction_error_to_trust,
     evaluate_pending_expectations,
 )
@@ -132,6 +136,24 @@ def _social_profile(trust_reliability: float = 0.50) -> SocialProfile:
     sp = SocialProfile(user_id=_UID)
     sp.trust_reliability = trust_reliability
     return sp
+
+
+def _mock_haiku_fulfilled(confidence: float = 0.80) -> MagicMock:
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = json.dumps({"fulfilled": True, "confidence": confidence, "reason": "match"})
+    provider = MagicMock()
+    provider.generate.return_value = resp
+    return provider
+
+
+def _mock_haiku_not_fulfilled(confidence: float = 0.80) -> MagicMock:
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = json.dumps({"fulfilled": False, "confidence": confidence, "reason": "no match"})
+    provider = MagicMock()
+    provider.generate.return_value = resp
+    return provider
 
 
 # ── 1–3: Data model defaults ──────────────────────────────────────────────────
@@ -356,11 +378,14 @@ class TestEvaluatePendingExpectations:
     def test_fulfilled_expectation_resolved(self, db_session: Session) -> None:
         _clean(db_session, _UID)
         exp = _make_exp(db_session, expected_behavior="plan_together", probability=0.70)
-        perception = _perception("plan_together")  # matches expected_behavior
+        perception = _perception("plan_together")
 
-        result = evaluate_pending_expectations(
-            db_session, user_id=_UID, perception=perception, current_turn_id="t1"
-        )
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=_mock_haiku_fulfilled(0.80)):
+            result = evaluate_pending_expectations(
+                db_session, user_id=_UID, perception=perception, current_turn_id="t1",
+                user_message="Vamos a planificar el proyecto.",
+            )
         db_session.refresh(exp)
         assert exp.status == "fulfilled"
         assert exp.is_active is False
@@ -430,7 +455,12 @@ class TestEvaluatePendingExpectations:
         exp_b = _make_exp(db_session, user_id=_UID_B, expected_behavior="plan_together")
         perception = _perception("plan_together")
 
-        evaluate_pending_expectations(db_session, user_id=_UID, perception=perception)
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=_mock_haiku_fulfilled(0.80)):
+            evaluate_pending_expectations(
+                db_session, user_id=_UID, perception=perception,
+                user_message="Vamos a planificar.",
+            )
         db_session.refresh(exp_a)
         db_session.refresh(exp_b)
         assert exp_a.status == "fulfilled"
@@ -470,10 +500,13 @@ class TestEvaluatePendingExpectations:
 class TestPredictionErrorMath:
     def test_prediction_error_fulfilled(self, db_session: Session) -> None:
         _clean(db_session, _UID)
-        exp = _make_exp(db_session, probability=0.70, expected_behavior="plan_together")
-        result = evaluate_pending_expectations(
-            db_session, user_id=_UID, perception=_perception("plan_together")
-        )
+        _make_exp(db_session, probability=0.70, expected_behavior="plan_together")
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=_mock_haiku_fulfilled(0.80)):
+            result = evaluate_pending_expectations(
+                db_session, user_id=_UID, perception=_perception("plan_together"),
+                user_message="Vamos a planificar.",
+            )
         err = result.prediction_errors[0]
         assert err.error == pytest.approx(1.0 - 0.70, abs=0.001)
 
@@ -490,9 +523,12 @@ class TestPredictionErrorMath:
     def test_surprise_fulfilled_high_prob(self, db_session: Session) -> None:
         _clean(db_session, _UID)
         _make_exp(db_session, probability=0.80, expected_behavior="plan_together")
-        result = evaluate_pending_expectations(
-            db_session, user_id=_UID, perception=_perception("plan_together")
-        )
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=_mock_haiku_fulfilled(0.80)):
+            result = evaluate_pending_expectations(
+                db_session, user_id=_UID, perception=_perception("plan_together"),
+                user_message="Vamos a planificar.",
+            )
         expected_surprise = -math.log2(0.80)
         assert result.prediction_errors[0].surprise == pytest.approx(expected_surprise, abs=0.001)
 
@@ -541,3 +577,123 @@ class TestTrustDownstream:
         )]
         apply_prediction_error_to_trust(sp, errors)
         assert sp.trust_reliability == pytest.approx(0.50)
+
+
+# ── Fix 1: semantic evaluation helpers ───────────────────────────────────────
+
+class TestShouldSemanticallyEvaluate:
+    def _exp(self, due_at=None) -> Expectation:
+        return Expectation(
+            user_id=_UID,
+            context_type="casual",
+            expected_behavior="ask_question",
+            probability=0.60,
+            due_at=due_at,
+        )
+
+    def test_no_due_at_returns_true(self) -> None:
+        assert _should_semantically_evaluate(self._exp(None), _NOW) is True
+
+    def test_past_due_returns_true(self) -> None:
+        past = _NOW - timedelta(hours=1)
+        assert _should_semantically_evaluate(self._exp(past), _NOW) is True
+
+    def test_within_lookahead_returns_true(self) -> None:
+        within = _NOW + timedelta(hours=24)  # 24h < 48h lookahead
+        assert _should_semantically_evaluate(self._exp(within), _NOW) is True
+
+    def test_beyond_lookahead_returns_false(self) -> None:
+        far = _NOW + timedelta(hours=72)  # 72h > 48h lookahead
+        assert _should_semantically_evaluate(self._exp(far), _NOW) is False
+
+
+class TestParseSemanticEval:
+    def test_fulfilled_true_parsed(self) -> None:
+        text = json.dumps({"fulfilled": True, "confidence": 0.82, "reason": "ok"})
+        outcome, conf = _parse_semantic_eval(text)
+        assert outcome == "fulfilled"
+        assert conf == pytest.approx(0.82)
+
+    def test_fulfilled_false_parsed(self) -> None:
+        text = json.dumps({"fulfilled": False, "confidence": 0.70, "reason": "nope"})
+        outcome, conf = _parse_semantic_eval(text)
+        assert outcome == "not_fulfilled"
+        assert conf == pytest.approx(0.70)
+
+    def test_malformed_returns_unknown(self) -> None:
+        outcome, conf = _parse_semantic_eval("not valid json{{")
+        assert outcome == "unknown"
+        assert conf == 0.0
+
+    def test_markdown_fenced_json_parsed(self) -> None:
+        text = "```json\n" + json.dumps({"fulfilled": True, "confidence": 0.90}) + "\n```"
+        outcome, conf = _parse_semantic_eval(text)
+        assert outcome == "fulfilled"
+        assert conf == pytest.approx(0.90)
+
+
+class TestSemanticFulfillmentGate:
+    """Confidence threshold gate in evaluate_pending_expectations."""
+
+    def test_confidence_below_threshold_stays_pending(self, db_session: Session) -> None:
+        _clean(db_session, _UID)
+        exp = _make_exp(db_session, expected_behavior="plan_together", probability=0.70)
+
+        # Below _SEMANTIC_FULFILLED_MIN_CONF (0.75)
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=_mock_haiku_fulfilled(0.60)):
+            evaluate_pending_expectations(
+                db_session, user_id=_UID,
+                perception=_perception("plan_together"),
+                user_message="Planeemos algo.",
+            )
+        db_session.refresh(exp)
+        assert exp.status == "pending"
+
+    def test_confidence_at_threshold_resolves_fulfilled(self, db_session: Session) -> None:
+        _clean(db_session, _UID)
+        exp = _make_exp(db_session, expected_behavior="plan_together", probability=0.70)
+
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=_mock_haiku_fulfilled(_SEMANTIC_FULFILLED_MIN_CONF)):
+            evaluate_pending_expectations(
+                db_session, user_id=_UID,
+                perception=_perception("plan_together"),
+                user_message="Planeemos algo.",
+            )
+        db_session.refresh(exp)
+        assert exp.status == "fulfilled"
+
+    def test_empty_user_message_no_api_call_stays_pending(self, db_session: Session) -> None:
+        _clean(db_session, _UID)
+        exp = _make_exp(db_session, expected_behavior="plan_together")
+
+        mock_provider = _mock_haiku_fulfilled(0.90)
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=mock_provider):
+            evaluate_pending_expectations(
+                db_session, user_id=_UID,
+                perception=_perception("plan_together"),
+                user_message="",  # empty → semantic eval returns "unknown"
+            )
+        mock_provider.generate.assert_not_called()
+        db_session.refresh(exp)
+        assert exp.status == "pending"
+
+    def test_haiku_not_ok_stays_pending(self, db_session: Session) -> None:
+        _clean(db_session, _UID)
+        exp = _make_exp(db_session, expected_behavior="plan_together")
+
+        bad_resp = MagicMock()
+        bad_resp.ok = False
+        bad_provider = MagicMock()
+        bad_provider.generate.return_value = bad_resp
+        with patch("app.cognition.expectation_service.build_ai_provider",
+                   return_value=bad_provider):
+            evaluate_pending_expectations(
+                db_session, user_id=_UID,
+                perception=_perception("plan_together"),
+                user_message="Vamos a planificar.",
+            )
+        db_session.refresh(exp)
+        assert exp.status == "pending"

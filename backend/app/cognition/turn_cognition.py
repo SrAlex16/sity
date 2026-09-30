@@ -143,6 +143,7 @@ def run_cognition_turn(
             user_id=user_id,
             perception=perception,
             current_turn_id=trace_id,
+            user_message=user_message,
         )
     except Exception as _exp_exc:
         write_log(

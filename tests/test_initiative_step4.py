@@ -103,6 +103,14 @@ def _eval_result(decision: str, message: str | None = None, skip_reason: str | N
     return EvalResult(decision=decision, message=message, skip_reason=skip_reason)
 
 
+def _initiate_dec():
+    """Fake DecisionResult with action='initiate' for mocking _run_initiative_decision."""
+    dec = MagicMock()
+    dec.action = "initiate"
+    dec.reasoning = "mock initiate"
+    return dec
+
+
 # ---------------------------------------------------------------------------
 # _gc_expired_open_loops
 # ---------------------------------------------------------------------------
@@ -377,7 +385,8 @@ class TestRunCycleSync:
              patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
              patch("app.initiative.evaluator.build_ai_provider", return_value=mock_provider), \
              patch("app.initiative.runner.dispatch", side_effect=fake_dispatch), \
-             patch("app.initiative.open_loop_hook.build_ai_provider", return_value=mock_provider):
+             patch("app.initiative.open_loop_hook.build_ai_provider", return_value=mock_provider), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=_initiate_dec()):
             _run_cycle_sync()
 
         assert len(dispatched) == 1
@@ -399,7 +408,8 @@ class TestRunCycleSync:
         with patch("app.initiative.runner.engine", db.bind), \
              patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
              patch("app.initiative.evaluator.build_ai_provider", return_value=mock_provider), \
-             patch("app.initiative.runner.dispatch", side_effect=lambda f, d: dispatched.append(f)):
+             patch("app.initiative.runner.dispatch", side_effect=lambda f, d: dispatched.append(f)), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=_initiate_dec()):
             _run_cycle_sync()
 
         assert len(dispatched) == 0
@@ -431,7 +441,8 @@ class TestRunCycleSync:
         with patch("app.initiative.runner.engine", db.bind), \
              patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
              patch("app.initiative.runner.evaluate", side_effect=fake_evaluate), \
-             patch("app.initiative.runner.dispatch", side_effect=lambda f, d: dispatched.append(f)):
+             patch("app.initiative.runner.dispatch", side_effect=lambda f, d: dispatched.append(f)), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=_initiate_dec()):
             _run_cycle_sync()
 
         # Session 2 should have been dispatched despite session 1 failing
@@ -497,7 +508,8 @@ class TestRunnerIntegration:
         with patch("app.initiative.runner.engine", db.bind), \
              patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
              patch("app.initiative.evaluator.build_ai_provider", return_value=mock_provider), \
-             patch("app.notifications.dispatcher.publish_session_event_sync"):
+             patch("app.notifications.dispatcher.publish_session_event_sync"), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=_initiate_dec()):
             _run_cycle_sync()
 
         # ChatMessage persisted
@@ -543,7 +555,8 @@ class TestRunnerIntegration:
         with patch("app.initiative.runner.engine", db.bind), \
              patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
              patch("app.initiative.evaluator.build_ai_provider", return_value=mock_provider), \
-             patch("app.notifications.dispatcher.publish_session_event_sync"):
+             patch("app.notifications.dispatcher.publish_session_event_sync"), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=_initiate_dec()):
             _run_cycle_sync()
 
         sity_msgs = db.exec(
@@ -572,7 +585,8 @@ class TestRunnerIntegration:
         with patch("app.initiative.runner.engine", db.bind), \
              patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
              patch("app.initiative.evaluator.build_ai_provider", return_value=mock_provider), \
-             patch("app.notifications.dispatcher.publish_session_event_sync"):
+             patch("app.notifications.dispatcher.publish_session_event_sync"), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=_initiate_dec()):
             _run_cycle_sync()
 
         sity_msgs = db.exec(
@@ -677,3 +691,94 @@ class TestDispatchInitiativeTTS:
         assert msg is not None
         assert msg.text == "¿Qué tal vas?"
         assert msg.audio_filename is None
+
+
+# ---------------------------------------------------------------------------
+# Decision gate — None / wait / initiate handling (Fix 3)
+# ---------------------------------------------------------------------------
+
+class TestInitiativeDecisionGate:
+    """_run_initiative_decision return value must be handled as a strict gate.
+
+    None   → evaluate() NOT called (was silently falling through before Fix 3)
+    wait   → evaluate() NOT called
+    initiate → evaluate() IS called
+    """
+
+    def _make_eligible_db(self, user_id: int = 10) -> Session:
+        db = _make_db()
+        sid = f"user:{user_id}"
+        _add_user(db, user_id=user_id)
+        _add_msg(db, sid, "user", age_hours=10)
+        _add_social(db, sid, familiarity=0.8)
+        _add_open_loop(db, sid, age_days=5)
+        return db
+
+    def _dec_result(self, action: str):
+        from app.initiative.runner import _run_initiative_decision  # noqa: F401
+        result = MagicMock()
+        result.action = action
+        result.reasoning = "test"
+        return result
+
+    def test_none_decision_does_not_call_evaluate(self):
+        """When _run_initiative_decision returns None, evaluate() must NOT be called."""
+        from app.initiative.runner import _run_cycle_sync
+
+        db = self._make_eligible_db(user_id=10)
+        evaluate_calls: list = []
+
+        def fake_evaluate(candidate, db_session):
+            evaluate_calls.append(candidate)
+            from app.initiative.evaluator import EvalResult
+            return EvalResult(decision="skip", skip_reason="test")
+
+        with patch("app.initiative.runner.engine", db.bind), \
+             patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
+             patch("app.initiative.runner._run_initiative_decision", return_value=None), \
+             patch("app.initiative.runner.evaluate", side_effect=fake_evaluate):
+            _run_cycle_sync()
+
+        assert evaluate_calls == [], "evaluate() must not be called when decision is None"
+
+    def test_wait_decision_does_not_call_evaluate(self):
+        """When _run_initiative_decision returns action='wait', evaluate() must NOT be called."""
+        from app.initiative.runner import _run_cycle_sync
+
+        db = self._make_eligible_db(user_id=11)
+        evaluate_calls: list = []
+
+        def fake_evaluate(candidate, db_session):
+            evaluate_calls.append(candidate)
+            from app.initiative.evaluator import EvalResult
+            return EvalResult(decision="skip", skip_reason="test")
+
+        with patch("app.initiative.runner.engine", db.bind), \
+             patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
+             patch("app.initiative.runner._run_initiative_decision",
+                   return_value=self._dec_result("wait")), \
+             patch("app.initiative.runner.evaluate", side_effect=fake_evaluate):
+            _run_cycle_sync()
+
+        assert evaluate_calls == [], "evaluate() must not be called when decision is 'wait'"
+
+    def test_initiate_decision_calls_evaluate(self):
+        """When _run_initiative_decision returns action='initiate', evaluate() IS called."""
+        from app.initiative.runner import _run_cycle_sync
+
+        db = self._make_eligible_db(user_id=12)
+        evaluate_calls: list = []
+
+        def fake_evaluate(candidate, db_session):
+            evaluate_calls.append(candidate)
+            from app.initiative.evaluator import EvalResult
+            return EvalResult(decision="skip", skip_reason="test")
+
+        with patch("app.initiative.runner.engine", db.bind), \
+             patch("app.initiative.runner.Session", side_effect=lambda bind: db), \
+             patch("app.initiative.runner._run_initiative_decision",
+                   return_value=self._dec_result("initiate")), \
+             patch("app.initiative.runner.evaluate", side_effect=fake_evaluate):
+            _run_cycle_sync()
+
+        assert len(evaluate_calls) == 1, "evaluate() must be called when decision is 'initiate'"

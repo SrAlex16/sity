@@ -327,11 +327,12 @@ def retrieve_relevant_episodes(
     context_type: str,
     limit: int = 3,
 ) -> list[RecalledEpisode]:
-    """Return up to `limit` episodes ranked by RecallScore.
+    """Return up to `limit` episodes ranked by RecallScore that clear EPISODE_PROMPT_MIN_SCORE.
 
     Loads the most recent _RETRIEVAL_CANDIDATE_POOL episodes, scores each,
-    returns the top-scoring ones. Also increments recall_count and sets
-    last_recalled_at on every returned episode.
+    takes the top `limit` by score, then filters to those with recall_score >=
+    EPISODE_PROMPT_MIN_SCORE. recall_count and last_recalled_at are bumped only
+    for episodes that pass the threshold (i.e., those actually returned).
     """
     candidates = session.exec(
         select(Episode)
@@ -355,15 +356,20 @@ def retrieve_relevant_episodes(
     scored.sort(key=lambda r: r.recall_score, reverse=True)
     top = scored[:limit]
 
+    # Only count recall for episodes that clear the injection threshold.
+    # Bumping before the filter would inflate recall_count for episodes that are
+    # never actually shown to the model.
+    injected = [r for r in top if r.recall_score >= EPISODE_PROMPT_MIN_SCORE]
+
     now = utc_now()
-    for r in top:
+    for r in injected:
         r.episode.recall_count = (r.episode.recall_count or 0) + 1
         r.episode.last_recalled_at = now
         session.add(r.episode)
-    if top:
+    if injected:
         session.commit()
 
-    return top
+    return injected
 
 
 def build_recalled_episodes_block(recalled: list[RecalledEpisode]) -> str:

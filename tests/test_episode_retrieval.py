@@ -221,12 +221,14 @@ class TestRecallScore:
 
 class TestRetrieveRelevantEpisodes:
     def test_returns_at_most_limit(self) -> None:
+        # Use high-salience+topic episodes so all 5 clear EPISODE_PROMPT_MIN_SCORE
         with _mem_session() as session:
             for i in range(5):
-                _make_episode(session, user_id=90501, days_ago=float(i))
+                _make_episode(session, user_id=90501, salience_total=0.9,
+                               topics=["testing"], days_ago=float(i))
             result = retrieve_relevant_episodes(
                 session, 90501,
-                current_topics=["test"],
+                current_topics=["testing"],
                 context_type="casual_chat",
                 limit=3,
             )
@@ -255,24 +257,28 @@ class TestRetrieveRelevantEpisodes:
         assert scores == sorted(scores, reverse=True)
 
     def test_recall_count_incremented(self) -> None:
+        # Episode must score >= EPISODE_PROMPT_MIN_SCORE (0.60) to be bumped
         with _mem_session() as session:
-            ep = _make_episode(session, user_id=90504, days_ago=1)
+            ep = _make_episode(session, user_id=90504, salience_total=0.9,
+                               topics=["testing"], days_ago=0)
             assert ep.recall_count == 0
             retrieve_relevant_episodes(
                 session, 90504,
-                current_topics=[],
+                current_topics=["testing"],
                 context_type="casual_chat",
             )
             session.refresh(ep)
             assert ep.recall_count == 1
 
     def test_last_recalled_at_set(self) -> None:
+        # Episode must score >= EPISODE_PROMPT_MIN_SCORE (0.60) to get last_recalled_at
         with _mem_session() as session:
-            ep = _make_episode(session, user_id=90505, days_ago=1)
+            ep = _make_episode(session, user_id=90505, salience_total=0.9,
+                               topics=["testing"], days_ago=0)
             assert ep.last_recalled_at is None
             retrieve_relevant_episodes(
                 session, 90505,
-                current_topics=[],
+                current_topics=["testing"],
                 context_type="casual_chat",
             )
             session.refresh(ep)
@@ -280,16 +286,18 @@ class TestRetrieveRelevantEpisodes:
 
     def test_user_isolation(self) -> None:
         with _mem_session() as session:
-            _make_episode(session, user_id=90506, summary="user A episode")
-            _make_episode(session, user_id=90507, summary="user B episode")
+            _make_episode(session, user_id=90506, summary="user A episode",
+                          salience_total=0.9, topics=["testing"])
+            _make_episode(session, user_id=90507, summary="user B episode",
+                          salience_total=0.9, topics=["testing"])
             result_a = retrieve_relevant_episodes(
                 session, 90506,
-                current_topics=[],
+                current_topics=["testing"],
                 context_type="casual_chat",
             )
             result_b = retrieve_relevant_episodes(
                 session, 90507,
-                current_topics=[],
+                current_topics=["testing"],
                 context_type="casual_chat",
             )
             # Read summaries while session is still open
@@ -301,10 +309,11 @@ class TestRetrieveRelevantEpisodes:
         assert "user A episode" not in b_summaries
 
     def test_results_ordered_by_score_desc(self) -> None:
+        # All three episodes must clear 0.60; use decreasing salience at same recency
         with _mem_session() as session:
             _make_episode(session, user_id=90508, salience_total=0.9, topics=["testing"], days_ago=0)
-            _make_episode(session, user_id=90508, salience_total=0.3, topics=[], days_ago=200)
-            _make_episode(session, user_id=90508, salience_total=0.6, topics=["testing"], days_ago=5)
+            _make_episode(session, user_id=90508, salience_total=0.85, topics=["testing"], days_ago=0)
+            _make_episode(session, user_id=90508, salience_total=0.75, topics=["testing"], days_ago=0)
             result = retrieve_relevant_episodes(
                 session, 90508,
                 current_topics=["testing"],
@@ -313,6 +322,40 @@ class TestRetrieveRelevantEpisodes:
             )
         scores = [r.recall_score for r in result]
         assert scores == sorted(scores, reverse=True)
+
+    def test_below_threshold_not_counted(self) -> None:
+        """Episodes scoring below EPISODE_PROMPT_MIN_SCORE must not have recall bumped."""
+        with _mem_session() as session:
+            # salience=0.5, no topic overlap → score ≈ 0.1 < 0.60
+            ep = _make_episode(session, user_id=90509, salience_total=0.5,
+                               topics=[], days_ago=0)
+            assert ep.recall_count == 0
+            result = retrieve_relevant_episodes(
+                session, 90509,
+                current_topics=[],
+                context_type="casual_chat",
+            )
+            session.refresh(ep)
+        assert ep.recall_count == 0
+        assert ep.last_recalled_at is None
+        assert result == []
+
+    def test_above_threshold_counted(self) -> None:
+        """Episodes scoring >= EPISODE_PROMPT_MIN_SCORE get recall_count bumped."""
+        with _mem_session() as session:
+            # salience=0.9, full topic match → score ≈ 0.9 >= 0.60
+            ep = _make_episode(session, user_id=90510, salience_total=0.9,
+                               topics=["testing"], days_ago=0)
+            assert ep.recall_count == 0
+            result = retrieve_relevant_episodes(
+                session, 90510,
+                current_topics=["testing"],
+                context_type="casual_chat",
+            )
+            session.refresh(ep)
+        assert ep.recall_count == 1
+        assert ep.last_recalled_at is not None
+        assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------

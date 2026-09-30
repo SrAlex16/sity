@@ -357,12 +357,16 @@ class TestRunAdaptiveCycleSync:
 
         timing_ok = (True, 1800, "hay meta urgente")
 
+        fake_initiate_dec = MagicMock()
+        fake_initiate_dec.action = "initiate"
+
         with (
             patch("app.initiative.runner.Session") as MockSession,
             patch("app.initiative.runner._build_timing_message", return_value="dummy_msg"),
             patch("app.initiative.runner._call_timing_haiku", return_value=timing_ok),
             patch("app.initiative.runner._is_now_a_good_time", return_value=None),
             patch("app.initiative.runner.get_trigger_candidates", return_value=[fake_candidate]),
+            patch("app.initiative.runner._run_initiative_decision", return_value=fake_initiate_dec),
             patch("app.initiative.runner.evaluate", return_value=fake_result),
             patch("app.initiative.runner._dispatch_initiative") as mock_dispatch,
             patch("app.initiative.runner._gc_expired_open_loops"),

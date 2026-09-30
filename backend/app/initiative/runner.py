@@ -310,7 +310,7 @@ def _run_initiative_decision(
     """Run Decision in initiative mode (user_message=None) for one candidate.
 
     Returns DecisionResult with action "initiate" or "wait", or None on failure.
-    None means Decision could not run — caller falls through to evaluate() as before.
+    None means Decision could not run — caller skips evaluate() and logs a warning.
     Never raises.
     """
     from app.cognition.appraisal import AppraisalResult
@@ -472,7 +472,30 @@ def _run_cycle_sync() -> None:
 
                     # Decision gate: cognitive check before Expression (Punto 3)
                     _dec = _run_initiative_decision(candidate, db)
-                    if _dec is not None and getattr(_dec, "action", None) == "wait":
+                    if _dec is None:
+                        write_log(
+                            level="WARN",
+                            module="initiative",
+                            event="initiative_decision_failed",
+                            session_id=sid,
+                            payload={"trigger": candidate.trigger_type},
+                        )
+                        skipped += 1
+                        continue
+                    if getattr(_dec, "action", None) not in ("initiate", "wait"):
+                        write_log(
+                            level="WARN",
+                            module="initiative",
+                            event="initiative_unexpected_action",
+                            session_id=sid,
+                            payload={
+                                "trigger": candidate.trigger_type,
+                                "action": getattr(_dec, "action", None),
+                            },
+                        )
+                        skipped += 1
+                        continue
+                    if _dec.action == "wait":  # type: ignore[attr-defined]
                         write_log(
                             level="INFO",
                             module="initiative",
@@ -850,7 +873,30 @@ def _run_adaptive_cycle_sync(woken_by_signal: bool) -> int:
 
                     # Decision gate: cognitive check before Expression (Punto 3)
                     _dec = _run_initiative_decision(candidate, db)
-                    if _dec is not None and getattr(_dec, "action", None) == "wait":
+                    if _dec is None:
+                        write_log(
+                            level="WARN",
+                            module="initiative",
+                            event="initiative_decision_failed",
+                            session_id=sid,
+                            payload={"trigger": candidate.trigger_type},
+                        )
+                        skipped += 1
+                        continue
+                    if getattr(_dec, "action", None) not in ("initiate", "wait"):
+                        write_log(
+                            level="WARN",
+                            module="initiative",
+                            event="initiative_unexpected_action",
+                            session_id=sid,
+                            payload={
+                                "trigger": candidate.trigger_type,
+                                "action": getattr(_dec, "action", None),
+                            },
+                        )
+                        skipped += 1
+                        continue
+                    if _dec.action == "wait":  # type: ignore[attr-defined]
                         write_log(
                             level="INFO",
                             module="initiative",

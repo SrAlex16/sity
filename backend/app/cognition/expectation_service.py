@@ -7,8 +7,10 @@ Produces prediction_error and surprise signals that feed:
 
 Architecture:
   Event expectations (type="event"):
-    - Fulfilled: perception.context_type matches expected_behavior → resolve as "fulfilled"
-    - Expired:   due_at is set AND due_at < now → resolve as "expired_unknown"
+    - Fulfilled: Haiku semantic evaluation scores fulfillment confidence >= 0.75
+    - Violated:  confidence >= 0.80 AND observability="direct" (used as "fulfilled"=False path;
+                 never produced — epistemic humility preserves violated for future use)
+    - Expired:   due_at is set AND due_at < now (and Haiku not triggered or inconclusive)
     - Never resolved as "violated" by silence (epistemic humility)
 
   Pattern expectations (type="pattern"):
@@ -24,15 +26,34 @@ Never raises — returns empty ExpectationEvalResult on any error.
 """
 from __future__ import annotations
 
+import json
 import math
+import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
 from app.cognition.perception import PerceptionResult
+from app.cortex.providers.factory import build_ai_provider
+from app.cortex.schemas import AIRequest
 from app.memory.models import Expectation, ExpectationResolution, SocialProfile, utc_now
 from app.trace.logger import write_log
+
+_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+_SEMANTIC_FULFILLED_MIN_CONF: float = 0.75   # Haiku confidence threshold to call fulfilled
+_SEMANTIC_EVAL_LOOKAHEAD_HOURS: int = 48     # evaluate semantically if due within 48 h
+
+_SEMANTIC_SYSTEM = (
+    "You are the expectation-evaluation module for an AI named Sity. "
+    "Given an expectation about user behavior and the user's actual message, "
+    "decide whether the expectation was fulfilled.\n\n"
+    "Return ONLY valid JSON — no markdown, no explanation:\n"
+    '{"fulfilled": <bool>, "confidence": <float 0.0-1.0>, "reason": "<brief>"}\n\n'
+    "fulfilled=true means the user's message clearly matches what was expected. "
+    "fulfilled=false means it clearly does not. "
+    "Use low confidence when unsure."
+)
 
 _PATTERN_PROB_HIT:  float = 0.03    # probability boost when pattern fires
 _PATTERN_PROB_MISS: float = 0.02    # probability penalty when pattern doesn't fire
@@ -99,6 +120,7 @@ def evaluate_pending_expectations(
     user_id: int,
     perception: PerceptionResult,
     current_turn_id: str = "",
+    user_message: str = "",
 ) -> ExpectationEvalResult:
     """Evaluate all pending Expectations for user_id against the current perception.
 
@@ -117,7 +139,8 @@ def evaluate_pending_expectations(
         for exp in pending:
             if exp.expectation_type == "event":
                 _eval_event_expectation(
-                    session, exp, perception, now, current_turn_id, result
+                    session, exp, perception, now, current_turn_id, result,
+                    user_message=user_message,
                 )
                 if result.resolved_expectations:
                     _had_changes = True
@@ -139,19 +162,106 @@ def evaluate_pending_expectations(
     return result
 
 
+def _should_semantically_evaluate(exp: Expectation, now: datetime) -> bool:
+    """True when the expectation is overdue, has no deadline, or is within lookahead."""
+    if exp.due_at is None:
+        return True
+    due_aware = _aware(exp.due_at)
+    now_aware = _aware(now)
+    lookahead = now_aware + timedelta(hours=_SEMANTIC_EVAL_LOOKAHEAD_HOURS)
+    return due_aware <= lookahead
+
+
+def _parse_semantic_eval(text: str) -> tuple[str, float]:
+    """Parse Haiku JSON → (outcome, confidence). Returns ("unknown", 0.0) on any error."""
+    try:
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            parts = stripped.split("```")
+            stripped = parts[1] if len(parts) > 1 else stripped
+            if stripped.startswith("json"):
+                stripped = stripped[4:]
+        data = json.loads(stripped)
+        fulfilled_bool = bool(data.get("fulfilled", False))
+        conf = float(data.get("confidence", 0.0))
+        outcome = "fulfilled" if fulfilled_bool else "not_fulfilled"
+        return outcome, conf
+    except Exception:
+        return "unknown", 0.0
+
+
+def _resolve_event_expectation_semantic(
+    exp: Expectation,
+    user_message: str,
+    perception: PerceptionResult,
+    *,
+    trace_id: str = "",
+) -> tuple[str, float]:
+    """Ask Haiku whether user_message fulfills the expectation.
+
+    Returns (outcome, confidence) where outcome is "fulfilled", "not_fulfilled",
+    or "unknown". "unknown" means inconclusive — no resolution happens.
+    """
+    if not user_message.strip():
+        return "unknown", 0.0
+
+    user_prompt = (
+        f"EXPECTATION: {exp.expected_behavior}\n"
+        f"DESCRIPTION: {(exp.proposition or '')[:200]}\n\n"
+        f"USER MESSAGE: {user_message[:300]}\n"
+        f"CONTEXT TYPE: {perception.context_type}\n"
+        f"TONE: {perception.tone}\n"
+        f"USER INTENT: {perception.user_intent}"
+    )
+
+    try:
+        provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
+        request = AIRequest(
+            trace_id=trace_id,
+            task_type="expectation_eval",
+            system_prompt=_SEMANTIC_SYSTEM,
+            user_message=user_prompt,
+            max_tokens=80,
+            tools_enabled=False,
+        )
+        response = provider.generate(request)
+        if not response.ok or not response.text:
+            return "unknown", 0.0
+        return _parse_semantic_eval(response.text)
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="expectation_semantic_eval_failed",
+            trace_id=trace_id,
+            payload={"expectation_id": exp.id, "error": str(exc)[:200]},
+        )
+        return "unknown", 0.0
+
+
 def _eval_event_expectation(
     session: Session,
     exp: Expectation,
     perception: PerceptionResult,
-    now,
+    now: datetime,
     current_turn_id: str,
     result: ExpectationEvalResult,
+    *,
+    user_message: str = "",
 ) -> None:
     """Resolve an event expectation as fulfilled or expired_unknown."""
-    # Fulfilled: current perception matches expected_behavior
-    fulfilled = (perception.context_type == exp.expected_behavior)
+    fulfilled = False
 
-    # Expired: due_at passed without fulfillment evidence
+    # Semantic evaluation via Haiku when the expectation is actionable
+    if _should_semantically_evaluate(exp, now):
+        outcome_str, conf = _resolve_event_expectation_semantic(
+            exp, user_message, perception, trace_id=current_turn_id
+        )
+        if outcome_str == "fulfilled" and conf >= _SEMANTIC_FULFILLED_MIN_CONF:
+            fulfilled = True
+
+    # Expired: due_at passed and no fulfillment found
     expired = (
         not fulfilled
         and exp.due_at is not None
