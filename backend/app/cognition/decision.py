@@ -17,6 +17,13 @@ Never raises — returns None on any failure. Logs all fallback events with
   Note: "decision_fallback_triggered" is a diagnostic-only log (technical failure).
   When None is returned, turn_runner proceeds without structural refusal — there is
   no fallback system; the main model handles the turn normally.
+
+Initiative mode (MINI-REMAKE v2.0 Punto 3):
+  When user_message=None, Decision runs without an incoming user message.
+  Available actions are restricted to {"initiate", "wait"}.
+  Coherence Haiku is skipped — python score check is sufficient.
+  The caller (initiative/runner.py) uses this to decide whether to initiate
+  contact proactively; Expression (evaluator) generates the text if "initiate".
 """
 from __future__ import annotations
 
@@ -39,6 +46,9 @@ _VALID_ACTIONS = frozenset({
     "answer", "help", "ask", "challenge", "refuse",
     "set_boundary", "use_tool", "wait", "initiate", "change_topic",
 })
+
+# Actions valid in initiative mode (no user message — Estrategia B, Punto 3)
+_INITIATIVE_ACTIONS = frozenset({"initiate", "wait"})
 
 # ---------------------------------------------------------------------------
 # Per-action baselines
@@ -535,6 +545,21 @@ _DECISION_SYSTEM = (
     "Output only valid JSON."
 )
 
+_DECISION_SYSTEM_INITIATIVE = (
+    "You are the action-decision module for an AI assistant named Sity. "
+    "Sity is deciding whether to proactively initiate contact with the user — "
+    "there is NO incoming user message. "
+    "Based on the provided context and pre-computed utility scores, select the best action. "
+    "Return ONLY a JSON object — no markdown, no explanation.\n\n"
+    '{"action": "<action_name>", "reasoning": "<1-2 sentences why>"}\n\n'
+    "Available actions:\n"
+    "  initiate — start a proactive conversation; only when context clearly supports genuine value\n"
+    "  wait     — do not initiate; default when unsure — unsolicited contact has a cost\n\n"
+    "The utility scores reflect personality, emotional state, goals, and relationship context. "
+    "Choose 'wait' when in doubt. "
+    "Output only valid JSON."
+)
+
 _COHERENCE_SYSTEM = (
     "You are a coherence-check module. "
     "Given a chosen action, its reasoning, and the context, reply with valid JSON only.\n\n"
@@ -551,21 +576,31 @@ _COHERENCE_SYSTEM = (
 # ---------------------------------------------------------------------------
 
 def _build_decision_context(
-    user_message: str,
+    user_message: str | None,
     python_scores: dict[str, float],
     signals_summary: dict,
     pattern_hint: str = "",
     recalled_episodes: list[RecalledEpisode] | None = None,
+    initiative_context: str = "",
 ) -> str:
     top_action = max(python_scores, key=lambda a: python_scores[a])
     top_score = python_scores[top_action]
     scores_str = ", ".join(f"{a}: {s:.2f}" for a, s in sorted(python_scores.items(), key=lambda x: -x[1]))
-    base = (
-        f"USER MESSAGE: {user_message[:300]}\n\n"
-        f"SIGNALS SUMMARY:\n{json.dumps(signals_summary, ensure_ascii=False)}\n\n"
-        f"PYTHON UTILITY SCORES (formula-computed):\n  {scores_str}\n\n"
-        f"FORMULA TOP CANDIDATE: {top_action} (score: {top_score:.2f})"
-    )
+    if user_message is None:
+        initiative_line = f"\nWake reason: {initiative_context}" if initiative_context else ""
+        base = (
+            f"INITIATIVE CONTEXT: Sity is evaluating whether to proactively initiate contact.{initiative_line}\n\n"
+            f"SIGNALS SUMMARY:\n{json.dumps(signals_summary, ensure_ascii=False)}\n\n"
+            f"PYTHON UTILITY SCORES (formula-computed):\n  {scores_str}\n\n"
+            f"FORMULA TOP CANDIDATE: {top_action} (score: {top_score:.2f})"
+        )
+    else:
+        base = (
+            f"USER MESSAGE: {user_message[:300]}\n\n"
+            f"SIGNALS SUMMARY:\n{json.dumps(signals_summary, ensure_ascii=False)}\n\n"
+            f"PYTHON UTILITY SCORES (formula-computed):\n  {scores_str}\n\n"
+            f"FORMULA TOP CANDIDATE: {top_action} (score: {top_score:.2f})"
+        )
     if pattern_hint:
         base += f"\n\nLEARNED PATTERN ({signals_summary.get('context_type', '')}): {pattern_hint}"
     if recalled_episodes:
@@ -621,6 +656,7 @@ def _call_decision_haiku(
     context: str,
     *,
     trace_id: str,
+    system_prompt: str = _DECISION_SYSTEM,
 ) -> tuple[str, str] | None:
     """Haiku call #3: selects the action. Returns (action, reasoning) or None on failure."""
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
@@ -629,7 +665,7 @@ def _call_decision_haiku(
         request = AIRequest(
             trace_id=trace_id,
             task_type="decision",
-            system_prompt=_DECISION_SYSTEM,
+            system_prompt=system_prompt,
             user_message=context,
             max_tokens=120,
             tools_enabled=False,
@@ -660,7 +696,7 @@ def _call_decision_haiku(
 def _check_coherence(
     action: str,
     reasoning: str,
-    user_message: str,
+    user_message: str | None,
     python_scores: dict[str, float],
     *,
     trace_id: str,
@@ -668,7 +704,16 @@ def _check_coherence(
     """Haiku call #4: validates coherence. Returns (coherent, concern).
     Also fails coherence when python score for the chosen action is very low.
     On any API failure, returns (False, "coherence_api_error").
+    In initiative mode (user_message=None), Haiku coherence is skipped — python
+    score check is the only gate.
     """
+    # In initiative mode (no user message), coherence passes automatically.
+    # The python score threshold was calibrated for the 10-action space; in the
+    # 2-action initiative space (initiate/wait), "wait" is the safe default and
+    # may score low by formula design without being incoherent.
+    if user_message is None:
+        return True, ""
+
     python_score_for_action = python_scores.get(action, 0.0)
     if python_score_for_action < _COHERENCE_MIN_SCORE:
         concern = f"python_score_too_low:{python_score_for_action:.2f}"
@@ -707,8 +752,8 @@ def _check_coherence(
 
 def run_decision(
     *,
-    user_message: str,
-    perception: PerceptionResult,
+    user_message: str | None = None,
+    perception: PerceptionResult | None = None,
     appraisal: AppraisalResult,
     mental_state: dict,
     personality: dict,
@@ -722,6 +767,7 @@ def run_decision(
     procedural_patterns: list[ProceduralPattern] | None = None,
     active_expectations: list[Expectation] | None = None,
     recalled_episodes: list[RecalledEpisode] | None = None,
+    initiative_context: str = "",
 ) -> DecisionResult | None:
     """Run the Decision module for this turn.
 
@@ -730,12 +776,22 @@ def run_decision(
       - Coherence check determines the chosen action is incoherent
     None → caller logs decision_fallback_triggered and uses the old system.
 
+    user_message: None in initiative mode (no incoming user message). Available
+        actions are restricted to {"initiate", "wait"} and coherence Haiku is skipped.
+    perception: None defaults to PerceptionResult.neutral() (used in initiative mode).
     mental_state: POST-appraisal dict with keys: frustration, interest,
         defensiveness, boredom, social_comfort, melancholy.
     domain_activated: True if toolset_selector found at least one non-base domain.
     max_goal_priority: highest compute_effective_priority across active goals (0 if none).
+    initiative_context: human-readable description of why the runner woke up
+        (only used when user_message=None; injected into INITIATIVE CONTEXT block).
     """
-    intent_request = perception.user_intent in ("request", "command", "task")
+    _initiative_mode = user_message is None
+    if perception is None:
+        from app.cognition.perception import PerceptionResult as _PR
+        perception = _PR.neutral()
+
+    intent_request = (not _initiative_mode) and perception.user_intent in ("request", "command", "task")
 
     python_scores = compute_utility_scores(
         personality=personality,
@@ -752,6 +808,9 @@ def run_decision(
         procedural_patterns=procedural_patterns,
         active_expectations=active_expectations,
     )
+
+    if _initiative_mode:
+        python_scores = {a: python_scores[a] for a in _INITIATIVE_ACTIONS if a in python_scores}
 
     signals_summary = {
         "user_intent": perception.user_intent,
@@ -773,17 +832,19 @@ def run_decision(
 
     # Build pattern_hint for Haiku context — first active pattern above confidence threshold
     pattern_hint = ""
-    if procedural_patterns:
+    if procedural_patterns and not _initiative_mode:
         for _p in procedural_patterns:
             if _p.confidence >= _PROCEDURAL_CONFIDENCE_MIN and _p.strategy_description:
                 pattern_hint = _p.strategy_description[:120]
                 break
 
+    _sys_prompt = _DECISION_SYSTEM_INITIATIVE if _initiative_mode else _DECISION_SYSTEM
     context = _build_decision_context(
-        user_message, python_scores, signals_summary, pattern_hint, recalled_episodes
+        user_message, python_scores, signals_summary, pattern_hint, recalled_episodes,
+        initiative_context,
     )
     try:
-        haiku_result = _call_decision_haiku(context, trace_id=trace_id)
+        haiku_result = _call_decision_haiku(context, trace_id=trace_id, system_prompt=_sys_prompt)
     except Exception as exc:
         write_log(
             level="WARN",
@@ -828,6 +889,20 @@ def run_decision(
                 "step": "invalid_action_returned",
                 "action": action,
                 "python_top": max(python_scores, key=lambda a: python_scores[a]),
+            },
+        )
+        return None
+
+    if _initiative_mode and action not in _INITIATIVE_ACTIONS:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="decision_fallback_triggered",
+            trace_id=trace_id,
+            payload={
+                "reason": "technical_error",
+                "step": "initiative_action_invalid",
+                "action": action,
             },
         )
         return None

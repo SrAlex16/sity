@@ -52,6 +52,9 @@ from app.notifications.fact import NotificationFact
 from app.settings.config_loader import load_default_config
 from app.trace.logger import write_log
 
+# Lazily imported inside _run_initiative_decision to avoid circular imports
+# at module load time: app.cognition.decision → app.cognition.turn_cognition (indirectly).
+
 # ---------------------------------------------------------------------------
 # Module-level event and constants
 # ---------------------------------------------------------------------------
@@ -297,6 +300,115 @@ def _dispatch_initiative(
 
 
 # ---------------------------------------------------------------------------
+# Initiative Decision — cognitive gate before Expression (MINI-REMAKE v2.0 Punto 3)
+# ---------------------------------------------------------------------------
+
+def _run_initiative_decision(
+    candidate: TriggerCandidate,
+    db: Session,
+) -> "object | None":
+    """Run Decision in initiative mode (user_message=None) for one candidate.
+
+    Returns DecisionResult with action "initiate" or "wait", or None on failure.
+    None means Decision could not run — caller falls through to evaluate() as before.
+    Never raises.
+    """
+    from app.cognition.appraisal import AppraisalResult
+    from app.cognition.decision import run_decision
+    from app.cognition.self_model_service import load_values_dict
+
+    try:
+        user_id = int(candidate.session_id.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return None
+
+    try:
+        ms = db.exec(select(MentalState).where(MentalState.user_id == user_id)).first()
+        mental_state = {
+            "frustration":    round(ms.frustration,    3) if ms else 0.20,
+            "interest":       round(ms.interest,       3) if ms else 0.75,
+            "defensiveness":  round(ms.defensiveness,  3) if ms else 0.08,
+            "boredom":        round(ms.boredom,        3) if ms else 0.05,
+            "social_comfort": round(ms.social_comfort, 3) if ms else 0.60,
+            "melancholy":     round(ms.melancholy,     3) if ms else 0.10,
+        }
+
+        social = db.exec(select(SocialProfile).where(SocialProfile.user_id == user_id)).first()
+        affinity  = round(social.affinity,  3) if social else 0.0
+        conflict  = round(social.conflict,  3) if social else 0.0
+        trust_avg = round(
+            (social.trust_honesty + social.trust_intentions
+             + social.trust_competence + social.trust_reliability) / 4.0, 3
+        ) if social else 0.50
+
+        goals = db.exec(
+            select(Goal).where(
+                Goal.user_id == user_id,
+                Goal.status == "active",
+                Goal.scope == "long_term",
+            )
+        ).all()
+        max_goal_priority = 0.0
+        for g in goals:
+            ep = compute_effective_priority(
+                base_importance=g.base_importance,
+                relevance_boost=1.0,
+                tone="neutral",
+                is_wellbeing=g.is_wellbeing,
+            )
+            max_goal_priority = max(max_goal_priority, ep)
+
+        personality = load_default_config().get("personality", {})
+
+        try:
+            _values_dict: dict | None = load_values_dict(db)
+        except Exception:
+            _values_dict = None
+
+        ctx = candidate.context
+        if candidate.trigger_type == "goal_urgent":
+            _init_ctx = (
+                f"Meta urgente: '{ctx.get('goal_description', '')}' "
+                f"(prioridad={ctx.get('effective_priority', '?')})"
+            )
+        elif candidate.trigger_type == "open_loop":
+            _init_ctx = f"Intención abierta pendiente: '{ctx.get('extracted_intent', '')}'"
+        elif candidate.trigger_type == "conversation_abandoned":
+            _init_ctx = f"Conversación abandonada hace {ctx.get('hours_since_last_message', '?')} horas"
+        elif candidate.trigger_type == "long_inactivity":
+            _init_ctx = f"Inactividad prolongada: {ctx.get('days_since_last_message', '?')} días"
+        else:
+            _init_ctx = candidate.trigger_type
+
+        trace_id = f"init_dec:{candidate.session_id}"
+
+        return run_decision(
+            user_message=None,
+            appraisal=AppraisalResult.zero(),
+            mental_state=mental_state,
+            personality=personality,
+            affinity=affinity,
+            conflict=conflict,
+            trust_avg=trust_avg,
+            max_goal_priority=max_goal_priority,
+            domain_activated=False,
+            trace_id=trace_id,
+            values=_values_dict,
+            initiative_context=_init_ctx,
+        )
+
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="initiative",
+            event="initiative_decision_error",
+            session_id=candidate.session_id,
+            payload={"error": str(exc)[:200]},
+        )
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Legacy cycle — kept intact for test_initiative_step4.py
 # ---------------------------------------------------------------------------
 
@@ -357,6 +469,23 @@ def _run_cycle_sync() -> None:
                         continue
 
                     candidate = _pick_candidate(candidates)
+
+                    # Decision gate: cognitive check before Expression (Punto 3)
+                    _dec = _run_initiative_decision(candidate, db)
+                    if _dec is not None and getattr(_dec, "action", None) == "wait":
+                        write_log(
+                            level="INFO",
+                            module="initiative",
+                            event="initiative_decision_wait",
+                            session_id=sid,
+                            payload={
+                                "trigger": candidate.trigger_type,
+                                "reasoning": getattr(_dec, "reasoning", "")[:80],
+                            },
+                        )
+                        skipped += 1
+                        continue
+
                     result = evaluate(candidate, db)
                     evaluated += 1
 
@@ -718,6 +847,23 @@ def _run_adaptive_cycle_sync(woken_by_signal: bool) -> int:
                         continue
 
                     candidate = _pick_candidate(candidates)
+
+                    # Decision gate: cognitive check before Expression (Punto 3)
+                    _dec = _run_initiative_decision(candidate, db)
+                    if _dec is not None and getattr(_dec, "action", None) == "wait":
+                        write_log(
+                            level="INFO",
+                            module="initiative",
+                            event="initiative_decision_wait",
+                            session_id=sid,
+                            payload={
+                                "trigger": candidate.trigger_type,
+                                "reasoning": getattr(_dec, "reasoning", "")[:80],
+                            },
+                        )
+                        skipped += 1
+                        continue
+
                     result = evaluate(candidate, db)
                     evaluated += 1
 
