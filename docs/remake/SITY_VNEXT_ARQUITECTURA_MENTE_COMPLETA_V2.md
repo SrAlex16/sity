@@ -622,27 +622,27 @@ El salto conceptual de v2.0 es:
 
 ---
 
-## Estado post-implementación — ajustes post-revisión (2026-10-01)
+## Estado post-implementación completa (2026-10-01)
 
-Durante la revisión de la implementación completa se identificaron cuatro ajustes al diseño
-original que no estaban en la especificación v2.0. Todos implementados en commit `fb4678c`.
+Durante las revisiones de la implementación se identificaron siete ajustes al diseño original
+que no estaban en la especificación v2.0. Implementados en commits `fb4678c` (primera ronda)
+y `3bc69b8` (segunda ronda). **P0 conocidos: 0. Listo para beta pública.**
 
-### 1. Evidence trail como fuente de verdad
+### Primera ronda — fb4678c
+
+#### 1. Evidence trail como fuente de verdad
 
 **Diseño original:** `reinforcement_count` y `contradiction_count` eran la fuente primaria
 para recalcular confidence en el merge de consolidación. El trail era append-only pero nunca
 se reproducía.
 
-**Ajuste:** Todo candidato nace con una entrada inicial en su trail
-`{relation:"support", strength:confidence_inicial}`. Nueva función
+**Ajuste:** Todo candidato nace con una entrada inicial en su trail. Nueva función
 `recalculate_confidence_from_trail(trail, initial)` que reproduce las entradas en orden
 cronológico — el orden importa (`s→c→s ≠ s→s→c`). El merge usa esta función con
 `initial=0.0`, por lo que fusionar tres candidatos sin reinforcements extra produce
-confianza > initial (los contadores en cero darían la confianza de partida sin cambio).
-Los contadores `reinforcement_count` / `contradiction_count` se mantienen como caché
-pero se recalculan del trail en cada merge.
+confianza > initial.
 
-### 2. Separación de triggers SF y SB
+#### 2. Separación de triggers SF y SB
 
 **Diseño original:** `_count_active_candidates(user_id)` sumaba SemanticFacts del usuario
 y SelfBeliefs globales. Una única llamada Haiku recibía items mezclados de ambas tablas.
@@ -654,7 +654,7 @@ y `_count_active_self_beliefs()` (global). Dos funciones de consolidación:
 nunca recibe mezcla de SF y SB en el mismo prompt. `maybe_trigger_volume_consolidation()`
 dispara ambas de forma independiente con umbrales separados.
 
-### 3. CONTRADICT en el consolidation job offline
+#### 3. CONTRADICT en el consolidation job offline
 
 **Diseño original:** El prompt de agrupación solo definía "match" y "related". El handler
 ignoraba silenciosamente cualquier respuesta que no fuera "match".
@@ -662,17 +662,77 @@ ignoraba silenciosamente cualquier respuesta que no fuera "match".
 **Ajuste:** El prompt incluye "contradict" como relación válida. El handler para grupos
 CONTRADICT añade una entrada `{relation:"contradict"}` al trail de cada miembro del grupo
 (cross-referenciando al otro), recalcula confidence via trail, y NO fusiona las entidades.
-Esto hace que el comportamiento offline (consolidation job) sea ontológicamente consistente
-con el comportamiento online (resolver via `add_self_model_observation`).
 
-### 4. Ontología semántica unificada online/offline
+#### 4. Ontología semántica unificada online/offline
 
-**Contexto:** El resolver online (`semantic_resolver.py`, `resolve_candidate()`) ya usaba
-MATCH / RELATED / CONTRADICT / NEW como relaciones. El job offline usaba solo MATCH /
-RELATED (e ignoraba el resto).
+El resolver online (`semantic_resolver.py`) ya usaba MATCH / RELATED / CONTRADICT / NEW.
+El job offline ahora usa las mismas cuatro relaciones. Un par de creencias contradictorias
+se detecta igual en tiempo real que en el job batch nocturno.
 
-**Ajuste:** El job offline ahora usa las mismas cuatro relaciones efectivas. La experiencia
-del usuario es consistente: un par de creencias que se reconoce como contradicción en tiempo
-real (via `add_self_model_observation`) también se detecta como contradicción en el job
-batch de consolidación nocturna.
+---
+
+### Segunda ronda — 3bc69b8
+
+#### 5. CONTRADICT offline idempotente
+
+**Problema:** El consolidation job podía añadir múltiples entradas contradict al mismo par
+(SF-A → SF-B) en ejecuciones repetidas, acumulando evidencia fantasma.
+
+**Ajuste:** Cada entrada contradict incluye `target_id` (ID del otro extremo). Antes de
+añadir una entrada, se verifica `already_known`: si ya existe
+`{relation:"contradict", target_id==bid, source=="semantic_consolidation"}` en el trail,
+se omite. El trail se lee una vez por item outer (no dentro del loop inner).
+
+#### 6. Strength con significado real en el reducer
+
+**Problema:** `recalculate_confidence_from_trail` usaba `learning_rate` fijo sin importar
+el campo `strength` de cada entrada. Una observación débil (strength=0.10) movía igual
+que una observación sólida (strength=0.90).
+
+**Ajuste (modelo epistemológico final):**
+```
+support:    rate = learning_rate * ev["strength"]
+            confidence += (1 - confidence) * rate
+contradict: rate = contradiction_rate * ev["strength"]
+            confidence -= confidence * rate
+```
+`learning_rate` y `contradiction_rate` son límites arquitectónicos (cuánto puede mover
+cualquier evidencia en un turno). `strength` es el peso epistémico de esa evidencia
+concreta. Evidencia con strength=0 no produce movimiento.
+
+#### 7. Relación "initial" en evidence trail
+
+**Problema:** La primera entrada del trail usaba `relation="support"`, tratando la creación
+del candidato de la misma forma que una confirmación posterior. Esto distorsionaba el
+replay cronológico: el prior inicial se sumaba como si fuera evidencia adicional.
+
+**Ajuste:** Primera entrada usa `relation="initial"`.
+
+**Semántica en `recalculate_confidence_from_trail`:**
+- Primera entrada `"initial"` → establece el prior: `confidence = strength`
+- Entradas `"initial"` adicionales (en merges) → actúan como support ponderado
+- `"support"` y `"contradict"` → comportamiento actual, ponderado por strength
+
+`_normalize_trail_entry` preserva `"initial"` (no convierte a `"support"` durante merges).
+`upsert_semantic_candidate()` escribe `{relation:"initial", source:"reflection_initial"}`.
+`add_belief_candidate()` escribe `{relation:"initial"}` para entradas no-contradicción.
+
+---
+
+### Modelo epistemológico final del evidence trail
+
+```
+{
+  "turn_id":    str,     # turno que generó la evidencia
+  "relation":   str,     # "initial" | "support" | "contradict"
+  "strength":   float,   # peso epistémico [0.0, 1.0]
+  "source":     str,     # "reflection_initial" | "reflection" | "semantic_consolidation" | ...
+  "target_id":  int,     # (solo en contradict) ID de la entidad que contradice
+  "description": str,
+  "timestamp":  str,     # ISO UTC, clave de ordenación para replay
+}
+```
+
+El trail es la única fuente de verdad para confidence. Los contadores `reinforcement_count`
+/ `contradiction_count` son caché para consultas rápidas, recalculados en cada merge.
 

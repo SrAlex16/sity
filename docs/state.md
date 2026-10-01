@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-01 (fixes finales pre-beta — trail como fuente de verdad, consolidación SF/SB separada, CONTRADICT en consolidation job; suite 3577 tests). Sistema listo para beta pública.
+Última actualización: 2026-10-01 (fixes epistemológicos finales 3bc69b8 — CONTRADICT offline idempotente, strength con peso real en reducer, relación "initial" en evidence trail; suite 3588 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3577 tests en verde (pytest, 6 skipped, 34 deselected) — CI en `fb4678c` (2026-10-01)
+- 3588 tests en verde (pytest, 6 skipped, 34 deselected) — CI HEAD en `3bc69b8` (2026-10-01)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -155,31 +155,44 @@ explícita, el normalizador puede extenderse.
 
 ---
 
-## Completado recientemente (2026-10-01) — fixes finales pre-beta (evidence trail + separación SF/SB + CONTRADICT)
+## Completado recientemente (2026-10-01) — fixes epistemológicos finales (3bc69b8)
 
-3 fixes finales al pipeline cognitivo (commit `fb4678c`, CI en progreso).
+6 fixes al pipeline cognitivo en dos rondas (commits `fb4678c` + `3bc69b8`, CI verde).
 
+**Primera ronda (fb4678c):**
 - **Fix A — Evidence trail como fuente de verdad.**
-  `upsert_semantic_candidate()` ahora escribe una entrada inicial `{relation:"support", strength:confidence_inicial}`
-  en el trail al crear cualquier candidato. `add_belief_candidate()` hace lo mismo (sin condición en `trace_id`).
-  Nueva función `recalculate_confidence_from_trail(trail, initial, ...)`: reproduce entradas cronológicamente;
-  el orden importa (support→contradict→support ≠ support→support→contradict). La consolidación SF/SB usa
-  esta función para el merge — al fusionar 3 candidatos sin reinforcements extra, las 3 entradas iniciales
-  del trail dan confianza > initial (que daría `_recalculate_confidence_from_scratch` con contadores=0).
+  `upsert_semantic_candidate()` y `add_belief_candidate()` escriben una entrada inicial en el trail al
+  crear cualquier candidato. `recalculate_confidence_from_trail(trail, initial, ...)`: reproduce entradas
+  cronológicamente; el orden importa (support→contradict→support ≠ support→support→contradict).
+  Consolidación SF/SB usa esta función para el merge.
 
 - **Fix B — Separar consolidación de SemanticFact y SelfBelief.**
-  `_count_active_candidates()` → dos funciones independientes: `_count_active_semantic_facts(user_id)`
-  y `_count_active_self_beliefs()`. `_run_volume_consolidation()` → `_run_sf_volume_consolidation(user_id)`
-  y `_run_sb_volume_consolidation()`. `maybe_trigger_volume_consolidation()` dispara ambos de forma
-  independiente (dos threads separados, dos conteos separados). Nunca se mezclan IDs de SF y SB
-  en el mismo prompt a Haiku.
+  `_count_active_semantic_facts(user_id)` y `_count_active_self_beliefs()` independientes.
+  `_run_sf_volume_consolidation()` y `_run_sb_volume_consolidation()` en threads separados.
+  IDs de SF y SB nunca se mezclan en el mismo prompt a Haiku.
 
 - **Fix C — CONTRADICT en el consolidation job.**
-  `_SEMANTIC_GROUPING_SYSTEM` incluye ahora "contradict" como relación válida.
-  `_parse_grouping_response` acepta "contradict". En el consolidation job, un grupo CONTRADICT
-  añade una entrada `{relation:"contradict"}` al trail de cada miembro del grupo (cross-reference),
-  y recalcula confidence via trail — sin fusionar las entidades. Mismo comportamiento que el
-  resolver online (fix pre-beta 2).
+  `_SEMANTIC_GROUPING_SYSTEM` incluye "contradict". En el job, CONTRADICT añade entradas cruzadas
+  al trail de cada miembro sin fusionar entidades. Mismo comportamiento que el resolver online.
+
+**Segunda ronda (3bc69b8):**
+- **Fix 1 — CONTRADICT offline idempotente.**
+  Campo `target_id` en cada entrada contradict. Guard `already_known`: si ya existe
+  `{relation:"contradict", target_id==bid, source=="semantic_consolidation"}`, la entrada no se duplica.
+  Trail leído una vez por item outer (no dentro del loop inner).
+
+- **Fix 2 — Strength con significado real en el reducer.**
+  `recalculate_confidence_from_trail`: `rate = learning_rate * ev["strength"]` para support;
+  `rate = contradiction_rate * ev["strength"]` para contradict. Evidencia de alta confianza
+  mueve más que evidencia de baja confianza. Evidencia con strength=0 no produce movimiento.
+
+- **Fix 3 — Relación "initial" en evidence trail.**
+  Primera entrada `"initial"` establece el prior (`confidence = strength`) en lugar de sumarse
+  como support. Entradas "initial" adicionales (en merges) actúan como support ponderado.
+  `upsert_semantic_candidate()` y `add_belief_candidate()` escriben `relation="initial"` en la
+  creación. `_normalize_trail_entry` preserva "initial" (no convierte a "support").
+
+**Estado: 3588 tests, mypy limpio, P0 conocidos: 0. Listo para beta pública.**
 
 ---
 
