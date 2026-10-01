@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-01 (fixes pre-beta cognitivos — consolidation semántica real, schema unificado, related_fact_id; suite 3561 tests).
+Última actualización: 2026-10-01 (fixes finales pre-beta — trail como fuente de verdad, consolidación SF/SB separada, CONTRADICT en consolidation job; suite 3600+ tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -152,6 +152,34 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-01) — fixes finales pre-beta (evidence trail + separación SF/SB + CONTRADICT)
+
+3 fixes finales al pipeline cognitivo (commit pendiente tras suite verde).
+
+- **Fix A — Evidence trail como fuente de verdad.**
+  `upsert_semantic_candidate()` ahora escribe una entrada inicial `{relation:"support", strength:confidence_inicial}`
+  en el trail al crear cualquier candidato. `add_belief_candidate()` hace lo mismo (sin condición en `trace_id`).
+  Nueva función `recalculate_confidence_from_trail(trail, initial, ...)`: reproduce entradas cronológicamente;
+  el orden importa (support→contradict→support ≠ support→support→contradict). La consolidación SF/SB usa
+  esta función para el merge — al fusionar 3 candidatos sin reinforcements extra, las 3 entradas iniciales
+  del trail dan confianza > initial (que daría `_recalculate_confidence_from_scratch` con contadores=0).
+
+- **Fix B — Separar consolidación de SemanticFact y SelfBelief.**
+  `_count_active_candidates()` → dos funciones independientes: `_count_active_semantic_facts(user_id)`
+  y `_count_active_self_beliefs()`. `_run_volume_consolidation()` → `_run_sf_volume_consolidation(user_id)`
+  y `_run_sb_volume_consolidation()`. `maybe_trigger_volume_consolidation()` dispara ambos de forma
+  independiente (dos threads separados, dos conteos separados). Nunca se mezclan IDs de SF y SB
+  en el mismo prompt a Haiku.
+
+- **Fix C — CONTRADICT en el consolidation job.**
+  `_SEMANTIC_GROUPING_SYSTEM` incluye ahora "contradict" como relación válida.
+  `_parse_grouping_response` acepta "contradict". En el consolidation job, un grupo CONTRADICT
+  añade una entrada `{relation:"contradict"}` al trail de cada miembro del grupo (cross-reference),
+  y recalcula confidence via trail — sin fusionar las entidades. Mismo comportamiento que el
+  resolver online (fix pre-beta 2).
 
 ---
 

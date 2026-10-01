@@ -24,7 +24,7 @@ Threshold: _SEMANTIC_BATCH_MIN = 3 unprocessed episodes.
 
 Volume consolidation trigger (Punto 4D): after each new candidate insertion, if
 total active SelfBelief + SemanticFact candidates >= _CONSOLIDATION_VOLUME_TRIGGER (10),
-a background daemon thread runs _run_volume_consolidation.
+background daemon threads run _run_sf_volume_consolidation and _run_sb_volume_consolidation independently.
 
 Isolation invariant: ALL queries filter by user_id. A fact from user A NEVER
 influences user B.
@@ -516,6 +516,15 @@ def upsert_semantic_candidate(
             session.commit()
             return existing
 
+        now = utc_now()
+        initial_trail: list[dict] = [{
+            "turn_id": trace_id,
+            "relation": "support",
+            "strength": confidence,
+            "source": inference_type,
+            "description": "initial candidate",
+            "timestamp": now.isoformat(),
+        }]
         fact = SemanticFact(
             user_id=user_id,
             proposition=prop_clean,
@@ -524,6 +533,7 @@ def upsert_semantic_candidate(
             candidate=True,
             source_episode_ids_json="[]",
             related_fact_id=related_fact_id,
+            evidence_trail_json=json.dumps(initial_trail),
         )
         session.add(fact)
         session.commit()
@@ -642,11 +652,13 @@ _SEMANTIC_GROUPING_SYSTEM = (
     "Return ONLY valid JSON — no markdown:\n"
     '{"groups": [\n'
     '  {"ids": [<int>, ...], "relation": "match", "canonical_id": <int>},\n'
+    '  {"ids": [<int>, ...], "relation": "contradict"},\n'
     '  {"ids": [<int>, ...], "relation": "related"}\n'
     '],\n'
     '"ungrouped": [<int>, ...]}\n\n'
     "Rules:\n"
     '"match": same concept — merge into canonical_id (keep all other ids as duplicates)\n'
+    '"contradict": opposite claims about the same concept — record contradiction, do NOT merge\n'
     '"related": semantically linked but distinct — record relation only, do NOT merge\n'
     '"ungrouped": ids that do not belong to any group\n'
     "Every proposition id must appear exactly once across groups + ungrouped.\n"
@@ -682,7 +694,7 @@ def _parse_grouping_response(text: str) -> dict | None:
             except (ValueError, TypeError):
                 continue
             rel = str(g.get("relation", "related")).lower()
-            if rel not in ("match", "related"):
+            if rel not in ("match", "related", "contradict"):
                 rel = "related"
             entry: dict = {"ids": ids, "relation": rel}
             if rel == "match":
@@ -779,40 +791,72 @@ def _recalculate_confidence_from_scratch(
     return conf
 
 
-def _count_active_candidates(user_id: int) -> int:
-    """Count combined active SemanticFact + SelfBelief candidates for the given user."""
+def recalculate_confidence_from_trail(
+    trail: list[dict],
+    initial: float,
+    learning_rate: float = _SEMANTIC_REINFORCE_RATE,
+    contradiction_rate: float = _SEMANTIC_CONTRADICT_RATE,
+    *,
+    cap: float = SEMANTIC_CONFIDENCE_MAX,
+) -> float:
+    """Derive confidence by replaying evidence trail entries in chronological order.
+
+    Order matters: support→contradict→support differs from support→support→contradict.
+    initial: baseline confidence before any trail entry (use 0.0 to replay all evidence
+    including the initial creation entry).
+    Returns value clamped to [0.0, cap].
+    """
+    evidence = sorted(trail, key=lambda e: e.get("timestamp", ""))
+    confidence = initial
+    for ev in evidence:
+        rel = ev.get("relation", "")
+        if rel == "support":
+            confidence = min(cap, confidence + (1 - confidence) * learning_rate)
+        elif rel == "contradict":
+            confidence = max(0.0, confidence - confidence * contradiction_rate)
+    return confidence
+
+
+def _count_active_semantic_facts(user_id: int) -> int:
+    """Count active SemanticFact candidates for user_id."""
     try:
         with Session(engine) as db:
-            sf_count = db.execute(
+            count = db.execute(
                 sa_text(
                     "SELECT COUNT(*) FROM semanticfact"
                     " WHERE user_id = :uid AND candidate = 1 AND is_active = 1"
                 ),
                 {"uid": user_id},
             ).scalar() or 0
-            sb_count = db.execute(
+        return int(count)
+    except Exception:
+        return 0
+
+
+def _count_active_self_beliefs() -> int:
+    """Count active SelfBelief rows (global self-model, no user_id filter)."""
+    try:
+        with Session(engine) as db:
+            count = db.execute(
                 sa_text(
                     "SELECT COUNT(*) FROM selfbelief"
                     " WHERE self_model_id = (SELECT id FROM selfmodel LIMIT 1)"
                     " AND is_active = 1"
                 ),
             ).scalar() or 0
-        return int(sf_count) + int(sb_count)
+        return int(count)
     except Exception:
         return 0
 
 
-def _run_volume_consolidation(*, user_id: int, trace_id: str = "") -> None:
-    """Semantic grouping of active candidates via a single Haiku call.
+def _run_sf_volume_consolidation(*, user_id: int, trace_id: str = "") -> None:
+    """Consolidate SemanticFact candidates for user_id via Haiku semantic grouping.
 
-    Groups are returned as {"match": merge into canonical, "related": link only}.
-    MERGE: migrates evidence trail, accumulates counts, recalculates confidence from scratch.
-    RELATED: no structural change — recorded for traceability only.
-    Called in a daemon thread from maybe_trigger_volume_consolidation. Never raises.
+    MATCH: merge duplicates into canonical — migrate trail, recalculate from trail.
+    CONTRADICT: cross-add contradict entries to both facts, recalculate confidence.
+    RELATED: no structural change.
+    Called in a daemon thread. Never raises.
     """
-    from app.memory.models import SelfBelief
-    from app.cognition.self_model_service import get_or_create_self_model
-
     try:
         with Session(engine) as db:
             sf_candidates = list(db.exec(
@@ -822,140 +866,237 @@ def _run_volume_consolidation(*, user_id: int, trace_id: str = "") -> None:
                 .where(SemanticFact.is_active == True)  # noqa: E712
             ).all())
 
-            sm = get_or_create_self_model(db)
-            sb_candidates: list[SelfBelief] = []
-            if sm.id is not None:
-                sb_candidates = list(db.exec(
-                    select(SelfBelief)
-                    .where(SelfBelief.self_model_id == sm.id)
-                    .where(SelfBelief.is_active == True)  # noqa: E712
-                ).all())
-
-            all_items = (sf_candidates + sb_candidates)[:_MAX_CONSOLIDATION_ITEMS]
-            if len(all_items) < 2:
+            if len(sf_candidates) < 2:
                 return
 
-            grouping = _call_semantic_grouping_haiku(all_items, trace_id=trace_id)
+            grouping = _call_semantic_grouping_haiku(sf_candidates, trace_id=trace_id)
             if not grouping:
                 return
 
             sf_by_id = {f.id: f for f in sf_candidates if f.id is not None}
-            sb_by_id = {b.id: b for b in sb_candidates if b.id is not None}
             now = utc_now()
             now_iso = now.isoformat()
-            merged_sf = merged_sb = contradicted_sb = 0
+            merged = 0
+            contradicted = 0
 
             for group in grouping.get("groups", []):
                 relation = str(group.get("relation", "")).lower()
                 ids: list[int] = group.get("ids", [])
-                if relation != "match" or len(ids) < 2:
-                    continue
-                canonical_id = group.get("canonical_id", ids[0])
-                dup_ids = [i for i in ids if i != canonical_id]
 
-                # ── SemanticFact merge ──────────────────────────────────────
-                canonical_sf = sf_by_id.get(canonical_id)
-                if canonical_sf is not None:
-                    for dup_id in dup_ids:
+                if relation == "match" and len(ids) >= 2:
+                    canonical_id = group.get("canonical_id", ids[0])
+                    canonical = sf_by_id.get(canonical_id)
+                    if canonical is None:
+                        continue
+                    for dup_id in ids:
+                        if dup_id == canonical_id:
+                            continue
                         dup = sf_by_id.get(dup_id)
                         if dup is None or not dup.is_active:
                             continue
-                        keep_trail = json.loads(canonical_sf.evidence_trail_json)
+                        merged_trail: list[dict] = json.loads(canonical.evidence_trail_json)
                         for e in json.loads(dup.evidence_trail_json):
-                            keep_trail.append(_normalize_trail_entry(e, now_iso))
-                        canonical_sf.evidence_trail_json = json.dumps(keep_trail)
-                        canonical_sf.reinforcement_count += dup.reinforcement_count
-                        canonical_sf.contradiction_count += dup.contradiction_count
-                        canonical_sf.confidence = _recalculate_confidence_from_scratch(
-                            initial=0.30 if canonical_sf.inference_type == "inferred" else 0.45,
-                            reinforcement_count=canonical_sf.reinforcement_count,
-                            contradiction_count=canonical_sf.contradiction_count,
+                            merged_trail.append(_normalize_trail_entry(e, now_iso))
+                        merged_trail.sort(key=lambda e: e.get("timestamp", ""))
+                        canonical.evidence_trail_json = json.dumps(merged_trail)
+                        canonical.reinforcement_count = sum(
+                            1 for e in merged_trail if e.get("relation") == "support"
                         )
-                        canonical_sf.last_confirmed_at = now
+                        canonical.contradiction_count = sum(
+                            1 for e in merged_trail if e.get("relation") == "contradict"
+                        )
+                        canonical.confidence = recalculate_confidence_from_trail(
+                            merged_trail, initial=0.0,
+                        )
+                        canonical.last_confirmed_at = now
                         dup.is_active = False
-                        db.add(canonical_sf)
+                        db.add(canonical)
                         db.add(dup)
-                        merged_sf += 1
-                    continue
+                        merged += 1
 
-                # ── SelfBelief merge ────────────────────────────────────────
-                canonical_sb = sb_by_id.get(canonical_id)
-                if canonical_sb is not None:
-                    for dup_id in dup_ids:
-                        dup_sb = sb_by_id.get(dup_id)
-                        if dup_sb is None or not dup_sb.is_active:
+                elif relation == "contradict" and len(ids) >= 2:
+                    for aid in ids:
+                        fact_a = sf_by_id.get(aid)
+                        if fact_a is None or not fact_a.is_active:
                             continue
-                        kt = json.loads(canonical_sb.evidence_trail_json)
-                        for e in json.loads(dup_sb.evidence_trail_json):
-                            kt.append(_normalize_trail_entry(e, now_iso))
-                        canonical_sb.evidence_trail_json = json.dumps(kt)
-                        total_rc = sum(
-                            1 for e in json.loads(canonical_sb.evidence_trail_json)
-                            if e.get("relation") == "support"
-                        )
-                        total_cc = sum(
-                            1 for e in json.loads(canonical_sb.evidence_trail_json)
-                            if e.get("relation") == "contradict"
-                        )
-                        canonical_sb.confidence = _recalculate_confidence_from_scratch(
-                            initial=0.30,
-                            reinforcement_count=total_rc,
-                            contradiction_count=total_cc,
-                            cap=1.0,
-                        )
-                        canonical_sb.updated_at = now
-                        dup_sb.is_active = False
-                        dup_sb.updated_at = now
-                        db.add(canonical_sb)
-                        db.add(dup_sb)
-                        merged_sb += 1
-
-            # ── SelfBelief CONTRADICT (previously ignored) ──────────────────
-            # For now, CONTRADICT groups from Haiku are handled if they appear in
-            # the "related" group — actual contradiction tracking happens via
-            # the resolve_candidate path in add_self_model_observation.
-            # A dedicated SB contradict pass is not part of the grouping schema above
-            # (groups only have "match" | "related"), so this is a no-op here.
-            # The fix to avoid SelfBelief accumulation is handled upstream.
+                        for bid in ids:
+                            if bid == aid:
+                                continue
+                            if sf_by_id.get(bid) is None:
+                                continue
+                            trail_a: list[dict] = json.loads(fact_a.evidence_trail_json)
+                            trail_a.append({
+                                "turn_id": trace_id,
+                                "relation": "contradict",
+                                "strength": _SEMANTIC_CONTRADICT_RATE,
+                                "source": "volume_consolidation",
+                                "description": f"contradicts id={bid}",
+                                "timestamp": now_iso,
+                            })
+                            fact_a.evidence_trail_json = json.dumps(trail_a)
+                            fact_a.contradiction_count += 1
+                            fact_a.confidence = recalculate_confidence_from_trail(
+                                trail_a, initial=0.0,
+                            )
+                            if fact_a.confidence < SEMANTIC_DEACTIVATION_THRESHOLD:
+                                fact_a.is_active = False
+                            db.add(fact_a)
+                            contradicted += 1
 
             db.commit()
 
         write_log(
             level="INFO",
             module="cognition",
-            event="volume_consolidation_completed",
+            event="sf_volume_consolidation_completed",
             trace_id=trace_id,
-            payload={
-                "user_id": user_id,
-                "merged_sf": merged_sf,
-                "merged_sb": merged_sb,
-                "contradicted_sb": contradicted_sb,
-            },
+            payload={"user_id": user_id, "merged": merged, "contradicted": contradicted},
         )
     except Exception as exc:
         write_log(
             level="WARN",
             module="cognition",
-            event="volume_consolidation_failed",
+            event="sf_volume_consolidation_failed",
             trace_id=trace_id,
             payload={"user_id": user_id, "error": str(exc)[:200]},
         )
 
 
-def maybe_trigger_volume_consolidation(*, user_id: int, trace_id: str = "") -> None:
-    """Fire _run_volume_consolidation in a daemon thread when candidate count >= 10.
+def _run_sb_volume_consolidation(*, trace_id: str = "") -> None:
+    """Consolidate SelfBelief candidates (global) via Haiku semantic grouping.
 
-    Called after each new SemanticFact candidate is inserted from Reflection.
-    Never raises.
+    MATCH: merge duplicates into canonical — migrate trail, recalculate from trail.
+    CONTRADICT: cross-add contradict entries to both beliefs, recalculate confidence.
+    RELATED: no structural change.
+    Called in a daemon thread. Never raises.
+    """
+    from app.memory.models import SelfBelief
+    from app.cognition.self_model_service import get_or_create_self_model
+
+    try:
+        with Session(engine) as db:
+            sm = get_or_create_self_model(db)
+            if sm.id is None:
+                return
+            sb_candidates: list[SelfBelief] = list(db.exec(
+                select(SelfBelief)
+                .where(SelfBelief.self_model_id == sm.id)
+                .where(SelfBelief.is_active == True)  # noqa: E712
+            ).all())
+
+            if len(sb_candidates) < 2:
+                return
+
+            grouping = _call_semantic_grouping_haiku(sb_candidates, trace_id=trace_id)
+            if not grouping:
+                return
+
+            sb_by_id = {b.id: b for b in sb_candidates if b.id is not None}
+            now = utc_now()
+            now_iso = now.isoformat()
+            merged = 0
+            contradicted = 0
+
+            for group in grouping.get("groups", []):
+                relation = str(group.get("relation", "")).lower()
+                ids: list[int] = group.get("ids", [])
+
+                if relation == "match" and len(ids) >= 2:
+                    canonical_id = group.get("canonical_id", ids[0])
+                    canonical = sb_by_id.get(canonical_id)
+                    if canonical is None:
+                        continue
+                    for dup_id in ids:
+                        if dup_id == canonical_id:
+                            continue
+                        dup = sb_by_id.get(dup_id)
+                        if dup is None or not dup.is_active:
+                            continue
+                        merged_trail: list[dict] = json.loads(canonical.evidence_trail_json)
+                        for e in json.loads(dup.evidence_trail_json):
+                            merged_trail.append(_normalize_trail_entry(e, now_iso))
+                        merged_trail.sort(key=lambda e: e.get("timestamp", ""))
+                        canonical.evidence_trail_json = json.dumps(merged_trail)
+                        canonical.confidence = recalculate_confidence_from_trail(
+                            merged_trail, initial=0.0, cap=1.0,
+                        )
+                        canonical.updated_at = now
+                        dup.is_active = False
+                        dup.updated_at = now
+                        db.add(canonical)
+                        db.add(dup)
+                        merged += 1
+
+                elif relation == "contradict" and len(ids) >= 2:
+                    for aid in ids:
+                        belief_a = sb_by_id.get(aid)
+                        if belief_a is None or not belief_a.is_active:
+                            continue
+                        for bid in ids:
+                            if bid == aid:
+                                continue
+                            if sb_by_id.get(bid) is None:
+                                continue
+                            trail_a: list[dict] = json.loads(belief_a.evidence_trail_json)
+                            trail_a.append({
+                                "turn_id": trace_id,
+                                "relation": "contradict",
+                                "strength": _SEMANTIC_CONTRADICT_RATE,
+                                "source": "volume_consolidation",
+                                "description": f"contradicts id={bid}",
+                                "timestamp": now_iso,
+                            })
+                            belief_a.evidence_trail_json = json.dumps(trail_a)
+                            belief_a.confidence = recalculate_confidence_from_trail(
+                                trail_a, initial=0.0, cap=1.0,
+                            )
+                            belief_a.updated_at = now
+                            db.add(belief_a)
+                            contradicted += 1
+
+            db.commit()
+
+        write_log(
+            level="INFO",
+            module="cognition",
+            event="sb_volume_consolidation_completed",
+            trace_id=trace_id,
+            payload={"merged": merged, "contradicted": contradicted},
+        )
+    except Exception as exc:
+        write_log(
+            level="WARN",
+            module="cognition",
+            event="sb_volume_consolidation_failed",
+            trace_id=trace_id,
+            payload={"error": str(exc)[:200]},
+        )
+
+
+def maybe_trigger_volume_consolidation(*, user_id: int, trace_id: str = "") -> None:
+    """Fire SF and SB consolidation independently when their counts reach threshold.
+
+    SF consolidation fires when active SF candidates for user_id >= 10.
+    SB consolidation fires when active SB beliefs >= 10 (global, independent of SF).
+    Each runs in its own daemon thread. Never raises.
     """
     try:
-        count = _count_active_candidates(user_id)
-        if count < _CONSOLIDATION_VOLUME_TRIGGER:
-            return
-        threading.Thread(
-            target=_run_volume_consolidation,
-            kwargs={"user_id": user_id, "trace_id": trace_id},
-            daemon=True,
-        ).start()
+        sf_count = _count_active_semantic_facts(user_id)
+        if sf_count >= _CONSOLIDATION_VOLUME_TRIGGER:
+            threading.Thread(
+                target=_run_sf_volume_consolidation,
+                kwargs={"user_id": user_id, "trace_id": trace_id},
+                daemon=True,
+            ).start()
+    except Exception:
+        pass
+    try:
+        sb_count = _count_active_self_beliefs()
+        if sb_count >= _CONSOLIDATION_VOLUME_TRIGGER:
+            threading.Thread(
+                target=_run_sb_volume_consolidation,
+                kwargs={"trace_id": trace_id},
+                daemon=True,
+            ).start()
     except Exception:
         pass

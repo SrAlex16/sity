@@ -3,8 +3,8 @@
 Properties:
 
 Fix 1 — Volume consolidation semántica:
-1.  _count_active_candidates filters SemanticFact by user_id.
-2.  _count_active_candidates filters SelfBelief by self_model_id (not all users).
+1.  _count_active_semantic_facts filters SemanticFact by user_id.
+2.  _count_active_semantic_facts excludes inactive facts.
 3.  _normalize_trail_entry converts old {trace_id, type, description} to unified schema.
 4.  _normalize_trail_entry leaves modern schema entries intact.
 5.  _recalculate_confidence_from_scratch applies diminishing returns from initial value.
@@ -12,9 +12,9 @@ Fix 1 — Volume consolidation semántica:
 7.  _parse_grouping_response parses valid match group with canonical_id.
 8.  _parse_grouping_response rejects group with fewer than 2 ids.
 9.  _parse_grouping_response returns None on invalid JSON.
-10. Merge in _run_volume_consolidation migrates evidence trail from dup to canonical.
-11. Merge recalculates confidence from scratch (not additive).
-12. SemanticFact CONTRADICT in grouping is ignored (only "match" merges).
+10. Merge migrates evidence trail from dup to canonical and recalculates from trail.
+11. Merge confidence is derived from trail, not from additive counters.
+12. SemanticFact CONTRADICT in grouping cross-adds evidence to both facts.
 
 Fix 2 — add_self_model_observation with resolver:
 13. Exact-match proposition → resolver fast-path → reinforce (no new row).
@@ -51,7 +51,7 @@ from app.cognition.self_model_service import (
     update_belief_confidence,
 )
 from app.cognition.semantic_service import (
-    _count_active_candidates,
+    _count_active_semantic_facts,
     _normalize_trail_entry,
     _parse_grouping_response,
     _recalculate_confidence_from_scratch,
@@ -95,7 +95,7 @@ def _clean_sf(session: Session) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fix 1 — _count_active_candidates
+# Fix 1 — _count_active_semantic_facts
 # ---------------------------------------------------------------------------
 
 class TestCountActiveCandidates:
@@ -104,9 +104,9 @@ class TestCountActiveCandidates:
         _clean_sf(db_session)
         _make_sf(db_session, "fact user1 alpha", user_id=_UID)
         _make_sf(db_session, "fact user2 beta", user_id=_UID2)
-        count_u1 = _count_active_candidates(_UID)
-        count_u2 = _count_active_candidates(_UID2)
-        # Each user sees only their own facts in the SF part
+        count_u1 = _count_active_semantic_facts(_UID)
+        count_u2 = _count_active_semantic_facts(_UID2)
+        # Each user sees only their own facts
         assert count_u1 != count_u2 or count_u1 >= 1
 
     def test_inactive_fact_not_counted(self, db_session: Session):
@@ -115,14 +115,8 @@ class TestCountActiveCandidates:
         f.is_active = False
         db_session.add(f)
         db_session.commit()
-        count = _count_active_candidates(_UID)
-        # count should not include the deactivated fact (may include SB from other tests)
-        with Session(engine) as s:
-            sf_count = s.execute(
-                sa_text("SELECT COUNT(*) FROM semanticfact WHERE user_id=:u AND candidate=1 AND is_active=1"),
-                {"u": _UID},
-            ).scalar()
-        assert sf_count == 0
+        count = _count_active_semantic_facts(_UID)
+        assert count == 0
 
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,8 @@ from app.cognition.semantic_service import (
     _SEMANTIC_REINFORCE_RATE,
     _SEMANTIC_CONTRADICT_RATE,
     SEMANTIC_CONFIDENCE_MAX,
-    _count_active_candidates,
+    _count_active_semantic_facts,
+    _count_active_self_beliefs,
     maybe_trigger_volume_consolidation,
     reinforce_fact,
     contradict_fact,
@@ -319,13 +320,15 @@ class TestVolumeConsolidationTrigger:
 
     def test_below_threshold_no_thread_launched(self, db_session: Session):
         _clean(db_session)
-        with patch("app.cognition.semantic_service._count_active_candidates", return_value=5), \
+        with patch("app.cognition.semantic_service._count_active_semantic_facts", return_value=5), \
+             patch("app.cognition.semantic_service._count_active_self_beliefs", return_value=5), \
              patch("app.cognition.semantic_service.threading") as mock_threading:
             maybe_trigger_volume_consolidation(user_id=_UID)
             mock_threading.Thread.assert_not_called()
 
-    def test_at_threshold_thread_launched(self, db_session: Session):
-        with patch("app.cognition.semantic_service._count_active_candidates", return_value=10), \
+    def test_at_threshold_sf_thread_launched(self, db_session: Session):
+        with patch("app.cognition.semantic_service._count_active_semantic_facts", return_value=10), \
+             patch("app.cognition.semantic_service._count_active_self_beliefs", return_value=5), \
              patch("app.cognition.semantic_service.threading") as mock_threading:
             mock_thread = MagicMock()
             mock_threading.Thread.return_value = mock_thread
