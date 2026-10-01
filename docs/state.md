@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-01 (MINI-REMAKE v2.0 calidad — semantic candidate resolution + RelationshipEvidence dedup; suite 3537 tests).
+Última actualización: 2026-10-01 (fixes pre-beta cognitivos — consolidation semántica real, schema unificado, related_fact_id; suite 3561 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3537 tests en verde (pytest, 6 skipped, 34 deselected) — CI verde en `e14acc7` (2026-10-01)
+- 3561 tests en verde (pytest, 6 skipped, 34 deselected) — CI verde en `97a4093` (2026-10-01)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -152,6 +152,36 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-01) — fixes pre-beta cognitivos
+
+4 fixes post-revisión al pipeline cognitivo (commit `97a4093`).
+
+- **Fix 1 — Volume consolidation semántica real.**
+  Sustituye clustering por primeras 3 palabras por una única llamada Haiku con todos los
+  candidatos activos (max 30). Schema de respuesta: `{groups:[{ids,relation,canonical_id?}],ungrouped}`.
+  Merge real: migra `evidence_trail_json` con `_normalize_trail_entry()`, acumula
+  `reinforcement_count + contradiction_count`, recalcula confidence desde cero via
+  `_recalculate_confidence_from_scratch(initial, rc, cc)`. `_count_active_candidates()` ahora
+  filtra SelfBelief por `self_model_id = (SELECT id FROM selfmodel LIMIT 1)` en vez de todos.
+
+- **Fix 2 — self_model_updates por resolve_candidate.**
+  `add_self_model_observation()` encapsula `resolve_candidate()` internamente: fast-path para
+  vacío→NEW y exact-match→MATCH sin Haiku; cualquier caller hereda dedup semántico automáticamente.
+
+- **Fix 3 — SemanticFact.related_belief_id → related_fact_id.**
+  Rename en `models.py`, `semantic_service.py`, `reflection.py`. Migración idempotente
+  `_migrate_punto4c()` (`ALTER TABLE semanticfact RENAME COLUMN`, SQLite 3.25+).
+  `_migrate_punto4c()` corre antes de `_migrate_punto4()` en `init_db()`.
+
+- **Fix 4 — evidence_trail_json schema unificado.**
+  Schema: `{turn_id, relation, strength, source, description, timestamp}`.
+  Relaciones: `"support"` (antes "reinforcement") y `"contradict"` (antes "contradiction").
+  Migración `_migrate_evidence_trail_schema()`: convierte filas `SelfBelief` con schema antiguo
+  `{trace_id, type, description}`. Tests actualizados en `test_self_model_service.py` y
+  `test_semantic_resolver.py`. 24 tests nuevos en `tests/test_consolidation_fixes.py`.
 
 ---
 
