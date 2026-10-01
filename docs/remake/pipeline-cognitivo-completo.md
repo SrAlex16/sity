@@ -1,6 +1,6 @@
 # Pipeline Cognitivo Completo — Mapa Maestro
 
-**Fecha:** 2026-10-01 (post-Operación Remake Fases 1–9 + MINI-REMAKE v2.0 Puntos 1–7 + calidad: semantic resolution + RelationshipEvidence dedup; suite 3537 tests)
+**Fecha:** 2026-10-01 (post-Operación Remake Fases 1–9 + MINI-REMAKE v2.0 Puntos 1–7 + fixes epistemológicos evidence trail; suite 3588 tests, CI f5c3a98)
 
 Este documento describe el orden real de ejecución de todo el pipeline cognitivo por turno,
 con las llamadas Haiku exactas, sus condiciones de activación, y los procesos de fondo.

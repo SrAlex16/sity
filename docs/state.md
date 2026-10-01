@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-01 (fixes epistemológicos finales 3bc69b8 — CONTRADICT offline idempotente, strength con peso real en reducer, relación "initial" en evidence trail; suite 3588 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-01 (f5c3a98 — reset-data.sh ampliado a 47 tablas Mini-Remake v2.0; fixes epistemológicos 3bc69b8; suite 3588 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3588 tests en verde (pytest, 6 skipped, 34 deselected) — CI HEAD en `3bc69b8` (2026-10-01)
+- 3588 tests en verde (pytest, 6 skipped, 34 deselected) — CI HEAD en `f5c3a98` (2026-10-01)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
