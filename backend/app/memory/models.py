@@ -627,7 +627,7 @@ class SelfBelief(SQLModel, table=True):
     proposition: str
     confidence: float = Field(default=0.40, ge=0.0, le=1.0)
     source: str = Field(default="metacognition")
-    evidence_trail_json: str = Field(default="[]")         # [{trace_id, type, description}]
+    evidence_trail_json: str = Field(default="[]")         # [{turn_id, relation, strength, source, description, timestamp}]
     related_belief_id: Optional[int] = Field(default=None) # ID of a related SelfBelief (RELATED resolution)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utc_now)
@@ -841,7 +841,7 @@ class SemanticFact(SQLModel, table=True):
 
     Top-N high-confidence facts are injected (read-only) into the Reflection Step
     prompt so metacognition has user context. Never feeds Decision/compute_utility_scores.
-    Remake Fase 9. Punto 4B: evidence_trail_json, related_belief_id.
+    Remake Fase 9. Punto 4B: evidence_trail_json, related_fact_id.
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(index=True)
@@ -858,7 +858,7 @@ class SemanticFact(SQLModel, table=True):
     stability: str = Field(default="normal")        # "volatile" | "normal" | "stable"
     inference_type: str = Field(default="explicit") # "explicit" | "inferred" (Punto 6)
     candidate: bool = Field(default=False)          # True until promoted to active fact
-    related_belief_id: Optional[int] = Field(default=None)  # ID of a related SemanticFact (RELATED resolution)
+    related_fact_id: Optional[int] = Field(default=None)    # ID of a related SemanticFact (RELATED resolution)
 
 
 class SityValues(SQLModel, table=True):

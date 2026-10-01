@@ -582,7 +582,7 @@ def _migrate_punto4() -> None:
     """Add Punto 4 columns to selfbelief and semanticfact (MINI-REMAKE v2.0 Punto 4B)."""
     _SF_COLS = [
         ("evidence_trail_json", "TEXT NOT NULL DEFAULT '[]'"),
-        ("related_belief_id",   "INTEGER"),
+        ("related_fact_id",     "INTEGER"),
     ]
     _SB_COLS = [
         ("related_belief_id", "INTEGER"),
@@ -606,6 +606,67 @@ def _migrate_punto4() -> None:
             conn.commit()
             write_log(level="INFO", module="memory", event="db_migration_applied",
                       payload={"added_columns": added})
+
+
+def _migrate_punto4c() -> None:
+    """Rename semanticfact.related_belief_id → related_fact_id (Fix 3, SQLite 3.25+)."""
+    with engine.connect() as conn:
+        sf_info = conn.execute(text("PRAGMA table_info(semanticfact)"))
+        cols = {row[1] for row in sf_info.fetchall()}
+        if "related_belief_id" in cols and "related_fact_id" not in cols:
+            conn.execute(text(
+                "ALTER TABLE semanticfact RENAME COLUMN related_belief_id TO related_fact_id"
+            ))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"renamed": "semanticfact.related_belief_id → related_fact_id"})
+
+
+def _migrate_evidence_trail_schema() -> None:
+    """Normalise old SelfBelief evidence_trail_json entries to unified schema.
+
+    Old schema: [{trace_id, type, description}]
+    Unified:    [{turn_id, relation, strength, source, description, timestamp}]
+    Idempotent: entries that already have turn_id are left unchanged.
+    """
+    import json as _json
+    _type_to_relation = {
+        "reflection": "support", "reinforcement": "support",
+        "contradiction": "contradict", "self_model_reflection": "support",
+    }
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT id, evidence_trail_json FROM selfbelief WHERE evidence_trail_json != '[]'")
+            ).fetchall()
+            for row_id, trail_json in rows:
+                try:
+                    entries: list[dict] = _json.loads(trail_json)
+                except Exception:
+                    continue
+                changed = False
+                normalised: list[dict] = []
+                for e in entries:
+                    if isinstance(e, dict) and "trace_id" in e and "turn_id" not in e:
+                        normalised.append({
+                            "turn_id": e.get("trace_id", ""),
+                            "relation": _type_to_relation.get(e.get("type", ""), "support"),
+                            "strength": 0.20,
+                            "source": "reflection",
+                            "description": e.get("description", ""),
+                            "timestamp": "",
+                        })
+                        changed = True
+                    else:
+                        normalised.append(e)
+                if changed:
+                    conn.execute(
+                        text("UPDATE selfbelief SET evidence_trail_json = :t WHERE id = :id"),
+                        {"t": _json.dumps(normalised), "id": row_id},
+                    )
+            conn.commit()
+    except Exception:
+        pass
 
 
 def _migrate_bugreport() -> None:
@@ -658,8 +719,10 @@ def init_db() -> None:
         _migrate_proceduralpattern_behavioral_priors()
         _migrate_semanticfact_stability()
         _migrate_semanticfact_punto6()
+        _migrate_punto4c()
         _migrate_punto4()
         _migrate_punto5()
+        _migrate_evidence_trail_schema()
         _migrate_bugreport()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts

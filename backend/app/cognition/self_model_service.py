@@ -109,12 +109,16 @@ def add_belief_candidate(
     Use source="initial" or "configuration" for seed beliefs with higher confidence.
     related_belief_id: set when semantic resolution returned RELATED (Punto 4A).
     """
+    from app.memory.models import utc_now as _utc_now
     evidence: list[dict] = []
     if trace_id or evidence_description:
         evidence.append({
-            "trace_id": trace_id,
-            "type": evidence_type,
+            "turn_id": trace_id,
+            "relation": "support" if evidence_type not in ("contradiction", "contradict") else "contradict",
+            "strength": _BELIEF_REINFORCE_RATE,
+            "source": evidence_type,
             "description": evidence_description,
+            "timestamp": _utc_now().isoformat(),
         })
     belief = SelfBelief(
         self_model_id=self_model_id,
@@ -148,11 +152,15 @@ def update_belief_confidence(
         return None
     belief.confidence = max(0.0, min(1.0, new_confidence))
     if trace_id or evidence_description:
+        now = utc_now()
         trail: list[dict] = json.loads(belief.evidence_trail_json)
         trail.append({
-            "trace_id": trace_id,
-            "type": evidence_type,
+            "turn_id": trace_id,
+            "relation": "support" if evidence_type not in ("contradiction", "contradict") else "contradict",
+            "strength": _BELIEF_REINFORCE_RATE,
+            "source": evidence_type,
             "description": evidence_description,
+            "timestamp": now.isoformat(),
         })
         belief.evidence_trail_json = json.dumps(trail)
     belief.updated_at = utc_now()
@@ -170,46 +178,48 @@ def add_self_model_observation(
 ) -> SelfBelief | None:
     """Create or reinforce a SelfBelief from a self_model_update string (Punto 6).
 
-    confidence=0.30 for new entries (lower than belief_updates' 0.40 — self-model
-    observations are more tentative). Matches existing beliefs by exact proposition.
+    Uses semantic resolution (resolve_candidate) so any caller automatically avoids
+    semantic duplicates — not just exact-string matches.
+    confidence=0.30 for new entries (more tentative than belief_updates' 0.40).
     Returns None on any error.
     """
     prop_clean = observation.strip()[:300]
     if not prop_clean:
         return None
     try:
+        from app.cognition.semantic_resolver import resolve_candidate
         sm = get_or_create_self_model(session)
         if sm.id is None:
             return None
-
-        existing = session.exec(
-            select(SelfBelief)
-            .where(SelfBelief.self_model_id == sm.id)
-            .where(SelfBelief.proposition == prop_clean)
-            .where(SelfBelief.is_active == True)  # noqa: E712
-        ).first()
-
-        if existing is not None and existing.id is not None:
-            new_conf = min(1.0, existing.confidence + (1 - existing.confidence) * _BELIEF_REINFORCE_RATE)
-            return update_belief_confidence(
+        existing_beliefs = get_active_beliefs(session, sm.id)
+        resolution = resolve_candidate(
+            prop_clean, "self_belief", existing_beliefs, trace_id=trace_id
+        )
+        if resolution.relation == "match" and resolution.target_id is not None:
+            return reinforce_belief(
+                session, resolution.target_id,
+                trace_id=trace_id,
+                evidence_description=f"self_model match: {prop_clean[:60]}",
+            )
+        elif resolution.relation == "contradict" and resolution.target_id is not None:
+            return contradict_belief(
+                session, resolution.target_id,
+                trace_id=trace_id,
+                evidence_description=f"self_model contradiction: {prop_clean[:60]}",
+            )
+        else:
+            rel_id = resolution.target_id if resolution.relation == "related" else None
+            return add_belief_candidate(
                 session,
-                belief_id=existing.id,
-                new_confidence=new_conf,
+                self_model_id=sm.id,
+                proposition=prop_clean,
+                confidence=0.30,
+                source="self_model_reflection",
                 trace_id=trace_id,
                 evidence_type="self_model_reflection",
-                evidence_description=f"repeated: {prop_clean[:60]}",
+                evidence_description="observation",
+                related_belief_id=rel_id,
             )
-
-        return add_belief_candidate(
-            session,
-            self_model_id=sm.id,
-            proposition=prop_clean,
-            confidence=0.30,
-            source="self_model_reflection",
-            trace_id=trace_id,
-            evidence_type="self_model_reflection",
-            evidence_description="first observation",
-        )
     except Exception:
         return None
 

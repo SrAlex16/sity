@@ -163,7 +163,7 @@ class TestSelfBeliefCreation:
         )
         trail = json.loads(b.evidence_trail_json)
         assert len(trail) == 1
-        assert trail[0]["trace_id"] == "abc123"
+        assert trail[0]["turn_id"] == "abc123"
 
     def test_initial_source_accepts_higher_confidence(self, db_session: Session):
         sm_id = self._sm_id(db_session)
@@ -239,7 +239,7 @@ class TestSelfBeliefUpdate:
         refreshed = db_session.get(SelfBelief, b.id)
         trail = json.loads(refreshed.evidence_trail_json)  # type: ignore[union-attr]
         assert len(trail) == 2
-        assert trail[1]["trace_id"] == "second"
+        assert trail[1]["turn_id"] == "second"
 
     def test_update_returns_none_for_unknown_id(self, db_session: Session):
         result = update_belief_confidence(db_session, belief_id=999999, new_confidence=0.5)

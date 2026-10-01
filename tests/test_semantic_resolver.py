@@ -297,7 +297,7 @@ class TestEvidenceTrail:
         db_session.refresh(f)
         trail = json.loads(f.evidence_trail_json)
         assert len(trail) == 1
-        assert trail[0]["relation"] == "reinforcement"
+        assert trail[0]["relation"] == "support"
         assert trail[0]["turn_id"] == "t-001"
 
     def test_contradict_fact_appends_to_trail(self, db_session: Session):
@@ -307,7 +307,7 @@ class TestEvidenceTrail:
         db_session.refresh(f)
         trail = json.loads(f.evidence_trail_json)
         assert len(trail) == 1
-        assert trail[0]["relation"] == "contradiction"
+        assert trail[0]["relation"] == "contradict"
         assert trail[0]["turn_id"] == "t-002"
 
 

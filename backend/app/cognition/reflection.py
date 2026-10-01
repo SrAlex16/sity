@@ -529,7 +529,7 @@ def run_reflection(
                         inference_type=itype,
                         confidence=conf,
                         trace_id=trace_id,
-                        related_belief_id=rel_id,
+                        related_fact_id=rel_id,
                     )
                     existing_facts = load_active_facts(session, user_id)
                 _mem_created += 1
