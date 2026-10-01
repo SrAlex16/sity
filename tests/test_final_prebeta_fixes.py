@@ -1,12 +1,12 @@
-"""Tests for final pre-beta fixes (Fixes A–C).
+"""Tests for final pre-beta fixes (Fixes A–C) and second-round fixes (Fix 1–3).
 
 Properties:
 
 Fix A — Evidence trail como fuente de verdad:
-1.  New SemanticFact candidate has exactly 1 initial trail entry with relation="support".
+1.  New SemanticFact candidate has exactly 1 initial trail entry with relation="initial".
 2.  New SelfBelief candidate always has exactly 1 initial trail entry (no condition on trace_id).
 3.  Merge of 3 candidates (0 extra reinforcements) yields higher confidence than initial
-    (confidence derived from trail's 3 support entries, not from counters=0).
+    (confidence derived from trail's 3 initial entries, not from counters=0).
 4.  recalculate_confidence_from_trail: support→contradict→support ≠ support→support→contradict.
 
 Fix B — Separate SF and SB consolidation:
@@ -20,6 +20,21 @@ Fix C — CONTRADICT in consolidation job:
 10. SF consolidation CONTRADICT: both facts get a contradict trail entry, neither is merged.
 11. SF consolidation CONTRADICT: neither fact is deactivated (confidence stays above threshold).
 12. SB consolidation CONTRADICT: both beliefs get a contradict trail entry without merging.
+
+Fix 1 — CONTRADICT offline idempotente:
+13. Running SF consolidation twice on the same pair adds only 1 contradict entry per direction.
+14. Running SB consolidation twice on the same pair adds only 1 contradict entry per direction.
+15. SF CONTRADICT trail entry includes target_id.
+
+Fix 2 — Strength semantics:
+16. High-strength support moves confidence more than low-strength support.
+17. Zero-strength support/contradict entries produce no movement.
+
+Fix 3 — "initial" relation:
+18. First "initial" entry sets the prior; subsequent "initial" entries act as weighted support.
+19. recalculate_confidence_from_trail with a single "initial" entry returns strength as confidence.
+20. SF candidate created via upsert_semantic_candidate has trail[0]["relation"] == "initial".
+21. SB candidate created via add_belief_candidate has trail[0]["relation"] == "initial".
 """
 from __future__ import annotations
 
@@ -95,7 +110,7 @@ class TestInitialTrailEntry:
         )
         trail = json.loads(fact.evidence_trail_json)
         assert len(trail) == 1
-        assert trail[0]["relation"] == "support"
+        assert trail[0]["relation"] == "initial"
         assert trail[0]["turn_id"] == "t-init-sf"
         assert trail[0]["description"] == "initial candidate"
 
@@ -118,7 +133,7 @@ class TestInitialTrailEntry:
         )
         trail = json.loads(belief.evidence_trail_json)
         assert len(trail) == 1
-        assert trail[0]["relation"] == "support"
+        assert trail[0]["relation"] == "initial"
 
     def test_new_sb_candidate_with_trace_id_has_initial_entry(self, db_session: Session):
         _clean_sb(db_session)
@@ -367,3 +382,225 @@ class TestSBConsolidationContradict:
         assert any(e["relation"] == "contradict" for e in trail2), "b2 missing contradict entry"
         assert b1.is_active
         assert b2.is_active
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 — CONTRADICT offline idempotente
+# ---------------------------------------------------------------------------
+
+class TestConsolidationContradictIdempotency:
+
+    def test_sf_contradict_idempotent_second_run_adds_no_extra_entry(self, db_session: Session):
+        _clean_sf(db_session)
+        f1 = upsert_semantic_candidate(
+            db_session, user_id=_UID, proposition="user loves outdoor hiking",
+            confidence=0.50, trace_id="idem-sf-1",
+        )
+        f2 = upsert_semantic_candidate(
+            db_session, user_id=_UID, proposition="user avoids outdoor activities entirely",
+            confidence=0.50, trace_id="idem-sf-2",
+        )
+        assert f1.id is not None and f2.id is not None
+
+        mock_grouping = {
+            "groups": [{"ids": [f1.id, f2.id], "relation": "contradict"}],
+            "ungrouped": [],
+        }
+        with patch("app.cognition.semantic_service._call_semantic_grouping_haiku",
+                   return_value=mock_grouping):
+            _run_sf_volume_consolidation(user_id=_UID, trace_id="idem-job-1")
+            _run_sf_volume_consolidation(user_id=_UID, trace_id="idem-job-2")
+
+        from sqlmodel import Session as _Session
+        with _Session(engine) as s:
+            row1 = s.get(SemanticFact, f1.id)
+            row2 = s.get(SemanticFact, f2.id)
+        assert row1 is not None and row2 is not None
+        trail1 = json.loads(row1.evidence_trail_json)
+        trail2 = json.loads(row2.evidence_trail_json)
+        # Each direction should appear exactly once
+        contradict_in_1 = [e for e in trail1 if e.get("relation") == "contradict"
+                           and e.get("source") == "semantic_consolidation"]
+        contradict_in_2 = [e for e in trail2 if e.get("relation") == "contradict"
+                           and e.get("source") == "semantic_consolidation"]
+        assert len(contradict_in_1) == 1, f"Expected 1 contradict in f1, got {len(contradict_in_1)}"
+        assert len(contradict_in_2) == 1, f"Expected 1 contradict in f2, got {len(contradict_in_2)}"
+
+    def test_sf_contradict_entry_has_target_id(self, db_session: Session):
+        _clean_sf(db_session)
+        f1 = upsert_semantic_candidate(
+            db_session, user_id=_UID, proposition="user is early riser",
+            confidence=0.50, trace_id="tid-sf-1",
+        )
+        f2 = upsert_semantic_candidate(
+            db_session, user_id=_UID, proposition="user sleeps late every day",
+            confidence=0.50, trace_id="tid-sf-2",
+        )
+        assert f1.id is not None and f2.id is not None
+
+        mock_grouping = {
+            "groups": [{"ids": [f1.id, f2.id], "relation": "contradict"}],
+            "ungrouped": [],
+        }
+        with patch("app.cognition.semantic_service._call_semantic_grouping_haiku",
+                   return_value=mock_grouping):
+            _run_sf_volume_consolidation(user_id=_UID, trace_id="tid-job")
+
+        db_session.refresh(f1)
+        trail1 = json.loads(f1.evidence_trail_json)
+        contradict_entries = [e for e in trail1 if e.get("relation") == "contradict"]
+        assert len(contradict_entries) >= 1
+        assert "target_id" in contradict_entries[0], "contradict entry must have target_id"
+        assert contradict_entries[0]["target_id"] == f2.id
+
+    def test_sb_contradict_idempotent_second_run_adds_no_extra_entry(self, db_session: Session):
+        _clean_sb(db_session)
+        sm = get_or_create_self_model(db_session)
+        b1 = add_belief_candidate(
+            db_session, self_model_id=sm.id,  # type: ignore[arg-type]
+            proposition="Sity is assertive and direct", confidence=0.50, trace_id="idem-sb-1",
+        )
+        b2 = add_belief_candidate(
+            db_session, self_model_id=sm.id,  # type: ignore[arg-type]
+            proposition="Sity is passive and avoids conflict", confidence=0.50, trace_id="idem-sb-2",
+        )
+        assert b1.id is not None and b2.id is not None
+
+        mock_grouping = {
+            "groups": [{"ids": [b1.id, b2.id], "relation": "contradict"}],
+            "ungrouped": [],
+        }
+        with patch("app.cognition.semantic_service._call_semantic_grouping_haiku",
+                   return_value=mock_grouping):
+            _run_sb_volume_consolidation(trace_id="idem-sb-job-1")
+            _run_sb_volume_consolidation(trace_id="idem-sb-job-2")
+
+        from sqlmodel import Session as _Session
+        with _Session(engine) as s:
+            row1 = s.get(SelfBelief, b1.id)
+            row2 = s.get(SelfBelief, b2.id)
+        assert row1 is not None and row2 is not None
+        trail1 = json.loads(row1.evidence_trail_json)
+        trail2 = json.loads(row2.evidence_trail_json)
+        contradict_in_1 = [e for e in trail1 if e.get("relation") == "contradict"
+                           and e.get("source") == "semantic_consolidation"]
+        contradict_in_2 = [e for e in trail2 if e.get("relation") == "contradict"
+                           and e.get("source") == "semantic_consolidation"]
+        assert len(contradict_in_1) == 1, f"Expected 1 contradict in b1, got {len(contradict_in_1)}"
+        assert len(contradict_in_2) == 1, f"Expected 1 contradict in b2, got {len(contradict_in_2)}"
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 — Strength semantics
+# ---------------------------------------------------------------------------
+
+class TestStrengthSemantics:
+
+    def test_high_strength_support_moves_confidence_more_than_low_strength(self):
+        now = utc_now()
+        from datetime import timedelta
+
+        high = [{"relation": "support", "strength": 0.90,
+                 "timestamp": (now).isoformat()}]
+        low = [{"relation": "support", "strength": 0.20,
+                "timestamp": (now).isoformat()}]
+        result_high = recalculate_confidence_from_trail(high, initial=0.50)
+        result_low = recalculate_confidence_from_trail(low, initial=0.50)
+        assert result_high > result_low, (
+            f"High strength (0.90) should move confidence more: high={result_high:.4f} low={result_low:.4f}"
+        )
+
+    def test_zero_strength_support_produces_no_movement(self):
+        now = utc_now()
+        trail = [{"relation": "support", "strength": 0.0, "timestamp": now.isoformat()}]
+        result = recalculate_confidence_from_trail(trail, initial=0.50)
+        assert result == pytest.approx(0.50), (
+            f"Zero-strength support should not move confidence: got {result:.4f}"
+        )
+
+    def test_zero_strength_contradict_produces_no_movement(self):
+        now = utc_now()
+        trail = [{"relation": "contradict", "strength": 0.0, "timestamp": now.isoformat()}]
+        result = recalculate_confidence_from_trail(trail, initial=0.50)
+        assert result == pytest.approx(0.50), (
+            f"Zero-strength contradict should not move confidence: got {result:.4f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Fix 3 — "initial" relation sets prior
+# ---------------------------------------------------------------------------
+
+class TestInitialRelation:
+
+    def test_single_initial_entry_sets_prior_to_strength(self):
+        now = utc_now()
+        trail = [{"relation": "initial", "strength": 0.55, "timestamp": now.isoformat()}]
+        result = recalculate_confidence_from_trail(trail, initial=0.0)
+        assert result == pytest.approx(0.55), (
+            f"Single initial entry should set confidence = strength (0.55), got {result:.4f}"
+        )
+
+    def test_first_initial_sets_prior_subsequent_acts_as_support(self):
+        from datetime import timedelta
+        now = utc_now()
+        trail = [
+            {"relation": "initial", "strength": 0.55,
+             "timestamp": now.isoformat()},
+            {"relation": "initial", "strength": 0.55,
+             "timestamp": (now + timedelta(seconds=1)).isoformat()},
+        ]
+        result = recalculate_confidence_from_trail(trail, initial=0.0)
+        # After first: confidence=0.55; second acts as support: 0.55 + 0.45*0.20*0.55
+        expected_min = 0.55 + 0.0001
+        assert result > expected_min, (
+            f"Second initial should add support (>0.55), got {result:.4f}"
+        )
+
+    def test_sf_candidate_trail_relation_is_initial(self, db_session: Session):
+        _clean_sf(db_session)
+        fact = upsert_semantic_candidate(
+            db_session, user_id=_UID2, proposition="initial relation test sf fix3",
+            confidence=0.40, trace_id="fix3-sf",
+        )
+        trail = json.loads(fact.evidence_trail_json)
+        assert trail[0]["relation"] == "initial", (
+            f"SF initial trail entry should have relation='initial', got '{trail[0]['relation']}'"
+        )
+        assert trail[0]["source"] == "reflection_initial"
+
+    def test_sb_candidate_trail_relation_is_initial(self, db_session: Session):
+        _clean_sb(db_session)
+        sm = get_or_create_self_model(db_session)
+        belief = add_belief_candidate(
+            db_session, self_model_id=sm.id,  # type: ignore[arg-type]
+            proposition="initial relation test sb fix3",
+            confidence=0.40, trace_id="fix3-sb",
+        )
+        trail = json.loads(belief.evidence_trail_json)
+        assert trail[0]["relation"] == "initial", (
+            f"SB initial trail entry should have relation='initial', got '{trail[0]['relation']}'"
+        )
+
+    def test_recalculate_initial_sets_correct_prior_for_merged_trail(self, db_session: Session):
+        _clean_sf(db_session)
+        # Use explicit type so the 0.60 confidence is not capped at 0.45
+        f1 = upsert_semantic_candidate(
+            db_session, user_id=_UID2, proposition="prior setting merge test alpha",
+            confidence=0.60, inference_type="explicit", trace_id="prio-1",
+        )
+        f2 = upsert_semantic_candidate(
+            db_session, user_id=_UID2, proposition="prior setting merge test beta",
+            confidence=0.60, inference_type="explicit", trace_id="prio-2",
+        )
+        now_iso = utc_now().isoformat()
+        merged: list[dict] = []
+        for f in [f1, f2]:
+            for e in json.loads(f.evidence_trail_json):
+                merged.append(_normalize_trail_entry(e, now_iso))
+
+        result = recalculate_confidence_from_trail(merged, initial=0.0)
+        # First "initial" sets prior to 0.60; second adds weighted support → result > 0.60
+        assert result >= 0.60, (
+            f"Merged trail with initial strength=0.60 should yield ≥ 0.60, got {result:.4f}"
+        )

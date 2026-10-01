@@ -519,9 +519,9 @@ def upsert_semantic_candidate(
         now = utc_now()
         initial_trail: list[dict] = [{
             "turn_id": trace_id,
-            "relation": "support",
+            "relation": "initial",
             "strength": confidence,
-            "source": inference_type,
+            "source": "reflection_initial",
             "description": "initial candidate",
             "timestamp": now.isoformat(),
         }]
@@ -753,11 +753,13 @@ def _normalize_trail_entry(entry: dict, now_iso: str) -> dict:
 
     Handles old SelfBelief schema {trace_id, type, description} and any
     partially formed entries from earlier code versions.
+    Preserves target_id (used for CONTRADICT idempotency checks).
     """
     _type_to_relation: dict[str, str] = {
         "reflection": "support", "reinforcement": "support",
         "contradiction": "contradict", "contradict": "contradict",
         "self_model_reflection": "support", "support": "support",
+        "initial": "initial",
     }
     if "trace_id" in entry and "turn_id" not in entry:
         return {
@@ -768,7 +770,7 @@ def _normalize_trail_entry(entry: dict, now_iso: str) -> dict:
             "description": entry.get("description", ""),
             "timestamp": now_iso,
         }
-    return {
+    result: dict = {
         "turn_id": entry.get("turn_id", ""),
         "relation": _type_to_relation.get(entry.get("relation", "support"), "support"),
         "strength": float(entry.get("strength", 0.0)),
@@ -776,6 +778,9 @@ def _normalize_trail_entry(entry: dict, now_iso: str) -> dict:
         "description": entry.get("description", ""),
         "timestamp": entry.get("timestamp", now_iso),
     }
+    if "target_id" in entry:
+        result["target_id"] = entry["target_id"]
+    return result
 
 
 def _recalculate_confidence_from_scratch(
@@ -793,7 +798,7 @@ def _recalculate_confidence_from_scratch(
 
 def recalculate_confidence_from_trail(
     trail: list[dict],
-    initial: float,
+    initial: float = 0.0,
     learning_rate: float = _SEMANTIC_REINFORCE_RATE,
     contradiction_rate: float = _SEMANTIC_CONTRADICT_RATE,
     *,
@@ -804,16 +809,34 @@ def recalculate_confidence_from_trail(
     Order matters: support→contradict→support differs from support→support→contradict.
     initial: baseline confidence before any trail entry (use 0.0 to replay all evidence
     including the initial creation entry).
+
+    Relation semantics:
+      "initial"   — first entry sets the prior (confidence = strength); subsequent
+                    "initial" entries act as weighted support.
+      "support"   — confidence += (1 − confidence) * learning_rate * strength
+      "contradict"— confidence −= confidence * contradiction_rate * strength
+
     Returns value clamped to [0.0, cap].
     """
     evidence = sorted(trail, key=lambda e: e.get("timestamp", ""))
+    seen_first_initial = False
     confidence = initial
     for ev in evidence:
         rel = ev.get("relation", "")
-        if rel == "support":
-            confidence = min(cap, confidence + (1 - confidence) * learning_rate)
+        strength = float(ev.get("strength", 0.5))
+        if rel == "initial":
+            if not seen_first_initial:
+                confidence = min(cap, max(0.0, strength))
+                seen_first_initial = True
+            else:
+                rate = learning_rate * strength
+                confidence = min(cap, confidence + (1 - confidence) * rate)
+        elif rel == "support":
+            rate = learning_rate * strength
+            confidence = min(cap, confidence + (1 - confidence) * rate)
         elif rel == "contradict":
-            confidence = max(0.0, confidence - confidence * contradiction_rate)
+            rate = contradiction_rate * strength
+            confidence = max(0.0, confidence - confidence * rate)
     return confidence
 
 
@@ -919,29 +942,38 @@ def _run_sf_volume_consolidation(*, user_id: int, trace_id: str = "") -> None:
                         fact_a = sf_by_id.get(aid)
                         if fact_a is None or not fact_a.is_active:
                             continue
+                        trail_a: list[dict] = json.loads(fact_a.evidence_trail_json)
                         for bid in ids:
                             if bid == aid:
                                 continue
                             if sf_by_id.get(bid) is None:
                                 continue
-                            trail_a: list[dict] = json.loads(fact_a.evidence_trail_json)
+                            already_known = any(
+                                e.get("relation") == "contradict"
+                                and e.get("target_id") == bid
+                                and e.get("source") == "semantic_consolidation"
+                                for e in trail_a
+                            )
+                            if already_known:
+                                continue
                             trail_a.append({
                                 "turn_id": trace_id,
                                 "relation": "contradict",
                                 "strength": _SEMANTIC_CONTRADICT_RATE,
-                                "source": "volume_consolidation",
+                                "target_id": bid,
+                                "source": "semantic_consolidation",
                                 "description": f"contradicts id={bid}",
                                 "timestamp": now_iso,
                             })
-                            fact_a.evidence_trail_json = json.dumps(trail_a)
                             fact_a.contradiction_count += 1
-                            fact_a.confidence = recalculate_confidence_from_trail(
-                                trail_a, initial=0.0,
-                            )
-                            if fact_a.confidence < SEMANTIC_DEACTIVATION_THRESHOLD:
-                                fact_a.is_active = False
-                            db.add(fact_a)
                             contradicted += 1
+                        fact_a.evidence_trail_json = json.dumps(trail_a)
+                        fact_a.confidence = recalculate_confidence_from_trail(
+                            trail_a, initial=0.0,
+                        )
+                        if fact_a.confidence < SEMANTIC_DEACTIVATION_THRESHOLD:
+                            fact_a.is_active = False
+                        db.add(fact_a)
 
             db.commit()
 
@@ -1032,27 +1064,36 @@ def _run_sb_volume_consolidation(*, trace_id: str = "") -> None:
                         belief_a = sb_by_id.get(aid)
                         if belief_a is None or not belief_a.is_active:
                             continue
+                        trail_a: list[dict] = json.loads(belief_a.evidence_trail_json)
                         for bid in ids:
                             if bid == aid:
                                 continue
                             if sb_by_id.get(bid) is None:
                                 continue
-                            trail_a: list[dict] = json.loads(belief_a.evidence_trail_json)
+                            already_known = any(
+                                e.get("relation") == "contradict"
+                                and e.get("target_id") == bid
+                                and e.get("source") == "semantic_consolidation"
+                                for e in trail_a
+                            )
+                            if already_known:
+                                continue
                             trail_a.append({
                                 "turn_id": trace_id,
                                 "relation": "contradict",
                                 "strength": _SEMANTIC_CONTRADICT_RATE,
-                                "source": "volume_consolidation",
+                                "target_id": bid,
+                                "source": "semantic_consolidation",
                                 "description": f"contradicts id={bid}",
                                 "timestamp": now_iso,
                             })
-                            belief_a.evidence_trail_json = json.dumps(trail_a)
-                            belief_a.confidence = recalculate_confidence_from_trail(
-                                trail_a, initial=0.0, cap=1.0,
-                            )
-                            belief_a.updated_at = now
-                            db.add(belief_a)
                             contradicted += 1
+                        belief_a.evidence_trail_json = json.dumps(trail_a)
+                        belief_a.confidence = recalculate_confidence_from_trail(
+                            trail_a, initial=0.0, cap=1.0,
+                        )
+                        belief_a.updated_at = now
+                        db.add(belief_a)
 
             db.commit()
 

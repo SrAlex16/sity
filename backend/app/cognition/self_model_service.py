@@ -112,7 +112,7 @@ def add_belief_candidate(
     from app.memory.models import utc_now as _utc_now
     evidence: list[dict] = [{
         "turn_id": trace_id,
-        "relation": "support" if evidence_type not in ("contradiction", "contradict") else "contradict",
+        "relation": "initial" if evidence_type not in ("contradiction", "contradict") else "contradict",
         "strength": max(0.0, min(1.0, confidence)),
         "source": evidence_type,
         "description": evidence_description or "initial candidate",
