@@ -90,7 +90,7 @@ fi
 
 echo "=== BORRAR DATOS DB ==="
 if $DRY_RUN; then
-  echo "  [dry-run] DELETE de 44 tablas en $DB (preserva user id=1 y personalityalter)"
+  echo "  [dry-run] DELETE de 47 tablas en $DB (preserva user id=1 y personalityalter)"
 else
   sqlite3 "$DB" <<'SQL'
 PRAGMA foreign_keys = OFF;
@@ -105,7 +105,9 @@ DELETE FROM autobiographicalnarrative;
 DELETE FROM beliefattribution;
 DELETE FROM episode;
 DELETE FROM expectation;
+DELETE FROM expectationresolution;
 DELETE FROM goal;
+DELETE FROM goalcandidate;
 DELETE FROM goalmilestone;
 DELETE FROM initiativeevallog;
 DELETE FROM memoryfragment;
@@ -116,6 +118,7 @@ DELETE FROM pendingaction;
 DELETE FROM proceduralobservation;
 DELETE FROM proceduralpattern;
 DELETE FROM reflectionlog;
+DELETE FROM relationshipevidence;
 DELETE FROM relationshipsnapshot;
 DELETE FROM scheduledtask;
 DELETE FROM selfbelief;
@@ -190,9 +193,12 @@ SELECT 'aiusage',         COUNT(*) FROM aiusage          UNION ALL
 SELECT 'episode',         COUNT(*) FROM episode          UNION ALL
 SELECT 'mentalstate',     COUNT(*) FROM mentalstate      UNION ALL
 SELECT 'setting',         COUNT(*) FROM setting          UNION ALL
-SELECT 'semanticfact',    COUNT(*) FROM semanticfact     UNION ALL
-SELECT 'sityvalues',      COUNT(*) FROM sityvalues       UNION ALL
-SELECT 'user_preserved',  COUNT(*) FROM user WHERE id=1;
+SELECT 'semanticfact',          COUNT(*) FROM semanticfact          UNION ALL
+SELECT 'expectationresolution', COUNT(*) FROM expectationresolution UNION ALL
+SELECT 'goalcandidate',         COUNT(*) FROM goalcandidate         UNION ALL
+SELECT 'relationshipevidence',  COUNT(*) FROM relationshipevidence  UNION ALL
+SELECT 'sityvalues',            COUNT(*) FROM sityvalues            UNION ALL
+SELECT 'user_preserved',        COUNT(*) FROM user WHERE id=1;
 "
 fi
 
