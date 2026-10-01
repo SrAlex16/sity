@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-09-30 (MINI-REMAKE v2.0 completa — 7 puntos del pipeline cognitivo; suite 3487 tests).
+Última actualización: 2026-10-01 (MINI-REMAKE v2.0 calidad — semantic candidate resolution + RelationshipEvidence dedup; suite 3537 tests).
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3487 tests en verde (pytest, 6 skipped, 32 deselected) — CI verde en `f86f844` (2026-09-30)
+- 3537 tests en verde (pytest, 6 skipped, 34 deselected) — CI verde en `e14acc7` (2026-10-01)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -152,6 +152,41 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-01) — MINI-REMAKE v2.0 calidad
+
+Tres mejoras de calidad al pipeline cognitivo post-revisión.
+
+- **Fixes post-revisión (commit `8e0f60d`).**
+  3 correcciones: (1) test RecallScore threshold — umbrales ajustados a salience=0.9, topics=["testing"];
+  (2) `exp.description` → `exp.proposition` en `_resolve_event_expectation_semantic()` (bug funcional
+  silencioso — `fulfilled` siempre False); (3) `# type: ignore[union-attr]` → `[attr-defined]`
+  en runner.py. CI verde.
+
+- **Semantic candidate resolution (commit `d220528`).**
+  `semantic_resolver.py` (nuevo): `resolve_candidate(proposition, type, existing)` usa Haiku como
+  juez semántico. Relaciones: MATCH / CONTRADICT / RELATED / NEW. Fast-paths: vacío→NEW sin Haiku,
+  exact-match (lowercased) →MATCH conf=1.0 sin Haiku. Top-20 por confianza. Typed con Protocol
+  `_Candidate` para resolver mypy union collapse entre `list[SelfBelief]` y `list[SemanticFact]`.
+  Integrado en `run_reflection()`: MATCH→`reinforce_belief/fact()`, CONTRADICT→`contradict_belief/fact()`,
+  NEW/RELATED→insert con `related_belief_id` opcional. Fórmulas diminishing returns:
+  reinforce `conf + (1-conf)×0.20`, contradict `conf - conf×0.15`.
+  `maybe_trigger_volume_consolidation()`: si ≥10 candidatos activos → daemon Haiku agrupa por
+  primeras 3 palabras y elige la proposición más precisa por cluster.
+  Campos nuevos en `SelfBelief` y `SemanticFact`: `related_belief_id`. `SemanticFact.evidence_trail_json`.
+  Migración idempotente en `db.py → _migrate_punto4()`.
+  24 tests en `tests/test_semantic_resolver.py`. Sentence-transformers descartadas (no disponibles en Pi 4B).
+
+- **RelationshipEvidence dedup — Appraisal domina Reflection (commit `e14acc7`).**
+  Parte 1: `apply_appraisal_to_social_profile()` ahora escribe filas `RelationshipEvidence(source="appraisal",
+  applied=True)` para cada dimensión con `|Δ| ≥ 1e-9` (keyword-only `session`, `trace_id`).
+  Parte 2: `apply_reflection_relationship_evidence()` consulta por `(turn_id, dimension, source="appraisal")`
+  antes de aplicar cada fila de Reflection; si existe → `applied=False`, sin delta (Appraisal domina).
+  Parte 3: índice compuesto `idx_re_user_turn_dim (user_id, turn_id, dimension)` en DB.
+  `turn_cognition.py` actualizado para pasar `session=session, trace_id=trace_id`.
+  9 tests en `tests/test_relationship_evidence_dedup.py`.
 
 ---
 

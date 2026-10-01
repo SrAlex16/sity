@@ -43,7 +43,7 @@ from app.cognition.semantic_service import (
     reinforce_fact,
     upsert_semantic_candidate,
 )
-from app.cognition.semantic_resolver import SemanticResolution, resolve_candidate
+from app.cognition.semantic_resolver import resolve_candidate
 from app.cognition.user_model_service import (
     add_belief_attribution,
     upsert_expectation,

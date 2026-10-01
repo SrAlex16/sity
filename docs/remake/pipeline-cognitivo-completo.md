@@ -1,6 +1,6 @@
 # Pipeline Cognitivo Completo — Mapa Maestro
 
-**Fecha:** 2026-09-30 (post-Operación Remake Fases 1–9 + MINI-REMAKE v2.0 Puntos 1–7)
+**Fecha:** 2026-10-01 (post-Operación Remake Fases 1–9 + MINI-REMAKE v2.0 Puntos 1–7 + calidad: semantic resolution + RelationshipEvidence dedup; suite 3537 tests)
 
 Este documento describe el orden real de ejecución de todo el pipeline cognitivo por turno,
 con las llamadas Haiku exactas, sus condiciones de activación, y los procesos de fondo.
@@ -142,6 +142,10 @@ emotional_depth.
 Aplica señales de Appraisal (trust_evidence, interest/frustration deltas) y Perception
 (social_signal, challenge) sobre las 11 dimensiones relacionales.
 
+Para cada dimensión con `|Δ| ≥ 1e-9`, escribe una fila `RelationshipEvidence(source="appraisal",
+applied=True, turn_id=trace_id)`. Esto permite a `apply_reflection_relationship_evidence()`
+(Paso 13c) saber qué dimensiones ya fueron actualizadas por Appraisal y evitar doble conteo.
+
 Si `_exp_eval.prediction_errors` existe (Paso 3c):
 `apply_prediction_error_to_trust(sp_row, prediction_errors)` — nudge adicional en `trust_reliability`.
 → _Diseño: docs/remake/fase-3-relacion-multidimensional.md, docs/remake/fase-8-usermodel-teoria-mente-expectativas.md_
@@ -253,9 +257,17 @@ Recibe SemanticFacts como sección "KNOWN USER FACTS" — **zero coste marginal*
 
 Outputs persistidos en DB:
 - `ReflectionLog` — registro completo del turno
-- `SelfBelief` candidatas vía `belief_updates` (`confidence=0.40, source="metacognition"`) — **nunca auto-hechos**
+- `SelfBelief` candidatas vía `belief_updates`: cada proposición pasa por `resolve_candidate()`
+  (Haiku semántico, fast-paths: vacío→NEW sin Haiku, exact-match→MATCH conf=1.0 sin Haiku).
+  MATCH → `reinforce_belief()` (fórmula: `conf + (1−conf)×0.20`);
+  CONTRADICT → `contradict_belief()` (`conf − conf×0.15`);
+  NEW/RELATED → insert con `confidence=0.40, source="metacognition"`, opcional `related_belief_id`.
+  **Nunca auto-hechos.**
 - `BeliefAttribution` updates vía `user_belief_updates` (`confidence=0.35, source="reflection"`) — ToM del usuario
-- `SemanticFact` candidatas vía `memory_candidates_typed` → `upsert_semantic_candidate()` (candidate=True, conf ≤ 0.45)
+- `SemanticFact` candidatas vía `memory_candidates_typed`: igual que SelfBelief, cada proposición
+  pasa por `resolve_candidate()`. MATCH → `reinforce_fact()`, CONTRADICT → `contradict_fact()`,
+  NEW → `upsert_semantic_candidate()` (candidate=True, conf ≤ 0.45).
+  Tras el loop: `maybe_trigger_volume_consolidation()` si ≥10 candidatos activos (daemon thread).
 - `RelationshipEvidence` rows vía `relationship_evidence_structured` (applied=False, escala 0.015)
 - `GoalCandidate` (pending) o `Goal` directo vía `goal_updates_structured` (directo solo si explicit + conf ≥ 0.70)
 - `SelfBelief` refuerzo vía `self_model_updates` → `add_self_model_observation()` (conf=0.30)
@@ -269,10 +281,12 @@ Outputs persistidos en DB:
 ### Paso 13c — Aplica RelationshipEvidence al SocialProfile (puro DB, condicional)
 `apply_reflection_relationship_evidence(session, user_id, trace_id)`
 Ejecutado solo cuando `reflection_result is not None`.
-Carga las filas `RelationshipEvidence` sin aplicar (`applied=False`) para este `trace_id`,
-aplica `sign × strength × 0.015` sobre la dimensión correspondiente de `SocialProfile`,
-y marca `applied=True`. Escala reducida (0.015) porque Appraisal ya actualizó el perfil
-en Paso 8 — evita doble conteo.
+Carga las filas `RelationshipEvidence(source="reflection", applied=False)` para este `trace_id`.
+Para cada fila: comprueba si Appraisal ya escribió una fila para `(turn_id, dimension)` con
+`source="appraisal"`. Si existe → marca `applied=False` y omite el delta (Appraisal domina).
+Si no existe → aplica `sign × strength × 0.015` sobre la dimensión de `SocialProfile` y
+marca `applied=True`. Índice compuesto `idx_re_user_turn_dim (user_id, turn_id, dimension)`
+garantiza la consulta de dedup en O(log n).
 Sin Haiku.
 
 ---
@@ -341,7 +355,7 @@ Haiku:       max_tokens=320  (si ≥3 episodios muy_alta nuevos desde última na
 Módulo:      app/social/update.py → _maybe_generate_narrative()
 ```
 
-### D. SemanticFact consolidation
+### D. SemanticFact consolidation (por episodios)
 ```
 Disparado:   inline en _run_social_update(), después de _maybe_generate_narrative()
 Haiku:       max_tokens=400  (si ≥3 Episodes sin semantically_processed)
@@ -349,6 +363,15 @@ Módulo:      app/cognition/semantic_service.py → maybe_trigger_semantic_conso
 ```
 Sintetiza `SemanticFact` (hechos estables sobre el usuario) de batch de episodios.
 Anti-duplicación via contexto (no pasada de fusión explícita).
+
+### E. Volume consolidation (SemanticFact/SelfBelief candidatos)
+```
+Disparado:   al final del loop de memory_candidates en run_reflection(), si ≥10 candidatos activos
+Haiku:       max_tokens=300  (por cluster de ≥2 proposiciones con mismo prefijo 3 palabras)
+Módulo:      app/cognition/semantic_service.py → maybe_trigger_volume_consolidation()
+```
+Agrupa candidatos por primeras 3 palabras. Por cada cluster ≥2: Haiku elige la proposición más
+precisa y marca el resto `active=False`. Evita explosión de candidatos similares sin fusión semántica.
 
 ---
 
@@ -363,15 +386,18 @@ Anti-duplicación via contexto (no pasada de fusión explícita).
 | 4b| metacognitive    | si self-beliefs activas¹   | 120        | Ajustar scores con self-beliefs      |
 | 5 | coherence        | siempre¹                   | 40         | Verificar coherencia de acción       |
 | 6 | reflection       | _effective_salience ≥ 0.45 | 600        | Revisión introspectiva del turno     |
+| 6b| semantic_resolver| por candidato no trivial²  | 80         | Dedup semántico SelfBelief/Fact      |
 
 ¹ Haiku #4, #4b y #5 se saltan únicamente en caso de error técnico en la orquestación de Decision.
   Haiku #4b (metacognitive) solo se llama cuando hay `SelfBelief` activas con confidence ≥ 0.60.
+² Haiku #6b se llama UNA vez por candidato no trivial dentro de Reflection (fast-path si lista vacía
+  o exact-match). En la práctica 0–5 llamadas por turno cuando Reflection se activa.
 
 **Por turno normal (sin errores técnicos, sin self-beliefs):**
 - **Mínimo: 4 llamadas Haiku** — cuando _effective_salience < 0.25 (ni Episode ni Reflection)
-- **Máximo: 6 llamadas Haiku** — cuando _effective_salience ≥ 0.45 + self-beliefs activas
+- **Máximo: 6+ llamadas Haiku** — cuando _effective_salience ≥ 0.45 + self-beliefs activas + candidatos semánticos
 
-**Budget de tokens por turno (máximo, solo Haiku de cognición):**
+**Budget de tokens por turno (máximo sin resolver, solo Haiku de cognición):**
 110 + 350 + 150 + 120 + 120 + 40 + 600 = **1.490 max_tokens de salida** (Haiku, no Expression)
 
 **Nota:** la llamada principal de Expression (Sonnet/Haiku vía model router) no está
