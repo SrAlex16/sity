@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-01 (fixes finales pre-beta — trail como fuente de verdad, consolidación SF/SB separada, CONTRADICT en consolidation job; suite 3600+ tests).
+Última actualización: 2026-10-01 (fixes finales pre-beta — trail como fuente de verdad, consolidación SF/SB separada, CONTRADICT en consolidation job; suite 3577 tests). Sistema listo para beta pública.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3561 tests en verde (pytest, 6 skipped, 34 deselected) — CI verde en `97a4093` (2026-10-01)
+- 3577 tests en verde (pytest, 6 skipped, 34 deselected) — CI en `fb4678c` (2026-10-01)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -157,7 +157,7 @@ explícita, el normalizador puede extenderse.
 
 ## Completado recientemente (2026-10-01) — fixes finales pre-beta (evidence trail + separación SF/SB + CONTRADICT)
 
-3 fixes finales al pipeline cognitivo (commit pendiente tras suite verde).
+3 fixes finales al pipeline cognitivo (commit `fb4678c`, CI en progreso).
 
 - **Fix A — Evidence trail como fuente de verdad.**
   `upsert_semantic_candidate()` ahora escribe una entrada inicial `{relation:"support", strength:confidence_inicial}`

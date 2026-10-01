@@ -620,3 +620,59 @@ El salto conceptual de v1.0 fue:
 El salto conceptual de v2.0 es:
 > *No basta con que el estado cambie. El estado debe retroalimentarse: los episodios deben recuperarse, las expectativas deben resolverse, la reflexión debe generar aprendizaje real, y Sity debe poder corregirse a sí misma dentro de límites arquitectónicos que preserven quién es.*
 
+---
+
+## Estado post-implementación — ajustes post-revisión (2026-10-01)
+
+Durante la revisión de la implementación completa se identificaron cuatro ajustes al diseño
+original que no estaban en la especificación v2.0. Todos implementados en commit `fb4678c`.
+
+### 1. Evidence trail como fuente de verdad
+
+**Diseño original:** `reinforcement_count` y `contradiction_count` eran la fuente primaria
+para recalcular confidence en el merge de consolidación. El trail era append-only pero nunca
+se reproducía.
+
+**Ajuste:** Todo candidato nace con una entrada inicial en su trail
+`{relation:"support", strength:confidence_inicial}`. Nueva función
+`recalculate_confidence_from_trail(trail, initial)` que reproduce las entradas en orden
+cronológico — el orden importa (`s→c→s ≠ s→s→c`). El merge usa esta función con
+`initial=0.0`, por lo que fusionar tres candidatos sin reinforcements extra produce
+confianza > initial (los contadores en cero darían la confianza de partida sin cambio).
+Los contadores `reinforcement_count` / `contradiction_count` se mantienen como caché
+pero se recalculan del trail en cada merge.
+
+### 2. Separación de triggers SF y SB
+
+**Diseño original:** `_count_active_candidates(user_id)` sumaba SemanticFacts del usuario
+y SelfBeliefs globales. Una única llamada Haiku recibía items mezclados de ambas tablas.
+IDs podían colisionar (SF.id=5 y SB.id=5 son entidades distintas).
+
+**Ajuste:** Dos funciones de conteo independientes: `_count_active_semantic_facts(user_id)`
+y `_count_active_self_beliefs()` (global). Dos funciones de consolidación:
+`_run_sf_volume_consolidation(user_id)` y `_run_sb_volume_consolidation()`. Haiku
+nunca recibe mezcla de SF y SB en el mismo prompt. `maybe_trigger_volume_consolidation()`
+dispara ambas de forma independiente con umbrales separados.
+
+### 3. CONTRADICT en el consolidation job offline
+
+**Diseño original:** El prompt de agrupación solo definía "match" y "related". El handler
+ignoraba silenciosamente cualquier respuesta que no fuera "match".
+
+**Ajuste:** El prompt incluye "contradict" como relación válida. El handler para grupos
+CONTRADICT añade una entrada `{relation:"contradict"}` al trail de cada miembro del grupo
+(cross-referenciando al otro), recalcula confidence via trail, y NO fusiona las entidades.
+Esto hace que el comportamiento offline (consolidation job) sea ontológicamente consistente
+con el comportamiento online (resolver via `add_self_model_observation`).
+
+### 4. Ontología semántica unificada online/offline
+
+**Contexto:** El resolver online (`semantic_resolver.py`, `resolve_candidate()`) ya usaba
+MATCH / RELATED / CONTRADICT / NEW como relaciones. El job offline usaba solo MATCH /
+RELATED (e ignoraba el resto).
+
+**Ajuste:** El job offline ahora usa las mismas cuatro relaciones efectivas. La experiencia
+del usuario es consistente: un par de creencias que se reconoce como contradicción en tiempo
+real (via `add_self_model_observation`) también se detecta como contradicción en el job
+batch de consolidación nocturna.
+
