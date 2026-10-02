@@ -5,6 +5,7 @@ export interface T {
     chat: string;
     personality: string;
     achievements: string;
+    memory: string;
     settings: string;
     dataset: string;
   };
@@ -217,6 +218,33 @@ export interface T {
     catBackground: string;
     catSecrets: string;
   };
+  memory: {
+    title: string;
+    tabFacts: string;
+    tabEpisodes: string;
+    tabSelfBeliefs: string;
+    loading: string;
+    empty: string;
+    selectAll: string;
+    deleteSelected: string;
+    deleteConfirm: string;
+    confirmYes: string;
+    confirmCancel: string;
+    stabilityStable: string;
+    stabilityNormal: string;
+    stabilityVolatile: string;
+    inferenceExplicit: string;
+    inferenceInferred: string;
+    inferenceAppraisal: string;
+    importanceMenor: string;
+    importanceMid: string;
+    importanceClave: string;
+    infoFacts: string;
+    infoEpisodes: string;
+    infoSelfBeliefs: string;
+    guestMessage: string;
+    confidenceLabel: string;
+  };
   auth: {
     signInTitle: string;
     signIn: string;
@@ -286,6 +314,7 @@ const es: T = {
     chat: 'Chat',
     personality: 'Rasgos',
     achievements: 'Logros',
+    memory: 'Memoria',
     settings: 'Ajustes',
     dataset: 'Dev',
   },
@@ -484,6 +513,33 @@ const es: T = {
     catBackground: 'Background',
     catSecrets: 'Secretos',
   },
+  memory: {
+    title: 'Memoria',
+    tabFacts: 'Lo que sé',
+    tabEpisodes: 'Recuerdos',
+    tabSelfBeliefs: 'Sobre mí',
+    loading: 'Cargando…',
+    empty: 'Sity todavía no ha guardado nada aquí. A medida que conversemos, irá apareciendo contenido.',
+    selectAll: 'Seleccionar todo',
+    deleteSelected: 'Eliminar seleccionados',
+    deleteConfirm: '¿Eliminar los elementos seleccionados? Esta acción no se puede deshacer.',
+    confirmYes: 'Sí, eliminar',
+    confirmCancel: 'Cancelar',
+    stabilityStable: 'Permanente',
+    stabilityNormal: 'Durable',
+    stabilityVolatile: 'Temporal',
+    inferenceExplicit: 'Me lo dijiste',
+    inferenceInferred: 'Lo deduje',
+    inferenceAppraisal: 'Lo observé',
+    importanceMenor: 'Momento menor',
+    importanceMid: 'Momento importante',
+    importanceClave: 'Momento clave',
+    infoFacts: 'Aquí puedes ver todo lo que Sity cree saber sobre ti. Cuanto mayor es la confianza, más veces lo has confirmado o más claro lo dijiste. Los recuerdos «Temporales» desaparecen solos con el tiempo si no los mencionas. Puedes borrar cualquier cosa que Sity haya entendido mal.',
+    infoEpisodes: 'Aquí puedes ver los momentos de nuestras conversaciones que Sity ha considerado más significativos. Cuanto más importante fue el momento, más probable es que Sity lo recuerde y lo use en futuras conversaciones. Puedes borrar cualquier recuerdo que prefieras que Sity olvide.',
+    infoSelfBeliefs: 'Estas son las creencias que Sity ha desarrollado sobre su propio comportamiento a través de la reflexión metacognitiva. A mayor confianza, más veces ha observado ese patrón en sí misma.',
+    guestMessage: 'Crea una cuenta para ver y gestionar lo que Sity recuerda sobre ti.',
+    confidenceLabel: 'Confianza',
+  },
   auth: {
     signInTitle: 'Iniciar sesión',
     signIn: 'Iniciar sesión',
@@ -553,6 +609,7 @@ const en: T = {
     chat: 'Chat',
     personality: 'Traits',
     achievements: 'Awards',
+    memory: 'Memory',
     settings: 'Settings',
     dataset: 'Dev',
   },
@@ -751,6 +808,33 @@ const en: T = {
     catBackground: 'Background',
     catSecrets: 'Secrets',
   },
+  memory: {
+    title: 'Memory',
+    tabFacts: 'What I know',
+    tabEpisodes: 'Memories',
+    tabSelfBeliefs: 'About me',
+    loading: 'Loading…',
+    empty: "Sity hasn't saved anything here yet. Content will appear as we talk.",
+    selectAll: 'Select all',
+    deleteSelected: 'Delete selected',
+    deleteConfirm: 'Delete the selected items? This action cannot be undone.',
+    confirmYes: 'Yes, delete',
+    confirmCancel: 'Cancel',
+    stabilityStable: 'Permanent',
+    stabilityNormal: 'Durable',
+    stabilityVolatile: 'Temporary',
+    inferenceExplicit: 'You told me',
+    inferenceInferred: 'I deduced it',
+    inferenceAppraisal: 'I observed it',
+    importanceMenor: 'Minor moment',
+    importanceMid: 'Important moment',
+    importanceClave: 'Key moment',
+    infoFacts: "Here you can see everything Sity believes it knows about you. The higher the confidence, the more times you've confirmed it or the more clearly you said it. 'Temporary' memories disappear on their own over time if you don't mention them. You can delete anything Sity has misunderstood.",
+    infoEpisodes: 'Here you can see the moments of our conversations that Sity has considered most significant. The more important the moment, the more likely Sity is to remember it and use it in future conversations. You can delete any memory you would prefer Sity to forget.',
+    infoSelfBeliefs: 'These are the beliefs Sity has developed about its own behavior through metacognitive reflection. The higher the confidence, the more times it has observed that pattern in itself.',
+    guestMessage: 'Create an account to see and manage what Sity remembers about you.',
+    confidenceLabel: 'Confidence',
+  },
   auth: {
     signInTitle: 'Sign in',
     signIn: 'Sign in',
@@ -820,6 +904,7 @@ const ja: T = {
     chat: 'チャット',
     personality: '性格',
     achievements: '実績',
+    memory: 'メモリー',
     settings: '設定',
     dataset: 'Dev',
   },
@@ -1017,6 +1102,33 @@ const ja: T = {
     catDomotica: 'スマートホーム',
     catBackground: 'バックグラウンド',
     catSecrets: '秘密',
+  },
+  memory: {
+    title: 'メモリー',
+    tabFacts: '知っていること',
+    tabEpisodes: '思い出',
+    tabSelfBeliefs: '自己認識',
+    loading: '読込中…',
+    empty: 'まだここには何も保存されていません。会話を続けるとコンテンツが表示されます。',
+    selectAll: 'すべて選択',
+    deleteSelected: '選択済みを削除',
+    deleteConfirm: '選択したアイテムを削除しますか？この操作は元に戻せません。',
+    confirmYes: 'はい、削除',
+    confirmCancel: 'キャンセル',
+    stabilityStable: '永続的',
+    stabilityNormal: '持続的',
+    stabilityVolatile: '一時的',
+    inferenceExplicit: '教えてもらった',
+    inferenceInferred: '推測した',
+    inferenceAppraisal: '観察した',
+    importanceMenor: '小さな出来事',
+    importanceMid: '重要な出来事',
+    importanceClave: '重要な節目',
+    infoFacts: 'ここではSityがあなたについて知っていると思っていることをすべて確認できます。信頼度が高いほど、あなたが確認した回数が多いか、明確に伝えたことを意味します。「一時的」な記憶は時間が経つと自動的に消えます。誤解された情報は削除できます。',
+    infoEpisodes: 'ここではSityが最も重要と判断した会話の瞬間を確認できます。重要度が高いほど、Sityが将来の会話で思い出す可能性が高くなります。忘れてほしい記憶は削除できます。',
+    infoSelfBeliefs: 'これらはSityがメタ認知的な振り返りを通じて自己の行動について発展させた信念です。信頼度が高いほど、そのパターンを自分自身の中で多く観察していることを意味します。',
+    guestMessage: 'Sityがあなたについて記憶していることを確認・管理するにはアカウントを作成してください。',
+    confidenceLabel: '信頼度',
   },
   auth: {
     signInTitle: 'ログイン',

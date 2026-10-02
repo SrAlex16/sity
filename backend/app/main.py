@@ -8,6 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
 from app.api.routes_achievements import router as achievements_router
+from app.api.routes_memory import router as memory_router
 from app.api.routes_bug_reports import router as bug_reports_router
 from app.api.routes_audio import router as audio_router
 from app.api.routes_auth import router as auth_router
@@ -97,6 +98,7 @@ def health():
 
 
 app.include_router(achievements_router)
+app.include_router(memory_router)
 app.include_router(bug_reports_router)
 app.include_router(auth_router)
 app.include_router(files_router)
