@@ -21,7 +21,7 @@ from app.training.dataset_capture import DatasetCaptureContext, DatasetCaptureSe
 
 def _patch_for_guest(meta: "MessageMetadata", *, is_user: bool) -> "MessageMetadata":
     """Apply guest-session overrides: human_guest source + guest_session tag."""
-    existing: list[str] = json.loads(meta.dataset_tags_json) if meta.dataset_tags_json else []
+    existing: list[str] = json.loads(meta.dataset_tags_json) if isinstance(meta.dataset_tags_json, str) else []
     if "guest_session" not in existing:
         existing.append("guest_session")
     return dataclasses.replace(
@@ -48,8 +48,10 @@ class ChatTurnPersistence:
         self._user_metadata = capture_svc.build_user_metadata(capture_ctx)
         self._sity_metadata = capture_svc.build_sity_metadata(capture_ctx)
         if session_id.startswith("guest:"):
-            self._user_metadata = _patch_for_guest(self._user_metadata, is_user=True)
-            self._sity_metadata = _patch_for_guest(self._sity_metadata, is_user=False)
+            if isinstance(self._user_metadata, MessageMetadata):
+                self._user_metadata = _patch_for_guest(self._user_metadata, is_user=True)
+            if isinstance(self._sity_metadata, MessageMetadata):
+                self._sity_metadata = _patch_for_guest(self._sity_metadata, is_user=False)
 
     def tag_sity_with_model(self, model: str) -> None:
         """If model contains 'sonnet', add sonnet_response tag to sity metadata."""
