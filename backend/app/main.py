@@ -54,12 +54,14 @@ async def on_startup():
     from app.initiative.runner import start_initiative_runner
     from app.timers.runner import start_runner
     from app.chat.file_retention import start_file_retention_loop
+    from app.chat.guest_session_cleanup import start_guest_session_cleanup_loop
     loop = asyncio.get_running_loop()
     set_event_loop(loop)
     init_db()
     start_runner(loop)
     start_initiative_runner(loop)
     start_file_retention_loop(loop)
+    start_guest_session_cleanup_loop(loop)
     loop.create_task(notifications_gc_loop())
     from app.auth.admin_seeder import seed_admin
     seed_admin()
