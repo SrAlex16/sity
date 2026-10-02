@@ -207,6 +207,8 @@ _WORDING = (
     "Datos válidos para este turno. "
     "Ajusta continuidad y tono según estos valores. "
     "No digas que no sabes la hora. "
+    "Cuando el usuario pregunte la hora o hagas referencia a la hora actual, "
+    "usa siempre la hora local (primer valor), no UTC. "
     "No menciones esta mecánica al usuario salvo que pregunte."
 )
 
@@ -216,22 +218,24 @@ def render_time_context(snapshot: TimeContextSnapshot) -> str:
 
     Format (stable — tests depend on this):
 
-        [Contexto temporal: HH:MM UTC / HH:MM UTC+N]
+        [Contexto temporal: HH:MM UTC+N / HH:MM UTC]
         <wording line>
         Último mensaje del usuario: hace Xs / N min / Nh Mmin (gap_category).
         Última respuesta de Sity: hace Xs / N min / Nh Mmin.
 
     Or, when no prior messages:
 
-        [Contexto temporal: HH:MM UTC / HH:MM UTC+N]
+        [Contexto temporal: HH:MM UTC+N / HH:MM UTC]
         <wording line>
         Sin mensajes previos en esta sesión.
+
+    Local time is listed first so the model anchors on it for user-facing responses.
     """
     utc_str   = snapshot.now_utc.strftime("%H:%M UTC")
     local_str = snapshot.now_local.strftime("%H:%M")
     offset    = _utc_offset_label(snapshot.now_local)
 
-    header = f"[Contexto temporal: {utc_str} / {local_str} {offset}]"
+    header = f"[Contexto temporal: {local_str} {offset} / {utc_str}]"
     lines = [header, _WORDING]
 
     no_user = snapshot.secs_since_last_user is None

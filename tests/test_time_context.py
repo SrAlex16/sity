@@ -481,6 +481,24 @@ def test_render_contains_continuidad_y_tono() -> None:
     assert "tono" in rendered.lower()
 
 
+def test_render_wording_instructs_local_time_usage() -> None:
+    snap = build_time_context([], now=FIXED_NOW)
+    rendered = render_time_context(snap)
+    assert "hora local" in rendered.lower()
+
+
+def test_render_header_local_time_first() -> None:
+    """Local time must appear BEFORE UTC in the header."""
+    from datetime import timedelta
+    TZ_PLUS2 = timezone(timedelta(hours=2))
+    # FIXED_NOW = 2024-06-15 14:35 UTC → local = 16:35 UTC+2
+    snap = build_time_context([], now=FIXED_NOW, local_tz=TZ_PLUS2)
+    rendered = render_time_context(snap)
+    first_line = rendered.splitlines()[0]
+    # Header must be: [Contexto temporal: 16:35 UTC+2 / 14:35 UTC]
+    assert first_line == "[Contexto temporal: 16:35 UTC+2 / 14:35 UTC]"
+
+
 # ---------------------------------------------------------------------------
 # render_time_context — still factual after new fields
 # ---------------------------------------------------------------------------
