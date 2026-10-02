@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-01 (f5c3a98 — reset-data.sh ampliado a 47 tablas Mini-Remake v2.0; fixes epistemológicos 3bc69b8; suite 3588 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-02 (ecf662a — captura invitados en dataset + GDPR; suite 3628 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -64,7 +64,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3588 tests en verde (pytest, 6 skipped, 34 deselected) — CI HEAD en `f5c3a98` (2026-10-01)
+- 3628 tests en verde (pytest, 6 skipped, 34 deselected) — CI HEAD en `ecf662a` (2026-10-02)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -152,6 +152,60 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-02) — QA post-beta + dataset invitados
+
+9 cambios en una sesión (commits `f914544` → `ecf662a`, CI verde en `ecf662a`).
+
+- **Carácter al inicio del prompt (commit `f914544`).**
+  `persona_system.md` reestructurado: sección de carácter/identidad movida antes de las
+  reglas de comportamiento. Ratio carácter/reglas mejorado — el modelo recibe la identidad
+  de Sity antes que las restricciones.
+
+- **Hora local corregida (commit `f6803f4`).**
+  `time_context.py`: el bloque temporal del prompt ahora pone la hora local primero
+  (antes ponía UTC primero). Sity dejó de responder con horarios incorrectos.
+
+- **set_boundary y change_topic reequilibrados (commit `60aa530`).**
+  `compute_utility_scores()` en `decision.py`: baselines y pesos ajustados para que
+  ambas acciones compitan realmente con otras acciones defensivas en condiciones límite.
+  Antes raramente superaban el umbral de selección.
+
+- **GTM/GA4 (commit `a5529de`).**
+  Snippet de Google Tag Manager GTM-PF6VCCHC añadido a `mobile/index.html` (head + body).
+  GA4 G-HDMZ300YR8 propagado vía GTM. Sin cookies propias adicionales.
+
+- **R6-02 — mensajes duplicados al volver a pestaña (commit `ed8ac24`).**
+  `_dbLoadInProgressRef` en `useChat` previene que el fetch de historial paralelo entrelace
+  mensajes mientras el turno en background sigue llegando. 5 bugs encadenados resueltos.
+
+- **Memory Inspector — pantalla nueva (commit `f506b1e`).**
+  Pantalla "Memoria" en el menú principal: SemanticFacts, Episodes (con título/emociones),
+  SelfBeliefs. Paginación, búsqueda, timestamps. Endpoints `GET /memory/facts`,
+  `GET /memory/episodes`, `GET /memory/beliefs` (admin-only).
+
+- **Pestaña DEV rediseñada + dataset LoRA v1 (commit `6c2e255`).**
+  Tres cambios: (1) Punto 9: `mark_direct_order_override()` en turn_persistence.py —
+  turns de override marcados `dataset_eligible=False` + skip de episodic memory.
+  (2) Punto 6: `dataset_stats.py` actualizado — 2 buckets eliminados (`variation_melancholy`,
+  `multi_persona`), 9 nuevos alineados con 13 rasgos Remake; TARGETS actualizados.
+  (3) Punto 8: `GET /debug/cognitive-stats`, DEBUG tab con 4 secciones visuales
+  (DebugStatCards, MemSnapshot, ErrorRow compacto, TimelineRow compacto), 13 claves i18n.
+
+- **Captura invitados en dataset + GDPR (commits `ca44712` + `ecf662a`).**
+  (1) `_patch_for_guest()` en `turn_persistence.py`: sesiones `guest:*` → mensajes con
+  `dataset_source="human_guest"`, `speaker_source="human_guest"`, tag `"guest_session"`.
+  (2) `guest_session_cleanup.py`: job periódico cada 24h (corre al arrancar) que borra
+  datos cognitivos/session (Setting, OpenLoop, NotificationLog, InitiativeEvalLog,
+  ScheduledTask, DailyUsage) para sesiones `guest:*` idle > 24h; ChatMessages preservados.
+  (3) `privacy.html` (mobile + static): bullet en "En modo invitado" ES+EN, fecha oct 2026.
+  17 tests nuevos en `test_guest_session_cleanup.py`.
+  Fix en `ecf662a`: `isinstance(meta, MessageMetadata)` guard para tests que mockean
+  `DatasetCaptureService` con `MagicMock` puro.
+
+**Estado: 3628 tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
 
 ---
 
