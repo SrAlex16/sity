@@ -41,13 +41,20 @@ BASE_VECTOR: dict[str, float] = {
 
 #: How many usable pairs each bucket needs for LoRA v1.
 TARGETS: dict[str, int] = {
-    "canon_base":                  650,
-    "variation_playfulness_high":   60,
-    "variation_directness_high":    60,
-    "variation_warmth_high":        60,
-    "variation_brief":              60,
-    "variation_melancholy":         40,
-    "multi_persona":                50,
+    "canon_base":                          650,
+    "variation_playfulness_high":           60,
+    "variation_directness_high":            60,
+    "variation_warmth_high":                60,
+    "variation_brief":                      60,
+    "variation_assertiveness_high":         50,
+    "variation_independence_high":          50,
+    "variation_skepticism_high":            50,
+    "variation_patience_low":               40,
+    "variation_curiosity_high":             50,
+    "variation_helpfulness_low":            40,
+    "variation_honesty_high":               50,
+    "variation_empathy_high":               50,
+    "variation_emotional_stability_low":    40,
 }
 
 #: L2-distance to BASE_VECTOR below which a pair is classified as canon_base.
@@ -55,11 +62,19 @@ _CANON_THRESHOLD = 0.20
 
 #: Variation tag → primary bucket, in priority order (first match wins).
 _TAG_TO_BUCKET: list[tuple[str, str]] = [
-    ("playfulness_high", "variation_playfulness_high"),
-    ("directness_high",  "variation_directness_high"),
-    ("warmth_high",      "variation_warmth_high"),
-    ("brief",            "variation_brief"),
-    ("melancholy_high",  "variation_melancholy"),
+    ("playfulness_high",        "variation_playfulness_high"),
+    ("directness_high",         "variation_directness_high"),
+    ("warmth_high",             "variation_warmth_high"),
+    ("brief",                   "variation_brief"),
+    ("assertiveness_high",      "variation_assertiveness_high"),
+    ("independence_high",       "variation_independence_high"),
+    ("skepticism_high",         "variation_skepticism_high"),
+    ("patience_low",            "variation_patience_low"),
+    ("curiosity_high",          "variation_curiosity_high"),
+    ("helpfulness_low",         "variation_helpfulness_low"),
+    ("honesty_high",            "variation_honesty_high"),
+    ("empathy_high",            "variation_empathy_high"),
+    ("emotional_stability_low", "variation_emotional_stability_low"),
 ]
 
 #: Sity texts that are operational guards, not training data.
@@ -115,27 +130,29 @@ def _compute_tags(
         tags.append("warmth_high")
     if tone.get("verbosity", 1.0) <= 0.20:
         tags.append("brief")
-    if tone.get("melancholy", 0.0) >= 0.50:
-        tags.append("melancholy_high")
-
-    # multi_persona: from dataset_source or dataset_tags_json
-    is_multi = dataset_source == "synthetic_claude_user"
-    if not is_multi and dataset_tags_json:
-        try:
-            parsed = json.loads(dataset_tags_json)
-            if isinstance(parsed, list) and "multi_persona" in parsed:
-                is_multi = True
-        except (json.JSONDecodeError, ValueError):
-            pass
-    if is_multi:
-        tags.append("multi_persona")
+    if tone.get("assertiveness", 0.0) >= 0.80:
+        tags.append("assertiveness_high")
+    if tone.get("independence", 0.0) >= 0.80:
+        tags.append("independence_high")
+    if tone.get("skepticism", 0.0) >= 0.80:
+        tags.append("skepticism_high")
+    if tone.get("patience", 1.0) <= 0.20:
+        tags.append("patience_low")
+    if tone.get("curiosity", 0.0) >= 0.80:
+        tags.append("curiosity_high")
+    if tone.get("helpfulness", 1.0) <= 0.20:
+        tags.append("helpfulness_low")
+    if tone.get("honesty", 0.0) >= 0.80:
+        tags.append("honesty_high")
+    if tone.get("empathy", 0.0) >= 0.80:
+        tags.append("empathy_high")
+    if tone.get("emotional_stability", 1.0) <= 0.25:
+        tags.append("emotional_stability_low")
 
     return tags
 
 
 def _primary_bucket(tags: list[str], tone: dict[str, float]) -> str:
-    if "multi_persona" in tags:
-        return "multi_persona"
     if _l2_distance(tone) < _CANON_THRESHOLD:
         return "canon_base"
     for tag, bucket in _TAG_TO_BUCKET:

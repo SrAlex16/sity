@@ -205,6 +205,19 @@ export interface T {
     disable: string;
     reload: string;
     restorePersonality: string;
+    debugRefresh: string;
+    debugCogMetrics: string;
+    debugGoalsActive: string;
+    debugEpisodesDay: string;
+    debugEpisodesTotal: string;
+    debugFactsTotal: string;
+    debugBeliefsTotal: string;
+    debugMemSnapshot: string;
+    debugRecentErrors: string;
+    debugNoErrors: string;
+    debugTraceTimeline: string;
+    debugNoTrace: string;
+    debugNoEvents: string;
   };
   achievements: {
     title: string;
@@ -500,6 +513,19 @@ const es: T = {
     disable: 'Desactivar',
     reload: 'Recargar',
     restorePersonality: 'Restaurar valores de personalidad',
+    debugRefresh: 'Refrescar',
+    debugCogMetrics: 'Métricas cognitivas (24h)',
+    debugGoalsActive: 'Objetivos activos',
+    debugEpisodesDay: 'Episodios (24h)',
+    debugEpisodesTotal: 'Episodios totales',
+    debugFactsTotal: 'Hechos semánticos',
+    debugBeliefsTotal: 'Creencias',
+    debugMemSnapshot: 'Estado de memoria',
+    debugRecentErrors: 'Errores recientes',
+    debugNoErrors: 'Sin errores recientes',
+    debugTraceTimeline: 'Última traza',
+    debugNoTrace: 'Sin trace_id todavía',
+    debugNoEvents: 'No hay eventos para esta traza',
   },
   achievements: {
     title: 'Logros',
@@ -795,6 +821,19 @@ const en: T = {
     disable: 'Disable',
     reload: 'Reload',
     restorePersonality: 'Restore personality defaults',
+    debugRefresh: 'Refresh',
+    debugCogMetrics: 'Cognitive metrics (24h)',
+    debugGoalsActive: 'Active goals',
+    debugEpisodesDay: 'Episodes (24h)',
+    debugEpisodesTotal: 'Total episodes',
+    debugFactsTotal: 'Semantic facts',
+    debugBeliefsTotal: 'Beliefs',
+    debugMemSnapshot: 'Memory state',
+    debugRecentErrors: 'Recent errors',
+    debugNoErrors: 'No recent errors',
+    debugTraceTimeline: 'Last trace',
+    debugNoTrace: 'No trace ID yet',
+    debugNoEvents: 'No events for this trace',
   },
   achievements: {
     title: 'Achievements',
@@ -1090,6 +1129,19 @@ const ja: T = {
     disable: '無効化',
     reload: '再読込',
     restorePersonality: '性格をデフォルトに戻す',
+    debugRefresh: '更新',
+    debugCogMetrics: '認知メトリクス（24h）',
+    debugGoalsActive: '有効な目標',
+    debugEpisodesDay: 'エピソード（24h）',
+    debugEpisodesTotal: '総エピソード',
+    debugFactsTotal: '意味的事実',
+    debugBeliefsTotal: '信念',
+    debugMemSnapshot: 'メモリ状態',
+    debugRecentErrors: '最近のエラー',
+    debugNoErrors: 'エラーなし',
+    debugTraceTimeline: '最新トレース',
+    debugNoTrace: 'トレースIDなし',
+    debugNoEvents: 'このトレースのイベントなし',
   },
   achievements: {
     title: '実績',

@@ -46,6 +46,17 @@ class ChatTurnPersistence:
             base, dataset_tags_json=json.dumps(existing)
         )
 
+    def mark_direct_order_override(self) -> None:
+        """Mark both user and sity messages as non-eligible for this turn."""
+        def _patch(meta: "MessageMetadata") -> "MessageMetadata":
+            existing: list[str] = json.loads(meta.dataset_tags_json) if meta.dataset_tags_json else []
+            if "direct_order_override" not in existing:
+                existing.append("direct_order_override")
+            return dataclasses.replace(meta, dataset_eligible=False, dataset_tags_json=json.dumps(existing))
+
+        self._user_metadata = _patch(self._user_metadata)
+        self._sity_metadata = _patch(self._sity_metadata)
+
     def save(
         self,
         *,

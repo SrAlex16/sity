@@ -41,11 +41,21 @@ export interface DatasetStats {
   recent_pairs: RecentPair[];
 }
 
+export interface CognitiveStats {
+  ok: boolean;
+  goals_active: number;
+  episodes_last_24h: number;
+  episodes_total: number;
+  semantic_facts_total: number;
+  self_beliefs_total: number;
+}
+
 export function useDebug() {
   const [recentEvents, setRecentEvents] = useState<TraceEvent[]>([]);
   const [lastTraceId, setLastTraceId] = useState<string | null>(null);
   const [lastTraceEvents, setLastTraceEvents] = useState<TraceEvent[]>([]);
   const [datasetStats, setDatasetStats] = useState<DatasetStats | null>(null);
+  const [cognitiveStats, setCognitiveStats] = useState<CognitiveStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,10 +63,11 @@ export function useDebug() {
     setIsLoading(true);
     setError(null);
     try {
-      const [eventsRes, traceRes, statsRes] = await Promise.all([
+      const [eventsRes, traceRes, statsRes, cogRes] = await Promise.all([
         fetch('/debug/events/recent?limit=50'),
         fetch('/debug/last-trace'),
         fetch('/debug/dataset-stats'),
+        fetch('/debug/cognitive-stats'),
       ]);
       if (eventsRes.ok) {
         const d = await eventsRes.json() as { events: TraceEvent[] };
@@ -70,6 +81,9 @@ export function useDebug() {
       if (statsRes.ok) {
         setDatasetStats(await statsRes.json() as DatasetStats);
       }
+      if (cogRes.ok) {
+        setCognitiveStats(await cogRes.json() as CognitiveStats);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando datos de debug');
     } finally {
@@ -77,5 +91,5 @@ export function useDebug() {
     }
   }, []);
 
-  return { recentEvents, lastTraceId, lastTraceEvents, datasetStats, isLoading, error, reload: loadTrace };
+  return { recentEvents, lastTraceId, lastTraceEvents, datasetStats, cognitiveStats, isLoading, error, reload: loadTrace };
 }

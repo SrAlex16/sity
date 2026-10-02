@@ -1,10 +1,10 @@
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 from typing import Optional
 
 from app.trace.logger import write_log
@@ -220,6 +220,53 @@ def budget(
     cfg = load_default_config()
     daily_budget = int(cfg.get("usage", {}).get("daily_token_budget", 1000000))
     return {"daily_used": used, "daily_budget": daily_budget}
+
+
+@router.get("/cognitive-stats")
+def cognitive_stats(
+    session: Session = Depends(get_session),
+    current: CurrentUser = Depends(require_admin),
+):
+    """Return live cognitive state counts for the admin user."""
+    from app.memory.models import Episode, Goal, SemanticFact, SelfBelief
+
+    user_id: int = current.user_id or 0
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+
+    goals_active: int = session.scalar(
+        select(func.count()).select_from(Goal).where(
+            Goal.user_id == user_id,
+            Goal.status == "active",
+        )
+    ) or 0
+
+    episodes_last_24h: int = session.scalar(
+        select(func.count()).select_from(Episode).where(
+            Episode.user_id == user_id,
+            Episode.created_at >= cutoff,
+        )
+    ) or 0
+
+    episodes_total: int = session.scalar(
+        select(func.count()).select_from(Episode).where(Episode.user_id == user_id)
+    ) or 0
+
+    semantic_facts_total: int = session.scalar(
+        select(func.count()).select_from(SemanticFact).where(SemanticFact.user_id == user_id)
+    ) or 0
+
+    self_beliefs_total: int = session.scalar(
+        select(func.count()).select_from(SelfBelief)
+    ) or 0
+
+    return {
+        "ok": True,
+        "goals_active": goals_active,
+        "episodes_last_24h": episodes_last_24h,
+        "episodes_total": episodes_total,
+        "semantic_facts_total": semantic_facts_total,
+        "self_beliefs_total": self_beliefs_total,
+    }
 
 
 @router.get("/dataset-stats")

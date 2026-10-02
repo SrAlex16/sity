@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useDataset } from '../hooks/useDataset';
 import { useDebug } from '../hooks/useDebug';
 import type { DatasetCaptureRequest } from '../hooks/useDataset';
-import type { TraceEvent, DatasetStats } from '../hooks/useDebug';
+import type { TraceEvent, DatasetStats, CognitiveStats } from '../hooks/useDebug';
 import { HelpModal } from '../components/HelpModal';
 import { TRANSLATIONS } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
@@ -160,19 +160,66 @@ function DatasetStatsSection({ stats, loading }: { stats: DatasetStats | null; l
   );
 }
 
-// ── Debug trace sub-component ─────────────────────────────────────────────────
+// ── Debug sub-components ──────────────────────────────────────────────────────
 
-function EventCard({ event }: { event: TraceEvent }) {
+function DebugStatCards({ stats, tl }: {
+  stats: CognitiveStats | null;
+  tl: { debugCogMetrics: string; debugGoalsActive: string; debugEpisodesDay: string; debugEpisodesTotal: string; debugFactsTotal: string; debugBeliefsTotal: string; debugMemSnapshot: string };
+}) {
+  if (!stats) return null;
   return (
-    <div className={styles.eventCard}>
-      <div className={styles.eventHeader}>
-        <div>
-          <div className={styles.eventName}>{event.event}</div>
-          <div className={styles.eventMeta}>{event.module} · {new Date(event.timestamp).toLocaleTimeString()}</div>
+    <>
+      <div className={styles.section}>
+        <p className={styles.sectionLabel}>{tl.debugCogMetrics}</p>
+        <div className={styles.statsCards}>
+          {[
+            { label: tl.debugGoalsActive,   value: stats.goals_active },
+            { label: tl.debugEpisodesDay,   value: stats.episodes_last_24h },
+          ].map(({ label, value }) => (
+            <div key={label} className={styles.statCard}>
+              <div className={styles.statValue}>{value}</div>
+              <div className={styles.statLabel}>{label}</div>
+            </div>
+          ))}
         </div>
-        <span className={styles.eventLevel}>{event.level}</span>
       </div>
-      <pre className={styles.eventPre}>{JSON.stringify(event.payload, null, 2)}</pre>
+      <div className={styles.section}>
+        <p className={styles.sectionLabel}>{tl.debugMemSnapshot}</p>
+        <div className={styles.statsCards}>
+          {[
+            { label: tl.debugEpisodesTotal, value: stats.episodes_total },
+            { label: tl.debugFactsTotal,    value: stats.semantic_facts_total },
+            { label: tl.debugBeliefsTotal,  value: stats.self_beliefs_total },
+          ].map(({ label, value }) => (
+            <div key={label} className={styles.statCard}>
+              <div className={styles.statValue}>{value}</div>
+              <div className={styles.statLabel}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ErrorRow({ event }: { event: TraceEvent }) {
+  return (
+    <div className={styles.errorRow}>
+      <span className={`${styles.eventLevel} ${styles[`level${event.level}`] ?? ''}`}>{event.level}</span>
+      <span className={styles.errorRowModule}>{event.module}</span>
+      <span className={styles.errorRowEvent}>{event.event}</span>
+      <span className={styles.errorRowTime}>{new Date(event.timestamp).toLocaleTimeString()}</span>
+    </div>
+  );
+}
+
+function TimelineRow({ event }: { event: TraceEvent }) {
+  return (
+    <div className={styles.timelineRow}>
+      <span className={styles.timelineTime}>{new Date(event.timestamp).toLocaleTimeString()}</span>
+      <span className={styles.timelineModule}>{event.module}</span>
+      <span className={styles.timelineEvent}>{event.event}</span>
+      <span className={`${styles.eventLevel} ${styles[`level${event.level}`] ?? ''}`}>{event.level}</span>
     </div>
   );
 }
@@ -182,7 +229,7 @@ function EventCard({ event }: { event: TraceEvent }) {
 export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
   const tl = TRANSLATIONS[uiLang].dataset;
   const { capture, isLoading: captureLoading, error: captureError, save, disable, reload: reloadCapture } = useDataset();
-  const { recentEvents, lastTraceId, lastTraceEvents, datasetStats, isLoading: debugLoading, error: debugError, reload: reloadDebug } = useDebug();
+  const { recentEvents, lastTraceId, lastTraceEvents, datasetStats, cognitiveStats, isLoading: debugLoading, error: debugError, reload: reloadDebug } = useDebug();
 
   const [tab, setTab] = useState<DevTab>('dataset');
   const [form, setForm] = useState<CaptureForm>(() => captureToForm(null));
@@ -422,32 +469,38 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
         {/* ── Debug tab ── */}
         {tab === 'debug' && (
           <>
+            <div className={styles.section}>
+              <div className={styles.sectionRow}>
+                <p className={styles.sectionLabel}>{tl.debugTraceTimeline}</p>
+                <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={() => void reloadDebug()} disabled={debugLoading}>
+                  {tl.debugRefresh}
+                </button>
+              </div>
+            </div>
+
             {debugError && <p className={styles.errorMsg}>{debugError}</p>}
-            {debugLoading && recentEvents.length === 0 && <p className={styles.loading}>Cargando traza…</p>}
+
+            <DebugStatCards stats={cognitiveStats} tl={tl} />
+
+            <div className={styles.section}>
+              <p className={styles.sectionLabel}>{tl.debugRecentErrors}</p>
+              {(() => {
+                const errors = recentEvents.filter(ev => ev.level === 'ERROR' || ev.level === 'WARN').slice(-8).reverse();
+                if (errors.length === 0) return <p className={styles.emptyMsg}>{tl.debugNoErrors}</p>;
+                return errors.map((ev, i) => <ErrorRow key={`err-${ev.timestamp}-${i}`} event={ev} />);
+              })()}
+            </div>
 
             <div className={styles.section}>
               <div className={styles.sectionRow}>
-                <p className={styles.sectionLabel}>Última traza</p>
-                <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={() => void reloadDebug()} disabled={debugLoading}>
-                  Refrescar
-                </button>
+                <p className={styles.sectionLabel}>{tl.debugTraceTimeline}</p>
+                <span className={styles.traceIdLabel}>{lastTraceId ?? tl.debugNoTrace}</span>
               </div>
-              <div className={styles.traceIdLabel}>{lastTraceId ?? 'Sin trace_id todavía'}</div>
+              {lastTraceEvents.length === 0 && !debugLoading && (
+                <p className={styles.emptyMsg}>{tl.debugNoEvents}</p>
+              )}
+              {lastTraceEvents.map((ev, i) => <TimelineRow key={`tl-${ev.timestamp}-${i}`} event={ev} />)}
             </div>
-
-            {lastTraceEvents.length === 0 && !debugLoading && (
-              <p className={`${styles.loading} ${styles.emptyMsg}`}>No hay eventos para esta traza.</p>
-            )}
-            {lastTraceEvents.map((ev, i) => <EventCard key={`${ev.timestamp}-${i}`} event={ev} />)}
-
-            {recentEvents.length > 0 && (
-              <>
-                <div className={styles.section} style={{ marginTop: 8 }}>
-                  <p className={styles.sectionLabel}>Eventos recientes ({recentEvents.length})</p>
-                </div>
-                {recentEvents.map((ev, i) => <EventCard key={`r-${ev.timestamp}-${i}`} event={ev} />)}
-              </>
-            )}
           </>
         )}
 

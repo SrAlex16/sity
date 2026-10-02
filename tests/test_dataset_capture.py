@@ -367,13 +367,13 @@ def test_dataset_stats_counts_synthetic_source(client) -> None:
     assert body["by_source"].get("synthetic_claude_user", 0) >= 1
 
 
-def test_dataset_stats_multi_persona_tag_counted(client) -> None:
-    """multi_persona tag from capture is counted in by_tag."""
+def test_dataset_stats_synthetic_counted_in_by_source(client) -> None:
+    """synthetic_claude_user conversations are counted in by_source."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
-    chat_post_and_drain(client, "stats check multi_persona")
+    chat_post_and_drain(client, "stats check synthetic source")
     client.post("/debug/dataset-capture/disable")
 
     resp = client.get("/debug/dataset-stats")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["by_tag"].get("multi_persona", 0) >= 1
+    assert body["by_source"].get("synthetic_claude_user", 0) >= 1

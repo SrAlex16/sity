@@ -593,3 +593,80 @@
 .recentPairSity {
   color: var(--text-primary);
 }
+
+/* ── Debug compact rows ──────────────────────────────────────────────────── */
+
+.errorRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 0.70rem;
+}
+
+.errorRowModule {
+  color: var(--text-secondary);
+  min-width: 60px;
+}
+
+.errorRowEvent {
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorRowTime {
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  flex-shrink: 0;
+}
+
+.timelineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.timelineTime {
+  color: var(--text-secondary);
+  font-size: 0.63rem;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.timelineModule {
+  color: var(--neon-cyan);
+  min-width: 55px;
+  flex-shrink: 0;
+}
+
+.timelineEvent {
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.levelERROR {
+  border-color: rgba(255, 80, 80, 0.5);
+  color: rgba(255, 100, 100, 0.9);
+}
+
+.levelWARN {
+  border-color: rgba(255, 200, 50, 0.5);
+  color: rgba(255, 200, 50, 0.9);
+}
+
+.levelINFO {
+  border-color: rgba(100, 200, 255, 0.3);
+  color: rgba(100, 200, 255, 0.7);
+}

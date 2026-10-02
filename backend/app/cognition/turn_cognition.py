@@ -215,26 +215,28 @@ def run_cognition_turn(
     if _exp_eval and _exp_eval.max_surprise > 0.30:
         _effective_salience = min(1.0, _effective_salience + _exp_eval.max_surprise * 0.10)
 
-    # Step 11: episodic memory — conditional Haiku call only when salience ≥ 0.25
-    try:
-        maybe_create_episode(
-            session=session,
-            user_id=user_id,
-            user_message=user_message,
-            perception=perception,
-            appraisal=appraisal,
-            source_message_ids=[],
-            context_type=perception.context_type,
-            trace_id=trace_id,
-        )
-    except Exception as ep_exc:
-        write_log(
-            level="WARN",
-            module="cognition",
-            event="episode_creation_failed",
-            trace_id=trace_id,
-            payload={"user_id": user_id, "error": str(ep_exc)[:200]},
-        )
+    # Step 11: episodic memory — skip for direct_order_override turns
+    from app.core.order_override import has_direct_order_override as _is_override
+    if not _is_override(user_message):
+        try:
+            maybe_create_episode(
+                session=session,
+                user_id=user_id,
+                user_message=user_message,
+                perception=perception,
+                appraisal=appraisal,
+                source_message_ids=[],
+                context_type=perception.context_type,
+                trace_id=trace_id,
+            )
+        except Exception as ep_exc:
+            write_log(
+                level="WARN",
+                module="cognition",
+                event="episode_creation_failed",
+                trace_id=trace_id,
+                payload={"user_id": user_id, "error": str(ep_exc)[:200]},
+            )
 
     # Step 12: Decision — selects one of 10 actions via Haiku + coherence check.
     # Returns None on any failure → turn_runner.py falls back to old system.

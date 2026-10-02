@@ -165,10 +165,10 @@ def test_brief_tag() -> None:
     assert "brief" in tags
 
 
-def test_melancholy_high_tag() -> None:
-    tone = dict(BASE_VECTOR, melancholy=0.55)
+def test_empathy_high_tag() -> None:
+    tone = dict(BASE_VECTOR, empathy=0.85)
     tags = _compute_tags(tone, "normal_use", None)
-    assert "melancholy_high" in tags
+    assert "empathy_high" in tags
 
 
 def test_playfulness_below_threshold_no_tag() -> None:
@@ -183,22 +183,27 @@ def test_directness_below_threshold_no_tag() -> None:
     assert "directness_high" not in tags
 
 
-def test_multi_persona_from_dataset_source() -> None:
-    tags = _compute_tags(BASE_VECTOR, "synthetic_claude_user", None)
-    assert "multi_persona" in tags
+def test_assertiveness_high_tag() -> None:
+    tone = dict(BASE_VECTOR, assertiveness=0.85)
+    tags = _compute_tags(tone, "normal_use", None)
+    assert "assertiveness_high" in tags
 
 
-def test_multi_persona_from_dataset_tags_json() -> None:
-    dtags = json.dumps(["casual_taco", "multi_persona"])
-    tags = _compute_tags(BASE_VECTOR, "normal_use", dtags)
-    assert "multi_persona" in tags
+def test_patience_low_tag() -> None:
+    tone = dict(BASE_VECTOR, patience=0.15)
+    tags = _compute_tags(tone, "normal_use", None)
+    assert "patience_low" in tags
 
 
-def test_base_vector_no_variation_tags() -> None:
+def test_base_vector_classifies_as_canon_base() -> None:
+    # L2=0 → canon_base regardless of tags that happen to fire at base values
     tags = _compute_tags(BASE_VECTOR, "normal_use", None)
-    variation_tags = {"playfulness_high", "directness_high", "warmth_high",
-                      "brief", "melancholy_high", "multi_persona"}
-    assert not variation_tags.intersection(tags)
+    assert _primary_bucket(tags, BASE_VECTOR) == "canon_base"
+    # Tags that must NOT fire for BASE_VECTOR
+    no_fire = {"playfulness_high", "directness_high", "warmth_high", "brief",
+               "assertiveness_high", "patience_low", "helpfulness_low",
+               "empathy_high", "emotional_stability_low"}
+    assert not no_fire.intersection(tags)
 
 
 # ---------------------------------------------------------------------------
@@ -219,9 +224,11 @@ def test_primary_bucket_canon_base() -> None:
     assert bucket == "canon_base"
 
 
-def test_primary_bucket_multi_persona_wins() -> None:
-    bucket = _primary_bucket(["multi_persona", "playfulness_high"], BASE_VECTOR)
-    assert bucket == "multi_persona"
+def test_primary_bucket_playfulness_wins_over_empathy() -> None:
+    tone = dict(BASE_VECTOR, playfulness=0.90, empathy=0.85)
+    tags = _compute_tags(tone, "normal_use", None)
+    bucket = _primary_bucket(tags, tone)
+    assert bucket == "variation_playfulness_high"
 
 
 def test_primary_bucket_playfulness_high() -> None:
@@ -312,7 +319,7 @@ def test_by_source_synthetic() -> None:
     ]
     stats = compute_dataset_stats(msgs)
     assert stats["by_source"].get("synthetic_claude_user", 0) == 1
-    assert "multi_persona" in stats["by_primary_bucket"]
+    assert "canon_base" in stats["by_primary_bucket"]
 
 
 def test_by_primary_bucket_canon_base() -> None:

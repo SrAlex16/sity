@@ -386,6 +386,7 @@ def _chat_message_inner(
     # Extract override flag once — used both for prompt injection and refusal gate.
     _has_override = has_direct_order_override(request.message)
     if _has_override:
+        ctx.persistence.mark_direct_order_override()
         last = get_last_refusal(ctx.session_id)
         if last:
             persona_prompt += (
