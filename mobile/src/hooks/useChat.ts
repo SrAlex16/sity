@@ -108,6 +108,12 @@ export function useChat(userKey: string | null) {
   // being invalidated by effect closure staleness.
   const statusRef = useRef<ChatStatus>('desconectado');
   statusRef.current = status;
+  // Set to true by loadHistory() when it confirms DB already has the assistant response
+  // while a turn SSE (_listenTurn) is still running. _listenTurn checks this flag before
+  // appending — if true it discards the event (DB reload already wrote the message) and
+  // resets the flag. This prevents loadHistory + _listenTurn from both writing the same
+  // response when the user returns to the tab mid-stream.
+  const _dbLoadInProgressRef = useRef(false);
 
   // On session change: clear all session-derived state before loading new history.
   // userKey === null means auth is still resolving — skip until identity is known.
@@ -244,6 +250,13 @@ export function useChat(userKey: string | null) {
 
       setMessages(msgs);
 
+      // After writing to state: if DB already has the assistant response and a turn SSE
+      // is still active, gate _listenTurn so it doesn't append the same content again.
+      // Flag is reset by _listenTurn on any exit path (response discard, done, error, abort).
+      if (msgs[msgs.length - 1]?.role === 'assistant' && abortControllerRef.current !== null) {
+        _dbLoadInProgressRef.current = true;
+      }
+
       if (opts?.keepProcessing) {
         // Only clear the processing indicator if the backend already saved a response.
         // Last message from assistant = turn completed; last from user (or empty) = still running.
@@ -303,7 +316,7 @@ export function useChat(userKey: string | null) {
       currentTurnIdRef.current = turn_id;
 
       // 2. Subscribe to SSE — Cloudflare sees heartbeats and keeps the connection alive.
-      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus, setQuotaExhausted);
+      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus, setQuotaExhausted, _dbLoadInProgressRef);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setMessages((prev) => [...prev, cancelledMsg()]);
@@ -379,7 +392,7 @@ export function useChat(userKey: string | null) {
       const { turn_id } = await res.json() as ApiChatAccepted;
       currentTurnIdRef.current = turn_id;
 
-      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus, setQuotaExhausted);
+      await _listenTurn(turn_id, controller.signal, userKey, userKeyRef, setMessages, setStatus, setQuotaExhausted, _dbLoadInProgressRef);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setMessages((prev) => [...prev, cancelledMsg()]);
@@ -431,6 +444,7 @@ function _listenTurn(
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
   setStatus: React.Dispatch<React.SetStateAction<ChatStatus>>,
   setQuotaExhausted: React.Dispatch<React.SetStateAction<boolean>>,
+  dbLoadInProgressRef: React.MutableRefObject<boolean>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const es = new EventSource(`/chat/stream/${turn_id}`);
@@ -452,6 +466,15 @@ function _listenTurn(
           resolve();
           return;
         }
+        // Guard: loadHistory() already wrote this response from DB — discard to prevent
+        // the duplicate that would result from both paths writing the same message.
+        if (dbLoadInProgressRef.current) {
+          dbLoadInProgressRef.current = false;
+          serverClosedNormally = true;
+          es.close();
+          resolve();
+          return;
+        }
         responseSeen = true;
         setMessages((prev) => [...prev, ...buildAssistantMessages(ev.data!)]);
         if (ev.data.model === 'user-message-guard') {
@@ -463,16 +486,19 @@ function _listenTurn(
         setStatus('conectado');
       } else if (ev.type === 'done' || ev.type === 'cancelled') {
         serverClosedNormally = true;
+        dbLoadInProgressRef.current = false;
         es.close();
         resolve();
       } else if (ev.type === 'error') {
         serverClosedNormally = true;
+        dbLoadInProgressRef.current = false;
         es.close();
         reject(new Error(ev.label ?? 'Error del servidor'));
       }
     };
 
     es.onerror = () => {
+      dbLoadInProgressRef.current = false;
       es.close();
       if (serverClosedNormally) {
         resolve();
@@ -482,6 +508,7 @@ function _listenTurn(
     };
 
     signal.addEventListener('abort', () => {
+      dbLoadInProgressRef.current = false;
       es.close();
       if (!responseSeen && currentUserKeyRef.current === expectedUserKey) {
         setMessages((prev) => [...prev, cancelledMsg()]);
