@@ -60,11 +60,11 @@ _BASELINES: dict[str, float] = {
     "ask":          0.20,
     "challenge":    0.10,
     "refuse":       0.02,  # very rare — requires multiple strong signals
-    "set_boundary": 0.05,
+    "set_boundary": 0.20,  # raised from 0.05 so defensiveness/assertiveness can compete
     "use_tool":     0.20,  # boosted by domain_activated, penalized without it
     "wait":         0.01,  # almost never — implementation falls back to answer
     "initiate":     0.10,
-    "change_topic": 0.05,
+    "change_topic": 0.15,  # raised from 0.05 so boredom/independence can compete
 }
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ _W_HELPFULNESS: dict[str, float] = {
     "help":         +0.40,
     "use_tool":     +0.35,
     "refuse":       -0.40,
-    "set_boundary": -0.20,
+    "set_boundary": -0.10,  # reduced from -0.20: high helpfulness was over-suppressing set_boundary
 }
 _W_ASSERTIVENESS: dict[str, float] = {
     "challenge":    +0.15,   # calibrated: 0.25 → 0.15; challenge_signal (perception) dominates
@@ -146,14 +146,14 @@ _W_INTEREST: dict[str, float] = {
 }
 _W_DEFENSIVENESS: dict[str, float] = {
     "refuse":       +0.30,
-    "set_boundary": +0.25,
+    "set_boundary": +0.35,  # raised from +0.25 so appraisal-driven defensiveness activates set_boundary
 }
 _W_BOREDOM: dict[str, float] = {
     "answer":       -0.25,   # calibrated: -0.20 → -0.25 so boredom+proactivity can displace answer
     "ask":          -0.15,
     "wait":         +0.30,
     "initiate":     -0.15,
-    "change_topic": +0.40,
+    "change_topic": +0.55,   # raised from +0.40 so appraisal-driven boredom activates change_topic
 }
 _W_SOCIAL_COMFORT: dict[str, float] = {
     "answer":   +0.15,

@@ -199,12 +199,15 @@ class TestComputeUtilityScores:
         assert s["wait"] < s["help"]
 
     def test_wait_wins_extreme_disengagement(self):
-        # Property 9 (extreme case) — melancholy + boredom maxed, proactivity zero
+        # Property 9 (extreme case) — melancholy + boredom maxed, proactivity zero.
+        # After raising change_topic baseline (0.05→0.15) and boredom weight (+0.40→+0.55),
+        # both "wait" and "change_topic" are valid outcomes for extreme disengagement
+        # (redirect vs. disengage are both appropriate non-answer responses).
         p = {**_default_personality(), "proactivity": 0.0, "helpfulness": 0.0}
         ms = {**_default_mental_state(), "melancholy": 1.0, "boredom": 1.0,
               "social_comfort": 0.0, "interest": 0.0}
         s = _scores(personality=p, mental_state=ms)
-        assert _top(s) == "wait"
+        assert _top(s) in ("wait", "change_topic")
 
     def test_refuse_blocked_by_high_helpfulness(self):
         # Property 10 — high helpfulness gives refuse a -0.40 weight → rare
@@ -647,3 +650,54 @@ class TestBuildActionInstruction:
         for action, marker in expected_markers.items():
             instr = build_action_instruction(action)
             assert marker in instr, f"Expected '{marker}' in instruction for action '{action}'"
+
+
+# ---------------------------------------------------------------------------
+# Activation calibration: set_boundary and change_topic threshold tests
+# ---------------------------------------------------------------------------
+
+class TestActivationCalibration:
+    """Verify that the raised baselines + adjusted weights produce the intended
+    activation landscape without changing normal-conversation behaviour."""
+
+    def test_default_normal_answer_still_wins(self):
+        # Default personality + neutral mental state → answer must still dominate.
+        s = _scores()
+        assert _top(s) == "answer"
+
+    def test_high_boredom_low_interest_change_topic_beats_answer(self):
+        # Appraisal-elevated boredom (0.75) with depleted interest (0.10) →
+        # change_topic should beat answer.  boredom weight +0.55 + raised baseline
+        # is sufficient to overcome answer's head-start.
+        # Both values satisfy the design condition: boredom >= 0.40 / interest <= 0.30.
+        ms = {**_default_mental_state(), "boredom": 0.75, "interest": 0.10}
+        s = _scores(mental_state=ms)
+        assert s["change_topic"] > s["answer"], (
+            f"change_topic={s['change_topic']:.3f} should beat answer={s['answer']:.3f} "
+            "with boredom=0.75 / interest=0.10"
+        )
+
+    def test_high_defensiveness_high_challenge_set_boundary_beats_answer(self):
+        # Appraisal-elevated defensiveness (0.60) plus high challenge signal (0.70) →
+        # set_boundary should beat answer.  defensiveness weight +0.35 + raised
+        # baseline + challenge_signal +0.10 is sufficient.
+        ms = {**_default_mental_state(), "defensiveness": 0.60}
+        s = _scores(mental_state=ms, challenge_signal=0.70)
+        assert s["set_boundary"] > s["answer"], (
+            f"set_boundary={s['set_boundary']:.3f} should beat answer={s['answer']:.3f} "
+            "with defensiveness=0.60 / challenge_signal=0.70"
+        )
+
+    def test_low_patience_repetitive_both_activable(self):
+        # Low patience (0.10) + elevated frustration (0.55) + boredom (0.40)
+        # mimics a repetitive conversation.  Both set_boundary and change_topic
+        # must reach meaningful scores (> 0.50 / > 0.45) even without beating answer.
+        ms = {**_default_mental_state(), "boredom": 0.40, "frustration": 0.55}
+        p = {**_default_personality(), "patience": 0.10}
+        s = _scores(personality=p, mental_state=ms, conflict=0.30, challenge_signal=0.35)
+        assert s["set_boundary"] > 0.50, (
+            f"set_boundary={s['set_boundary']:.3f} should be > 0.50 (activable threshold)"
+        )
+        assert s["change_topic"] > 0.45, (
+            f"change_topic={s['change_topic']:.3f} should be > 0.45 (activable threshold)"
+        )
