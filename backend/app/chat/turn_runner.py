@@ -576,6 +576,14 @@ def _chat_message_inner(
                 if _action_instr:
                     persona_prompt += f"\n\n{_action_instr}"
 
+        # Memory: inject memory grounding block for Expression.
+        # Ensures Expression only promises persistence when persistence actually happened.
+        if _cognition_result.memory_results:
+            from app.cognition.memory_worthiness import build_memory_expression_block
+            _mem_block = build_memory_expression_block(_cognition_result.memory_results)
+            if _mem_block:
+                persona_prompt += f"\n\n{_mem_block}"
+
     prep = build_ai_turn_prep(
         session=session,
         request=request,

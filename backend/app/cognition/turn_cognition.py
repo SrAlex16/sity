@@ -61,7 +61,9 @@ from app.cognition.goal_service import (
     get_milestones_for_goal,
     resolve_expired_short_term_goals,
 )
+from app.cognition.memory_worthiness import build_memory_expression_block, process_mw_pipeline
 from app.cognition.perception import PerceptionResult, run_perception
+from app.cognition.semantic_proposition import MemoryResult
 from app.memory.models import Goal, utc_now
 from app.settings.settings_service import SettingsService
 from app.social.social_service import (
@@ -80,6 +82,8 @@ class CognitionTurnResult:
     decision: DecisionResult | None = None
     reflection: ReflectionResult | None = None
     recalled_episodes: list[RecalledEpisode] = field(default_factory=list)
+    memory_results: list[MemoryResult] = field(default_factory=list)
+    memory_any_persisted: bool = False
 
 
 def run_cognition_turn(
@@ -153,6 +157,26 @@ def run_cognition_turn(
             trace_id=trace_id,
             payload={"user_id": user_id, "error": str(_exp_exc)[:200]},
         )
+
+    # Step 3d: Memory Worthiness — process semantic propositions extracted by Perception.
+    # Runs independently of salience; persistence is per-proposition, not per-turn.
+    _memory_results: list[MemoryResult] = []
+    if perception.semantic_propositions:
+        try:
+            _memory_results = process_mw_pipeline(
+                session,
+                user_id=user_id,
+                propositions=perception.semantic_propositions,
+                trace_id=trace_id,
+            )
+        except Exception as mw_exc:
+            write_log(
+                level="WARN",
+                module="cognition",
+                event="mw_pipeline_error",
+                trace_id=trace_id,
+                payload={"user_id": user_id, "error": str(mw_exc)[:200]},
+            )
 
     # Load the SQLModel row (not the dict) to apply deltas in-place
     ms_row = settings_service.get_or_create_mental_state(user_id)
@@ -405,6 +429,7 @@ def run_cognition_turn(
             payload={"user_id": user_id, "error": str(proc_exc)[:200]},
         )
 
+    _memory_any = any(r.persisted for r in _memory_results)
     return CognitionTurnResult(
         perception=perception,
         appraisal=appraisal,
@@ -412,4 +437,6 @@ def run_cognition_turn(
         decision=decision_result,
         reflection=reflection_result,
         recalled_episodes=_recalled_episodes,
+        memory_results=_memory_results,
+        memory_any_persisted=_memory_any,
     )
