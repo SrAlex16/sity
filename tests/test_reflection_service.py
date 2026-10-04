@@ -363,6 +363,41 @@ class TestCognitionTurnResultReflection:
         )
         assert r.reflection is None
 
-    def test_reflection_salience_min_is_045(self):
-        # Verify the threshold constant (no-import guard for the value)
-        assert _REFLECTION_SALIENCE_MIN == pytest.approx(0.45)
+    def test_reflection_salience_min_is_030(self):
+        assert _REFLECTION_SALIENCE_MIN == pytest.approx(0.30)
+
+    def test_salience_035_runs_reflection(self, db_session):
+        with patch(
+            "app.cognition.reflection._call_reflection_haiku",
+            return_value=_parse_reflection_response(_MOCK_JSON),
+        ):
+            result = run_reflection(
+                db_session,
+                user_id=1,
+                user_message="msg",
+                perception=_perception(),
+                appraisal=_appraisal(),
+                decision=_decision(),
+                salience_total=0.35,
+            )
+        assert result is not None
+
+    def test_salience_025_runs_reflection(self, db_session):
+        with patch(
+            "app.cognition.reflection._call_reflection_haiku",
+            return_value=_parse_reflection_response(_MOCK_JSON),
+        ):
+            result = run_reflection(
+                db_session,
+                user_id=1,
+                user_message="msg",
+                perception=_perception(),
+                appraisal=_appraisal(),
+                decision=_decision(),
+                salience_total=0.25,
+            )
+        assert result is not None
+
+    def test_salience_020_below_threshold(self):
+        # Gate lives in turn_cognition — verify 0.20 < threshold so it would be skipped
+        assert 0.20 < _REFLECTION_SALIENCE_MIN

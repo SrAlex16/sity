@@ -327,7 +327,7 @@ def run_cognition_turn(
             },
         )
 
-    # Step 13: Reflection — after-action review when salience ≥ 0.45 (sección 56).
+    # Step 13: Reflection — after-action review when salience ≥ 0.30 (sección 56).
     # Runs after Decision so it can include the chosen action in its context.
     # Load semantic facts for read-only context injection (Fase 9).
     _semantic_facts: list = []

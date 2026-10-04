@@ -1,6 +1,6 @@
 """reflection.py — Structured after-action reflection for salient turns (Fase 6 Paso 3).
 
-Conditional Haiku call (#5 per turn) only when salience_total >= _REFLECTION_SALIENCE_MIN (0.45).
+Conditional Haiku call (#5 per turn) only when salience_total >= _REFLECTION_SALIENCE_MIN (0.30).
 
 Architecture (sección 56):
   1. Build context from turn data (perception, appraisal, decision, salience).
@@ -57,7 +57,7 @@ _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
 # Equals _THR_MEDIA from episode_service — the same "significant turn" threshold.
 # Defined here without import to keep modules decoupled.
-_REFLECTION_SALIENCE_MIN: float = 0.45
+_REFLECTION_SALIENCE_MIN: float = 0.30
 
 # Approximate timedeltas for due_at_hint → datetime conversion
 _DUE_AT_HINT_MAP: dict[str, timedelta] = {
