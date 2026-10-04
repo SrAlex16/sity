@@ -222,6 +222,7 @@ def run_cognition_turn(
         trace_id=trace_id,
         payload={
             "salience_total": round(_effective_salience, 3),
+            "explicit_importance": round(appraisal.explicit_importance, 3),
             "reflection_threshold": _REFLECTION_SALIENCE_MIN,
             "will_reflect": _effective_salience >= _REFLECTION_SALIENCE_MIN,
         },
