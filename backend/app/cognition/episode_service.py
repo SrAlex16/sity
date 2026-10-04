@@ -67,6 +67,10 @@ _STRENGTH_ALTA  = 1.00
 _EXPLICIT_FLOOR_TRIGGER = 0.70
 _EXPLICIT_FLOOR_VALUE   = 0.45
 
+# Second tier: moderate explicit_importance guarantees salience ≥ Reflection threshold
+_EXPLICIT_FLOOR2_TRIGGER = 0.40
+_EXPLICIT_FLOOR2_VALUE   = 0.30
+
 
 # ---------------------------------------------------------------------------
 # Retrieval constants
@@ -248,6 +252,8 @@ def compute_salience(
 
     if explicit_importance > _EXPLICIT_FLOOR_TRIGGER:
         total = max(total, _EXPLICIT_FLOOR_VALUE)
+    elif explicit_importance > _EXPLICIT_FLOOR2_TRIGGER:
+        total = max(total, _EXPLICIT_FLOOR2_VALUE)
 
     return SalienceResult(
         novelty=novelty,

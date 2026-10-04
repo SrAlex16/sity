@@ -58,6 +58,8 @@ from app.cognition.episode_service import (
     _STRENGTH_ALTA,
     _EXPLICIT_FLOOR_TRIGGER,
     _EXPLICIT_FLOOR_VALUE,
+    _EXPLICIT_FLOOR2_TRIGGER,
+    _EXPLICIT_FLOOR2_VALUE,
 )
 from app.cognition.perception import PerceptionResult
 from app.memory.models import Episode
@@ -181,14 +183,42 @@ class TestComputeSalience:
         assert sal.level in ("alta", "muy_alta")  # floor brings it above media threshold
 
     def test_explicit_importance_floor_not_applied_below_trigger(self):
-        # explicit_importance ≤ 0.70 → floor NOT applied
+        # explicit_importance ≤ 0.70 and ≤ 0.40 → neither floor applied
         sal = compute_salience(
             _perception(),
-            _appraisal(explicit_importance=0.70),
+            _appraisal(explicit_importance=0.30),
         )
-        # 0.70 is not > _EXPLICIT_FLOOR_TRIGGER (which is 0.70), so no floor
-        # total = 0.10*0.70 = 0.07 → baja
+        # 0.30 is not > _EXPLICIT_FLOOR_TRIGGER (0.70) and not > _EXPLICIT_FLOOR2_TRIGGER (0.40)
+        # total = 0.10*0.30 = 0.03 → baja, no floor
         assert sal.total < _THR_NONE
+
+    def test_explicit_importance_floor2_applied(self):
+        # explicit_importance=0.50 > 0.40 trigger, base salience=0.15 → floor2 raises to 0.30
+        sal = compute_salience(
+            _perception(),
+            _appraisal(explicit_importance=0.50),
+        )
+        # Without floor2: total = 0.10*0.50 = 0.05
+        # With floor2: explicit_importance > 0.40 → total = max(0.05, 0.30) = 0.30
+        assert sal.total == pytest.approx(_EXPLICIT_FLOOR2_VALUE)
+
+    def test_explicit_importance_floor2_not_applied_below_trigger(self):
+        # explicit_importance=0.30 ≤ 0.40 trigger → floor2 NOT applied
+        sal = compute_salience(
+            _perception(),
+            _appraisal(explicit_importance=0.30),
+        )
+        # total = 0.10*0.30 = 0.03 → unchanged
+        assert sal.total < _EXPLICIT_FLOOR2_VALUE
+
+    def test_explicit_importance_floor2_not_applied_when_base_exceeds(self):
+        # base salience=0.50 already exceeds floor2 → no change
+        sal = compute_salience(
+            _perception(novelty=1.0),
+            _appraisal(explicit_importance=0.80, interest_delta=0.3),
+        )
+        # base > 0.30, floor2 = max(base, 0.30) = base → unchanged
+        assert sal.total > _EXPLICIT_FLOOR2_VALUE
 
     def test_emotional_intensity_formula(self):
         # interest_delta=0.3, frustration_delta=0.0 → ei = 0.3/0.6 = 0.50
@@ -322,12 +352,12 @@ class TestAppraisalNewFields:
     def test_appraisal_usable_in_compute_salience(self):
         r = AppraisalResult.zero()
         r.surprise = 0.5
-        r.explicit_importance = 0.6
+        r.explicit_importance = 0.30  # below floor2 trigger (0.40) → no floor applied
         sal = compute_salience(_perception(), r)
-        # surprise contributes 0.10*0.5=0.05, explicit_importance 0.10*0.6=0.06 → total=0.11 → baja
+        # surprise=0.10*0.5=0.05, explicit_importance=0.10*0.30=0.03 → total=0.08 → baja
         assert sal.level == "baja"
         assert sal.surprise == pytest.approx(0.5)
-        assert sal.explicit_importance == pytest.approx(0.6)
+        assert sal.explicit_importance == pytest.approx(0.30)
 
 
 # ---------------------------------------------------------------------------
