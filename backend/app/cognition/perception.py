@@ -203,6 +203,7 @@ def run_perception(
     Returns PerceptionResult.neutral() on any provider error — never raises.
     """
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    _parsed: PerceptionResult | None = None
     try:
         provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
         request = AIRequest(
@@ -215,16 +216,15 @@ def run_perception(
         )
         response = provider.generate(request)
         if response.ok and response.text:
-            result = _parse_perception(response.text)
-            if result is not None:
-                return result
-        write_log(
-            level="WARN",
-            module="cognition",
-            event="perception_parse_failed",
-            trace_id=trace_id,
-            payload={"raw": (response.text or "")[:200]},
-        )
+            _parsed = _parse_perception(response.text)
+        if _parsed is None:
+            write_log(
+                level="WARN",
+                module="cognition",
+                event="perception_parse_failed",
+                trace_id=trace_id,
+                payload={"raw": (response.text or "")[:200]},
+            )
     except Exception as exc:
         write_log(
             level="WARN",
@@ -233,4 +233,15 @@ def run_perception(
             trace_id=trace_id,
             payload={"error": str(exc)[:200]},
         )
-    return PerceptionResult.neutral()
+    final = _parsed if _parsed is not None else PerceptionResult.neutral()
+    write_log(
+        level="INFO",
+        module="cognition",
+        event="semantic_propositions_extracted",
+        trace_id=trace_id,
+        payload={
+            "count": len(final.semantic_propositions),
+            "trace_id": trace_id,
+        },
+    )
+    return final
