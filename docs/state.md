@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-05 (PENDING_HASH — MINI-REMAKE v3.0 Memory Worthiness; suite 3644 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-05 (85227b0 — MINI-REMAKE v3.0 Memory Worthiness; suite 3644 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -65,7 +65,7 @@ Para Memory Worthiness (separación salience↔memoria semántica, MW pipeline) 
 
 ## Tests y CI
 
-- 3644 tests en verde (pytest, 6 skipped) — CI HEAD en `PENDING_HASH` (2026-10-05)
+- 3644 tests en verde (pytest, 6 skipped) — CI HEAD en `85227b0` (2026-10-05)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -158,7 +158,7 @@ explícita, el normalizador puede extenderse.
 
 ## Completado recientemente (2026-10-05) — MINI-REMAKE v3.0 Memory Worthiness
 
-9 cambios en una sesión (commits `8310bfe` → `PENDING_HASH`, CI verde en `PENDING_HASH`, suite 3644 tests).
+9 cambios en una sesión (commits `8310bfe` → `85227b0`, CI verde en `85227b0`, suite 3644 tests).
 
 - **Threshold Reflection bajado a 0.30 (commit `8310bfe`).**
   `reflection.py`: `_REFLECTION_SALIENCE_MIN` 0.45 → 0.30. Cierra la zona muerta entre
