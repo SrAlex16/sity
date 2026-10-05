@@ -171,7 +171,7 @@ function FactsTab({ tl }: { tl: typeof TRANSLATIONS['es']['memory']; uiLang: UiL
   const load = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const res = await fetch(`/memory/semantic-facts?page=${p}&per_page=20`);
+      const res = await fetch(`/memory/semantic-facts?page=${p}&per_page=20`, { credentials: 'include' });
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
@@ -196,6 +196,7 @@ function FactsTab({ tl }: { tl: typeof TRANSLATIONS['es']['memory']; uiLang: UiL
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: [...selected] }),
+      credentials: 'include',
     });
     setSelected(new Set());
     void load(page);
@@ -285,7 +286,7 @@ function EpisodesTab({ tl, uiLang }: { tl: typeof TRANSLATIONS['es']['memory']; 
   const load = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const res = await fetch(`/memory/episodes?page=${p}&per_page=20`);
+      const res = await fetch(`/memory/episodes?page=${p}&per_page=20`, { credentials: 'include' });
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
@@ -310,6 +311,7 @@ function EpisodesTab({ tl, uiLang }: { tl: typeof TRANSLATIONS['es']['memory']; 
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: [...selected] }),
+      credentials: 'include',
     });
     setSelected(new Set());
     void load(page);
@@ -387,7 +389,7 @@ function SelfBeliefsTab({ tl }: { tl: typeof TRANSLATIONS['es']['memory'] }) {
   const load = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const res = await fetch(`/memory/self-beliefs?page=${p}&per_page=20`);
+      const res = await fetch(`/memory/self-beliefs?page=${p}&per_page=20`, { credentials: 'include' });
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
@@ -412,6 +414,7 @@ function SelfBeliefsTab({ tl }: { tl: typeof TRANSLATIONS['es']['memory'] }) {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: [...selected] }),
+      credentials: 'include',
     });
     setSelected(new Set());
     void load(page);
