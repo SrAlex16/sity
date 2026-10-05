@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-02 (ecf662a — captura invitados en dataset + GDPR; suite 3628 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-05 (PENDING_HASH — MINI-REMAKE v3.0 Memory Worthiness; suite 3644 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -19,6 +19,7 @@ Para Memoria Procedimental (Remake Fase 7) ver docs/remake/fase-7-memoria-proced
 Para User Model, Teoría de la Mente y Expectativas (Remake Fase 8) ver docs/remake/fase-8-usermodel-teoria-mente-expectativas.md.
 Para Consolidación Semántica (Remake Fase 9) ver docs/remake/fase-9-consolidacion-semantica.md.
 Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/remake/pipeline-cognitivo-completo.md.
+Para Memory Worthiness (separación salience↔memoria semántica, MW pipeline) ver docs/remake/SITY_SEMANTIC_MEMORY_WORTHINESS.md.
 
 ## Infraestructura activa
 
@@ -64,7 +65,7 @@ Para el pipeline cognitivo completo (vista de conjunto Fases 1–9) ver docs/rem
 
 ## Tests y CI
 
-- 3628 tests en verde (pytest, 6 skipped, 34 deselected) — CI HEAD en `ecf662a` (2026-10-02)
+- 3644 tests en verde (pytest, 6 skipped) — CI HEAD en `PENDING_HASH` (2026-10-05)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -152,6 +153,65 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-05) — MINI-REMAKE v3.0 Memory Worthiness
+
+9 cambios en una sesión (commits `8310bfe` → `PENDING_HASH`, CI verde en `PENDING_HASH`, suite 3644 tests).
+
+- **Threshold Reflection bajado a 0.30 (commit `8310bfe`).**
+  `reflection.py`: `_REFLECTION_SALIENCE_MIN` 0.45 → 0.30. Cierra la zona muerta entre
+  el gate de Episodio (0.25) y el de Reflection. 3 tests nuevos en `test_reflection_service.py`.
+
+- **Log salience_computed (commits `74edd69` + `032de4d` + `0fd9375`).**
+  `turn_cognition.py`: `write_log(event="salience_computed")` después de `compute_salience()`.
+  Fix trace_id=null (032de4d). Payload extendido con `explicit_importance` (0fd9375).
+  Visible en pestaña DEBUG de DevToolsScreen.
+
+- **Segundo tier de floor explicit_importance (commit `1357223`).**
+  `episode_service.py`: si `explicit_importance > 0.40` → `salience_total = max(total, 0.30)`.
+  Garantiza que peticiones explícitas de memorizar ("recuérdalo") crucen el threshold de Reflection.
+  3 tests nuevos en `test_episode_service.py`.
+
+- **MINI-REMAKE v3.0 — Memory Worthiness pipeline (commit `aa5dc59`).**
+  Separa la evaluación de relevancia de turno (salience) de la evaluación de digno-de-memoria (MW)
+  a nivel de proposición semántica individual.
+  - `semantic_proposition.py` (nuevo): `SemanticProperties`, `SemanticProposition`, `MemoryOperation`
+    (IGNORED/CONSOLIDATE/REINFORCE/REVISE), `MemoryResult`.
+  - `perception.py`: extrae hasta 5 `semantic_propositions` por turno via Haiku (max_tokens 110→700).
+    6 campos de properties: personal_relevance, temporal_scope, context_dependency,
+    assertion_strength, expected_duration, behavioral_relevance.
+  - `memory_worthiness.py` (nuevo): `evaluate_memory_worthiness()` pura — MW_base (pesos
+    expected_duration:0.30, behavioral_relevance:0.25, personal_relevance:0.25,
+    assertion_strength:0.20) + penalización por context_dependency (×0.50). MW_GATE=0.40.
+    `process_mw_pipeline()` — para cada proposición ≥ gate: llama a `resolve_candidate()`
+    (MATCH→REINFORCE, RELATED conf≥0.60→CONSOLIDATE+link, CONTRADICT→REVISE, NEW→CONSOLIDATE).
+    `build_memory_expression_block()` — bloque de instrucción para Expression según resultados.
+  - `turn_cognition.py`: Step 3d — MW pipeline corre si `perception.semantic_propositions`.
+    `CognitionTurnResult` extendido con `memory_results` y `memory_any_persisted`.
+  - `turn_runner.py`: Expression recibe bloque `[MEMORIA ESTE TURNO]` cuando alguna prop persiste.
+  - 10 tests en `tests/test_memory_worthiness.py`.
+  - Documentación: `docs/remake/SITY_SEMANTIC_MEMORY_WORTHINESS.md` (commits `2e36034` + `16032e9`).
+
+- **Log semantic_propositions_extracted (commit `336d432`).**
+  `perception.py`: `write_log(event="semantic_propositions_extracted")` al final de `run_perception()`
+  con `count` incluso si es 0 — distingue "no info personal" de "pipeline no ejecutado".
+  Refactor a punto de salida único.
+
+- **Fix MemoryScreen credentials (commit `7b4ea65`).**
+  `MemoryScreen.tsx`: `credentials: 'include'` añadido a los 6 fetch de `/memory/*` (3 GET + 3
+  DELETE batch). Sin cookie el backend resolvía user_id como guest y devolvía lista vacía.
+
+- **Fix Caddyfile sync.**
+  `deploy/caddy/Caddyfile.example`: ruta `handle /memory/* { reverse_proxy localhost:8000 }`
+  añadida en bloques `:443` y `:80` (sincronización con `/etc/caddy/Caddyfile` ya actualizado).
+
+- **Fix pyflakes — import no usado (este commit).**
+  `turn_cognition.py`: `build_memory_expression_block` eliminado del import de módulo
+  (ya se importa localmente en `turn_runner.py`). 0 avisos nuevos en cognition/.
+
+**Estado: 3644 tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
 
 ---
 

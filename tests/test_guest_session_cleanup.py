@@ -32,6 +32,33 @@ from app.memory.models import (
 )
 
 
+_ALL_TEST_SESSION_IDS = [
+    "guest:tag_test_01", "guest:tag_test_02", "guest:tag_test_04", "guest:tag_test_05",
+    "guest:cleanup_setting_01", "guest:cleanup_msg_02", "guest:cleanup_usage_03",
+    "guest:cleanup_active_04", "user:999_cleanup_05", "guest:cleanup_ol_06",
+]
+
+
+_ALL_TEST_SETTING_KEYS = [
+    "test_key_gc01", "test_key_active04", "test_key_nongc05",
+]
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_test_sessions(db_session: Session) -> None:
+    """Delete hardcoded test data before each test to prevent UNIQUE violations
+    on re-runs against a persistent test DB."""
+    for key in _ALL_TEST_SETTING_KEYS:
+        row = db_session.exec(select(Setting).where(Setting.key == key)).first()
+        if row:
+            db_session.delete(row)
+    for sid in _ALL_TEST_SESSION_IDS:
+        cs = db_session.get(ChatSession, sid)
+        if cs:
+            db_session.delete(cs)
+    db_session.commit()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

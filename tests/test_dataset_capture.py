@@ -268,10 +268,17 @@ def test_disable_idempotent_when_already_disabled(client) -> None:
 # Chat integration — metadata forwarded to ChatMessage rows
 # ---------------------------------------------------------------------------
 
-def _last_pair(db_session: Session) -> tuple[ChatMessage | None, ChatMessage | None]:
-    """Return the last saved (user, sity) ChatMessage pair across any session."""
+def _max_msg_id(db_session: Session) -> int:
+    from sqlalchemy import func
+    result = db_session.exec(select(func.max(ChatMessage.id))).first()
+    return result or 0
+
+
+def _last_pair(db_session: Session, *, min_id: int = 0) -> tuple[ChatMessage | None, ChatMessage | None]:
+    """Return the last saved (user, sity) ChatMessage pair with id > min_id."""
     rows = list(db_session.exec(
         select(ChatMessage)
+        .where(ChatMessage.id > min_id)
         .order_by(ChatMessage.id.desc())
         .limit(2)
     ))
@@ -284,8 +291,9 @@ def _last_pair(db_session: Session) -> tuple[ChatMessage | None, ChatMessage | N
 def test_chat_normal_mode_user_saved_with_human_local(client, db_session: Session) -> None:
     """With capture disabled, user message gets human_local speaker_source."""
     client.post("/debug/dataset-capture/disable")
+    before = _max_msg_id(db_session)
     chat_post_and_drain(client, "hola")
-    user_msg, _ = _last_pair(db_session)
+    user_msg, _ = _last_pair(db_session, min_id=before)
     assert user_msg is not None
     assert user_msg.speaker_source == "human_local"
     assert user_msg.dataset_source == "normal_use"
@@ -294,8 +302,9 @@ def test_chat_normal_mode_user_saved_with_human_local(client, db_session: Sessio
 def test_chat_normal_mode_sity_saved_with_sity_local(client, db_session: Session) -> None:
     """With capture disabled, sity message gets sity_local + normal_use."""
     client.post("/debug/dataset-capture/disable")
+    before = _max_msg_id(db_session)
     chat_post_and_drain(client, "hola")
-    _, sity_msg = _last_pair(db_session)
+    _, sity_msg = _last_pair(db_session, min_id=before)
     assert sity_msg is not None
     assert sity_msg.speaker_source == "sity_local"
     assert sity_msg.dataset_source == "normal_use"
@@ -304,8 +313,9 @@ def test_chat_normal_mode_sity_saved_with_sity_local(client, db_session: Session
 def test_chat_capture_user_saved_with_synthetic_metadata(client, db_session: Session) -> None:
     """With capture enabled, user message gets synthetic_claude_user metadata."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
+    before = _max_msg_id(db_session)
     chat_post_and_drain(client, "hola desde capture")
-    user_msg, _ = _last_pair(db_session)
+    user_msg, _ = _last_pair(db_session, min_id=before)
     assert user_msg is not None
     assert user_msg.speaker_source == "synthetic_claude_user"
     assert user_msg.dataset_source == "synthetic_claude_user"
@@ -319,8 +329,9 @@ def test_chat_capture_sity_saved_with_sity_local_and_synthetic_source(
 ) -> None:
     """With capture enabled, sity message uses dataset_source from capture but speaker_source=sity_local."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
+    before = _max_msg_id(db_session)
     chat_post_and_drain(client, "hola desde capture sity")
-    _, sity_msg = _last_pair(db_session)
+    _, sity_msg = _last_pair(db_session, min_id=before)
     assert sity_msg is not None
     assert sity_msg.speaker_source == "sity_local"
     assert sity_msg.dataset_source == "synthetic_claude_user"
@@ -331,8 +342,9 @@ def test_chat_capture_sity_saved_with_sity_local_and_synthetic_source(
 def test_chat_capture_sity_tone_meta_preserved(client, db_session: Session) -> None:
     """tone_meta is still saved on sity messages when capture is active."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
+    before = _max_msg_id(db_session)
     chat_post_and_drain(client, "qué tal?")
-    _, sity_msg = _last_pair(db_session)
+    _, sity_msg = _last_pair(db_session, min_id=before)
     assert sity_msg is not None
     assert sity_msg.tone_meta is not None
     parsed = json.loads(sity_msg.tone_meta)
@@ -344,8 +356,9 @@ def test_chat_after_disable_reverts_to_normal_use(client, db_session: Session) -
     """After disabling capture, new messages revert to normal_use metadata."""
     client.put("/debug/dataset-capture", json=_ENABLE_SYNTHETIC)
     client.post("/debug/dataset-capture/disable")
+    before = _max_msg_id(db_session)
     chat_post_and_drain(client, "post-disable")
-    user_msg, _ = _last_pair(db_session)
+    user_msg, _ = _last_pair(db_session, min_id=before)
     assert user_msg is not None
     assert user_msg.speaker_source == "human_local"
     assert user_msg.dataset_source == "normal_use"

@@ -61,7 +61,7 @@ from app.cognition.goal_service import (
     get_milestones_for_goal,
     resolve_expired_short_term_goals,
 )
-from app.cognition.memory_worthiness import build_memory_expression_block, process_mw_pipeline
+from app.cognition.memory_worthiness import process_mw_pipeline
 from app.cognition.perception import PerceptionResult, run_perception
 from app.cognition.semantic_proposition import MemoryResult
 from app.memory.models import Goal, utc_now

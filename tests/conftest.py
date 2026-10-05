@@ -158,6 +158,26 @@ def init_database() -> None:
         session.commit()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _mock_guest_cleanup_loop() -> None:
+    """Prevent guest_session_cleanup_loop from running at TestClient startup.
+
+    Without this, on_startup schedules _run_cleanup_sync immediately. On a test DB
+    that has accumulated guest sessions from prior runs (379+ rows observed), the
+    cleanup holds a write lock for ~16s, causing concurrent _register_and_login
+    calls to fail with 'database is locked'.
+
+    Session scope is required because module-scoped TestClient fixtures (e.g. in
+    test_require_admin.py) start the app before function-scoped patches are active.
+    """
+    from unittest.mock import patch
+    with patch(
+        "app.chat.guest_session_cleanup.start_guest_session_cleanup_loop",
+        lambda loop: None,
+    ):
+        yield
+
+
 @pytest.fixture
 def db_session():
     """Open a DB session against the test database.

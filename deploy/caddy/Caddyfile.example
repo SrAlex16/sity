@@ -47,6 +47,7 @@ sity.tudominio.com:443 {
     handle /files* { reverse_proxy localhost:8000 }
     handle /uploads* { reverse_proxy localhost:8000 }
     handle /bug-report* { reverse_proxy localhost:8000 }
+    handle /memory/* { reverse_proxy localhost:8000 }
     handle /health { reverse_proxy localhost:8000 }
     handle {
         root * /home/TU_USUARIO/projects/sity/mobile/dist
@@ -85,6 +86,7 @@ sity.tudominio.com:80 {
     handle /files* { reverse_proxy localhost:8000 }
     handle /uploads* { reverse_proxy localhost:8000 }
     handle /bug-report* { reverse_proxy localhost:8000 }
+    handle /memory/* { reverse_proxy localhost:8000 }
     handle /health { reverse_proxy localhost:8000 }
     handle {
         root * /home/TU_USUARIO/projects/sity/mobile/dist
