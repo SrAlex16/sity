@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-05 (85227b0 — MINI-REMAKE v3.0 Memory Worthiness; suite 3644 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-06 (297a318 — fixes coherence check, history_items log, género interlocutor; suite 3644 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -65,7 +65,7 @@ Para Memory Worthiness (separación salience↔memoria semántica, MW pipeline) 
 
 ## Tests y CI
 
-- 3644 tests en verde (pytest, 6 skipped) — CI HEAD en `85227b0` (2026-10-05)
+- 3644 tests en verde (pytest, 6 skipped) — CI HEAD en `297a318` (2026-10-06)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -153,6 +153,32 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-06) — fixes coherence check + log + género
+
+3 fixes (commits `f0b7aaf` → `297a318`, CI verde en `297a318`, suite 3644 tests).
+
+- **Fix coherence check max_tokens 40→100 (commit `f0b7aaf`).**
+  `decision.py`: Haiku #4 (coherence check) subido de `max_tokens=40` a `max_tokens=100`.
+  Con 40 tokens el JSON `{"coherent": ..., "concern": "..."}` se truncaba o Haiku respondía
+  en texto libre → `coherence_response_parse_failed` → `decision_fallback_triggered` →
+  turno sin acción de Decision inyectada. Fix evita fallos de parse por truncamiento.
+
+- **Fix history_items en log user_message_received (commit `f0b7aaf` + `f6d984d`).**
+  `turn_context.py`: `history_items` en el log usaba `len(request.history)` que siempre era 0
+  (el frontend nunca envía `history` en el body del POST). Cambiado a `count_session_messages()`
+  para reflejar el historial real en DB. Añadido `int() + except` para tests con sesión mock
+  (`MagicMock` no es JSON serializable → fix `f6d984d`).
+
+- **Fix género gramatical del interlocutor (commit `297a318`).**
+  `persona_system.md`: nueva `REGLA DE GÉNERO DEL INTERLOCUTOR` con misma prioridad que
+  `REGLA GRAMATICAL OBLIGATORIA`. Prohíbe asumir género del usuario; prefiere reformulaciones
+  neutras; forma doblada (cansado/a) solo como último recurso; si el usuario indica género
+  explícitamente, usarlo consistentemente.
+
+**Estado: 3644 tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
 
 ---
 
