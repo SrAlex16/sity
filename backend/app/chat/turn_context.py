@@ -91,6 +91,10 @@ def build_turn_context(
     persistence = ChatTurnPersistence(session, _capture_ctx, _capture_svc, session_id)
 
     from app.chat.chat_persistence import count_session_messages
+    try:
+        _history_count = int(count_session_messages(session, session_id))
+    except Exception:
+        _history_count = 0
     write_log(
         level="INFO",
         module="chat",
@@ -98,7 +102,7 @@ def build_turn_context(
         trace_id=trace_id,
         payload={
             "message_length": len(request.message),
-            "history_items": count_session_messages(session, session_id),
+            "history_items": _history_count,
         },
     )
 
