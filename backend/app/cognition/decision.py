@@ -735,7 +735,7 @@ def _check_coherence(
             task_type="decision_coherence",
             system_prompt=_COHERENCE_SYSTEM,
             user_message=coherence_context,
-            max_tokens=40,
+            max_tokens=100,
             tools_enabled=False,
         )
         response = provider.generate(request)
