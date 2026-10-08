@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-08 (11231f7 — seguridad: backend localhost-only, auth en rutas audio/captures, audit de rutas; suite 3704 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-08 (f089079 — sincronización multi-dispositivo: turn_completed en canal de sesión; suite 3709 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -65,7 +65,7 @@ Para Memory Worthiness (separación salience↔memoria semántica, MW pipeline) 
 
 ## Tests y CI
 
-- 3704 tests en verde (pytest, 6 skipped) — CI HEAD en `11231f7` (2026-10-08)
+- 3709 tests en verde (pytest, 6 skipped) — CI HEAD en `f089079` (2026-10-08)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -158,15 +158,15 @@ explícita, el normalizador puede extenderse.
 
 ## Completado recientemente (2026-10-08) — seguridad: backend localhost + auth rutas audio/captures
 
-2 fixes de seguridad (commits 11231f7, CI verde, suite 3704 tests).
+2 fixes de seguridad (commits `11231f7` → `82b2c54`, CI verde en `82b2c54`, suite 3704 tests).
 
-- **Fix 1 — Backend solo en localhost (systemd).**
+- **Fix 1 — Backend solo en localhost (commit `11231f7`).**
   `deploy/systemd/sity-backend.service` y `/etc/systemd/system/sity-backend.service`:
   `--host 0.0.0.0` → `--host 127.0.0.1`. El backend ya no acepta conexiones de red
   directas; solo Caddy (que sí valida TLS + auth a nivel proxy) puede hablar con él.
   Confirmado con `ss -tlnp | grep 8000` → solo `127.0.0.1:8000`.
 
-- **Fix 2 — Auth en rutas audio y captures.**
+- **Fix 2 — Auth en rutas audio y captures (commit `11231f7`).**
   - `routes_audio.py`: `POST /audio/transcribe`, `POST /audio/synthesize`,
     `GET /audio/tts/{f}`, `GET /audio/stored/{f}` → `get_current_user` + guest check (403).
     `POST /audio/cleanup` → `require_admin` (403 para guest/user).
@@ -174,10 +174,48 @@ explícita, el normalizador puede extenderse.
     → `require_admin` (403 para guest/user). Antes estaban sin protección.
   - `tests/test_route_security.py` (nuevo, 60 casos): audit completo de rutas por rol
     (guest/user/admin). Falla si alguna ruta permite acceso que no debería.
-  - `tests/test_audio_transcribe.py`, `tests/test_audio_persistence.py`:
-    actualizados para usar `make_user_token()` / `make_admin_token()` en los clientes.
+  - `tests/test_audio_transcribe.py`, `tests/test_audio_persistence.py` (commit `82b2c54`):
+    convertidos a `@pytest.fixture(scope="module")` — module-level `make_user_token()` al
+    import time fallaba en CI (tablas DB inexistentes); patrón idéntico a `test_require_admin.py`.
 
 **Estado: 3704 tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
+
+---
+
+## Completado recientemente (2026-10-08) — sincronización multi-dispositivo en tiempo real
+
+Fix de sincronización cross-device (commit `f089079`, suite 3709 tests, CI verde).
+
+- **Infraestructura preexistente.** El backend ya tenía dos canales SSE separados:
+  canal de turno efímero (`/events/chat/{turn_id}`) y canal de sesión persistente
+  (`/events/session/{session_id}`). La sesión usa `user:{user_id}` como clave —
+  compartida por todos los dispositivos del mismo usuario. `subscribe_session()`
+  crea una `asyncio.Queue` privada por suscriptor; `publish_session_event` la copia
+  a todas las colas activas bajo el mismo `session_id` (fan-out real).
+
+- **Problema.** `turn_runner.py` no publicaba ningún evento en el canal de sesión al
+  terminar un turno. Otros dispositivos del mismo usuario no recibían señal y nunca
+  recargaban el historial de mensajes.
+
+- **Fix backend (`turn_runner.py`).** Al final de un turno exitoso (texto no vacío,
+  no cancelado), se publica en el canal de sesión:
+  `{"type": "turn_completed", "turn_id": "…", "session_id": "…"}`.
+  Import añadido: `publish_session_event_sync`.
+
+- **Fix frontend (`useChat.ts`).** El manejador `es.onmessage` del SSE de sesión
+  añade el caso `turn_completed`: llama `loadHistory()` solo si
+  `abortControllerRef.current === null` (pestaña inactiva). La pestaña que envió el
+  turno ya tiene la respuesta por el canal de turno y no recarga innecesariamente.
+
+- **Tests backend** (`tests/test_turn_completed_event.py`, 5 casos): turno exitoso
+  publica `turn_completed` con `turn_id` y `session_id` correctos; respuesta vacía
+  y turno cancelado no publican; canal de turno sigue recibiendo `response` y `done`.
+
+- **Tests frontend** (`mobile/src/hooks/useChat.turnCompleted.test.ts`, 2 casos):
+  pestaña idle llama `loadHistory()` al recibir `turn_completed`; pestaña activa
+  (enviando) no lo llama.
+
+**Estado: 3709 tests, mypy limpio, pyflakes 0, P0 conocidos: 0.**
 
 ---
 
