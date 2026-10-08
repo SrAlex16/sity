@@ -1,22 +1,31 @@
 """Tests for TTS audio persistence: audio_filename DB field and /audio/cleanup endpoint."""
 from __future__ import annotations
 
-import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.main import app
-from app.memory.db import engine
 from app.memory.models import ChatMessage
 from helpers import make_admin_token, make_user_token
 
-client = TestClient(app, cookies={"sity_session": make_user_token()})
-admin_client = TestClient(app, cookies={"sity_session": make_admin_token()})
+
+@pytest.fixture(scope="module")
+def user_client() -> TestClient:
+    token = make_user_token()
+    with TestClient(app, raise_server_exceptions=True, cookies={"sity_session": token}) as c:
+        yield c  # type: ignore[misc]
+
+
+@pytest.fixture(scope="module")
+def admin_client() -> TestClient:
+    token = make_admin_token()
+    with TestClient(app, raise_server_exceptions=True, cookies={"sity_session": token}) as c:
+        yield c  # type: ignore[misc]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -73,7 +82,7 @@ def test_audio_filename_defaults_to_none(db_session: Session) -> None:
 
 # ── /audio/stored/{filename} endpoint ────────────────────────────────────────
 
-def test_serve_stored_file_returns_wav(tmp_path: Path) -> None:
+def test_serve_stored_file_returns_wav(user_client: TestClient, tmp_path: Path) -> None:
     wav = _make_wav()
     audio_dir = tmp_path / "audio"
     audio_dir.mkdir()
@@ -81,35 +90,35 @@ def test_serve_stored_file_returns_wav(tmp_path: Path) -> None:
     (audio_dir / filename).write_bytes(wav)
 
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
-        r = client.get(f"/audio/stored/{filename}")
+        r = user_client.get(f"/audio/stored/{filename}")
 
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("audio/wav")
 
 
-def test_serve_stored_file_404_when_missing(tmp_path: Path) -> None:
+def test_serve_stored_file_404_when_missing(user_client: TestClient, tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     audio_dir.mkdir()
 
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
-        r = client.get("/audio/stored/tts_nonexistent.wav")
+        r = user_client.get("/audio/stored/tts_nonexistent.wav")
 
     assert r.status_code == 404
 
 
-def test_serve_stored_file_rejects_path_traversal(tmp_path: Path) -> None:
+def test_serve_stored_file_rejects_path_traversal(user_client: TestClient, tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     audio_dir.mkdir()
 
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
-        r = client.get("/audio/stored/../../etc/passwd")
+        r = user_client.get("/audio/stored/../../etc/passwd")
 
     assert r.status_code in (400, 404, 422)
 
 
 # ── /audio/cleanup endpoint ───────────────────────────────────────────────────
 
-def test_cleanup_deletes_old_files(tmp_path: Path) -> None:
+def test_cleanup_deletes_old_files(admin_client: TestClient, tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     audio_dir.mkdir()
 
@@ -136,7 +145,7 @@ def test_cleanup_deletes_old_files(tmp_path: Path) -> None:
     assert new_file.exists()
 
 
-def test_cleanup_keeps_recent_files(tmp_path: Path) -> None:
+def test_cleanup_keeps_recent_files(admin_client: TestClient, tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     audio_dir.mkdir()
 
@@ -153,7 +162,7 @@ def test_cleanup_keeps_recent_files(tmp_path: Path) -> None:
     assert recent.exists()
 
 
-def test_cleanup_empty_dir_is_noop(tmp_path: Path) -> None:
+def test_cleanup_empty_dir_is_noop(admin_client: TestClient, tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     audio_dir.mkdir()
 
@@ -166,7 +175,7 @@ def test_cleanup_empty_dir_is_noop(tmp_path: Path) -> None:
     assert r.json() == {"deleted": 0, "kept": 0}
 
 
-def test_cleanup_missing_dir_is_noop(tmp_path: Path) -> None:
+def test_cleanup_missing_dir_is_noop(admin_client: TestClient, tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio_nonexistent"
 
     cfg = {"audio": {"cleanup_days": 7}}

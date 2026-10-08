@@ -4,7 +4,7 @@ Mocks transcribe_bytes so faster-whisper is never imported or called.
 """
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +13,13 @@ from app.main import app
 from app.audio.transcriber import AudioConfig
 from helpers import make_user_token
 
-client = TestClient(app, cookies={"sity_session": make_user_token()})
+
+@pytest.fixture(scope="module")
+def client() -> TestClient:
+    token = make_user_token()
+    with TestClient(app, raise_server_exceptions=True, cookies={"sity_session": token}) as c:
+        yield c  # type: ignore[misc]
+
 
 _FAKE_CFG = AudioConfig(stt_model="base", stt_device="cpu", stt_language="es")
 
@@ -22,7 +28,7 @@ def _mock_transcribe(audio_bytes: bytes, cfg: AudioConfig):
     return ("Hola mundo.", 250)
 
 
-def test_transcribe_returns_transcript() -> None:
+def test_transcribe_returns_transcript(client: TestClient) -> None:
     with patch("app.api.routes_audio.transcribe_bytes", side_effect=_mock_transcribe):
         with patch("app.api.routes_audio.load_audio_config", return_value=_FAKE_CFG):
             r = client.post(
@@ -35,7 +41,7 @@ def test_transcribe_returns_transcript() -> None:
     assert data["duration_ms"] == 250
 
 
-def test_transcribe_empty_file_returns_400() -> None:
+def test_transcribe_empty_file_returns_400(client: TestClient) -> None:
     with patch("app.api.routes_audio.transcribe_bytes", side_effect=_mock_transcribe):
         with patch("app.api.routes_audio.load_audio_config", return_value=_FAKE_CFG):
             r = client.post(
@@ -45,7 +51,7 @@ def test_transcribe_empty_file_returns_400() -> None:
     assert r.status_code == 400
 
 
-def test_transcribe_accepts_webm_content_type() -> None:
+def test_transcribe_accepts_webm_content_type(client: TestClient) -> None:
     with patch("app.api.routes_audio.transcribe_bytes", side_effect=_mock_transcribe):
         with patch("app.api.routes_audio.load_audio_config", return_value=_FAKE_CFG):
             r = client.post(
@@ -55,7 +61,7 @@ def test_transcribe_accepts_webm_content_type() -> None:
     assert r.status_code == 200
 
 
-def test_transcribe_passes_bytes_to_transcribe_bytes() -> None:
+def test_transcribe_passes_bytes_to_transcribe_bytes(client: TestClient) -> None:
     captured: list[bytes] = []
 
     def _capture(audio_bytes: bytes, cfg: AudioConfig):
@@ -72,7 +78,7 @@ def test_transcribe_passes_bytes_to_transcribe_bytes() -> None:
     assert captured[0] == b"my-audio-data"
 
 
-def test_transcribe_uses_config_language() -> None:
+def test_transcribe_uses_config_language(client: TestClient) -> None:
     cfg_calls: list[AudioConfig] = []
 
     def _capture(audio_bytes: bytes, cfg: AudioConfig):
@@ -90,7 +96,7 @@ def test_transcribe_uses_config_language() -> None:
     assert cfg_calls[0].stt_model == "base"
 
 
-def test_transcribe_returns_empty_transcript_on_silence() -> None:
+def test_transcribe_returns_empty_transcript_on_silence(client: TestClient) -> None:
     with patch("app.api.routes_audio.transcribe_bytes", return_value=("", 80)):
         with patch("app.api.routes_audio.load_audio_config", return_value=_FAKE_CFG):
             r = client.post(
