@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-08 (PENDING_HASH — seguridad: backend localhost-only, auth en rutas audio/captures, audit de rutas; suite PENDING_TESTS tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-08 (11231f7 — seguridad: backend localhost-only, auth en rutas audio/captures, audit de rutas; suite 3704 tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -65,7 +65,7 @@ Para Memory Worthiness (separación salience↔memoria semántica, MW pipeline) 
 
 ## Tests y CI
 
-- PENDING_TESTS tests en verde (pytest, 6 skipped) — CI HEAD en `PENDING_HASH` (2026-10-08)
+- 3704 tests en verde (pytest, 6 skipped) — CI HEAD en `11231f7` (2026-10-08)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -158,7 +158,7 @@ explícita, el normalizador puede extenderse.
 
 ## Completado recientemente (2026-10-08) — seguridad: backend localhost + auth rutas audio/captures
 
-2 fixes de seguridad (commits PENDING_HASH, CI verde, suite PENDING_TESTS tests).
+2 fixes de seguridad (commits 11231f7, CI verde, suite 3704 tests).
 
 - **Fix 1 — Backend solo en localhost (systemd).**
   `deploy/systemd/sity-backend.service` y `/etc/systemd/system/sity-backend.service`:
@@ -177,7 +177,7 @@ explícita, el normalizador puede extenderse.
   - `tests/test_audio_transcribe.py`, `tests/test_audio_persistence.py`:
     actualizados para usar `make_user_token()` / `make_admin_token()` en los clientes.
 
-**Estado: PENDING_TESTS tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
+**Estado: 3704 tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
 
 ---
 
