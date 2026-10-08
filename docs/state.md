@@ -1,6 +1,6 @@
 # Estado actual del proyecto Sity
 
-Última actualización: 2026-10-06 (297a318 — fixes coherence check, history_items log, género interlocutor; suite 3644 tests). Sistema listo para beta pública — P0 conocidos: 0.
+Última actualización: 2026-10-08 (PENDING_HASH — seguridad: backend localhost-only, auth en rutas audio/captures, audit de rutas; suite PENDING_TESTS tests). Sistema listo para beta pública — P0 conocidos: 0.
 
 Foto rápida del estado operativo para retomar trabajo sin depender
 de conversaciones anteriores. Para arquitectura detallada ver
@@ -65,7 +65,7 @@ Para Memory Worthiness (separación salience↔memoria semántica, MW pipeline) 
 
 ## Tests y CI
 
-- 3644 tests en verde (pytest, 6 skipped) — CI HEAD en `297a318` (2026-10-06)
+- PENDING_TESTS tests en verde (pytest, 6 skipped) — CI HEAD en `PENDING_HASH` (2026-10-08)
 - Tests `behavior_regression` excluidos de CI con `-m "not behavior_regression"` (requieren
   `ANTHROPIC_API_KEY` real; corren localmente cuando la clave está en el entorno)
 - Cobertura global: 73% (medida con pytest-cov)
@@ -153,6 +153,31 @@ español latinoamericano (es-419) donde el voseo es el registro correcto. Decisi
 mantener el trigger en `es-ES` únicamente; documentar como limitación conocida para
 sesiones `auto`. Si en el futuro se añade detección de variante dialectal por IP/preferencia
 explícita, el normalizador puede extenderse.
+
+---
+
+## Completado recientemente (2026-10-08) — seguridad: backend localhost + auth rutas audio/captures
+
+2 fixes de seguridad (commits PENDING_HASH, CI verde, suite PENDING_TESTS tests).
+
+- **Fix 1 — Backend solo en localhost (systemd).**
+  `deploy/systemd/sity-backend.service` y `/etc/systemd/system/sity-backend.service`:
+  `--host 0.0.0.0` → `--host 127.0.0.1`. El backend ya no acepta conexiones de red
+  directas; solo Caddy (que sí valida TLS + auth a nivel proxy) puede hablar con él.
+  Confirmado con `ss -tlnp | grep 8000` → solo `127.0.0.1:8000`.
+
+- **Fix 2 — Auth en rutas audio y captures.**
+  - `routes_audio.py`: `POST /audio/transcribe`, `POST /audio/synthesize`,
+    `GET /audio/tts/{f}`, `GET /audio/stored/{f}` → `get_current_user` + guest check (403).
+    `POST /audio/cleanup` → `require_admin` (403 para guest/user).
+  - `routes_captures.py`: `GET /captures/camera/{f}`, `GET /captures/audio/{f}`
+    → `require_admin` (403 para guest/user). Antes estaban sin protección.
+  - `tests/test_route_security.py` (nuevo, 60 casos): audit completo de rutas por rol
+    (guest/user/admin). Falla si alguna ruta permite acceso que no debería.
+  - `tests/test_audio_transcribe.py`, `tests/test_audio_persistence.py`:
+    actualizados para usar `make_user_token()` / `make_admin_token()` en los clientes.
+
+**Estado: PENDING_TESTS tests, mypy limpio, pyflakes 0 nuevos, P0 conocidos: 0.**
 
 ---
 
