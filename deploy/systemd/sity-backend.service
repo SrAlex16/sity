@@ -7,7 +7,7 @@ Type=simple
 User=alex
 WorkingDirectory=/home/alex/projects/sity/backend
 EnvironmentFile=/home/alex/projects/sity/.env
-ExecStart=/home/alex/projects/sity/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/alex/projects/sity/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=3
 

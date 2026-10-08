@@ -5,10 +5,11 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.audio.synthesizer import load_tts_config, synthesize_text
 from app.audio.transcriber import load_audio_config, transcribe_bytes
 from app.settings.config_loader import PROJECT_ROOT, load_default_config
@@ -35,12 +36,17 @@ class TranscribeResponse(BaseModel):
 
 
 @router.post("/transcribe", response_model=TranscribeResponse)
-async def transcribe_audio(file: UploadFile = File(...)):
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    current: CurrentUser = Depends(get_current_user),
+):
     """Transcribe an audio file with faster-whisper.
 
     Accepts any format supported by ffmpeg (webm, ogg, wav, mp3, …).
     Returns the full transcript and wall-clock duration in milliseconds.
     """
+    if current.is_guest:
+        raise HTTPException(status_code=403, detail="Transcription requires a registered account.")
     audio_bytes = await file.read()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="Empty audio file")
@@ -69,12 +75,17 @@ class SynthesizeRequest(BaseModel):
 
 
 @router.post("/synthesize")
-async def synthesize_audio(request: SynthesizeRequest):
+async def synthesize_audio(
+    request: SynthesizeRequest,
+    current: CurrentUser = Depends(get_current_user),
+):
     """Synthesize text to speech using Piper TTS.
 
     Returns WAV audio bytes. Returns 422 if the text exceeds tts_long_response_chars.
     Returns 503 if piper is not installed or the model file is missing.
     """
+    if current.is_guest:
+        raise HTTPException(status_code=403, detail="TTS synthesis requires a registered account.")
     cfg = load_tts_config()
     if len(request.text) > cfg.long_response_chars:
         raise HTTPException(
@@ -106,8 +117,13 @@ async def synthesize_audio(request: SynthesizeRequest):
 
 
 @router.get("/tts/{filename}")
-async def serve_tts_file(filename: str):
+async def serve_tts_file(
+    filename: str,
+    current: CurrentUser = Depends(get_current_user),
+):
     """Serve a previously synthesized TTS audio file by filename."""
+    if current.is_guest:
+        raise HTTPException(status_code=403, detail="Audio requires a registered account.")
     # Sanitize: only allow simple alphanumeric + dash + underscore + dot
     safe = all(c.isalnum() or c in "-_." for c in filename)
     if not safe or ".." in filename:
@@ -150,8 +166,13 @@ def _validate_filename(filename: str) -> bool:
 
 
 @router.get("/stored/{filename}")
-async def serve_stored_tts_file(filename: str):
+async def serve_stored_tts_file(
+    filename: str,
+    current: CurrentUser = Depends(get_current_user),
+):
     """Serve a persistently stored TTS audio file from data/audio/."""
+    if current.is_guest:
+        raise HTTPException(status_code=403, detail="Audio requires a registered account.")
     if not _validate_filename(filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
     path = _TTS_PERSISTENT_DIR / filename
@@ -166,7 +187,7 @@ class CleanupResponse(BaseModel):
 
 
 @router.post("/cleanup", response_model=CleanupResponse)
-async def cleanup_stored_audio():
+async def cleanup_stored_audio(_: CurrentUser = Depends(require_admin)):
     """Delete stored TTS files older than audio.cleanup_days from data/audio/."""
     cfg = load_default_config().get("audio", {})
     cleanup_days: int = int(cfg.get("cleanup_days", 7))

@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
+from app.auth.dependencies import CurrentUser, require_admin
 
 router = APIRouter(prefix="/captures", tags=["captures"])
 
@@ -38,12 +39,12 @@ def safe_capture_path(kind: str, filename: str) -> Path:
 
 
 @router.get("/camera/{filename}")
-def get_camera_capture(filename: str):
+def get_camera_capture(filename: str, _: CurrentUser = Depends(require_admin)):
     path = safe_capture_path("camera", filename)
     return FileResponse(path, media_type="image/jpeg", filename=filename)
 
 
 @router.get("/audio/{filename}")
-def get_audio_capture(filename: str):
+def get_audio_capture(filename: str, _: CurrentUser = Depends(require_admin)):
     path = safe_capture_path("audio", filename)
     return FileResponse(path, media_type="audio/wav", filename=filename)

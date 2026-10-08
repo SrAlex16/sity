@@ -11,8 +11,9 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.audio.transcriber import AudioConfig
+from helpers import make_user_token
 
-client = TestClient(app)
+client = TestClient(app, cookies={"sity_session": make_user_token()})
 
 _FAKE_CFG = AudioConfig(stt_model="base", stt_device="cpu", stt_language="es")
 

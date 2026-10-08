@@ -13,8 +13,10 @@ from sqlmodel import Session, select
 from app.main import app
 from app.memory.db import engine
 from app.memory.models import ChatMessage
+from helpers import make_admin_token, make_user_token
 
-client = TestClient(app)
+client = TestClient(app, cookies={"sity_session": make_user_token()})
+admin_client = TestClient(app, cookies={"sity_session": make_admin_token()})
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -124,7 +126,7 @@ def test_cleanup_deletes_old_files(tmp_path: Path) -> None:
     cfg = {"audio": {"cleanup_days": 7}}
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
         with patch("app.api.routes_audio.load_default_config", return_value=cfg):
-            r = client.post("/audio/cleanup")
+            r = admin_client.post("/audio/cleanup")
 
     assert r.status_code == 200
     data = r.json()
@@ -144,7 +146,7 @@ def test_cleanup_keeps_recent_files(tmp_path: Path) -> None:
     cfg = {"audio": {"cleanup_days": 7}}
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
         with patch("app.api.routes_audio.load_default_config", return_value=cfg):
-            r = client.post("/audio/cleanup")
+            r = admin_client.post("/audio/cleanup")
 
     assert r.status_code == 200
     assert r.json()["deleted"] == 0
@@ -158,7 +160,7 @@ def test_cleanup_empty_dir_is_noop(tmp_path: Path) -> None:
     cfg = {"audio": {"cleanup_days": 7}}
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
         with patch("app.api.routes_audio.load_default_config", return_value=cfg):
-            r = client.post("/audio/cleanup")
+            r = admin_client.post("/audio/cleanup")
 
     assert r.status_code == 200
     assert r.json() == {"deleted": 0, "kept": 0}
@@ -170,7 +172,7 @@ def test_cleanup_missing_dir_is_noop(tmp_path: Path) -> None:
     cfg = {"audio": {"cleanup_days": 7}}
     with patch("app.api.routes_audio._TTS_PERSISTENT_DIR", audio_dir):
         with patch("app.api.routes_audio.load_default_config", return_value=cfg):
-            r = client.post("/audio/cleanup")
+            r = admin_client.post("/audio/cleanup")
 
     assert r.status_code == 200
     assert r.json() == {"deleted": 0, "kept": 0}
