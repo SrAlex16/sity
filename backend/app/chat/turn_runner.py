@@ -18,7 +18,7 @@ from app.core.cancellation import clear_operation
 from app.core.session_queue import acquire_session_lock, claim_session_slot, is_superseded
 from app.core.order_override import has_direct_order_override
 from app.core.persona_engine import PersonaEngine
-from app.core.realtime_events import get_subscriber_state, publish_event_sync
+from app.core.realtime_events import get_subscriber_state, publish_event_sync, publish_session_event_sync
 from app.core.refusal_tracker import (
     clear_last_refusal,
     get_last_refusal,
@@ -276,6 +276,11 @@ def _run_turn_in_background(request: ChatMessageRequest, turn_id: str, session_i
                     # build_final_ai_response). Dispatcher handles channel selection.
                     if not _result_error and getattr(result, "text", None):
                         _maybe_dispatch_chat_response(result, session_id, session)
+                        publish_session_event_sync(session_id, {
+                            "type": "turn_completed",
+                            "turn_id": turn_id,
+                            "session_id": session_id,
+                        })
             except Exception:
                 publish_event_sync(turn_id, {"type": "error", "label": "Error procesando la petición."})
             finally:

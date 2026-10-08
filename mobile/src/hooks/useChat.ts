@@ -168,7 +168,7 @@ export function useChat(userKey: string | null) {
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     es.onmessage = (e: MessageEvent) => {
-      let ev: { type: string; subtype?: string; job_id?: string; tool_name?: string; error?: string; text?: string };
+      let ev: { type: string; subtype?: string; job_id?: string; tool_name?: string; error?: string; text?: string; turn_id?: string };
       try { ev = JSON.parse(e.data as string); } catch { return; }
 
       if (ev.type === 'job_start') {
@@ -185,6 +185,12 @@ export function useChat(userKey: string | null) {
           id: uid(), type: 'text' as const, role: 'assistant' as const,
           text: ev.text!, timestamp: new Date(),
         }]);
+      } else if (ev.type === 'turn_completed') {
+        // Another device completed a turn — reload history if this tab is not the sender.
+        // abortControllerRef.current is non-null only while this tab is processing a turn.
+        if (!abortControllerRef.current) {
+          void loadHistory();
+        }
       }
     };
 
