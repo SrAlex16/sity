@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useDataset } from '../hooks/useDataset';
 import { useDebug } from '../hooks/useDebug';
 import { useSystemMetrics } from '../hooks/useSystemMetrics';
 import type { DatasetCaptureRequest } from '../hooks/useDataset';
 import type { TraceEvent, DatasetStats, CognitiveStats } from '../hooks/useDebug';
-import type { SystemSnapshot, SystemRates, SystemHistory, ServiceStatus, ProcessInfo } from '../hooks/useSystemMetrics';
+import type { ServiceStatus, ProcessInfo } from '../hooks/useSystemMetrics';
 import { HelpModal } from '../components/HelpModal';
 import { TRANSLATIONS } from '../i18n/translations';
 import type { UiLang } from '../i18n/translations';
@@ -75,7 +75,7 @@ function DatasetStatsSection({ stats, loading }: { stats: DatasetStats | null; l
   const sortedTargets = Object.entries(stats.targets).sort(
     ([, a], [, b]) => (b.target - b.count) - (a.target - a.count),
   );
-  const tagEntries = Object.entries(stats.by_tag).sort(([, a], [, b]) => b - a);
+  const tagEntries    = Object.entries(stats.by_tag).sort(([, a], [, b]) => b - a);
   const sourceEntries = Object.entries(stats.by_source).sort(([, a], [, b]) => b - a);
 
   return (
@@ -90,11 +90,11 @@ function DatasetStatsSection({ stats, loading }: { stats: DatasetStats | null; l
 
       <div className={styles.statsCards}>
         {[
-          { label: 'Totales', value: stats.total_pairs },
-          { label: 'Utilizables', value: stats.usable_pairs },
-          { label: 'Sin tone_meta', value: stats.missing_tone_meta },
-          { label: 'Operacionales', value: stats.operational_pairs },
-          { label: 'Inelegibles', value: stats.ineligible_pairs },
+          { label: 'Totales',      value: stats.total_pairs },
+          { label: 'Utilizables',  value: stats.usable_pairs },
+          { label: 'Sin tone_meta',value: stats.missing_tone_meta },
+          { label: 'Operacionales',value: stats.operational_pairs },
+          { label: 'Inelegibles',  value: stats.ineligible_pairs },
         ].map(({ label, value }) => (
           <div key={label} className={styles.statCard}>
             <div className={styles.statValue}>{value}</div>
@@ -175,8 +175,8 @@ function DebugStatCards({ stats, tl }: {
         <p className={styles.sectionLabel}>{tl.debugCogMetrics}</p>
         <div className={styles.statsCards}>
           {[
-            { label: tl.debugGoalsActive,   value: stats.goals_active },
-            { label: tl.debugEpisodesDay,   value: stats.episodes_last_24h },
+            { label: tl.debugGoalsActive, value: stats.goals_active },
+            { label: tl.debugEpisodesDay, value: stats.episodes_last_24h },
           ].map(({ label, value }) => (
             <div key={label} className={styles.statCard}>
               <div className={styles.statValue}>{value}</div>
@@ -243,71 +243,63 @@ function fmtBps(n: number): string {
 
 // ── System tab — sparklines ───────────────────────────────────────────────────
 
-function Sparkline({ data, color, fill = false, h = 32, sparkId }: {
+function Sparkline({ data, color, fill = false, width = 110, height = 34 }: {
   data: number[];
   color: string;
   fill?: boolean;
-  h?: number;
-  sparkId: string;
+  width?: number;
+  height?: number;
 }) {
-  const W = 100;
   if (data.length < 2) {
-    return <svg viewBox={`0 0 ${W} ${h}`} style={{ width: '100%', height: h }} />;
+    return <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height }} />;
   }
   const maxVal = Math.max(...data, 1);
   const pad    = 2;
-  const usable = h - pad * 2;
+  const usable = height - pad * 2;
   const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * W;
+    const x = (i / (data.length - 1)) * width;
     const y = pad + (1 - v / maxVal) * usable;
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   });
   const linePath = `M ${pts.join(' L ')}`;
 
   if (fill) {
-    const fillPath = `M 0,${h} L ${pts.join(' L ')} L ${W},${h} Z`;
-    const gradId = `sg-${sparkId}`;
+    const fillPath = `M 0,${height} L ${pts.join(' L ')} L ${width},${height} Z`;
     return (
-      <svg viewBox={`0 0 ${W} ${h}`} style={{ width: '100%', height: h }} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={fillPath} fill={`url(#${gradId})`} />
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height }} preserveAspectRatio="none">
+        <path d={fillPath} fill={color} fillOpacity="0.18" />
         <path d={linePath} stroke={color} strokeWidth="1.5" fill="none" />
       </svg>
     );
   }
 
   return (
-    <svg viewBox={`0 0 ${W} ${h}`} style={{ width: '100%', height: h }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height }} preserveAspectRatio="none">
       <path d={linePath} stroke={color} strokeWidth="1.5" fill="none" />
     </svg>
   );
 }
 
-function DualSparkline({ data1, data2, color1, color2, h = 32 }: {
-  data1: number[];
-  data2: number[];
-  color1: string;
-  color2: string;
-  h?: number;
+function DualSparkline({ dataA, dataB, colorA, colorB, width = 110, height = 34 }: {
+  dataA: number[];
+  dataB: number[];
+  colorA: string;
+  colorB: string;
+  width?: number;
+  height?: number;
 }) {
-  const W = 100;
-  const both = [...data1, ...data2];
+  const both = [...dataA, ...dataB];
   if (both.length < 2) {
-    return <svg viewBox={`0 0 ${W} ${h}`} style={{ width: '100%', height: h }} />;
+    return <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height }} />;
   }
   const maxVal = Math.max(...both, 1);
   const pad    = 2;
-  const usable = h - pad * 2;
+  const usable = height - pad * 2;
 
   const toPath = (arr: number[]) => {
     if (arr.length < 2) return '';
     const pts = arr.map((v, i) => {
-      const x = (i / (arr.length - 1)) * W;
+      const x = (i / (arr.length - 1)) * width;
       const y = pad + (1 - v / maxVal) * usable;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     });
@@ -315,164 +307,37 @@ function DualSparkline({ data1, data2, color1, color2, h = 32 }: {
   };
 
   return (
-    <svg viewBox={`0 0 ${W} ${h}`} style={{ width: '100%', height: h }} preserveAspectRatio="none">
-      {toPath(data1) && <path d={toPath(data1)} stroke={color1} strokeWidth="1.5" fill="none" />}
-      {toPath(data2) && <path d={toPath(data2)} stroke={color2} strokeWidth="1.5" fill="none" />}
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height }} preserveAspectRatio="none">
+      {toPath(dataA) && <path d={toPath(dataA)} stroke={colorA} strokeWidth="1.5" fill="none" />}
+      {toPath(dataB) && <path d={toPath(dataB)} stroke={colorB} strokeWidth="1.5" fill="none" />}
     </svg>
   );
 }
 
-// ── System tab — metric cards ─────────────────────────────────────────────────
+// ── System tab — service dot ──────────────────────────────────────────────────
 
-function CpuCard({ cpu, hist }: { cpu: SystemSnapshot['cpu']; hist: number[] }) {
-  return (
-    <div className={styles.sysCard}>
-      <p className={styles.sysCardTitle}>CPU</p>
-      <p className={styles.sysCardValue}>{cpu.load.toFixed(1)}<span className={styles.sysCardUnit}>%</span></p>
-      <div className={styles.sparklineWrap}>
-        <Sparkline data={hist} color="#00f5ff" fill sparkId="cpu" />
-      </div>
-      <p className={styles.sysCardSub}>{cpu.temp.toFixed(1)}°C · {cpu.cores}c/{cpu.threads}t</p>
-    </div>
-  );
-}
-
-function RamCard({ ram, hist }: { ram: SystemSnapshot['ram']; hist: number[] }) {
-  const pct = ram.percent;
-  return (
-    <div className={styles.sysCard}>
-      <p className={styles.sysCardTitle}>RAM</p>
-      <p className={styles.sysCardValue}>{pct.toFixed(1)}<span className={styles.sysCardUnit}>%</span></p>
-      <div className={styles.ramBar}>
-        <div className={styles.ramBarFill} style={{ width: `${pct}%` }} />
-      </div>
-      <div className={styles.sparklineWrap} style={{ marginTop: 6 }}>
-        <Sparkline data={hist} color="#e24bff" fill sparkId="ram" />
-      </div>
-      <p className={styles.sysCardSub}>{fmtBytes(ram.used)} / {fmtBytes(ram.total)}</p>
-    </div>
-  );
-}
-
-function NetCard({ net, rates, dlHist, ulHist }: {
-  net: SystemSnapshot['net'];
-  rates: SystemRates;
-  dlHist: number[];
-  ulHist: number[];
-}) {
-  return (
-    <div className={styles.sysCard}>
-      <p className={styles.sysCardTitle}>Red · {net.iface}</p>
-      <p className={styles.sysCardValue}>
-        <span className={styles.netDl}>↓{fmtBps(rates.dl)}</span>
-        <span className={styles.netUl}> ↑{fmtBps(rates.ul)}</span>
-      </p>
-      <div className={styles.sparklineWrap}>
-        <DualSparkline data1={dlHist} data2={ulHist} color1="#00f5ff" color2="#e24bff" />
-      </div>
-      <p className={styles.sysCardSub}>{net.local_ip}</p>
-    </div>
-  );
-}
-
-function DiskCard({ disk, rates, rHist, wHist }: {
-  disk: SystemSnapshot['disk'];
-  rates: SystemRates;
-  rHist: number[];
-  wHist: number[];
-}) {
-  return (
-    <div className={styles.sysCard}>
-      <p className={styles.sysCardTitle}>Disco</p>
-      <p className={styles.sysCardValue}>
-        <span className={styles.netUl}>R:{fmtBps(rates.diskR)}</span>
-        <span className={styles.netDl}> W:{fmtBps(rates.diskW)}</span>
-      </p>
-      <div className={styles.sparklineWrap}>
-        <DualSparkline data1={rHist} data2={wHist} color1="#e24bff" color2="#00f5ff" />
-      </div>
-      <p className={styles.sysCardSub}>{fmtBytes(disk.used)}/{fmtBytes(disk.total)} ({disk.percent}%)</p>
-    </div>
-  );
-}
-
-function PowerCard({ power }: { power: SystemSnapshot['power'] }) {
-  const flags: { label: string; active: boolean; crit: boolean }[] = [
-    { label: 'UV ahora',   active: power.undervoltage_now,  crit: true  },
-    { label: 'Throt. ahora', active: power.throttled_now,  crit: true  },
-    { label: 'UV pasado',  active: power.undervoltage_past, crit: false },
-    { label: 'Throt. pasado', active: power.throttled_past,crit: false },
-  ];
-  return (
-    <div className={`${styles.sysCard} ${styles.powerCard}`}>
-      <p className={styles.sysCardTitle}>Voltaje</p>
-      <p className={styles.sysCardSub} style={{ fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
-        {power.throttled_hex}
-      </p>
-      <div className={styles.powerFlags}>
-        {flags.map(({ label, active, crit }) => (
-          <span
-            key={label}
-            className={`${styles.powerFlag} ${active ? (crit ? styles.powerFlagCrit : styles.powerFlagWarn) : styles.powerFlagOk}`}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── System tab — services bar ─────────────────────────────────────────────────
-
-const SERVICE_DOT_COLOR: Record<string, string> = {
-  active:   '#00f5ff',
-  failed:   '#ff3b5c',
+const SVC_COLOR: Record<string, string> = {
+  active:   'var(--neon-cyan)',
+  failed:   '#ff4040',
   inactive: '#555577',
 };
 
-function ServicesBar({ services }: { services: ServiceStatus[] }) {
+function ServiceDot({ svc }: { svc: ServiceStatus }) {
+  const color = SVC_COLOR[svc.state] ?? '#cccc44';
   return (
-    <div className={styles.servicesBar}>
-      {services.map((svc) => {
-        const color = SERVICE_DOT_COLOR[svc.state] ?? '#cccc44';
-        return (
-          <div key={svc.name} className={styles.serviceDot}>
-            <span className={styles.serviceDotIcon} style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-            <span className={styles.serviceDotLabel}>{svc.name}</span>
-          </div>
-        );
-      })}
+    <div className={styles.serviceDot}>
+      <span className={styles.serviceDotIcon} style={{ background: color }} />
+      <span className={styles.serviceDotLabel}>{svc.name}</span>
     </div>
   );
 }
 
-// ── System tab — process table ────────────────────────────────────────────────
+// ── System tab — process CPU score ────────────────────────────────────────────
 
-function ProcTable({ processes }: { processes: ProcessInfo[] }) {
-  return (
-    <div className={styles.procTable}>
-      <div className={`${styles.procRow} ${styles.procRowHeader}`}>
-        <span className={styles.procName}>Proceso</span>
-        <span className={styles.procPid}>PID</span>
-        <span className={styles.procCpu}>CPU%</span>
-        <span className={styles.procRam}>RAM%</span>
-        <span className={styles.procState}>Estado</span>
-      </div>
-      {processes.map((p) => {
-        const cpuColor = p.cpu > 30 ? '#ff3b5c' : p.cpu > 10 ? '#cccc44' : 'var(--text-secondary)';
-        return (
-          <div key={p.pid} className={`${styles.procRow} ${p.sity ? styles.procRowSity : ''}`}>
-            <span className={styles.procName}>{p.name}</span>
-            <span className={styles.procPid}>{p.pid}</span>
-            <span className={styles.procCpu} style={{ color: cpuColor }}>{p.cpu.toFixed(1)}</span>
-            <span className={styles.procRam}>{p.ram.toFixed(1)}</span>
-            <span className={styles.procState}>{p.state}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
+function ProcessScore({ cpu, ram }: { cpu: number; ram: number }) {
+  const score = cpu * 0.7 + ram * 0.3;
+  const color = score > 30 ? '#ff3b5c' : score > 10 ? '#cccc44' : 'var(--text-secondary)';
+  return <span style={{ color, fontWeight: 700 }}>{cpu.toFixed(1)}%</span>;
 }
 
 // ── System tab — alert modal ──────────────────────────────────────────────────
@@ -484,81 +349,34 @@ interface SysAlert {
   body: string;
 }
 
-const ALERT_SEV_COLOR: Record<SysAlert['severity'], string> = {
+const ALERT_COLOR: Record<SysAlert['severity'], string> = {
   critical: '#ff3b5c',
   grave:    '#ff8800',
   medium:   '#cccc44',
-  low:      '#00f5ff',
+  low:      'var(--neon-cyan)',
 };
 
-function AlertModal({ alerts, idx, onDismiss, onPrev, onNext }: {
-  alerts: SysAlert[];
-  idx: number;
-  onDismiss: (id: number) => void;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
+function AlertModal({ alerts, onDismiss }: { alerts: SysAlert[]; onDismiss: (id: number) => void }) {
   if (alerts.length === 0) return null;
+  const [idx, setIdx] = useState(0);
   const safeIdx = Math.min(idx, alerts.length - 1);
   const alert   = alerts[safeIdx];
-  if (!alert) return null;
-  const color = ALERT_SEV_COLOR[alert.severity];
+  const color   = ALERT_COLOR[alert.severity];
 
   return (
     <div className={styles.alertOverlay}>
       <div className={styles.alertModal} style={{ borderColor: color }}>
-        <div className={styles.alertHeader}>
+        <div className={styles.alertHeader} style={{ borderBottomColor: color }}>
           <span className={styles.alertSeverity} style={{ color }}>{alert.severity.toUpperCase()}</span>
+          <span className={styles.alertTitle}>{alert.title}</span>
           <span className={styles.alertCount}>{safeIdx + 1}/{alerts.length}</span>
         </div>
-        <p className={styles.alertTitle}>{alert.title}</p>
         <p className={styles.alertBody}>{alert.body}</p>
         <div className={styles.alertActions}>
-          <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={onPrev} disabled={safeIdx === 0}>←</button>
-          <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={onNext} disabled={safeIdx === alerts.length - 1}>→</button>
-          <button className={`${styles.btn} ${styles.btnMagenta}`} onClick={() => onDismiss(alert.id)}>Cerrar</button>
+          <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={safeIdx === 0}>←</button>
+          <button className={`${styles.btn} ${styles.btnSecondary}`} onClick={() => setIdx((i) => Math.min(alerts.length - 1, i + 1))} disabled={safeIdx === alerts.length - 1}>→</button>
+          <button className={`${styles.btn} ${styles.btnMagenta}`} onClick={() => { onDismiss(alert.id); setIdx((i) => Math.max(0, i - 1)); }}>Cerrar</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── System tab — main content ─────────────────────────────────────────────────
-
-function SystemTab({ snap, rates, hist, loading, error, refresh }: {
-  snap: SystemSnapshot | null;
-  rates: SystemRates;
-  hist: SystemHistory;
-  loading: boolean;
-  error: string | null;
-  refresh: () => void;
-}) {
-  if (error) return <p className={styles.errorMsg} style={{ margin: 16 }}>{error}</p>;
-  if (!snap && loading) return <p className={styles.loading}>Cargando métricas del sistema…</p>;
-  if (!snap) return null;
-
-  return (
-    <div className={styles.systemWrapper}>
-      <div className={styles.systemSysBar}>
-        <ServicesBar services={snap.services} />
-        <button
-          className={`${styles.btn} ${styles.btnSecondary} ${styles.sysRefreshBtn}`}
-          onClick={() => void refresh()}
-          disabled={loading}
-        >
-          {loading ? '…' : '↺'}
-        </button>
-      </div>
-      <div className={styles.systemGrid}>
-        <CpuCard  cpu={snap.cpu}   hist={hist.cpuLoad} />
-        <RamCard  ram={snap.ram}   hist={hist.ramPct} />
-        <NetCard  net={snap.net}   rates={rates} dlHist={hist.dlBps}    ulHist={hist.ulBps} />
-        <DiskCard disk={snap.disk} rates={rates} rHist={hist.diskRBps}  wHist={hist.diskWBps} />
-        <PowerCard power={snap.power} />
-      </div>
-      <div className={styles.section} style={{ paddingTop: 10 }}>
-        <p className={styles.sectionLabel}>Procesos ({snap.processes.length})</p>
-        <ProcTable processes={snap.processes} />
       </div>
     </div>
   );
@@ -572,19 +390,29 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
   const { recentEvents, lastTraceId, lastTraceEvents, datasetStats, cognitiveStats, isLoading: debugLoading, error: debugError, reload: reloadDebug } = useDebug();
 
   const [tab, setTab] = useState<DevTab>('dataset');
-  const { snapshot: sysSnap, rates: sysRates, history: sysHist, isLoading: sysLoading, error: sysError, refresh: sysRefresh } = useSystemMetrics(tab === 'system');
-  const [form, setForm]     = useState<CaptureForm>(() => captureToForm(null));
+
+  const sysMetrics = useSystemMetrics(tab === 'system');
+  const { snapshot, rates, history } = sysMetrics;
+
+  const [form, setForm]           = useState<CaptureForm>(() => captureToForm(null));
   const [formError, setFormError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [helpOpen, setHelpOpen]   = useState(false);
 
   // Alert state
   const alertIdRef      = useRef(0);
   const cpuHighCountRef = useRef(0);
   const prevIpRef       = useRef<string | null>(null);
   const firedKeysRef    = useRef(new Set<string>());
-  const [sysAlerts, setSysAlerts]   = useState<SysAlert[]>([]);
-  const [sysAlertIdx, setSysAlertIdx] = useState(0);
+  const [alerts, setAlerts] = useState<SysAlert[]>([]);
+
+  const pushAlert = useCallback((a: Omit<SysAlert, 'id'>) => {
+    setAlerts((prev) => [...prev, { ...a, id: ++alertIdRef.current }]);
+  }, []);
+
+  const dismissAlert = useCallback((id: number) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   useEffect(() => {
     if (capture) setForm(captureToForm(capture));
@@ -596,63 +424,47 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
 
   // Alert detection on each new snapshot
   useEffect(() => {
-    if (!sysSnap) return;
-    const queue: SysAlert[] = [];
+    if (!snapshot) return;
     const fire = (key: string, sev: SysAlert['severity'], title: string, body: string) => {
       if (firedKeysRef.current.has(key)) return;
       firedKeysRef.current.add(key);
-      queue.push({ id: ++alertIdRef.current, severity: sev, title, body });
+      pushAlert({ severity: sev, title, body });
     };
     const clear = (key: string) => firedKeysRef.current.delete(key);
 
-    // CPU >85% for 4+ polls (~12s)
-    if (sysSnap.cpu.load > 85) {
+    if (snapshot.cpu.load > 85) {
       cpuHighCountRef.current += 1;
       if (cpuHighCountRef.current >= 4)
-        fire('cpu_high', 'medium', 'CPU alta', `${sysSnap.cpu.load.toFixed(1)}% durante ~${cpuHighCountRef.current * 3}s`);
+        fire('cpu_high', 'medium', 'CPU alta', `${snapshot.cpu.load.toFixed(1)}% durante ~${cpuHighCountRef.current * 3}s`);
     } else {
       cpuHighCountRef.current = 0;
       clear('cpu_high');
     }
 
-    // Temp >80°C
-    if (sysSnap.cpu.temp > 80) fire('temp_high', 'grave', 'Temperatura crítica', `CPU a ${sysSnap.cpu.temp.toFixed(1)} °C`);
+    if (snapshot.cpu.temp > 80) fire('temp_high', 'grave', 'Temperatura crítica', `CPU a ${snapshot.cpu.temp.toFixed(1)} °C`);
     else clear('temp_high');
 
-    // Undervoltage now
-    if (sysSnap.power.undervoltage_now) fire('uv_now', 'critical', 'Undervoltage activo', 'La Pi está recibiendo tensión insuficiente');
+    if (snapshot.power.undervoltage_now) fire('uv_now', 'critical', 'Undervoltage activo', 'La Pi está recibiendo tensión insuficiente');
     else clear('uv_now');
 
-    // Service failed
-    for (const svc of sysSnap.services) {
+    for (const svc of snapshot.services) {
       if (svc.state === 'failed') {
         const sev: SysAlert['severity'] = svc.name === 'sity-backend' ? 'critical' : 'grave';
-        fire(`svc_${svc.name}`, sev, `Servicio caído`, svc.name);
+        fire(`svc_${svc.name}`, sev, 'Servicio caído', svc.name);
       } else {
         clear(`svc_${svc.name}`);
       }
     }
 
-    // IP changed
-    if (prevIpRef.current !== null && prevIpRef.current !== sysSnap.net.local_ip)
-      fire('ip_changed', 'low', 'IP local cambiada', `${prevIpRef.current} → ${sysSnap.net.local_ip}`);
-    prevIpRef.current = sysSnap.net.local_ip;
-
-    if (queue.length > 0) setSysAlerts((prev) => [...prev, ...queue]);
-  }, [sysSnap]);
-
-  // Keep alertIdx in bounds
-  useEffect(() => {
-    setSysAlertIdx((i) => (sysAlerts.length === 0 ? 0 : Math.min(i, sysAlerts.length - 1)));
-  }, [sysAlerts.length]);
-
-  const dismissAlert = (id: number) =>
-    setSysAlerts((prev) => prev.filter((a) => a.id !== id));
+    if (prevIpRef.current !== null && prevIpRef.current !== snapshot.net.local_ip)
+      fire('ip_changed', 'low', 'IP local cambiada', `${prevIpRef.current} → ${snapshot.net.local_ip}`);
+    prevIpRef.current = snapshot.net.local_ip;
+  }, [snapshot, pushAlert]);
 
   const busy     = saving || captureLoading;
   const isActive = capture?.enabled ?? false;
 
-  const patch = (delta: Partial<CaptureForm>) => setForm((p) => ({ ...p, ...delta }));
+  const patch       = (delta: Partial<CaptureForm>) => setForm((p) => ({ ...p, ...delta }));
   const applyPreset = (key: PresetKey) => setForm((p) => ({ ...p, ...PRESETS[key] }));
 
   const validate = (): boolean => {
@@ -691,8 +503,6 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
     } catch { /* silent */ } finally { setSaving(false); }
   };
 
-  const handleTabChange = (next: DevTab) => setTab(next);
-
   const activeLabel = isActive
     ? `${tl.activePrefix}: ${capture?.dataset_source ?? ''}${capture?.speaker_label ? ` / ${capture.speaker_label}` : ''}`
     : tl.inactive;
@@ -701,8 +511,8 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
     ? activeLabel
     : tab === 'debug'
     ? (lastTraceId ?? 'sin traza')
-    : sysSnap
-    ? `${sysSnap.net.local_ip} · ${new Date(sysSnap.timestamp).toLocaleTimeString()}`
+    : snapshot
+    ? `${snapshot.net.local_ip} · ${new Date(snapshot.timestamp).toLocaleTimeString()}`
     : 'sistema';
 
   return (
@@ -722,22 +532,16 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
       <div className={styles.tabsRow}>
         <button
           className={`${styles.tabBtn} ${tab === 'dataset' ? styles.tabBtnActive : ''}`}
-          onClick={() => handleTabChange('dataset')}
-        >
-          Dataset
-        </button>
+          onClick={() => setTab('dataset')}
+        >Dataset</button>
         <button
           className={`${styles.tabBtn} ${tab === 'debug' ? styles.tabBtnActive : ''}`}
-          onClick={() => handleTabChange('debug')}
-        >
-          Debug
-        </button>
+          onClick={() => setTab('debug')}
+        >Debug</button>
         <button
           className={`${styles.tabBtn} ${tab === 'system' ? styles.tabBtnActive : ''}`}
-          onClick={() => handleTabChange('system')}
-        >
-          System
-        </button>
+          onClick={() => setTab('system')}
+        >System</button>
       </div>
 
       {/* Tab content */}
@@ -920,28 +724,122 @@ export function DevToolsScreen({ uiLang = 'es' }: { uiLang?: UiLang }) {
 
         {/* ── System tab ── */}
         {tab === 'system' && (
-          <SystemTab
-            snap={sysSnap}
-            rates={sysRates}
-            hist={sysHist}
-            loading={sysLoading}
-            error={sysError}
-            refresh={sysRefresh}
-          />
+          <>
+            {sysMetrics.error && <p className={styles.errorMsg}>{sysMetrics.error}</p>}
+            {!snapshot && sysMetrics.isLoading && <p className={styles.loading}>Cargando métricas…</p>}
+
+            {snapshot && (
+              <>
+                {/* Barra de servicios */}
+                <div className={styles.servicesBar}>
+                  {snapshot.services.map(svc => <ServiceDot key={svc.name} svc={svc} />)}
+                </div>
+
+                {/* Grid de métricas */}
+                <div className={styles.systemGrid}>
+
+                  {/* CPU */}
+                  <div className={styles.sysCard}>
+                    <p className={styles.sysCardTitle}>CPU</p>
+                    <p className={styles.sysCardValue}>{snapshot.cpu.load.toFixed(1)}<span className={styles.sysCardUnit}>%</span></p>
+                    <Sparkline data={history.cpuLoad} color="var(--neon-cyan)" fill width={110} height={34} />
+                    <p className={styles.sysCardSub}>
+                      {snapshot.cpu.temp != null ? `${snapshot.cpu.temp.toFixed(1)} °C · ` : ''}
+                      {snapshot.cpu.cores}c/{snapshot.cpu.threads}t
+                    </p>
+                  </div>
+
+                  {/* RAM */}
+                  <div className={styles.sysCard}>
+                    <p className={styles.sysCardTitle}>RAM</p>
+                    <p className={styles.sysCardValue}>{snapshot.ram.percent.toFixed(0)}<span className={styles.sysCardUnit}>%</span></p>
+                    <div className={styles.ramBar}>
+                      <div className={styles.ramBarFill} style={{ width: `${snapshot.ram.percent}%` }} />
+                    </div>
+                    <p className={styles.sysCardSub}>{fmtBytes(snapshot.ram.used)} / {fmtBytes(snapshot.ram.total)}</p>
+                  </div>
+
+                  {/* Red */}
+                  <div className={styles.sysCard}>
+                    <p className={styles.sysCardTitle}>Red · <span className={styles.sysCardIface}>{snapshot.net.iface}</span></p>
+                    <p className={styles.sysCardValue}>
+                      <span className={styles.netDl}>↓{fmtBps(rates.dl)}</span>
+                      {' '}
+                      <span className={styles.netUl}>↑{fmtBps(rates.ul)}</span>
+                    </p>
+                    <DualSparkline dataA={history.dlBps} dataB={history.ulBps} colorA="var(--neon-cyan)" colorB="var(--neon-magenta)" width={110} height={34} />
+                    <p className={styles.sysCardSub}>{snapshot.net.local_ip ?? '—'}</p>
+                  </div>
+
+                  {/* Disco */}
+                  <div className={styles.sysCard}>
+                    <p className={styles.sysCardTitle}>Disco</p>
+                    <p className={styles.sysCardValue}>
+                      <span className={styles.netDl}>R {fmtBps(rates.diskR)}</span>
+                      {' '}
+                      <span className={styles.netUl}>W {fmtBps(rates.diskW)}</span>
+                    </p>
+                    <DualSparkline dataA={history.diskRBps} dataB={history.diskWBps} colorA="var(--neon-magenta)" colorB="var(--neon-cyan)" width={110} height={34} />
+                    <p className={styles.sysCardSub}>{snapshot.disk.percent}% usado</p>
+                  </div>
+
+                  {/* Voltaje / Power */}
+                  <div className={`${styles.sysCard} ${styles.powerCard}`}>
+                    <p className={styles.sysCardTitle}>Voltaje</p>
+                    <div className={styles.powerFlags}>
+                      <span className={`${styles.powerFlag} ${snapshot.power.undervoltage_now ? styles.powerFlagCrit : styles.powerFlagOk}`}>
+                        UV {snapshot.power.undervoltage_now ? 'AHORA' : 'OK'}
+                      </span>
+                      <span className={`${styles.powerFlag} ${snapshot.power.throttled_now ? styles.powerFlagWarn : styles.powerFlagOk}`}>
+                        THR {snapshot.power.throttled_now ? 'AHORA' : 'OK'}
+                      </span>
+                      <span className={`${styles.powerFlag} ${snapshot.power.undervoltage_past ? styles.powerFlagWarn : styles.powerFlagOk}`}>
+                        UV pasado
+                      </span>
+                      <span className={`${styles.powerFlag} ${snapshot.power.throttled_past ? styles.powerFlagWarn : styles.powerFlagOk}`}>
+                        THR pasado
+                      </span>
+                    </div>
+                    <p className={styles.sysCardSub}>{snapshot.power.throttled_hex}</p>
+                  </div>
+
+                </div>
+
+                {/* Procesos */}
+                <div className={styles.procSection}>
+                  <p className={styles.sysCardTitle} style={{ padding: '10px 16px 6px' }}>Procesos</p>
+                  <div className={styles.procTable}>
+                    {snapshot.processes.map((p: ProcessInfo) => (
+                      <div key={p.pid} className={`${styles.procRow} ${p.sity ? styles.procRowSity : ''}`}>
+                        <span className={styles.procName}>{p.name}</span>
+                        <span className={styles.procPid}>{p.pid}</span>
+                        <span className={styles.procCpu}><ProcessScore cpu={p.cpu} ram={p.ram} /></span>
+                        <span className={styles.procRam}>{p.ram.toFixed(1)}%</span>
+                        <span className={styles.procState}>{p.state}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Botón refresh manual */}
+            <div style={{ padding: '12px 16px' }}>
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                onClick={() => void sysMetrics.refresh()}
+                disabled={sysMetrics.isLoading}
+              >
+                {sysMetrics.isLoading ? '…' : 'Actualizar'}
+              </button>
+            </div>
+
+            {/* Modal de alertas */}
+            {alerts.length > 0 && <AlertModal alerts={alerts} onDismiss={dismissAlert} />}
+          </>
         )}
 
       </div>
-
-      {/* Alert modal */}
-      {sysAlerts.length > 0 && (
-        <AlertModal
-          alerts={sysAlerts}
-          idx={sysAlertIdx}
-          onDismiss={dismissAlert}
-          onPrev={() => setSysAlertIdx((i) => Math.max(0, i - 1))}
-          onNext={() => setSysAlertIdx((i) => Math.min(sysAlerts.length - 1, i + 1))}
-        />
-      )}
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} title="Dev Tools">
         <p><strong>Dataset</strong> — configura la captura de conversaciones para el dataset LoRA y consulta estadísticas del dataset actual.</p>

@@ -673,61 +673,12 @@
 
 /* ── System tab ──────────────────────────────────────────────────────────── */
 
-.systemWrapper {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Services bar */
-
-.systemSysBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  gap: 8px;
-}
-
-.servicesBar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  flex: 1;
-}
-
-.serviceDot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.serviceDotIcon {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: inline-block;
-}
-
-.serviceDotLabel {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--text-secondary);
-}
-
-.sysRefreshBtn {
-  flex-shrink: 0;
-  padding: 6px 12px;
-  font-size: 0.9rem;
-}
-
-/* Metrics grid */
-
 .systemGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  margin: 1px 0;
 }
 
 @media (orientation: portrait), (max-width: 600px) {
@@ -736,22 +687,12 @@
   }
 }
 
-/* Metric cards */
-
 .sysCard {
-  padding: 14px 16px 12px;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.sysCard:nth-child(even) {
-  border-right: none;
-}
-
-@media (orientation: portrait), (max-width: 600px) {
-  .sysCard {
-    border-right: none;
-  }
+  background: rgba(10, 10, 20, 0.85);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .sysCardTitle {
@@ -760,20 +701,24 @@
   color: var(--text-secondary);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  margin: 0 0 6px;
+  margin: 0;
+}
+
+.sysCardIface {
+  color: var(--neon-cyan);
 }
 
 .sysCardValue {
   font-family: var(--font-display);
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--neon-cyan);
+  margin: 0;
   line-height: 1;
-  margin: 0 0 6px;
 }
 
 .sysCardUnit {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 400;
   opacity: 0.7;
   margin-left: 2px;
@@ -781,196 +726,188 @@
 
 .sysCardSub {
   font-family: var(--font-mono);
-  font-size: 0.67rem;
+  font-size: 0.68rem;
   color: var(--text-secondary);
-  margin: 4px 0 0;
-  line-height: 1.4;
+  margin: 0;
 }
-
-.sparklineWrap {
-  width: 100%;
-  height: 32px;
-  overflow: hidden;
-}
-
-/* RAM bar */
 
 .ramBar {
   height: 4px;
-  background: rgba(226, 75, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 4px;
 }
 
 .ramBarFill {
   height: 100%;
-  background: #e24bff;
+  background: var(--neon-magenta);
   border-radius: 2px;
-  box-shadow: 0 0 6px rgba(226, 75, 255, 0.6);
-  transition: width 0.4s;
+  transition: width 0.5s;
+  box-shadow: 0 0 6px var(--neon-magenta);
 }
 
-/* Net colors */
+.netDl { color: var(--neon-cyan); }
+.netUl { color: var(--neon-magenta); }
 
-.netDl { color: #00f5ff; }
-.netUl { color: #e24bff; }
+/* Services bar */
+.servicesBar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-wrap: wrap;
+}
+
+.serviceDot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.serviceDotIcon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.serviceDotLabel {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+}
 
 /* Power card */
-
-.powerCard {
-  grid-column: 1 / -1;
-}
-
-@media (orientation: portrait), (max-width: 600px) {
-  .powerCard {
-    grid-column: 1;
-  }
-}
+.powerCard { justify-content: flex-start; }
 
 .powerFlags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .powerFlag {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
-  padding: 3px 8px;
+  font-size: 0.65rem;
+  padding: 3px 7px;
   border-radius: 4px;
-  border: 1px solid;
+  border: 1px solid currentColor;
+  letter-spacing: 0.06em;
 }
 
-.powerFlagOk {
-  border-color: rgba(100, 200, 100, 0.3);
-  color: rgba(100, 200, 100, 0.6);
-}
+.powerFlagOk   { color: rgba(0, 245, 255, 0.5); }
+.powerFlagWarn { color: #ffcc44; }
+.powerFlagCrit { color: #ff4040; }
 
-.powerFlagWarn {
-  border-color: rgba(255, 200, 50, 0.5);
-  color: #cccc44;
+/* Processes */
+.procSection {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
-
-.powerFlagCrit {
-  border-color: rgba(255, 59, 92, 0.6);
-  color: #ff3b5c;
-  box-shadow: 0 0 6px rgba(255, 59, 92, 0.25);
-}
-
-/* Process table */
 
 .procTable {
-  width: 100%;
-  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
 }
-
-.procTable::-webkit-scrollbar { height: 3px; }
-.procTable::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 
 .procRow {
   display: grid;
-  grid-template-columns: 1fr 52px 50px 50px 68px;
-  gap: 0 6px;
-  padding: 5px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
+  grid-template-columns: 1fr 48px 52px 42px 60px;
   align-items: center;
+  padding: 5px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
 }
 
-.procRowHeader {
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 6px;
-}
+.procRow:hover { background: rgba(255, 255, 255, 0.03); }
 
 .procRowSity {
-  border-left: 2px solid #e24bff;
-  padding-left: 14px;
-}
-
-.procRowSity .procName {
-  color: #e24bff;
+  border-left: 2px solid var(--neon-magenta);
+  padding-left: 12px;
+  color: var(--text-primary);
 }
 
 .procName {
-  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 
-.procPid   { color: rgba(255, 255, 255, 0.3); text-align: right; }
+.procRowSity .procName { color: var(--neon-magenta); }
+
+.procPid   { color: rgba(255,255,255,0.25); text-align: right; }
 .procCpu   { text-align: right; font-weight: 700; }
-.procRam   { color: var(--text-secondary); text-align: right; }
-.procState { color: rgba(255, 255, 255, 0.25); font-size: 0.63rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.procRam   { text-align: right; }
+.procState { color: rgba(255,255,255,0.3); text-align: right; font-size: 0.6rem; }
 
 /* Alert modal */
-
 .alertOverlay {
   position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 100;
-  width: calc(100% - 32px);
-  max-width: 420px;
-  pointer-events: none;
+  padding: 20px;
 }
 
 .alertModal {
+  width: 100%;
+  max-width: 380px;
+  background: rgba(10, 10, 20, 0.98);
   border: 1px solid;
-  border-radius: 12px;
-  background: rgba(10, 10, 20, 0.96);
-  backdrop-filter: blur(12px);
-  padding: 14px 16px 12px;
-  pointer-events: all;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .alertHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid;
 }
 
 .alertSeverity {
-  font-family: var(--font-display);
+  font-family: var(--font-mono);
   font-size: 0.65rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
+.alertTitle {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  flex: 1;
 }
 
 .alertCount {
   font-family: var(--font-mono);
   font-size: 0.65rem;
   color: var(--text-secondary);
-}
-
-.alertTitle {
-  font-family: var(--font-display);
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 4px;
+  flex-shrink: 0;
 }
 
 .alertBody {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
-  margin: 0 0 10px;
-  line-height: 1.4;
+  line-height: 1.5;
+  padding: 14px;
+  margin: 0;
 }
 
 .alertActions {
   display: flex;
   gap: 8px;
+  padding: 10px 14px 14px;
   justify-content: flex-end;
 }
+
