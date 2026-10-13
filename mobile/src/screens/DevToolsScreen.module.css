@@ -670,3 +670,307 @@
   border-color: rgba(100, 200, 255, 0.3);
   color: rgba(100, 200, 255, 0.7);
 }
+
+/* ── System tab ──────────────────────────────────────────────────────────── */
+
+.systemWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Services bar */
+
+.systemSysBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 8px;
+}
+
+.servicesBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  flex: 1;
+}
+
+.serviceDot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.serviceDotIcon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.serviceDotLabel {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.sysRefreshBtn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+}
+
+/* Metrics grid */
+
+.systemGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+@media (orientation: portrait), (max-width: 600px) {
+  .systemGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Metric cards */
+
+.sysCard {
+  padding: 14px 16px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sysCard:nth-child(even) {
+  border-right: none;
+}
+
+@media (orientation: portrait), (max-width: 600px) {
+  .sysCard {
+    border-right: none;
+  }
+}
+
+.sysCardTitle {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.sysCardValue {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  line-height: 1;
+  margin: 0 0 6px;
+}
+
+.sysCardUnit {
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.sysCardSub {
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+.sparklineWrap {
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+}
+
+/* RAM bar */
+
+.ramBar {
+  height: 4px;
+  background: rgba(226, 75, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.ramBarFill {
+  height: 100%;
+  background: #e24bff;
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(226, 75, 255, 0.6);
+  transition: width 0.4s;
+}
+
+/* Net colors */
+
+.netDl { color: #00f5ff; }
+.netUl { color: #e24bff; }
+
+/* Power card */
+
+.powerCard {
+  grid-column: 1 / -1;
+}
+
+@media (orientation: portrait), (max-width: 600px) {
+  .powerCard {
+    grid-column: 1;
+  }
+}
+
+.powerFlags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.powerFlag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.powerFlagOk {
+  border-color: rgba(100, 200, 100, 0.3);
+  color: rgba(100, 200, 100, 0.6);
+}
+
+.powerFlagWarn {
+  border-color: rgba(255, 200, 50, 0.5);
+  color: #cccc44;
+}
+
+.powerFlagCrit {
+  border-color: rgba(255, 59, 92, 0.6);
+  color: #ff3b5c;
+  box-shadow: 0 0 6px rgba(255, 59, 92, 0.25);
+}
+
+/* Process table */
+
+.procTable {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.procTable::-webkit-scrollbar { height: 3px; }
+.procTable::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+.procRow {
+  display: grid;
+  grid-template-columns: 1fr 52px 50px 50px 68px;
+  gap: 0 6px;
+  padding: 5px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  align-items: center;
+}
+
+.procRowHeader {
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+}
+
+.procRowSity {
+  border-left: 2px solid #e24bff;
+  padding-left: 14px;
+}
+
+.procRowSity .procName {
+  color: #e24bff;
+}
+
+.procName {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.procPid   { color: rgba(255, 255, 255, 0.3); text-align: right; }
+.procCpu   { text-align: right; font-weight: 700; }
+.procRam   { color: var(--text-secondary); text-align: right; }
+.procState { color: rgba(255, 255, 255, 0.25); font-size: 0.63rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Alert modal */
+
+.alertOverlay {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: calc(100% - 32px);
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.alertModal {
+  border: 1px solid;
+  border-radius: 12px;
+  background: rgba(10, 10, 20, 0.96);
+  backdrop-filter: blur(12px);
+  padding: 14px 16px 12px;
+  pointer-events: all;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.alertHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.alertSeverity {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.alertCount {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.alertTitle {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.alertBody {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.alertActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

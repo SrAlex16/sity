@@ -269,6 +269,13 @@ def cognitive_stats(
     }
 
 
+@router.get("/system-metrics")
+def system_metrics(_: CurrentUser = Depends(require_admin)):
+    """Live system snapshot: CPU, RAM, net, disk, power, services, processes."""
+    from app.system.system_reader import collect_system_metrics
+    return collect_system_metrics()
+
+
 @router.get("/dataset-stats")
 def dataset_stats(
     session: Session = Depends(get_session),

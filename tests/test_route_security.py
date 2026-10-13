@@ -154,6 +154,10 @@ _MATRIX: list[tuple[str, str, str, str]] = [
     ("GET",  "/debug/events/recent",       "user",  "denied"),
     ("GET",  "/debug/events/recent",       "admin", "allowed"),
 
+    ("GET",  "/debug/system-metrics",      "guest", "denied"),
+    ("GET",  "/debug/system-metrics",      "user",  "denied"),
+    ("GET",  "/debug/system-metrics",      "admin", "allowed"),
+
     ("GET",  "/bug-reports",               "guest", "denied"),
     ("GET",  "/bug-reports",               "user",  "denied"),
     ("GET",  "/bug-reports",               "admin", "allowed"),

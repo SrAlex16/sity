@@ -1,5 +1,7 @@
 import shutil
+import socket
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -158,6 +160,144 @@ def is_allowed_path(path: Path) -> bool:
             continue
 
     return False
+
+
+def collect_system_metrics() -> dict[str, Any]:
+    """Full system snapshot for GET /debug/system-metrics."""
+    # CPU
+    cpu_pct = psutil.cpu_percent(interval=0.3)
+    cpu_cores = psutil.cpu_count(logical=False) or 1
+    cpu_threads = psutil.cpu_count(logical=True) or cpu_cores
+    cpu_temp = 0.0
+    try:
+        r = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True, text=True, timeout=2)
+        if r.returncode == 0:
+            cpu_temp = float(r.stdout.strip().split("=")[1].replace("'C", ""))
+    except Exception:
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                first_sensor = next(iter(temps.values()))
+                if first_sensor:
+                    cpu_temp = first_sensor[0].current
+        except Exception:
+            pass
+
+    # RAM
+    mem = psutil.virtual_memory()
+
+    # Net IO + local IP
+    net_io = psutil.net_io_counters()
+    local_ip = "127.0.0.1"
+    iface_name = "eth0"
+    try:
+        for iface, addrs in psutil.net_if_addrs().items():
+            if iface == "lo":
+                continue
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    local_ip = addr.address
+                    iface_name = iface
+                    break
+            if local_ip != "127.0.0.1":
+                break
+    except Exception:
+        pass
+
+    # Disk IO + usage
+    disk_io = psutil.disk_io_counters()
+    disk_usage_root = shutil.disk_usage("/")
+
+    # Power throttling via vcgencmd
+    throttled_hex = "0x0"
+    uv_now = uv_past = throttled_now = throttled_past = False
+    try:
+        r = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=2)
+        if r.returncode == 0:
+            val_str = r.stdout.strip().split("=")[-1].strip()
+            val = int(val_str, 16)
+            throttled_hex = val_str
+            uv_now       = bool(val & (1 << 0))
+            throttled_now = bool(val & (1 << 2))
+            uv_past       = bool(val & (1 << 16))
+            throttled_past = bool(val & (1 << 18))
+    except Exception:
+        pass
+
+    # Services
+    _SERVICES = ["sity-backend", "caddy", "cloudflared", "homeassistant"]
+    services: list[dict[str, str]] = []
+    for svc in _SERVICES:
+        try:
+            r = subprocess.run(
+                ["systemctl", "is-active", svc],
+                capture_output=True, text=True, timeout=2,
+            )
+            state = r.stdout.strip() or "unknown"
+        except Exception:
+            state = "unknown"
+        services.append({"name": svc, "state": state})
+
+    # Processes — top 30 by score (cpu*0.7 + ram*0.3)
+    _SITY_NAMES = {"uvicorn", "python3", "caddy", "cloudflared", "homeassistant", "node"}
+    procs: list[dict[str, Any]] = []
+    for proc in psutil.process_iter(["pid", "name", "status", "cpu_percent", "memory_percent"]):
+        try:
+            info = proc.info
+            cpu = float(info.get("cpu_percent") or 0.0)
+            ram = round(float(info.get("memory_percent") or 0.0), 2)
+            procs.append({
+                "pid": info["pid"],
+                "name": info.get("name") or "",
+                "state": info.get("status") or "unknown",
+                "cpu": round(cpu, 1),
+                "ram": ram,
+                "_score": cpu * 0.7 + ram * 0.3,
+                "sity": (info.get("name") or "").lower() in _SITY_NAMES,
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    procs.sort(key=lambda p: p["_score"], reverse=True)
+    procs = [{k: v for k, v in p.items() if k != "_score"} for p in procs[:30]]
+
+    return {
+        "cpu": {
+            "load": cpu_pct,
+            "temp": cpu_temp,
+            "cores": cpu_cores,
+            "threads": cpu_threads,
+        },
+        "ram": {
+            "used": mem.used,
+            "total": mem.total,
+            "percent": mem.percent,
+        },
+        "net": {
+            "iface": iface_name,
+            "local_ip": local_ip,
+            "bytes_sent": net_io.bytes_sent if net_io else 0,
+            "bytes_recv": net_io.bytes_recv if net_io else 0,
+        },
+        "disk": {
+            "read_bytes": disk_io.read_bytes if disk_io else 0,
+            "write_bytes": disk_io.write_bytes if disk_io else 0,
+            "used": disk_usage_root.used,
+            "total": disk_usage_root.total,
+            "percent": round(disk_usage_root.used / disk_usage_root.total * 100, 1)
+            if disk_usage_root.total else 0,
+        },
+        "power": {
+            "throttled_hex": throttled_hex,
+            "undervoltage_now": uv_now,
+            "throttled_now": throttled_now,
+            "undervoltage_past": uv_past,
+            "throttled_past": throttled_past,
+        },
+        "services": services,
+        "processes": procs,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def list_allowed_directory(path: str) -> dict[str, Any]:
