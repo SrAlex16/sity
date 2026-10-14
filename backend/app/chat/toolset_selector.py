@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
+
+_log = logging.getLogger(__name__)
 
 # Esto no debe crear acciones ni interpretar intención de negocio.
 # Solo selecciona un toolset/contexto más pequeño usando señales técnicas conservadoras.
@@ -279,10 +282,21 @@ def select_toolset_for_message(
                     available_tools.append({"name": _name, "description": _t.get("description", "")})
 
         from app.core.message_classifier import classify_toolset_need
-        for tool_name in classify_toolset_need(message, available_tools, trace_id=trace_id):
+        haiku_tools = classify_toolset_need(message, available_tools, trace_id=trace_id)
+        activated_ts: list[str] = []
+        for tool_name in haiku_tools:
             mapped = _TOOL_TO_TOOLSET.get(tool_name)
             if mapped is not None:
                 selected.extend(mapped)
+                domain = _TOOLSET_DOMAIN.get(id(mapped), "?")
+                activated_ts.append(domain)
+        # TEMP log — remove once semantic classifier is validated
+        _log.info(
+            "[TOOLSET_SELECTOR] haiku_tools=%s activated_domains=%s msg=%r",
+            haiku_tools,
+            activated_ts,
+            message[:120],
+        )
 
     result = _dedupe_tools(selected)
     if input_mode == "voice":
