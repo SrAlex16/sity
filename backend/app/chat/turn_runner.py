@@ -635,7 +635,7 @@ def _chat_message_inner(
             _tool_hint = ", ".join(_last_tool_names)
             if _last_tool_results:
                 _results_hint = "; ".join(
-                    f"{k}: {json.dumps(v.get('result', v) if isinstance(v, dict) else v, ensure_ascii=False)[:800]}"
+                    f"{k}: {json.dumps(v, ensure_ascii=False)[:200]}"
                     for k, v in _last_tool_results.items()
                 )
                 _introspection_prefix = (
