@@ -5,7 +5,13 @@ _ALLOWED_SYSTEMD_SERVICES: list[str] = list(get_allowed_systemd_services())
 
 READ_SYSTEM_STATUS_TOOL = {
     "name": "read_system_status",
-    "description": "Lee estado básico de la Raspberry: CPU, RAM y uptime aproximado.",
+    "description": (
+        "Lee el estado actual del sistema: porcentaje de CPU en uso, RAM (total, disponible, usada y %), "
+        "timestamp de arranque, IP local y hostname. "
+        "Úsala para preguntas como '¿cuánta RAM estás usando?', '¿cuál es la IP local?', "
+        "'¿ha cambiado la dirección de red?', '¿cuánto tiempo lleva encendida la Raspberry?', "
+        "'¿está cargada la CPU?', '¿cómo está el sistema ahora mismo?'."
+    ),
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -16,7 +22,12 @@ READ_SYSTEM_STATUS_TOOL = {
 
 READ_DISK_USAGE_TOOL = {
     "name": "read_disk_usage",
-    "description": "Lee el uso de disco de una ruta. Úsala para preguntas sobre espacio disponible.",
+    "description": (
+        "Lee el espacio en disco de una ruta: total, usado, libre y porcentaje de uso. "
+        "Úsala para preguntas como '¿cuánto espacio libre queda?', '¿está el disco casi lleno?', "
+        "'¿cuánto ocupa la partición principal?', '¿me quedo sin espacio?'. "
+        "Por defecto consulta la raíz '/'."
+    ),
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -32,7 +43,13 @@ READ_DISK_USAGE_TOOL = {
 
 READ_PROCESSES_TOOL = {
     "name": "read_processes",
-    "description": "Lee procesos principales por consumo de CPU/RAM.",
+    "description": (
+        "Lista los procesos activos ordenados por mayor consumo de CPU y RAM, "
+        "con nombre, PID, usuario y porcentajes de uso. "
+        "Úsala para preguntas como '¿qué está consumiendo más CPU?', '¿qué proceso acapara la memoria?', "
+        "'¿hay algo que se esté disparando?', '¿qué está corriendo ahora mismo?', "
+        "'ps aux', '¿qué proceso es el responsable del lag?'."
+    ),
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -49,7 +66,11 @@ READ_PROCESSES_TOOL = {
 
 READ_SERVICE_STATUS_TOOL = {
     "name": "read_service_status",
-    "description": "Lee el estado de un servicio systemd permitido.",
+    "description": (
+        "Lee si un servicio systemd está activo, inactivo o caído. "
+        "Úsala para preguntas como '¿está corriendo sity-backend?', '¿está caído el servidor web?', "
+        "'¿está Caddy activo?', '¿funciona homeassistant?', '¿qué pasa con el servicio X?'."
+    ),
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -66,7 +87,12 @@ READ_SERVICE_STATUS_TOOL = {
 
 LIST_ALLOWED_DIRECTORY_TOOL = {
     "name": "list_allowed_directory",
-    "description": "Lista una carpeta permitida por configuración.",
+    "description": (
+        "Lista el contenido de una carpeta permitida por configuración: "
+        "devuelve nombre, ruta y tipo (archivo o directorio) de hasta 200 entradas ordenadas. "
+        "Úsala para preguntas como '¿qué hay en esta carpeta?', '¿qué archivos de log tiene el proyecto?', "
+        "'¿qué contiene el directorio de uploads?', '¿existe ese archivo?'."
+    ),
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -83,10 +109,11 @@ LIST_ALLOWED_DIRECTORY_TOOL = {
 SYSTEM_PROPOSE_ACTION_TOOL = {
     "name": "system_propose_action",
     "description": (
-        "Crea una acción pendiente de sistema que requiere confirmación explícita antes de ejecutarse. "
-        "Úsala cuando el usuario pida arrancar, parar o reiniciar un servicio permitido. "
-        "Los servicios permitidos están definidos en system_access.yaml bajo safe_actions.allowed_services. "
-        "No ejecuta la acción directamente."
+        "Propone arrancar, parar o reiniciar un servicio systemd de la allowlist — "
+        "la acción queda pendiente hasta que el usuario la confirme explícitamente; no se ejecuta sola. "
+        "Úsala cuando el usuario pida gestionar un servicio: 'reinicia el backend', 'para homeassistant', "
+        "'arranca sity-test', 'reinicia Caddy'. "
+        "Los servicios disponibles están en la allowlist de system_access.yaml."
     ),
     "input_schema": {
         "type": "object",
@@ -134,19 +161,28 @@ _SERVICE_SCHEMA = {
 
 RESTART_SERVICE_TOOL = {
     "name": "restart_service",
-    "description": "Reinicia un servicio systemd permitido. Requiere confirmación del usuario antes de ejecutarse.",
+    "description": (
+        "Reinicia un servicio systemd de la allowlist. Espera a que quede activo y devuelve el estado final. "
+        "Úsala cuando el usuario confirme que quiere reiniciar: 'sí, reinícialo', 'adelante', 'hazlo'."
+    ),
     "input_schema": _SERVICE_SCHEMA,
 }
 
 START_SERVICE_TOOL = {
     "name": "start_service",
-    "description": "Arranca un servicio systemd permitido. Requiere confirmación del usuario antes de ejecutarse.",
+    "description": (
+        "Arranca un servicio systemd de la allowlist. Espera a que quede activo y devuelve el estado final. "
+        "Úsala cuando el usuario confirme que quiere arrancar el servicio."
+    ),
     "input_schema": _SERVICE_SCHEMA,
 }
 
 STOP_SERVICE_TOOL = {
     "name": "stop_service",
-    "description": "Para un servicio systemd permitido. Requiere confirmación del usuario antes de ejecutarse.",
+    "description": (
+        "Para un servicio systemd de la allowlist. Espera a que quede inactivo y devuelve el estado final. "
+        "Úsala cuando el usuario confirme que quiere detener el servicio."
+    ),
     "input_schema": _SERVICE_SCHEMA,
 }
 
@@ -154,9 +190,10 @@ STOP_SERVICE_TOOL = {
 ADD_ALLOWED_SERVICE_TOOL = {
     "name": "add_allowed_service",
     "description": (
-        "Añade un servicio systemd concreto a la allowlist de servicios controlables por Sity. "
-        "Úsala solo cuando el usuario pida explícitamente añadir un servicio concreto. "
-        "Requiere confirmación del usuario antes de ejecutarse."
+        "Añade un servicio systemd a la allowlist para que Sity pueda controlarlo en el futuro. "
+        "Úsala solo cuando el usuario pida explícitamente ampliar la lista: "
+        "'añade minecraft a los servicios permitidos', 'quiero que puedas controlar sity-test'. "
+        "Requiere confirmación antes de ejecutarse."
     ),
     "input_schema": {
         "type": "object",
@@ -174,9 +211,10 @@ ADD_ALLOWED_SERVICE_TOOL = {
 REMOVE_ALLOWED_SERVICE_TOOL = {
     "name": "remove_allowed_service",
     "description": (
-        "Quita un servicio systemd concreto de la allowlist de servicios controlables por Sity. "
-        "Úsala solo cuando el usuario pida explícitamente quitar un servicio concreto. "
-        "Requiere confirmación del usuario antes de ejecutarse."
+        "Quita un servicio systemd de la allowlist para que Sity deje de poder controlarlo. "
+        "Úsala solo cuando el usuario pida explícitamente reducir la lista: "
+        "'quita minecraft de los servicios', 'no quiero que puedas tocar homeassistant'. "
+        "Requiere confirmación antes de ejecutarse."
     ),
     "input_schema": {
         "type": "object",
@@ -194,8 +232,9 @@ REMOVE_ALLOWED_SERVICE_TOOL = {
 LIST_ALLOWED_SERVICES_TOOL = {
     "name": "list_allowed_services",
     "description": (
-        "Lista los servicios que Sity puede leer o controlar. "
-        "No modifica la allowlist."
+        "Lista los servicios systemd que Sity tiene permitido leer o controlar. "
+        "Úsala para preguntas como '¿qué servicios puedes gestionar?', '¿está X en la lista de permitidos?'. "
+        "Solo lectura — no modifica la allowlist."
     ),
     "input_schema": {
         "type": "object",

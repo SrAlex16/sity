@@ -67,6 +67,21 @@ def read_system_status() -> dict[str, Any]:
     memory = psutil.virtual_memory()
     boot_time = psutil.boot_time()
 
+    local_ip = "127.0.0.1"
+    hostname = socket.gethostname()
+    try:
+        for iface, addrs in psutil.net_if_addrs().items():
+            if iface == "lo":
+                continue
+            for addr in addrs:
+                if addr.family == socket.AF_INET:
+                    local_ip = addr.address
+                    break
+            if local_ip != "127.0.0.1":
+                break
+    except Exception:
+        pass
+
     return {
         "cpu_percent": cpu_percent,
         "memory": {
@@ -76,6 +91,8 @@ def read_system_status() -> dict[str, Any]:
             "percent": memory.percent,
         },
         "boot_time": boot_time,
+        "local_ip": local_ip,
+        "hostname": hostname,
     }
 
 
