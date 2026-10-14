@@ -291,9 +291,9 @@ def select_toolset_for_message(
     # Semantic classifier (Haiku) — admin-only, extends legacy fast-path.
     if is_admin:
         for domain in classify_toolset_need(message, trace_id=trace_id):
-            toolset = _DOMAIN_TO_TOOLSET.get(domain)
-            if toolset is not None:
-                selected.extend(toolset)
+            mapped = _DOMAIN_TO_TOOLSET.get(domain)
+            if mapped is not None:
+                selected.extend(mapped)
 
     result = _dedupe_tools(selected)
     if input_mode == "voice":
