@@ -131,6 +131,11 @@ _REFUSAL_FALLBACKS = [
     "Paso por ahora.",
 ]
 
+_TOOLSET_NEED_SYSTEM = (
+    "Reply with a JSON array of capability domains needed to answer the user message. "
+    "Use lowercase English words. Reply ONLY with the JSON array."
+)
+
 _HISTORY_NEED_SYSTEM = (
     "Classify how much conversation history the AI needs to answer the user's message. "
     "Reply with exactly one word.\n\n"
@@ -401,6 +406,39 @@ def classify_history_need(message: str, *, trace_id: str = "") -> str:
         return "standard"
     except Exception:
         return "standard"
+
+
+def classify_toolset_need(message: str, *, trace_id: str = "") -> list[str]:
+    """Return a list of capability domain strings Haiku thinks are needed.
+
+    Uses Haiku (cheap, fast). Falls back to [] on any error — never activates
+    toolsets unexpectedly due to a classification failure.
+    """
+    import json
+    import re as _re
+
+    provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
+    try:
+        from app.cortex.providers.factory import build_ai_provider
+        provider = build_ai_provider(provider_name, model=_HAIKU_MODEL)
+        request = AIRequest(
+            trace_id=trace_id,
+            task_type="classification",
+            system_prompt=_TOOLSET_NEED_SYSTEM,
+            user_message=message,
+            max_tokens=40,
+            tools_enabled=False,
+        )
+        response = provider.generate(request)
+        if response.ok and response.text:
+            text = response.text.strip()
+            match = _re.search(r"\[.*?\]", text, _re.DOTALL)
+            if match:
+                parsed = json.loads(match.group())
+                return [str(d).lower() for d in parsed if isinstance(d, str)]
+        return []
+    except Exception:
+        return []
 
 
 _PERSONALITY_LABELS: dict[str, str] = {

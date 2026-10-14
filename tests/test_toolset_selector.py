@@ -657,3 +657,66 @@ def test_history_level_technical_keyword_returns_8() -> None:
     with patch("app.core.message_classifier.classify_history_need", return_value="standard"):
         result = history_limit_for_message("hay un error en el backend, mira los logs")
     assert result == 8
+
+
+# ── Semantic classifier (classify_toolset_need) ───────────────────────────────
+
+def test_semantic_classifier_system_domain_activates_system_toolset() -> None:
+    """When Haiku returns ['system'], SYSTEM_TOOLSET tools appear for admin."""
+    from app.chat.toolset_selector import select_toolset_for_message
+    from app.cortex.tool_schemas import SYSTEM_TOOLSET
+
+    system_tool_names = {t["name"] for t in SYSTEM_TOOLSET}
+
+    with patch("app.chat.toolset_selector.classify_toolset_need", return_value=["system"]):
+        tools = select_toolset_for_message("ps aux --sort=-%cpu", is_admin=True)
+
+    names = {t["name"] for t in tools}
+    assert names & system_tool_names, (
+        f"SYSTEM_TOOLSET tools not included after classify_toolset_need returned ['system']. "
+        f"Got: {sorted(names)[:8]}"
+    )
+
+
+def test_semantic_classifier_not_called_for_non_admin() -> None:
+    """classify_toolset_need must NOT be called when is_admin=False."""
+    from app.chat.toolset_selector import select_toolset_for_message
+
+    with patch("app.chat.toolset_selector.classify_toolset_need") as mock_clf:
+        select_toolset_for_message("ps aux --sort=-%cpu", is_admin=False)
+
+    mock_clf.assert_not_called()
+
+
+def test_semantic_classifier_unknown_domain_ignored() -> None:
+    """Unknown domains returned by Haiku must not raise and must be silently ignored."""
+    from app.chat.toolset_selector import select_toolset_for_message
+    from app.cortex.tool_schemas import BASE_TOOLSET
+
+    base_names = {t["name"] for t in BASE_TOOLSET}
+
+    with patch("app.chat.toolset_selector.classify_toolset_need", return_value=["quantum_physics", "dragons"]):
+        tools = select_toolset_for_message("algo raro", is_admin=True)
+
+    names = {t["name"] for t in tools}
+    extra = names - base_names
+    # No extra tools beyond BASE_TOOLSET added from unrecognised domains
+    assert not extra, f"Unexpected tools from unknown domains: {sorted(extra)}"
+
+
+def test_semantic_classifier_fallback_empty_list_does_not_crash() -> None:
+    """Empty list from classify_toolset_need must not raise."""
+    from app.chat.toolset_selector import select_toolset_for_message
+
+    with patch("app.chat.toolset_selector.classify_toolset_need", return_value=[]):
+        tools = select_toolset_for_message("ps aux --sort=-%cpu", is_admin=True)
+
+    assert tools  # at least BASE_TOOLSET
+
+
+def test_classify_toolset_need_returns_list_on_mock_provider() -> None:
+    """classify_toolset_need returns [] when MockProvider gives non-JSON output."""
+    from app.core.message_classifier import classify_toolset_need
+
+    result = classify_toolset_need("ps aux --sort=-%cpu")
+    assert isinstance(result, list)
