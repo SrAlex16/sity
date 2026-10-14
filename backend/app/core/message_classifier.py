@@ -132,8 +132,8 @@ _REFUSAL_FALLBACKS = [
 ]
 
 _TOOLSET_NEED_SYSTEM = (
-    "Reply with a JSON array of capability domains needed to answer the user message. "
-    "Use lowercase English words. Reply ONLY with the JSON array."
+    "Reply with a JSON array of tool names (from the list provided) needed to answer "
+    "the user message. Reply ONLY with the JSON array, no explanation."
 )
 
 _HISTORY_NEED_SYSTEM = (
@@ -408,14 +408,30 @@ def classify_history_need(message: str, *, trace_id: str = "") -> str:
         return "standard"
 
 
-def classify_toolset_need(message: str, *, trace_id: str = "") -> list[str]:
-    """Return a list of capability domain strings Haiku thinks are needed.
+def classify_toolset_need(
+    message: str,
+    available_tools: list[dict],
+    *,
+    trace_id: str = "",
+) -> list[str]:
+    """Return tool names Haiku selects from available_tools for this message.
 
-    Uses Haiku (cheap, fast). Falls back to [] on any error — never activates
-    toolsets unexpectedly due to a classification failure.
+    Haiku sees each tool's name + description and picks the ones relevant to
+    the user's intent. No domain mapping needed — adding a tool to a toolset
+    is enough for Haiku to discover it automatically.
+
+    Falls back to [] on any error — never activates toolsets unexpectedly.
     """
     import json
     import re as _re
+
+    if not available_tools:
+        return []
+
+    tools_block = "\n".join(
+        f"- {t['name']}: {t.get('description', '')}" for t in available_tools
+    )
+    user_msg = f"User message: {message}\n\nAvailable tools:\n{tools_block}"
 
     provider_name = os.getenv("SITY_AI_PROVIDER", "anthropic")
     try:
@@ -425,8 +441,8 @@ def classify_toolset_need(message: str, *, trace_id: str = "") -> list[str]:
             trace_id=trace_id,
             task_type="classification",
             system_prompt=_TOOLSET_NEED_SYSTEM,
-            user_message=message,
-            max_tokens=40,
+            user_message=user_msg,
+            max_tokens=60,
             tools_enabled=False,
         )
         response = provider.generate(request)
@@ -435,7 +451,7 @@ def classify_toolset_need(message: str, *, trace_id: str = "") -> list[str]:
             match = _re.search(r"\[.*?\]", text, _re.DOTALL)
             if match:
                 parsed = json.loads(match.group())
-                return [str(d).lower() for d in parsed if isinstance(d, str)]
+                return [str(n) for n in parsed if isinstance(n, str)]
         return []
     except Exception:
         return []

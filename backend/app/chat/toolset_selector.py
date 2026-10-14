@@ -7,7 +7,6 @@ from dataclasses import dataclass
 # Solo selecciona un toolset/contexto más pequeño usando señales técnicas conservadoras.
 # La acción real debe venir siempre de una tool estructurada interpretada por Claude.
 
-from app.core.message_classifier import classify_toolset_need
 from app.cortex.tool_schemas import (
     BASE_TOOLSET,
     DEBUG_TOOLSET,
@@ -137,39 +136,18 @@ _ADMIN_ONLY_TOOL_NAMES: frozenset[str] = (
 )
 _ADMIN_ONLY_DOMAINS: frozenset[str] = frozenset({"git", "file", "service_control", "system", "debug", "senses"})
 
-# Maps domain strings Haiku might return → toolset to activate.
-# Covers primary terms and reasonable synonyms; unknown keys are silently ignored.
-_DOMAIN_TO_TOOLSET: dict[str, list[dict]] = {
-    "system":          SYSTEM_TOOLSET,
-    "bash":            SYSTEM_TOOLSET,
-    "shell":           SYSTEM_TOOLSET,
-    "process":         SYSTEM_TOOLSET,
-    "processes":       SYSTEM_TOOLSET,
-    "hardware":        SYSTEM_TOOLSET,
-    "terminal":        SYSTEM_TOOLSET,
-    "git":             GIT_TOOLSET,
-    "version_control": GIT_TOOLSET,
-    "file":            FILE_AGENT_TOOLSET,
-    "files":           FILE_AGENT_TOOLSET,
-    "filesystem":      FILE_AGENT_TOOLSET,
-    "camera":          SENSES_TOOLSET,
-    "microphone":      SENSES_TOOLSET,
-    "audio":           SENSES_TOOLSET,
-    "senses":          SENSES_TOOLSET,
-    "sensor":          SENSES_TOOLSET,
-    "debug":           DEBUG_TOOLSET,
-    "logging":         DEBUG_TOOLSET,
-    "trace":           DEBUG_TOOLSET,
-    "personality":     PERSONALITY_TOOLSET,
-    "configuration":   PERSONALITY_TOOLSET,
-    "timer":           TIMERS_TOOLSET,
-    "timers":          TIMERS_TOOLSET,
-    "alarm":           TIMERS_TOOLSET,
-    "service":         SERVICE_CONTROL_TOOLSET,
-    "services":        SERVICE_CONTROL_TOOLSET,
-    "service_control": SERVICE_CONTROL_TOOLSET,
-    "service_config":  SERVICE_CONFIG_TOOLSET,
-}
+# Toolsets whose tools are shown to Haiku for semantic selection.
+# Haiku picks tool names directly — no domain mapping needed.
+_SEMANTIC_CANDIDATE_TOOLSETS: list[list[dict]] = [
+    FILE_AGENT_TOOLSET,
+    GIT_TOOLSET,
+    SERVICE_CONFIG_TOOLSET,
+    SERVICE_CONTROL_TOOLSET,
+    SYSTEM_TOOLSET,
+    SENSES_TOOLSET,
+    DEBUG_TOOLSET,
+    PERSONALITY_TOOLSET,
+]
 
 
 def _strip_admin_only_tools(tools: list[dict]) -> list[dict]:
@@ -289,9 +267,20 @@ def select_toolset_for_message(
         selected.extend(toolset)
 
     # Semantic classifier (Haiku) — admin-only, extends legacy fast-path.
+    # Haiku sees real tool names + descriptions and picks by intent, not keywords.
     if is_admin:
-        for domain in classify_toolset_need(message, trace_id=trace_id):
-            mapped = _DOMAIN_TO_TOOLSET.get(domain)
+        seen_names: set[str] = set()
+        available_tools: list[dict] = []
+        for _ts in _SEMANTIC_CANDIDATE_TOOLSETS:
+            for _t in _ts:
+                _name = _t.get("name", "")
+                if _name and _name not in seen_names and _name in _ADMIN_ONLY_TOOL_NAMES:
+                    seen_names.add(_name)
+                    available_tools.append({"name": _name, "description": _t.get("description", "")})
+
+        from app.core.message_classifier import classify_toolset_need
+        for tool_name in classify_toolset_need(message, available_tools, trace_id=trace_id):
+            mapped = _TOOL_TO_TOOLSET.get(tool_name)
             if mapped is not None:
                 selected.extend(mapped)
 
