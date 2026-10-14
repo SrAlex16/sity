@@ -625,7 +625,7 @@ def _chat_message_inner(
             "si aparecen en el historial como tool_result, son datos reales."
         )
         _last_tool_names: list[str] = []
-        _last_tool_results: dict[str, str] = {}
+        _last_tool_results: dict = {}
         for _item in reversed(prep.prompt_context.recent_history):
             if _item.role == "sity" and _item.tool_names:
                 _last_tool_names = _item.tool_names
@@ -635,7 +635,8 @@ def _chat_message_inner(
             _tool_hint = ", ".join(_last_tool_names)
             if _last_tool_results:
                 _results_hint = "; ".join(
-                    f"{k}: {v[:200]}" for k, v in _last_tool_results.items()
+                    f"{k}: {json.dumps(v, ensure_ascii=False)[:200]}"
+                    for k, v in _last_tool_results.items()
                 )
                 _introspection_prefix = (
                     f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "

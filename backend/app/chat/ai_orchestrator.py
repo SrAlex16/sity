@@ -79,18 +79,24 @@ _MAX_RESULT_SUMMARY_LEN = 500
 def _build_tool_results_dict(
     tool_calls: "Any",
     tool_results_for_claude: "list[dict[str, Any]]",
-) -> "dict[str, str]":
-    """Build {tool_name: result_content} from planner tool_calls + raw tool results.
+) -> "dict[str, Any]":
+    """Build {tool_name: result_object} from planner tool_calls + raw tool results.
 
     tool_calls have .id and .name; tool_results_for_claude have tool_use_id and content.
-    Content is capped at _MAX_RESULT_SUMMARY_LEN chars to avoid context bloat.
+    content is a JSON string — it is parsed to a Python object so the outer json.dumps
+    produces a single-level dict, not double-serialized strings.
+    Long string values are capped at _MAX_RESULT_SUMMARY_LEN chars.
     """
     id_to_name: dict[str, str] = {tc.id: tc.name for tc in tool_calls}
-    result: dict[str, str] = {}
+    result: dict[str, Any] = {}
     for tr in tool_results_for_claude:
         tname = id_to_name.get(tr.get("tool_use_id", ""), "")
         if tname:
-            result[tname] = tr.get("content", "")[:_MAX_RESULT_SUMMARY_LEN]
+            raw = tr.get("content", "")
+            try:
+                result[tname] = json.loads(raw)
+            except (ValueError, TypeError):
+                result[tname] = raw[:_MAX_RESULT_SUMMARY_LEN]
     return result
 
 

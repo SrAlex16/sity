@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -9,7 +9,7 @@ class ChatHistoryItem(BaseModel):
     text: str
     images: list[dict] = []  # [{media_type, data}] — base64 images from FileArtifact
     tool_names: list[str] = []
-    tool_results: dict[str, str] = {}
+    tool_results: dict[str, Any] = {}
 
 
 class ChatMessageItem(BaseModel):
