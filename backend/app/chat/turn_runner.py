@@ -95,14 +95,7 @@ def _snippet(text: str, max_chars: int) -> str:
 
 
 def _has_tool_use_in_history(history: list[ChatHistoryItem]) -> bool:
-    result = any(item.role == "sity" and bool(item.tool_names) for item in history)
-    # TEMP debug — remove after validating introspection injection
-    write_log(level="DEBUG", module="chat", event="introspection_check", trace_id="", payload={
-        "has_tool_use": result,
-        "history_roles": [item.role for item in history],
-        "history_tool_names": [item.tool_names for item in history],
-    })
-    return result
+    return any(item.role == "sity" and bool(item.tool_names) for item in history)
 
 
 def _refusal_history_limit(real_count: int) -> int:
