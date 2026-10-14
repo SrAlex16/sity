@@ -630,13 +630,15 @@ def _chat_message_inner(
                 break
         if _last_tool_names:
             _tool_hint = ", ".join(_last_tool_names)
-            prep.prompt_context.prior_messages.append({
+            _synthetic_msg: dict = {
                 "role": "user",
                 "content": (
                     f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
                     "Los datos que di provienen de esa consulta real al sistema, no fueron inventados.]"
                 ),
-            })
+            }
+            prep.prompt_context.prior_messages.append(_synthetic_msg)
+            prep.prompt_context.planner_prior_messages.append(_synthetic_msg)
 
     orchestrator = ChatAIOrchestrator(
         session=session,
