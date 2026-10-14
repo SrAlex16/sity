@@ -912,7 +912,11 @@ def test_classify_system_mentions_followup_category() -> None:
 def test_classify_system_requires_explicit_back_reference_for_followup() -> None:
     """The classifier must require explicit back-reference keywords for followup — not just follow-up intent."""
     assert "dijiste" in _CLASSIFY_SYSTEM or "mencionaste" in _CLASSIFY_SYSTEM
-    assert "explicit" in _CLASSIFY_SYSTEM.lower() or "EXPLICIT" in _CLASSIFY_SYSTEM
+    assert (
+        "explicit" in _CLASSIFY_SYSTEM.lower()
+        or "explícit" in _CLASSIFY_SYSTEM.lower()
+        or "EXPLICIT" in _CLASSIFY_SYSTEM
+    )
 
 
 # ------------------------------------------------------------------ #
