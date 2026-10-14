@@ -625,16 +625,29 @@ def _chat_message_inner(
             "si aparecen en el historial como tool_result, son datos reales."
         )
         _last_tool_names: list[str] = []
+        _last_tool_results: dict[str, str] = {}
         for _item in reversed(prep.prompt_context.recent_history):
             if _item.role == "sity" and _item.tool_names:
                 _last_tool_names = _item.tool_names
+                _last_tool_results = _item.tool_results
                 break
         if _last_tool_names:
             _tool_hint = ", ".join(_last_tool_names)
-            _introspection_prefix = (
-                f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
-                "Los datos que di provienen de esa consulta real al sistema, no fueron inventados.]\n\n"
-            )
+            if _last_tool_results:
+                _results_hint = "; ".join(
+                    f"{k}: {v[:200]}" for k, v in _last_tool_results.items()
+                )
+                _introspection_prefix = (
+                    f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
+                    f"Resultados: {_results_hint}. "
+                    "Usa esta información para responder preguntas de seguimiento sin necesidad "
+                    "de volver a ejecutar las herramientas.]\n\n"
+                )
+            else:
+                _introspection_prefix = (
+                    f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
+                    "Los datos que di provienen de esa consulta real al sistema, no fueron inventados.]\n\n"
+                )
             prep.prompt_context = dataclasses.replace(
                 prep.prompt_context,
                 user_message_with_history=_introspection_prefix + prep.prompt_context.user_message_with_history,

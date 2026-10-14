@@ -352,6 +352,9 @@ class PromptContextBuilder:
                 tool_names=_json.loads(row.tool_names_json)
                 if getattr(row, "tool_names_json", None)
                 else [],
+                tool_results=_json.loads(row.tool_results_json)
+                if getattr(row, "tool_results_json", None)
+                else {},
             )
             for row in raw_rows
         ]

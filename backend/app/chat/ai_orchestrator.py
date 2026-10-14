@@ -73,6 +73,27 @@ def _tool_use_blocks(response: "Any") -> "list[dict[str, Any]]":
     ]
 
 
+_MAX_RESULT_SUMMARY_LEN = 500
+
+
+def _build_tool_results_dict(
+    tool_calls: "Any",
+    tool_results_for_claude: "list[dict[str, Any]]",
+) -> "dict[str, str]":
+    """Build {tool_name: result_content} from planner tool_calls + raw tool results.
+
+    tool_calls have .id and .name; tool_results_for_claude have tool_use_id and content.
+    Content is capped at _MAX_RESULT_SUMMARY_LEN chars to avoid context bloat.
+    """
+    id_to_name: dict[str, str] = {tc.id: tc.name for tc in tool_calls}
+    result: dict[str, str] = {}
+    for tr in tool_results_for_claude:
+        tname = id_to_name.get(tr.get("tool_use_id", ""), "")
+        if tname:
+            result[tname] = tr.get("content", "")[:_MAX_RESULT_SUMMARY_LEN]
+    return result
+
+
 
 
 class _ToolBranchOutcome(NamedTuple):
@@ -132,6 +153,7 @@ class ChatAIOrchestrator:
         executor: Optional[ToolExecutor] = None
         _tool_called = False  # tracks whether any tool was attempted this turn
         _executed_tool_names: list[str] = []
+        _executed_tool_results: dict[str, Any] = {}
 
         if prep.routing_decision.provider_mode == ProviderMode.local_chat_candidate:
             response = self._run_local_path()
@@ -143,7 +165,7 @@ class ChatAIOrchestrator:
                 first_tool = planner_response.tool_calls[0]
 
                 if first_tool.name == "no_action_required":
-                    response, _executed_tool_names = self._handle_no_action_required(planner_response, persona_decision)
+                    response, _executed_tool_names, _executed_tool_results = self._handle_no_action_required(planner_response, persona_decision)
 
                 elif first_tool.name == "propose_model_upgrade":
                     return self._handle_model_upgrade(planner_response, persona_decision)
@@ -162,10 +184,14 @@ class ChatAIOrchestrator:
                     persona_decision = outcome.persona_decision
                     executor = outcome.executor
                     _tool_called = True
+                    _executed_tool_results = _build_tool_results_dict(
+                        planner_response.tool_calls, outcome.tool_results
+                    )
 
         if tool_results_for_claude and not is_cancelled(request.client_turn_id):
-            _extra_names = self._run_after_tools_loop(response, tool_results_for_claude, persona_decision, executor)
+            _extra_names, _extra_results = self._run_after_tools_loop(response, tool_results_for_claude, persona_decision, executor)
             _executed_tool_names.extend(_extra_names)
+            _executed_tool_results.update(_extra_results)
 
         # Post-generation integrity check: verify response text for capability overclaims,
         # internal leaks, memory fabrication, and in-session history denial.
@@ -210,6 +236,7 @@ class ChatAIOrchestrator:
             session_id=ctx.session_id,
             language_override=ctx.language_override,
             tool_names_json=json.dumps(_executed_tool_names) if _executed_tool_names else None,
+            tool_results_json=json.dumps(_executed_tool_results) if _executed_tool_results else None,
         )
 
         if prep.should_synth and chat_result.ok and chat_result.text:
@@ -331,11 +358,11 @@ class ChatAIOrchestrator:
 
     def _handle_no_action_required(
         self, planner_response: Any, persona_decision: PersonaDecision
-    ) -> tuple[Any, list[str]]:
+    ) -> tuple[Any, list[str], dict[str, Any]]:
         """Run the chat call for no_action_required, including the narration guard.
 
-        Returns (AIResponse, tool_names) where tool_names is non-empty only when the
-        narration guard fired and executed tools via the forced-search path.
+        Returns (AIResponse, tool_names, tool_results) where tool_names/tool_results
+        are non-empty only when the narration guard fired and executed tools.
         """
         ctx = self.ctx
         prep = self.prep
@@ -356,6 +383,7 @@ class ChatAIOrchestrator:
         )
 
         _guard_tool_names: list[str] = []
+        _guard_tool_results: dict[str, Any] = {}
 
         # Guard: Sity narrated a search without calling the tool — force the real call.
         if response.ok and has_narrated_search(response.text):
@@ -377,7 +405,7 @@ class ChatAIOrchestrator:
             )
             if _forced_plan.ok and _forced_plan.tool_calls:
                 _guard_tool_names = [tc.name for tc in _forced_plan.tool_calls]
-                _guard_loop = run_tool_loop(
+                _guard_loop = run_tool_loop(  # noqa: SIM117
                     planner_response=_forced_plan,
                     executor=ToolExecutor(self.session, ctx.session_id, is_admin=ctx.is_admin),
                     trace_id=ctx.trace_id,
@@ -385,6 +413,9 @@ class ChatAIOrchestrator:
                     max_iterations=ctx.ai_config.get("max_tool_loop_iterations", 3),
                 )
                 if not _guard_loop.early_kind and _guard_loop.tool_results_for_claude:
+                    _guard_tool_results = _build_tool_results_dict(
+                        _forced_plan.tool_calls, _guard_loop.tool_results_for_claude
+                    )
                     _guard_after = prep.runner.run_after_tools(
                         request=build_after_tools_ai_request(
                             trace_id=ctx.trace_id,
@@ -421,7 +452,7 @@ class ChatAIOrchestrator:
         response.usage.output_tokens += planner_response.usage.output_tokens
         response.latency_ms += planner_response.latency_ms
 
-        return response, _guard_tool_names
+        return response, _guard_tool_names, _guard_tool_results
 
     def _handle_model_upgrade(
         self, planner_response: Any, persona_decision: PersonaDecision
@@ -579,6 +610,7 @@ class ChatAIOrchestrator:
                 role="sity", text=_loop.local_text, trace_id=ctx.trace_id,
                 tone_meta=json.dumps(persona_decision.tone_snapshot),
                 tool_names_json=tool_names_json,
+                tool_results_json=json.dumps({_loop.early_tool_name: _loop.local_text[:_MAX_RESULT_SUMMARY_LEN]}),
             )
             _early_response = local_tool_response(
                 trace_id=ctx.trace_id,
@@ -643,6 +675,7 @@ class ChatAIOrchestrator:
                 role="sity", text=_react_text, trace_id=ctx.trace_id,
                 tone_meta=json.dumps(persona_decision.tone_snapshot),
                 tool_names_json=tool_names_json,
+                tool_results_json=json.dumps({_loop.early_tool_name: _loop.sensor_description[:_MAX_RESULT_SUMMARY_LEN]}),
             )
             # Register sensor artifacts (camera/audio captures) in FileArtifact inventory.
             _register_capture_artifacts(self.session, ctx.session_id, _loop.sensor_artifacts, ctx.file_retention_days)
@@ -706,11 +739,11 @@ class ChatAIOrchestrator:
         tool_results_for_claude: list[dict],  # type: ignore[type-arg]
         persona_decision: PersonaDecision,
         executor: Optional[ToolExecutor],
-    ) -> list[str]:
+    ) -> tuple[list[str], dict[str, Any]]:
         """Run up to max_after_tools_rounds of after-tools calls, handling chained tool requests.
 
-        Mutates response in place (text, usage, error fields). Returns the names of any
-        additional tools called in rounds 2+ (round 1 tools are tracked by the caller).
+        Mutates response in place (text, usage, error fields). Returns (extra_tool_names,
+        extra_tool_results) for tools called in rounds 2+ (round 1 is tracked by the caller).
         executor must be non-None because tool_results_for_claude being non-empty implies
         a tool branch ran first.
         """
@@ -724,6 +757,7 @@ class ChatAIOrchestrator:
         source_response = response
         accumulated_tool_rounds: list[dict[str, Any]] = []
         _extra_tool_names: list[str] = []
+        _extra_tool_results: dict[str, Any] = {}
 
         for _round in range(max_after_tools_rounds):
             if is_cancelled(request.client_turn_id):
@@ -756,6 +790,9 @@ class ChatAIOrchestrator:
                 break
 
             _extra_tool_names.extend(tc.name for tc in response_after_tools.tool_calls)
+            _extra_tool_results.update(
+                _build_tool_results_dict(response_after_tools.tool_calls, tool_results_for_claude)
+            )
             write_log(
                 level="INFO",
                 module="tools",
@@ -816,4 +853,4 @@ class ChatAIOrchestrator:
             tool_results_for_claude = _loop.tool_results_for_claude
             source_response = response_after_tools
 
-        return _extra_tool_names
+        return _extra_tool_names, _extra_tool_results

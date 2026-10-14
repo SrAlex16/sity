@@ -91,6 +91,7 @@ class ChatTurnPersistence:
         tts_fragments: Optional[int] = None,
         source_channel: str = "web",
         tool_names_json: Optional[str] = None,
+        tool_results_json: Optional[str] = None,
     ) -> int:
         if metadata is None:
             metadata = self._sity_metadata if role == "sity" else self._user_metadata
@@ -109,4 +110,5 @@ class ChatTurnPersistence:
             tts_fragments=tts_fragments,
             source_channel=source_channel,
             tool_names_json=tool_names_json,
+            tool_results_json=tool_results_json,
         )

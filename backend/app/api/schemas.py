@@ -9,6 +9,7 @@ class ChatHistoryItem(BaseModel):
     text: str
     images: list[dict] = []  # [{media_type, data}] — base64 images from FileArtifact
     tool_names: list[str] = []
+    tool_results: dict[str, str] = {}
 
 
 class ChatMessageItem(BaseModel):

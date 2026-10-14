@@ -129,6 +129,8 @@ class ChatMessage(SQLModel, table=True):
 
     # Tools used to generate this response (JSON array of tool names, sity role only)
     tool_names_json: Optional[str] = Field(default=None)
+    # Tool results for this response (JSON object {tool_name: result_summary}, sity role only)
+    tool_results_json: Optional[str] = Field(default=None)
 
 
 class User(SQLModel, table=True):

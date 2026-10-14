@@ -209,6 +209,7 @@ def build_final_ai_response(
     session_id: str = "",
     language_override: str = "auto",
     tool_names_json: str | None = None,
+    tool_results_json: str | None = None,
 ) -> ChatMessageResponse:
     # 1. Persist AIUsage row
     usage_row = AIUsage(
@@ -322,7 +323,7 @@ def build_final_ai_response(
     )
     save_message(role="sity", text=_text_to_save, trace_id=trace_id,
                  tone_meta=tone_meta, output_mode=output_mode, source_channel=source_channel,
-                 tool_names_json=tool_names_json)
+                 tool_names_json=tool_names_json, tool_results_json=tool_results_json)
 
     # 6. Track refusal if applicable
     if refusal_mode:
