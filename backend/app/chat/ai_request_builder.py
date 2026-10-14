@@ -195,7 +195,12 @@ _AFTER_TOOLS_PROMPT_SUFFIX = (
     "No menciones detalles internos salvo que el usuario pregunte por debug. "
     "IMPORTANTE: Si el resultado de la herramienta contiene un campo 'diff', muéstralo completo "
     "al usuario en un bloque de código con lenguaje diff antes de pedir confirmación. "
-    "Si contiene 'confirmation_phrase', indícala claramente para que el usuario sepa cómo confirmar."
+    "Si contiene 'confirmation_phrase', indícala claramente para que el usuario sepa cómo confirmar. "
+    "Si el usuario pregunta cómo obtuviste la información de tu respuesta anterior "
+    "(¿cómo lo sabes?, ¿cómo lo has mirado?, ¿de dónde sacas eso?): el resultado de la herramienta "
+    "está en el historial de esta llamada — úsalo para responder con honestidad. "
+    "No digas que no tienes herramientas ni que no puedes acceder a datos del sistema. "
+    "Di qué herramienta se usó y qué devolvió, de forma natural y sin jerga técnica interna."
     f"\n\n{_MEMORY_RESULT_RESPONSE_RULES}"
 )
 
@@ -207,7 +212,12 @@ _BACKGROUND_AFTER_TOOLS_SUFFIX = (
     "Si los resultados no contienen el dato exacto, di honestamente lo que encontraste "
     "(ej: 'No encontré el número exacto en los resultados, pero...'). "
     "Nunca prometas 'voy a ver la página' ni 'déjame buscarlo directamente': "
-    "esa acción nunca se ejecutará y el usuario quedará sin respuesta real."
+    "esa acción nunca se ejecutará y el usuario quedará sin respuesta real. "
+    "Si el usuario pregunta cómo obtuviste la información de tu respuesta anterior "
+    "(¿cómo lo sabes?, ¿cómo lo has mirado?, ¿de dónde sacas eso?): el resultado de la herramienta "
+    "está en el historial de esta llamada — úsalo para responder con honestidad. "
+    "No digas que no tienes herramientas ni que no puedes acceder a datos del sistema. "
+    "Di qué herramienta se usó y qué devolvió, de forma natural y sin jerga técnica interna."
     f"\n\n{_MEMORY_RESULT_RESPONSE_RULES}"
 )
 
