@@ -94,7 +94,14 @@ def _snippet(text: str, max_chars: int) -> str:
 
 
 def _has_tool_use_in_history(history: list[ChatHistoryItem]) -> bool:
-    return any(item.role == "sity" and bool(item.tool_names) for item in history)
+    result = any(item.role == "sity" and bool(item.tool_names) for item in history)
+    # TEMP debug — remove after validating introspection injection
+    write_log(level="DEBUG", module="chat", event="introspection_check", trace_id="", payload={
+        "has_tool_use": result,
+        "history_roles": [item.role for item in history],
+        "history_tool_names": [item.tool_names for item in history],
+    })
+    return result
 
 
 def _refusal_history_limit(real_count: int) -> int:
@@ -616,6 +623,20 @@ def _chat_message_inner(
             "NUNCA digas que no tienes herramientas ni que los datos fueron inventados — "
             "si aparecen en el historial como tool_result, son datos reales."
         )
+        _last_tool_names: list[str] = []
+        for _item in reversed(prep.prompt_context.recent_history):
+            if _item.role == "sity" and _item.tool_names:
+                _last_tool_names = _item.tool_names
+                break
+        if _last_tool_names:
+            _tool_hint = ", ".join(_last_tool_names)
+            prep.prompt_context.prior_messages.append({
+                "role": "user",
+                "content": (
+                    f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
+                    "Los datos que di provienen de esa consulta real al sistema, no fueron inventados.]"
+                ),
+            })
 
     orchestrator = ChatAIOrchestrator(
         session=session,

@@ -395,6 +395,16 @@ def select_toolset_with_metadata(message: str, input_mode: str = "text", is_admi
     if not is_admin:
         activated_domains -= _ADMIN_ONLY_DOMAINS
 
+    # Reconcile with the actual tool list — captures what the semantic classifier activated.
+    base_names = frozenset(t["name"] for t in BASE_TOOLSET)
+    for tool in tools:
+        tname = tool.get("name", "")
+        if tname in base_names:
+            continue
+        _ts = _TOOL_TO_TOOLSET.get(tname)
+        if _ts is not None:
+            _record(_ts, f"semantic_classifier:{tname}")
+
     return ToolsetSelection(
         tools=tools,
         activated_domains=frozenset(activated_domains),
