@@ -50,6 +50,7 @@ def save_chat_message(
     output_mode: str = "text",
     tts_fragments: Optional[int] = None,
     source_channel: str = "web",
+    tool_names_json: Optional[str] = None,
 ) -> int:
     if metadata is None:
         metadata = build_message_metadata(role=role)
@@ -76,6 +77,7 @@ def save_chat_message(
         output_mode=output_mode,
         tts_fragments=tts_fragments,
         source_channel=source_channel,
+        tool_names_json=tool_names_json,
     )
     session.add(msg)
 

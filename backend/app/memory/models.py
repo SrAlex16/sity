@@ -127,6 +127,9 @@ class ChatMessage(SQLModel, table=True):
     # Origin channel
     source_channel: str = Field(default="web")
 
+    # Tools used to generate this response (JSON array of tool names, sity role only)
+    tool_names_json: Optional[str] = Field(default=None)
+
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

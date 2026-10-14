@@ -131,6 +131,7 @@ class ChatAIOrchestrator:
         response_artifacts: list[ChatArtifact] = []
         executor: Optional[ToolExecutor] = None
         _tool_called = False  # tracks whether any tool was attempted this turn
+        _executed_tool_names: list[str] = []
 
         if prep.routing_decision.provider_mode == ProviderMode.local_chat_candidate:
             response = self._run_local_path()
@@ -148,6 +149,7 @@ class ChatAIOrchestrator:
                     return self._handle_model_upgrade(planner_response, persona_decision)
 
                 else:
+                    _executed_tool_names = [tc.name for tc in planner_response.tool_calls]
                     outcome = self._execute_tool_branch(planner_response, persona_decision)
                     if outcome.early_return is not None:
                         return outcome.early_return
@@ -203,6 +205,7 @@ class ChatAIOrchestrator:
             source_channel=request.source_channel,
             session_id=ctx.session_id,
             language_override=ctx.language_override,
+            tool_names_json=json.dumps(_executed_tool_names) if _executed_tool_names else None,
         )
 
         if prep.should_synth and chat_result.ok and chat_result.text:

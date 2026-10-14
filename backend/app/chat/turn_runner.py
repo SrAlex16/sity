@@ -11,7 +11,7 @@ import json
 
 from sqlmodel import Session
 
-from app.api.schemas import ChatMessageRequest, ChatMessageResponse
+from app.api.schemas import ChatHistoryItem, ChatMessageRequest, ChatMessageResponse
 from app.chat.chat_persistence import DEFAULT_CHAT_SESSION_ID
 from app.chat.model_router import LocalFlowSignal, clear_proposal
 from app.core.cancellation import clear_operation
@@ -91,6 +91,10 @@ def _snippet(text: str, max_chars: int) -> str:
         return text
     cut = text[:max_chars].rfind(" ")
     return text[:cut] if cut > 0 else text[:max_chars]
+
+
+def _has_tool_use_in_history(history: list[ChatHistoryItem]) -> bool:
+    return any(item.role == "sity" and bool(item.tool_names) for item in history)
 
 
 def _refusal_history_limit(real_count: int) -> int:
@@ -601,6 +605,17 @@ def _chat_message_inner(
         forced_tools=_forced_tools,
         image_artifact_ids=_image_artifact_ids,
     )
+
+    if _has_tool_use_in_history(prep.prompt_context.recent_history):
+        persona_prompt += (
+            "\n\nREGLA DE INTROSPECCIÓN HONESTA: En el historial de esta conversación aparecen "
+            "resultados de herramientas que SE EJECUTARON y devolvieron datos reales. "
+            "Si el usuario pregunta cómo obtuviste información que diste en un turno anterior "
+            "(¿cómo lo sabes?, ¿cómo lo miraste?, ¿de dónde sale eso?), describe en términos "
+            "naturales qué consultaste (ej: 'consulté los procesos del sistema'). "
+            "NUNCA digas que no tienes herramientas ni que los datos fueron inventados — "
+            "si aparecen en el historial como tool_result, son datos reales."
+        )
 
     orchestrator = ChatAIOrchestrator(
         session=session,

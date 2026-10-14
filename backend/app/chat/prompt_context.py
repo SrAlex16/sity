@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json as _json
 import logging
 from dataclasses import dataclass
 from typing import Callable
@@ -344,7 +345,16 @@ class PromptContextBuilder:
         ]
         if skip_last > 0:
             raw_rows = raw_rows[:-skip_last] if len(raw_rows) > skip_last else []
-        items = [ChatHistoryItem(role=row.role, text=row.text) for row in raw_rows]
+        items = [
+            ChatHistoryItem(
+                role=row.role,
+                text=row.text,
+                tool_names=_json.loads(row.tool_names_json)
+                if getattr(row, "tool_names_json", None)
+                else [],
+            )
+            for row in raw_rows
+        ]
         if attach_images:
             try:
                 _attach_history_images(session, raw_rows, items)

@@ -8,6 +8,7 @@ class ChatHistoryItem(BaseModel):
     role: str
     text: str
     images: list[dict] = []  # [{media_type, data}] — base64 images from FileArtifact
+    tool_names: list[str] = []
 
 
 class ChatMessageItem(BaseModel):
