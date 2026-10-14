@@ -94,6 +94,7 @@ def run_cognition_turn(
     personality: dict,
     *,
     trace_id: str = "",
+    is_admin: bool = False,
 ) -> CognitionTurnResult:
     """Run the full cognition pipeline for one authenticated user turn."""
     # Expire stale short_term goals before loading — keeps context clean
@@ -309,7 +310,7 @@ def run_cognition_turn(
         # domain_activated: any non-base tool domain triggered for this message
         from app.chat.toolset_selector import select_toolset_with_metadata
         _domain_activated = bool(
-            select_toolset_with_metadata(user_message).activated_domains
+            select_toolset_with_metadata(user_message, is_admin=is_admin).activated_domains
         )
         try:
             _values_dict: dict[str, float] | None = load_values_dict(session)

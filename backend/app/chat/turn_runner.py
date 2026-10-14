@@ -328,6 +328,7 @@ def _chat_message_inner(
                 settings_service=ctx.settings_service,
                 personality=ctx.personality,
                 trace_id=ctx.trace_id,
+                is_admin=ctx.is_admin,
             )
         except Exception:
             pass
