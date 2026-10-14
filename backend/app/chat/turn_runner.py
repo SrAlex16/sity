@@ -7,6 +7,7 @@ _chat_message_inner: builds turn context, applies refusal gate, invokes orchestr
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 
 from sqlmodel import Session
@@ -630,15 +631,15 @@ def _chat_message_inner(
                 break
         if _last_tool_names:
             _tool_hint = ", ".join(_last_tool_names)
-            _synthetic_msg: dict = {
-                "role": "user",
-                "content": (
-                    f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
-                    "Los datos que di provienen de esa consulta real al sistema, no fueron inventados.]"
-                ),
-            }
-            prep.prompt_context.prior_messages.append(_synthetic_msg)
-            prep.prompt_context.planner_prior_messages.append(_synthetic_msg)
+            _introspection_prefix = (
+                f"[Sistema: en el turno anterior usé las herramientas: {_tool_hint}. "
+                "Los datos que di provienen de esa consulta real al sistema, no fueron inventados.]\n\n"
+            )
+            prep.prompt_context = dataclasses.replace(
+                prep.prompt_context,
+                user_message_with_history=_introspection_prefix + prep.prompt_context.user_message_with_history,
+                planner_user_message=_introspection_prefix + prep.prompt_context.planner_user_message,
+            )
 
     orchestrator = ChatAIOrchestrator(
         session=session,
