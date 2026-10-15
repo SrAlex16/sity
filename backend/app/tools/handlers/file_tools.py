@@ -14,6 +14,8 @@ def handle_read_file(ctx: ToolContext) -> ToolExecutionResult:
     file_result = execute_file_action({
         "action": "read_file",
         "path": str(tool_input.get("path", "")),
+        "start_line": tool_input.get("start_line"),
+        "end_line": tool_input.get("end_line"),
     })
     if not file_result.get("ok"):
         error = str(file_result.get("error", "No puedo acceder a esa ruta."))

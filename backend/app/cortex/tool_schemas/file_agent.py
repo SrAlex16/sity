@@ -2,7 +2,9 @@ READ_FILE_TOOL = {
     "name": "read_file",
     "description": (
         "Lee un archivo permitido por la allowlist de Sity. "
-        "Úsala cuando el usuario pida ver, revisar o inspeccionar un archivo concreto."
+        "Úsala cuando el usuario pida ver, revisar o inspeccionar un archivo concreto. "
+        "Usa start_line y end_line para leer solo una sección de archivos grandes; "
+        "la respuesta incluye total_lines y lines_read para saber si hay más contenido."
     ),
     "input_schema": {
         "type": "object",
@@ -11,6 +13,20 @@ READ_FILE_TOOL = {
             "path": {
                 "type": "string",
                 "description": "Ruta del archivo a leer. Puede ser absoluta o relativa al proyecto.",
+            },
+            "start_line": {
+                "type": "integer",
+                "description": (
+                    "Línea inicial del rango a leer (1-indexed, inclusivo). "
+                    "Si se omite, se lee desde el principio."
+                ),
+            },
+            "end_line": {
+                "type": "integer",
+                "description": (
+                    "Línea final del rango a leer (1-indexed, inclusivo). "
+                    "Si se omite, se lee hasta el final del archivo (o hasta el límite de truncado)."
+                ),
             },
         },
         "required": ["path"],

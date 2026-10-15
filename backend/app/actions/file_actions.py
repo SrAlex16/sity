@@ -23,7 +23,11 @@ def execute_file_action(payload: dict[str, Any]) -> dict[str, Any]:
     action = str(payload.get("action", "")).strip()
 
     if action == "read_file":
-        return read_file(str(payload.get("path", "")))
+        return read_file(
+            str(payload.get("path", "")),
+            start_line=payload.get("start_line"),
+            end_line=payload.get("end_line"),
+        )
 
     if action == "list_directory":
         return list_directory(str(payload.get("path", "")))

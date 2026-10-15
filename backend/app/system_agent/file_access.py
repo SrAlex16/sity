@@ -93,7 +93,11 @@ def assert_write_allowed(path: Path) -> None:
         raise FileAccessError(f"Ruta no permitida para escritura: {path}")
 
 
-def read_file(path_value: str) -> dict[str, Any]:
+def read_file(
+    path_value: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> dict[str, Any]:
     try:
         path = _resolve_path(path_value)
         assert_read_allowed(path)
@@ -115,16 +119,44 @@ def read_file(path_value: str) -> dict[str, Any]:
                 "max_bytes": MAX_READ_BYTES,
             }
 
-        content = path.read_text(encoding="utf-8", errors="replace")
+        full_content = path.read_text(encoding="utf-8", errors="replace")
+        all_lines = full_content.splitlines(keepends=True)
+        total_lines = len(all_lines)
+
+        if start_line is not None or end_line is not None:
+            # 1-indexed, inclusive on both ends
+            s = max(1, start_line or 1)
+            e = min(total_lines, end_line if end_line is not None else total_lines)
+            if s > total_lines:
+                return {
+                    "ok": False,
+                    "error": f"start_line {s} excede el total de líneas ({total_lines})",
+                    "path": str(path),
+                    "total_lines": total_lines,
+                }
+            content = "".join(all_lines[s - 1 : e])
+            effective_start = s
+            effective_end = e
+        else:
+            content = full_content
+            effective_start = 1
+            effective_end = total_lines
+
         truncated = len(content) > MAX_READ_CHARS_FOR_MODEL
+        content_out = content[:MAX_READ_CHARS_FOR_MODEL]
+        # If truncated mid-range, adjust effective_end to reflect actual last line returned
+        if truncated:
+            effective_end = effective_start + content_out.count("\n") - 1
 
         return {
             "ok": True,
             "path": str(path),
             "size_bytes": size,
-            "content": content[:MAX_READ_CHARS_FOR_MODEL],
+            "content": content_out,
             "truncated": truncated,
-            "total_chars": len(content),
+            "total_chars": len(full_content),
+            "total_lines": total_lines,
+            "lines_read": {"start": effective_start, "end": effective_end},
         }
 
     except FileAccessError as exc:

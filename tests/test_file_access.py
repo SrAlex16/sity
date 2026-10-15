@@ -83,6 +83,69 @@ def test_read_file_blocks_sensitive_path(rel_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# read_file — start_line / end_line
+# ---------------------------------------------------------------------------
+
+def test_read_file_range_basic(tmp_path: Path, monkeypatch) -> None:
+    """start_line+end_line returns only the requested lines."""
+    import app.system_agent.file_access as fa
+    monkeypatch.setattr(fa, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(fa, "_resolve_path", lambda p: Path(p) if Path(p).is_absolute() else tmp_path / p)
+    monkeypatch.setattr(fa, "assert_read_allowed", lambda p: None)
+
+    f = tmp_path / "sample.txt"
+    f.write_text("line1\nline2\nline3\nline4\nline5\n", encoding="utf-8")
+
+    result = read_file(str(f), start_line=2, end_line=4)
+    assert result.get("ok"), result
+    assert result["content"] == "line2\nline3\nline4\n"
+    assert result["total_lines"] == 5
+    assert result["lines_read"] == {"start": 2, "end": 4}
+    assert not result["truncated"]
+
+
+def test_read_file_range_start_only(tmp_path: Path, monkeypatch) -> None:
+    """start_line without end_line reads to EOF."""
+    import app.system_agent.file_access as fa
+    monkeypatch.setattr(fa, "assert_read_allowed", lambda p: None)
+
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\nd\n", encoding="utf-8")
+
+    result = read_file(str(f), start_line=3)
+    assert result.get("ok"), result
+    assert result["content"] == "c\nd\n"
+    assert result["lines_read"] == {"start": 3, "end": 4}
+
+
+def test_read_file_no_range_returns_total_lines(tmp_path: Path, monkeypatch) -> None:
+    """Without range params, response still includes total_lines and lines_read."""
+    import app.system_agent.file_access as fa
+    monkeypatch.setattr(fa, "assert_read_allowed", lambda p: None)
+
+    f = tmp_path / "sample.txt"
+    f.write_text("x\ny\nz\n", encoding="utf-8")
+
+    result = read_file(str(f))
+    assert result.get("ok"), result
+    assert result["total_lines"] == 3
+    assert result["lines_read"] == {"start": 1, "end": 3}
+
+
+def test_read_file_range_start_beyond_total(tmp_path: Path, monkeypatch) -> None:
+    """start_line > total_lines returns ok=False with total_lines hint."""
+    import app.system_agent.file_access as fa
+    monkeypatch.setattr(fa, "assert_read_allowed", lambda p: None)
+
+    f = tmp_path / "sample.txt"
+    f.write_text("only one line\n", encoding="utf-8")
+
+    result = read_file(str(f), start_line=99)
+    assert not result.get("ok"), result
+    assert result.get("total_lines") == 1
+
+
+# ---------------------------------------------------------------------------
 # write_file — allowed
 # ---------------------------------------------------------------------------
 
