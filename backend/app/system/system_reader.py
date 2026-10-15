@@ -324,7 +324,7 @@ def list_allowed_directory(path: str) -> dict[str, Any]:
         return {
             "ok": False,
             "path": str(target),
-            "message": "Path is not allowed.",
+            "message": f"Ruta no permitida: {target}",
             "entries": [],
         }
 
@@ -332,7 +332,7 @@ def list_allowed_directory(path: str) -> dict[str, Any]:
         return {
             "ok": False,
             "path": str(target),
-            "message": "Path does not exist or is not a directory.",
+            "message": f"La ruta no existe o no es un directorio: {target}",
             "entries": [],
         }
 

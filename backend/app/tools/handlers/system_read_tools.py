@@ -66,10 +66,25 @@ def handle_read_service_status(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("list_allowed_directory")
 def handle_list_allowed_directory(ctx: ToolContext) -> ToolExecutionResult:
+    tool_name = ctx.tool_name
+    result = list_allowed_directory(str(ctx.tool_input.get("path", "")))
+    if not result.get("ok"):
+        msg = (
+            "Ruta no permitida. "
+            "Para listar directorios del sistema como /home, /tmp o /etc, "
+            "usa execute_shell con ls."
+        )
+        return ToolExecutionResult(
+            tool_name=tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
     return ctx.executor._simple_read_tool(
-        tool_name=ctx.tool_name,
+        tool_name=tool_name,
         trace_id=ctx.trace_id,
-        result=list_allowed_directory(str(ctx.tool_input.get("path", ""))),
+        result=result,
     )
 
 
