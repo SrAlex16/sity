@@ -88,10 +88,11 @@ READ_SERVICE_STATUS_TOOL = {
 LIST_ALLOWED_DIRECTORY_TOOL = {
     "name": "list_allowed_directory",
     "description": (
-        "Lista el contenido de una carpeta permitida por configuración: "
-        "devuelve nombre, ruta y tipo (archivo o directorio) de hasta 200 entradas ordenadas. "
-        "Úsala para preguntas como '¿qué hay en esta carpeta?', '¿qué archivos de log tiene el proyecto?', "
-        "'¿qué contiene el directorio de uploads?', '¿existe ese archivo?'."
+        "Lista el contenido de una carpeta del proyecto explícitamente permitida en system_access.yaml: "
+        "devuelve nombre, ruta y tipo de hasta 200 entradas. "
+        "Solo funciona con rutas configuradas en la allowlist (como el directorio de uploads o logs del proyecto). "
+        "Para listar directorios arbitrarios del sistema (/home, /tmp, /etc…) usa execute_shell con ls. "
+        "Úsala para '¿qué hay en uploads?', '¿qué archivos de log tiene el proyecto?', '¿existe ese archivo en el proyecto?'."
     ),
     "input_schema": {
         "type": "object",
@@ -262,14 +263,16 @@ SERVICE_CONTROL_TOOLSET = [
 EXECUTE_SHELL_TOOL = {
     "name": "execute_shell",
     "description": (
-        "Ejecuta un comando de shell en el servidor. "
-        "Comandos de lectura (ls, cat, grep, git status, git log, git diff, git show, "
+        "Ejecuta cualquier comando de shell en el servidor. "
+        "Comandos de lectura (ls, cat, grep, find, git status, git log, git diff, git show, "
         "git branch, git remote, curl GET, python3 -c, node -e…) se ejecutan directamente. "
         "Comandos de escritura (mkdir, rm, cp, mv, pip install, npm install, systemctl…) "
         "crean una acción pendiente que requiere confirmación (o se ejecutan si yolo_mode está activo). "
         "sudo reboot/shutdown/halt siempre están bloqueados. "
-        "Úsala para inspeccionar el entorno, ejecutar scripts, instalar dependencias o "
-        "realizar tareas de administración del sistema."
+        "Úsala cuando el usuario pida: 'ejecuta git diff', 'haz git status', 'muéstrame los últimos commits', "
+        "'lista /home', 'ls -la', 'qué hay en /tmp', 'ejecuta este script', 'instala X', "
+        "'comprueba el log', 'corre el test', 'borra el archivo Y'. "
+        "Para listar cualquier directorio del sistema usa esta herramienta con ls, no list_allowed_directory."
     ),
     "input_schema": {
         "type": "object",
