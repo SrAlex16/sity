@@ -259,6 +259,43 @@ SERVICE_CONTROL_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+EXECUTE_SHELL_TOOL = {
+    "name": "execute_shell",
+    "description": (
+        "Ejecuta un comando de shell en el servidor. "
+        "Comandos de lectura (ls, cat, grep, git status, git log, git diff, git show, "
+        "git branch, git remote, curl GET, python3 -c, node -e…) se ejecutan directamente. "
+        "Comandos de escritura (mkdir, rm, cp, mv, pip install, npm install, systemctl…) "
+        "crean una acción pendiente que requiere confirmación (o se ejecutan si yolo_mode está activo). "
+        "sudo reboot/shutdown/halt siempre están bloqueados. "
+        "Úsala para inspeccionar el entorno, ejecutar scripts, instalar dependencias o "
+        "realizar tareas de administración del sistema."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "Comando de shell a ejecutar.",
+            },
+            "working_dir": {
+                "type": "string",
+                "description": (
+                    "Directorio de trabajo relativo al project root. "
+                    "Por defecto '.' (project root)."
+                ),
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Segundos máximo de ejecución. Por defecto 30.",
+            },
+        },
+        "required": ["command"],
+    },
+}
+
+
 SET_YOLO_MODE_TOOL = {
     "name": "set_yolo_mode",
     "description": (
@@ -296,5 +333,6 @@ SYSTEM_TOOLSET = [
     REMOVE_ALLOWED_SERVICE_TOOL,
     LIST_ALLOWED_SERVICES_TOOL,
     SET_YOLO_MODE_TOOL,
+    EXECUTE_SHELL_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]

@@ -80,6 +80,7 @@ from app.cortex.tool_schemas.spotify import (
 )
 from app.cortex.tool_schemas.system import (
     ADD_ALLOWED_SERVICE_TOOL,
+    EXECUTE_SHELL_TOOL,
     LIST_ALLOWED_DIRECTORY_TOOL,
     LIST_ALLOWED_SERVICES_TOOL,
     READ_DISK_USAGE_TOOL,
@@ -201,6 +202,7 @@ __all__ = [
     "READ_SYSTEM_STATUS_TOOL",
     "REMOVE_ALLOWED_SERVICE_TOOL",
     "RESTART_SERVICE_TOOL",
+    "EXECUTE_SHELL_TOOL",
     "SERVICE_CONFIG_TOOLSET",
     "SERVICE_CONTROL_TOOLSET",
     "SET_YOLO_MODE_TOOL",

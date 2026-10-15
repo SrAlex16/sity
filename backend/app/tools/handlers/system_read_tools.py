@@ -73,6 +73,100 @@ def handle_list_allowed_directory(ctx: ToolContext) -> ToolExecutionResult:
     )
 
 
+@tool_handler("execute_shell")
+def handle_execute_shell(ctx: ToolContext) -> ToolExecutionResult:
+    from app.actions.confirmation_manager import ConfirmationManager
+    from app.actions.shell_actions import classify_command, execute_shell_action
+
+    tool_name = ctx.tool_name
+    command = str(ctx.tool_input.get("command", "")).strip()
+    working_dir = str(ctx.tool_input.get("working_dir", "."))
+    timeout = int(ctx.tool_input.get("timeout", 30))
+
+    if not command:
+        msg = "El parámetro 'command' es obligatorio."
+        return ToolExecutionResult(
+            tool_name=tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
+
+    classification = classify_command(command)
+
+    if classification == "blocked":
+        msg = f"Comando bloqueado por política de seguridad: {command!r}"
+        return ToolExecutionResult(
+            tool_name=tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
+
+    if classification == "read":
+        result = execute_shell_action({
+            "command": command,
+            "working_dir": working_dir,
+            "timeout": timeout,
+        })
+        return ctx.executor._simple_read_tool(
+            tool_name=tool_name, trace_id=ctx.trace_id, result=result,
+        )
+
+    # write — pending action (respects yolo_mode via ConfirmationManager)
+    shell_payload = {
+        "action": "execute_shell",
+        "command": command,
+        "working_dir": working_dir,
+        "timeout": timeout,
+    }
+    manager = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
+    existing = manager.find_equivalent_pending_action(action_type="shell", payload=shell_payload)
+    if existing:
+        local_text = (
+            f"Ya existe una acción pendiente equivalente: {existing.id}\n\n"
+            f"Confirma con: `{existing.confirmation_phrase}`"
+        )
+        return ToolExecutionResult(
+            tool_name=tool_name, ok=True, message=local_text,
+            updated_parameters=[], raw_result={
+                "success": True, "message": local_text,
+                "action_id": existing.id,
+                "confirmation_phrase": existing.confirmation_phrase,
+                "summary": existing.summary,
+                "already_existed": True,
+                "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+            },
+        )
+
+    created = manager.create_pending_action(
+        action_type="shell",
+        risk_level="critical",
+        summary=f"Shell: {command[:80]}",
+        payload=shell_payload,
+        trace_id=ctx.trace_id,
+    )
+    yolo = manager.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
+    local_text = (
+        f"Acción pendiente creada: {created.summary}\n\n"
+        f"Confirma con: `{created.confirmation_phrase}`"
+    )
+    return ToolExecutionResult(
+        tool_name=tool_name, ok=True, message=local_text,
+        updated_parameters=[], raw_result={
+            "success": True, "message": local_text,
+            "action_id": created.id,
+            "confirmation_phrase": created.confirmation_phrase,
+            "summary": created.summary,
+            "local_final": True, "text": local_text, "local_model": "pending-action-manager",
+        },
+    )
+
+
 @tool_handler("set_yolo_mode")
 def handle_set_yolo_mode(ctx: ToolContext) -> ToolExecutionResult:
     enabled = bool(ctx.tool_input.get("enabled", False))

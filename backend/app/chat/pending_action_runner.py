@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.actions.confirmation_manager import ConfirmationManager
 from app.actions.file_actions import execute_file_action
+from app.actions.shell_actions import execute_shell_action
 from app.actions.git_actions import execute_git_action
 from app.actions.git_actions import parse_payload as parse_git_payload
 from app.actions.google_actions import execute_google_action
@@ -124,6 +125,8 @@ class PendingActionRunner:
             return self._run_google(action, trace_id, lang)
         if action.action_type == "ha":
             return self._run_ha(action, trace_id, lang)
+        if action.action_type == "shell":
+            return self._run_shell(action, trace_id, lang)
         return _ActionResult(text=t("action_unknown_type", lang, action_type=action.action_type))
 
     def _run_git(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
@@ -280,6 +283,30 @@ class PendingActionRunner:
                 self.cm.mark_failed(action, trace_id, result.text)
                 return _ActionResult(
                     text=t("action_exec_failed", lang, action_id=action.id, error=result.text)
+                )
+        except Exception as exc:
+            self.cm.mark_failed(action, trace_id, str(exc))
+            return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
+
+    def _run_shell(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
+        try:
+            payload = json.loads(action.payload_json)
+            result = execute_shell_action(payload)
+            if result.get("ok"):
+                self.cm.mark_executed(action, trace_id)
+                stdout = result.get("stdout", "") or "(sin salida)"
+                returncode = result.get("returncode", 0)
+                lines = [f"Ejecutado: {action.summary}", f"Returncode: {returncode}", "", stdout]
+                if result.get("truncated"):
+                    lines.append("... (salida truncada a 4000 chars)")
+                if result.get("stderr"):
+                    lines += ["", "Stderr:", result["stderr"]]
+                return _ActionResult(text="\n".join(lines), was_executed=True)
+            else:
+                error = result.get("error") or result.get("stderr") or t("unknown_error", lang)
+                self.cm.mark_failed(action, trace_id, error)
+                return _ActionResult(
+                    text=t("action_exec_failed", lang, action_id=action.id, error=error)
                 )
         except Exception as exc:
             self.cm.mark_failed(action, trace_id, str(exc))
