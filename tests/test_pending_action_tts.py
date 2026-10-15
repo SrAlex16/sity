@@ -1,9 +1,8 @@
-"""Tests for TTS in pending_action_runner — regression for the 'confirm action = no audio' bug.
+"""Tests for pending_action_runner — confirmed actions must NOT generate TTS.
 
-1. test_run_with_voice_always_includes_audio     — voice_response_mode='always' → audio in response
-2. test_run_with_voice_never_has_no_audio        — voice_response_mode='never' → no audio
-3. test_run_updates_chatmessage_tts_fields       — tts_fragments/audio_filename saved to DB row
-4. test_run_tts_error_does_not_block_response   — TTS failure → text response still delivered
+Confirmed shell/git/google/etc actions return program output (stdout/stderr).
+TTS is intentionally disabled for this path; audio is only generated during
+conversational AI responses.
 """
 from __future__ import annotations
 
@@ -25,14 +24,12 @@ def _make_cm(session_id: str = "user:9901"):
     from app.actions.confirmation_manager import ConfirmationManager
     cm = MagicMock(spec=ConfirmationManager)
     cm._session_id = session_id
-    cm.session = MagicMock()  # not used for TTS lookup
+    cm.session = MagicMock()
     return cm
 
 
 def _make_ctx(session, trace_id: str = "trc_par_tts_test"):
     from app.chat.local_flow import LocalFlowContext
-
-    saved: list = []
 
     def _save(*, role, text, trace_id=None):
         with Session(engine) as db:
@@ -85,10 +82,10 @@ def _add_voice_setting(db: Session, session_id: str, key: str, value: str) -> No
 
 
 # ---------------------------------------------------------------------------
-# 1 & 2. Voice always → audio present; voice never → no audio
+# 1 & 2. Confirmed actions never produce audio regardless of voice_response_mode
 # ---------------------------------------------------------------------------
 
-class TestPendingActionRunnerTTS:
+class TestPendingActionRunnerNoTTS:
     def _run_with_voice_mode(self, mode: str):
         from app.chat.pending_action_runner import PendingActionRunner
 
@@ -99,7 +96,7 @@ class TestPendingActionRunnerTTS:
         fake_event = {"htmlLink": "https://calendar.google.com/event/ok"}
 
         with Session(engine) as session:
-            ctx = _make_ctx(session, trace_id="trc_par_tts_voice_test")
+            ctx = _make_ctx(session, trace_id=f"trc_par_notts_{mode}")
             cm = _make_cm("user:9901")
             runner = PendingActionRunner(cm)
             action = _make_action()
@@ -107,8 +104,6 @@ class TestPendingActionRunnerTTS:
             with (
                 patch("app.actions.google_actions._resolve_creds", return_value=fake_creds),
                 patch("googleapiclient.discovery.build") as mock_build,
-                patch("app.audio.tts_dispatcher.synthesize_fragment",
-                      return_value=("/audio/tmp/out.wav", "out.wav")),
             ):
                 mock_service = MagicMock()
                 mock_build.return_value = mock_service
@@ -119,22 +114,23 @@ class TestPendingActionRunnerTTS:
 
         return response
 
-    def test_run_with_voice_always_includes_audio(self):
+    def test_run_with_voice_always_has_no_audio(self):
+        """Confirmed actions skip TTS even when voice_response_mode='always'."""
         response = self._run_with_voice_mode("always")
         audio_artifacts = [a for a in response.artifacts if a.type == "audio"]
-        assert len(audio_artifacts) >= 1, "Expected audio artifact when voice_response_mode='always'"
+        assert len(audio_artifacts) == 0, "Confirmed actions must not generate TTS audio"
 
     def test_run_with_voice_never_has_no_audio(self):
         response = self._run_with_voice_mode("never")
         audio_artifacts = [a for a in response.artifacts if a.type == "audio"]
-        assert len(audio_artifacts) == 0, "Expected no audio artifact when voice_response_mode='never'"
+        assert len(audio_artifacts) == 0
 
 
 # ---------------------------------------------------------------------------
-# 3. DB fields tts_fragments / audio_filename updated on the ChatMessage row
+# 3. No DB tts fields written for confirmed actions
 # ---------------------------------------------------------------------------
 
-def test_run_updates_chatmessage_tts_fields():
+def test_run_does_not_write_tts_db_fields():
     from app.chat.pending_action_runner import PendingActionRunner
 
     with Session(engine) as db:
@@ -142,7 +138,7 @@ def test_run_updates_chatmessage_tts_fields():
 
     fake_creds = MagicMock()
     fake_event = {"htmlLink": "https://calendar.google.com/event/ok"}
-    trace_id = "trc_par_tts_db_test"
+    trace_id = "trc_par_notts_db_test"
 
     with Session(engine) as session:
         ctx = _make_ctx(session, trace_id=trace_id)
@@ -153,11 +149,6 @@ def test_run_updates_chatmessage_tts_fields():
         with (
             patch("app.actions.google_actions._resolve_creds", return_value=fake_creds),
             patch("googleapiclient.discovery.build") as mock_build,
-            patch("app.audio.tts_dispatcher.synthesize_fragment",
-                  return_value=("/audio/tmp/out.wav", "persisted_file.wav")),
-            patch("app.settings.config_loader.load_default_config",
-                  return_value={"audio": {"persist_tts": True, "elevenlabs_daily_char_limit": 0,
-                                          "elevenlabs_voice_id": "x"}}),
         ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
@@ -173,34 +164,29 @@ def test_run_updates_chatmessage_tts_fields():
             )
         ).first()
         assert msg is not None
-        assert msg.tts_fragments is not None and msg.tts_fragments >= 1
-        assert msg.audio_filename == "persisted_file.wav"
+        assert not msg.tts_fragments
+        assert not msg.audio_filename
 
 
 # ---------------------------------------------------------------------------
-# 4. TTS failure never blocks the response
+# 4. Response always delivered regardless of any TTS state
 # ---------------------------------------------------------------------------
 
-def test_run_tts_error_does_not_block_response():
+def test_run_response_always_delivered():
     from app.chat.pending_action_runner import PendingActionRunner
 
-    with Session(engine) as db:
-        _add_voice_setting(db, "user:9901", "voice_response_mode", "always")
-
-    fake_creds = MagicMock()
-    fake_event = {"htmlLink": "https://calendar.google.com/event/ok"}
-
     with Session(engine) as session:
-        ctx = _make_ctx(session, trace_id="trc_par_tts_err_test")
+        ctx = _make_ctx(session, trace_id="trc_par_notts_ok_test")
         cm = _make_cm("user:9901")
         runner = PendingActionRunner(cm)
         action = _make_action()
 
+        fake_creds = MagicMock()
+        fake_event = {"htmlLink": "https://calendar.google.com/event/ok"}
+
         with (
             patch("app.actions.google_actions._resolve_creds", return_value=fake_creds),
             patch("googleapiclient.discovery.build") as mock_build,
-            patch("app.audio.tts_dispatcher.synthesize_fragment",
-                  side_effect=RuntimeError("piper crash")),
         ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
