@@ -21,13 +21,11 @@ from app.actions.system_config_actions import (
     parse_payload as parse_system_config_payload,
 )
 from app.api.schemas import ChatArtifact, ChatMessageResponse, UsageSummary
-from app.audio.tts_service import maybe_attach_tts
 from app.chat.artifacts import capture_artifact_from_path
 from app.chat.local_flow import LocalFlowContext
 from app.core.language import resolve_lang
 from app.core.system_messages import t
-from app.memory.models import ChatMessage, PendingAction
-from sqlmodel import select
+from app.memory.models import PendingAction
 
 
 @dataclass
@@ -85,28 +83,6 @@ class PendingActionRunner:
             updated_parameters=[],
             artifacts=[result.artifact] if result.artifact else [],
         )
-
-        tts_result = maybe_attach_tts(
-            text=result.text,
-            session=ctx.session,
-            session_id=self.cm._session_id,
-            trace_id=ctx.trace_id,
-            result=response,
-            language_override=ctx.language_override,
-        )
-        if tts_result is not None:
-            n_fragments, audio_filename = tts_result
-            tts_row = ctx.session.exec(
-                select(ChatMessage).where(
-                    ChatMessage.trace_id == ctx.trace_id,
-                    ChatMessage.role == "sity",
-                )
-            ).first()
-            if tts_row is not None:
-                tts_row.tts_fragments = n_fragments
-                tts_row.audio_filename = audio_filename
-                ctx.session.add(tts_row)
-                ctx.session.commit()
 
         return response
 

@@ -37,14 +37,20 @@ def classify_command(command: str) -> Literal["read", "write", "blocked"]:
     if first == "sudo" and len(tokens) >= 2 and tokens[1] in _ALWAYS_BLOCKED:
         return "blocked"
 
-    # git: read only for safe introspection subcommands
+    # git: read only for safe introspection subcommands.
+    # Skip global git flags (e.g. --no-pager, -C /path) to find the actual subcommand.
     if first == "git":
-        if len(tokens) >= 2:
-            sub = tokens[1]
-            if sub in _GIT_READ_SUBCOMMANDS:
+        for tok in tokens[1:]:
+            if tok.startswith("-"):
+                continue
+            # Path argument to a flag like -C or --git-dir — skip it.
+            if "/" in tok or tok.startswith("."):
+                continue
+            if tok in _GIT_READ_SUBCOMMANDS:
                 return "read"
-            if sub == "fetch" and "--dry-run" in tokens:
+            if tok == "fetch" and "--dry-run" in tokens:
                 return "read"
+            break  # first plausible subcommand, not in read set → write
         return "write"
 
     # curl: read unless it sends a body or uses a mutating method
@@ -75,8 +81,14 @@ def execute_shell_action(payload: dict[str, Any]) -> dict[str, Any]:
     if not command:
         return {"ok": False, "error": "Comando vacío."}
 
+    from pathlib import Path as _Path
     project_root = get_runtime_config().project_root
-    cwd = project_root if working_dir == "." else (project_root / working_dir).resolve()
+    if working_dir in (".", ""):
+        cwd = project_root
+    elif _Path(working_dir).is_absolute():
+        cwd = _Path(working_dir)
+    else:
+        cwd = (project_root / working_dir).resolve()
 
     try:
         proc = subprocess.run(

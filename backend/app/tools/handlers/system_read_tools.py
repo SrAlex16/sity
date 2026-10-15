@@ -80,8 +80,9 @@ def handle_execute_shell(ctx: ToolContext) -> ToolExecutionResult:
 
     tool_name = ctx.tool_name
     command = str(ctx.tool_input.get("command", "")).strip()
-    working_dir = str(ctx.tool_input.get("working_dir", "."))
-    timeout = int(ctx.tool_input.get("timeout", 30))
+    working_dir = str(ctx.tool_input.get("working_dir") or ".")
+    _timeout_raw = ctx.tool_input.get("timeout")
+    timeout = int(_timeout_raw) if isinstance(_timeout_raw, (int, float)) else 30
 
     if not command:
         msg = "El parámetro 'command' es obligatorio."
