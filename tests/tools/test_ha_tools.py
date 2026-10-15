@@ -166,6 +166,7 @@ def test_ha_call_service_lock_requires_pending_action() -> None:
     created.confirmation_phrase = "confirmar acción abc"
     created.summary = "HA: lock.lock en lock.puerta_principal"
     mock_manager.create_pending_action.return_value = created
+    mock_manager.build_yolo_result.return_value = None
 
     with patch("app.tools.handlers.ha_tools.ConfirmationManager", return_value=mock_manager):
         result = handle_ha_call_service(ctx)

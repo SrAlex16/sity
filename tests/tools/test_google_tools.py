@@ -98,6 +98,7 @@ def test_calendar_create_event_creates_pending_action() -> None:
             mock_cm = mock_cm_cls.return_value
             mock_cm.find_equivalent_pending_action.return_value = None
             mock_cm.create_pending_action.return_value = mock_created
+            mock_cm.build_yolo_result.return_value = None
 
             result = handle_calendar_create_event(ctx)
 

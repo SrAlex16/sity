@@ -141,7 +141,7 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False)  # False until email verified
     display_name: Optional[str] = Field(default=None, index=True)
-    yolo_mode: bool = Field(default=False)
+    yolo_mode: bool = Field(default=False, sa_column_kwargs={"server_default": "0"})
     created_at: datetime = Field(default_factory=utc_now)
     last_login_at: Optional[datetime] = Field(default=None)
 
