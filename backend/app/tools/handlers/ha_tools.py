@@ -193,6 +193,9 @@ def handle_ha_call_service(ctx: ToolContext) -> ToolExecutionResult:
             payload=payload,
             trace_id=ctx.trace_id,
         )
+        yolo = manager.build_yolo_result(created, ctx.tool_name)
+        if yolo is not None:
+            return yolo
         local_text = (
             f"Acción pendiente creada: {created.summary}\n\n"
             f"Confirma con: `{created.confirmation_phrase}`"

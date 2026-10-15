@@ -84,6 +84,9 @@ def handle_rollback_latest_file_change(ctx: ToolContext) -> ToolExecutionResult:
         payload=rollback_payload,
         trace_id=trace_id,
     )
+    yolo = manager.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
     display_message = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Archivo: {target_path}\n"
@@ -189,6 +192,9 @@ def handle_rollback_file_change(ctx: ToolContext) -> ToolExecutionResult:
         payload=rollback_payload,
         trace_id=trace_id,
     )
+    yolo = manager.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
     local_text = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"

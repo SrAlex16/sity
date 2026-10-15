@@ -102,6 +102,20 @@ def _migrate_user_is_verified() -> None:
                       payload={"added_columns": ["is_verified"], "table": "user"})
 
 
+def _migrate_user_yolo_mode() -> None:
+    """Add yolo_mode column to user table if absent (idempotent)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(user)"))
+        existing = {row[1] for row in result.fetchall()}
+        if not existing:
+            return
+        if "yolo_mode" not in existing:
+            conn.execute(text("ALTER TABLE user ADD COLUMN yolo_mode INTEGER NOT NULL DEFAULT 0"))
+            conn.commit()
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"added_columns": ["yolo_mode"], "table": "user"})
+
+
 def _migrate_setting() -> None:
     """Convert Setting from (key UNIQUE) to (key, session_id UNIQUE) composite key.
 
@@ -705,6 +719,7 @@ def init_db() -> None:
         _migrate_chatmessage()
         _migrate_user()
         _migrate_user_is_verified()
+        _migrate_user_yolo_mode()
         _migrate_setting()
         _migrate_pendingaction()
         _migrate_social_reflection()

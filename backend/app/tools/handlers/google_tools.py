@@ -252,6 +252,11 @@ def handle_calendar_create_event(ctx: ToolContext) -> ToolExecutionResult:
         payload=create_payload,
         trace_id=ctx.trace_id,
     )
+    from app.achievements.triggers.inline import fire as _fire_ach
+    _fire_ach(ctx.executor.session, ctx.executor.session_id, "time_is_running_out")
+    yolo = manager.build_yolo_result(created, ctx.tool_name)
+    if yolo is not None:
+        return yolo
     local_text = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"
@@ -263,8 +268,6 @@ def handle_calendar_create_event(ctx: ToolContext) -> ToolExecutionResult:
         "summary": created.summary,
         "local_final": True, "text": local_text, "local_model": "pending-action-manager",
     }
-    from app.achievements.triggers.inline import fire as _fire_ach
-    _fire_ach(ctx.executor.session, ctx.executor.session_id, "time_is_running_out")
     return ToolExecutionResult(
         tool_name=ctx.tool_name, ok=True, message=local_text,
         updated_parameters=[], raw_result=result,
@@ -427,6 +430,9 @@ def handle_calendar_edit_event(ctx: ToolContext) -> ToolExecutionResult:
         payload=payload,
         trace_id=ctx.trace_id,
     )
+    yolo = manager.build_yolo_result(created, ctx.tool_name)
+    if yolo is not None:
+        return yolo
     local_text = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"
@@ -510,6 +516,9 @@ def handle_calendar_delete_event(ctx: ToolContext) -> ToolExecutionResult:
         payload=payload,
         trace_id=ctx.trace_id,
     )
+    yolo = manager.build_yolo_result(created, ctx.tool_name)
+    if yolo is not None:
+        return yolo
     local_text = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"

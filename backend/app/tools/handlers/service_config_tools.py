@@ -28,14 +28,17 @@ def _handle_allowed_service_change(ctx: ToolContext) -> ToolExecutionResult:
     verb = "Añadir" if tool_name == "add_allowed_service" else "Quitar"
     preposition = "a" if tool_name == "add_allowed_service" else "de"
 
-    created = ConfirmationManager(ctx.executor.session, ctx.executor.session_id).create_pending_action(
+    _cm = ConfirmationManager(ctx.executor.session, ctx.executor.session_id)
+    created = _cm.create_pending_action(
         action_type="system_config",
         risk_level="critical",
         summary=f"{verb} {service_name} {preposition} servicios permitidos",
         payload={"action": tool_name, "service_name": service_name},
         trace_id=ctx.trace_id,
     )
-
+    yolo = _cm.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
     local_text = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"

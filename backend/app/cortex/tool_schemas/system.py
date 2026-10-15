@@ -259,6 +259,29 @@ SERVICE_CONTROL_TOOLSET = [
     NO_ACTION_REQUIRED_TOOL,
 ]
 
+SET_YOLO_MODE_TOOL = {
+    "name": "set_yolo_mode",
+    "description": (
+        "Activa o desactiva el modo yolo para el usuario actual. "
+        "En modo yolo las acciones pendientes (escritura de archivos, comandos de sistema, etc.) "
+        "se ejecutan inmediatamente sin pedir confirmación. "
+        "Git push siempre requiere confirmación aunque yolo_mode esté activado. "
+        "Solo disponible para administradores."
+    ),
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "enabled": {
+                "type": "boolean",
+                "description": "true para activar yolo mode, false para desactivarlo.",
+            },
+        },
+        "required": ["enabled"],
+    },
+}
+
+
 SYSTEM_TOOLSET = [
     READ_SYSTEM_STATUS_TOOL,
     READ_DISK_USAGE_TOOL,
@@ -272,5 +295,6 @@ SYSTEM_TOOLSET = [
     ADD_ALLOWED_SERVICE_TOOL,
     REMOVE_ALLOWED_SERVICE_TOOL,
     LIST_ALLOWED_SERVICES_TOOL,
+    SET_YOLO_MODE_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]

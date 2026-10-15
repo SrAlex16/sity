@@ -700,14 +700,17 @@ class ToolExecutor:
             "service_name": service_name,
         }
 
-        created = ConfirmationManager(self.session, self.session_id).create_pending_action(
+        _cm = ConfirmationManager(self.session, self.session_id)
+        created = _cm.create_pending_action(
             action_type="system",
             risk_level=risk_level,
             summary=summary or f"{action} {service_name}",
             payload=payload,
             trace_id=trace_id,
         )
-
+        yolo = _cm.build_yolo_result(created, "system_propose_action")
+        if yolo is not None:
+            return yolo
         local_text = (
             f"Acción pendiente creada: {created.summary}\n\n"
             f"Confirma con: `{created.confirmation_phrase}`"

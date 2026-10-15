@@ -23,6 +23,8 @@ class CreatedPendingAction:
     confirmation_phrase: str
     summary: str
     risk_level: str
+    executed: bool = False
+    execution_text: str | None = None
 
 
 CONFIRMATION_PREFIX = "confirmo ejecutar"
@@ -32,6 +34,32 @@ class ConfirmationManager:
     def __init__(self, session: Session, session_id: str = "default"):
         self.session = session
         self._session_id = session_id
+        self.yolo_mode = self._load_yolo_mode()
+
+    def _load_yolo_mode(self) -> bool:
+        if not self._session_id.startswith("user:"):
+            return False
+        try:
+            user_id = int(self._session_id.split(":", 1)[1])
+            from app.memory.models import User
+            user = self.session.get(User, user_id)
+            return bool(user and user.yolo_mode)
+        except Exception:
+            return False
+
+    def build_yolo_result(self, created: "CreatedPendingAction", tool_name: str) -> "Any | None":
+        """Returns a ToolExecutionResult if yolo mode executed the action, else None."""
+        if not created.executed:
+            return None
+        from app.tools.types import ToolExecutionResult
+        text = created.execution_text or f"Ejecutado: {created.summary}"
+        return ToolExecutionResult(
+            tool_name=tool_name, ok=True, message=text,
+            updated_parameters=[], raw_result={
+                "success": True, "tool_name": tool_name,
+                "local_final": True, "text": text, "local_model": "yolo",
+            },
+        )
 
     def message_starts_with_confirmation_prefix(self, message: str) -> bool:
         return message.strip().lower().startswith(CONFIRMATION_PREFIX)
@@ -78,9 +106,25 @@ class ConfirmationManager:
                 "summary": summary,
                 "payload": payload,
                 "expires_at": action.expires_at.isoformat(),
+                "yolo": self.yolo_mode,
             },
             audit=True,
         )
+
+        # Yolo mode: execute immediately (git push always requires confirmation)
+        if self.yolo_mode and action_type != "git":
+            from app.chat.pending_action_runner import PendingActionRunner
+            result = PendingActionRunner(self)._execute(action, trace_id, "es")
+            if result.was_executed:
+                self.mark_executed(action, trace_id)
+            return CreatedPendingAction(
+                id=action_id,
+                confirmation_phrase=confirmation_phrase,
+                summary=summary,
+                risk_level=risk_level,
+                executed=True,
+                execution_text=result.text,
+            )
 
         return CreatedPendingAction(
             id=action_id,

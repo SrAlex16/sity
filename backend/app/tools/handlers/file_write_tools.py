@@ -68,6 +68,9 @@ def handle_write_file(ctx: ToolContext) -> ToolExecutionResult:
         payload=write_payload,
         trace_id=trace_id,
     )
+    yolo = manager.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
     local_text = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Confirma con: `{created.confirmation_phrase}`"
@@ -182,7 +185,9 @@ def handle_apply_text_patch(ctx: ToolContext) -> ToolExecutionResult:
         },
         trace_id=trace_id,
     )
-
+    yolo = manager.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
     display_message = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Diff propuesto:\n```diff\n{diff_display}```\n\n"
@@ -275,7 +280,9 @@ def handle_apply_unified_diff(ctx: ToolContext) -> ToolExecutionResult:
         payload=unified_payload,
         trace_id=trace_id,
     )
-
+    yolo = manager.build_yolo_result(created, tool_name)
+    if yolo is not None:
+        return yolo
     display_message = (
         f"Acción pendiente creada: {created.summary}\n\n"
         f"Diff propuesto:\n```diff\n{diff_display}```\n\n"
@@ -389,28 +396,43 @@ def handle_apply_multi_file_unified_diff_plan(ctx: ToolContext) -> ToolExecution
             payload=unified_payload,
             trace_id=trace_id,
         )
-        created_actions.append({
-            "path": path,
-            "action_id": created.id,
-            "confirmation_phrase": created.confirmation_phrase,
-            "diff_preview": diff_display,
-            "already_existed": False,
-        })
+        if created.executed:
+            created_actions.append({
+                "path": path,
+                "executed": True,
+                "execution_text": created.execution_text or f"Ejecutado: {path}",
+                "already_existed": False,
+            })
+        else:
+            created_actions.append({
+                "path": path,
+                "action_id": created.id,
+                "confirmation_phrase": created.confirmation_phrase,
+                "diff_preview": diff_display,
+                "already_existed": False,
+            })
 
-    lines = [
-        f"Plan multiarchivo creado: {len(created_actions)} acciones pendientes.",
-        "",
-    ]
-    for index, entry in enumerate(created_actions, start=1):
-        existed = entry.get("already_existed", False)
-        lines.append(f"{index}. {entry['path']}{' (ya existía)' if existed else ''}")
-        lines.append(f"   Confirma con: `{entry['confirmation_phrase']}`")
+    any_yolo = any(entry.get("executed") for entry in created_actions)
+    if any_yolo:
+        lines = [f"Plan multiarchivo ejecutado: {len(created_actions)} archivos.", ""]
+        for index, entry in enumerate(created_actions, start=1):
+            lines.append(f"{index}. {entry['path']}: {entry.get('execution_text', 'ejecutado')}")
+    else:
+        lines = [
+            f"Plan multiarchivo creado: {len(created_actions)} acciones pendientes.",
+            "",
+        ]
+        for index, entry in enumerate(created_actions, start=1):
+            existed = entry.get("already_existed", False)
+            lines.append(f"{index}. {entry['path']}{' (ya existía)' if existed else ''}")
+            lines.append(f"   Confirma con: `{entry['confirmation_phrase']}`")
 
-    lines += [
-        "",
-        "Confirma cada acción por separado.",
-        "No se ha modificado ningún archivo todavía.",
-    ]
+    if not any_yolo:
+        lines += [
+            "",
+            "Confirma cada acción por separado.",
+            "No se ha modificado ningún archivo todavía.",
+        ]
 
     display_message = "\n".join(lines)
 
