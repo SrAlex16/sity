@@ -22,6 +22,11 @@ SELECTOR_EXEMPT_TOOLS: set[str] = {
     # Injected in routes_chat.py conditionally (model_router_enabled: true).
     # Handled at the planner-response level, never reaches the toolset selector.
     "propose_model_upgrade",
+    # Disabled by SITY_SHELL_TOOLS_ENABLED / SITY_YOLO_MODE_ENABLED (both false by default).
+    # Their dicts exist in tool_schemas as module-level constants but are absent from
+    # SYSTEM_TOOLSET (and therefore from _TOOL_TO_TOOLSET) until the flags are re-enabled.
+    "execute_shell",
+    "set_yolo_mode",
 }
 
 _FILE_TOOLS: set[str] = {
