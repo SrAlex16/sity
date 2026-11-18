@@ -104,6 +104,18 @@ _MEMORY_POLICY: dict[str, str] = {
     "admin": "Admin sessions have persistent conversation memory across sessions.",
 }
 
+# Categories that only apply to specific session roles.
+# A violation in a category not listed for a given role is treated as ok=True
+# (the checker prompt says "GUEST sessions only" for architecture_disclosure,
+# but the enforcement must be in code — text instructions alone are not reliable).
+_CATEGORY_APPLICABLE_ROLES: dict[str, frozenset[str]] = {
+    "architecture_disclosure": frozenset({"guest"}),
+    "capability_overclaim":    frozenset({"guest", "user", "admin"}),
+    "internal_leak":           frozenset({"guest", "user", "admin"}),
+    "memory_fabrication":      frozenset({"guest", "user", "admin"}),
+    "contradiction":           frozenset({"guest", "user", "admin"}),
+}
+
 
 # ---------------------------------------------------------------------------
 # Pre-filter regex patterns (zero cost, decides whether to call Haiku)
@@ -270,7 +282,10 @@ _CORRECT_SYSTEM = (
     "You are a response corrector for an AI assistant. "
     "Rewrite the given response to fix only the identified issue. "
     "Keep all other content exactly as-is. "
-    "Reply with ONLY the corrected response text — no explanation, no preamble, no quotes."
+    "Reply in the SAME LANGUAGE as the original response. "
+    "Reply with valid JSON only — no prose outside the JSON.\n\n"
+    '{"changed": true, "text": "<corrected response>"} if you rewrote anything.\n'
+    '{"changed": false} if the response is already acceptable and no rewrite is needed.'
 )
 
 
@@ -334,6 +349,18 @@ def _parse_check_response(text: str) -> IntegrityResult:
         return IntegrityResult(ok=False, issue=issue, category=category)
     except Exception:
         return IntegrityResult(ok=True)
+
+
+def _applies_to_role(result: IntegrityResult, role: str) -> bool:
+    """Return False if the violation category does not apply to this session role.
+
+    Categories absent from _CATEGORY_APPLICABLE_ROLES are treated as universal
+    (conservative fallback: flag them for all roles rather than silently ignore).
+    """
+    applicable = _CATEGORY_APPLICABLE_ROLES.get(result.category)
+    if applicable is None:
+        return True
+    return role in applicable
 
 
 def _run_haiku(system: str, user_message: str, *, trace_id: str, max_tokens: int = 200) -> str | None:
@@ -404,7 +431,21 @@ def check_response_integrity(
     raw = _run_haiku(_CHECK_SYSTEM, context, trace_id=trace_id, max_tokens=80)
     if raw is None:
         return IntegrityResult(ok=True)
-    return _parse_check_response(raw)
+    parsed = _parse_check_response(raw)
+    if not parsed.ok and not _applies_to_role(parsed, role):
+        write_log(
+            level="INFO",
+            module="integrity",
+            event="response_integrity_category_skipped",
+            trace_id=trace_id,
+            payload={
+                "category": parsed.category,
+                "role": role,
+                "issue": parsed.issue,
+            },
+        )
+        return IntegrityResult(ok=True)
+    return parsed
 
 
 def correct_response(
@@ -413,16 +454,39 @@ def correct_response(
     *,
     trace_id: str = "",
 ) -> str:
-    """Rewrite text to fix the identified issue. Returns original on failure."""
+    """Rewrite text to fix the identified issue. Returns original on any failure."""
     user_message = (
         f"Issue to fix: {result.issue}\n"
         f"Category: {result.category}\n\n"
         f"Original response:\n{text}"
     )
-    corrected = _run_haiku(_CORRECT_SYSTEM, user_message, trace_id=trace_id, max_tokens=600)
-    if corrected and len(corrected.strip()) > 10:
-        return corrected.strip()
-    return text
+    raw = _run_haiku(_CORRECT_SYSTEM, user_message, trace_id=trace_id, max_tokens=600)
+    if not raw:
+        return text
+    try:
+        stripped = raw.strip()
+        if stripped.startswith("```"):
+            parts = stripped.split("```")
+            stripped = parts[1] if len(parts) > 1 else stripped
+            if stripped.startswith("json"):
+                stripped = stripped[4:]
+        data = json.loads(stripped)
+        if not data.get("changed"):
+            return text
+        corrected = str(data.get("text", "")).strip()
+        if not corrected:
+            return text
+        return corrected
+    except Exception:
+        write_log(
+            level="WARN",
+            module="integrity",
+            event="response_integrity_corrector_parse_failed",
+            trace_id=trace_id,
+            payload={"category": result.category, "raw_preview": raw[:120]},
+            audit=True,
+        )
+        return text
 
 
 def check_and_correct_response(
@@ -494,5 +558,7 @@ def check_and_correct_response(
             },
             audit=True,
         )
+        # Correction still violated — return original rather than leaking corrector output
+        return text
 
     return corrected

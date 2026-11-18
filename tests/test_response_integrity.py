@@ -25,6 +25,7 @@ Covers:
 """
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -62,7 +63,7 @@ def _mock_haiku_violation(category: str = "capability_overclaim", issue: str = "
 def _mock_haiku_corrected(text: str = "Respuesta corregida.") -> MagicMock:
     resp = MagicMock()
     resp.ok = True
-    resp.text = text
+    resp.text = json.dumps({"changed": True, "text": text})
     return resp
 
 
@@ -1107,3 +1108,193 @@ def test_grabar_audio_detected_as_capability_overclaim(mock_gen) -> None:
     )
     assert result.ok is False
     assert result.category == "capability_overclaim"
+
+
+# ---------------------------------------------------------------------------
+# A-01 (2026-11-18) — role-gate: architecture_disclosure ignored for admin/user
+# ---------------------------------------------------------------------------
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_architecture_disclosure_ignored_for_admin(mock_gen) -> None:
+    """Admin session: architecture_disclosure from Haiku must be treated as ok=True."""
+    mock_gen.return_value = _mock_haiku_violation(
+        "architecture_disclosure", "reveals /home/alex/ path"
+    )
+    result = check_response_integrity(
+        "el repo está en /home/alex/projects/sity",
+        "user:1",
+        is_admin=True,
+        tool_called=True,
+    )
+    assert result.ok is True, (
+        "A-01: architecture_disclosure must not fire for admin sessions"
+    )
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_architecture_disclosure_ignored_for_user(mock_gen) -> None:
+    """Regular user session: architecture_disclosure from Haiku must be treated as ok=True."""
+    mock_gen.return_value = _mock_haiku_violation(
+        "architecture_disclosure", "reveals server details"
+    )
+    result = check_response_integrity(
+        "el repo está en /home/alex/projects",
+        "user:1",
+        is_admin=False,
+        tool_called=True,
+    )
+    assert result.ok is True, (
+        "A-01: architecture_disclosure must not fire for regular user sessions"
+    )
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_architecture_disclosure_still_fires_for_guest(mock_gen) -> None:
+    """Guest session: architecture_disclosure from Haiku must still flag correctly."""
+    mock_gen.return_value = _mock_haiku_violation(
+        "architecture_disclosure", "reveals /home/alex/ path"
+    )
+    result = check_response_integrity(
+        "el repo está en /home/alex/projects/sity",
+        "guest:abc",
+        is_admin=False,
+        tool_called=True,
+    )
+    assert result.ok is False
+    assert result.category == "architecture_disclosure"
+
+
+@patch("app.chat.response_integrity.write_log")
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_architecture_disclosure_admin_logs_skip(mock_gen, mock_log) -> None:
+    """When a category is skipped due to role, an INFO log is emitted."""
+    mock_gen.return_value = _mock_haiku_violation(
+        "architecture_disclosure", "reveals /home/alex/ path"
+    )
+    check_response_integrity(
+        "el repo está en /home/alex/projects/sity",
+        "user:1",
+        is_admin=True,
+        tool_called=True,
+    )
+    skip_events = [
+        c[1]["event"] for c in mock_log.call_args_list
+        if c[1].get("event") == "response_integrity_category_skipped"
+    ]
+    assert skip_events, "Expected response_integrity_category_skipped INFO log"
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_check_and_correct_admin_arch_disclosure_returns_original(mock_gen) -> None:
+    """Full pipeline: admin + architecture_disclosure → corrector NOT called, original returned."""
+    mock_gen.side_effect = [
+        _mock_haiku_violation("architecture_disclosure", "reveals path"),  # check
+    ]
+    original = "el repo está en /home/alex/projects/sity"
+    result = check_and_correct_response(
+        original,
+        "user:1",
+        is_admin=True,
+        tool_called=True,
+    )
+    assert result == original
+    assert mock_gen.call_count == 1, "Corrector must not be called when category is role-gated"
+
+
+# ---------------------------------------------------------------------------
+# A-02 (2026-11-18) — structured corrector: JSON protocol, no prose leak
+# ---------------------------------------------------------------------------
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_corrector_json_changed_true_uses_text(mock_gen) -> None:
+    """Corrector returns changed=true + text → corrected text is used."""
+    mock_gen.return_value = _mock_haiku_corrected("No tengo ese acceso.")
+    issue = IntegrityResult(ok=False, issue="git access claim", category="capability_overclaim")
+    result = correct_response("Tengo acceso a git.", issue)
+    assert result == "No tengo ese acceso."
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_corrector_json_changed_false_returns_original(mock_gen) -> None:
+    """Corrector returns changed=false → original text returned."""
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = json.dumps({"changed": False})
+    mock_gen.return_value = resp
+    original = "Puedo ayudarte con texto."
+    issue = IntegrityResult(ok=False, issue="x", category="capability_overclaim")
+    assert correct_response(original, issue) == original
+
+
+@patch("app.chat.response_integrity.write_log")
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_corrector_unstructured_prose_returns_original(mock_gen, mock_log) -> None:
+    """Corrector returns unstructured prose (not JSON) → original returned, WARN logged."""
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = (
+        "I understand you want me to correct the response, but the content is simply "
+        "an IP address which is not flagged as a violation."
+    )
+    mock_gen.return_value = resp
+    original = "La IP local es 192.168.1.100."
+    issue = IntegrityResult(ok=False, issue="arch info", category="architecture_disclosure")
+    result = correct_response(original, issue)
+    assert result == original
+    warn_events = [
+        c[1]["event"] for c in mock_log.call_args_list
+        if c[1].get("level") == "WARN"
+    ]
+    assert "response_integrity_corrector_parse_failed" in warn_events
+
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_corrector_json_missing_text_field_returns_original(mock_gen) -> None:
+    """Corrector returns changed=true but no text field → original returned."""
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = json.dumps({"changed": True})  # missing "text" key
+    mock_gen.return_value = resp
+    original = "Tengo acceso a git."
+    issue = IntegrityResult(ok=False, issue="x", category="capability_overclaim")
+    assert correct_response(original, issue) == original
+
+
+# ---------------------------------------------------------------------------
+# A-03 (2026-11-18) — correction-failed path returns original, not corrector output
+# ---------------------------------------------------------------------------
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_full_pipeline_correction_failed_returns_original(mock_gen) -> None:
+    """When correction still fails the second check, the ORIGINAL text is returned."""
+    mock_gen.side_effect = [
+        _mock_haiku_violation("capability_overclaim", "issue 1"),
+        _mock_haiku_corrected("Aún tengo acceso a git."),
+        _mock_haiku_violation("capability_overclaim", "still bad"),
+    ]
+    original = "Tengo acceso a git."
+    result = check_and_correct_response(original, "guest:abc", tool_called=False)
+    assert result == original, (
+        "A-03: when correction still fails, the ORIGINAL text must be returned"
+    )
+
+
+# ---------------------------------------------------------------------------
+# A-04 (2026-11-18) — guest with real violation still corrected normally
+# ---------------------------------------------------------------------------
+
+@patch("app.cortex.mock_provider.MockProvider.generate")
+def test_guest_real_violation_still_corrected(mock_gen) -> None:
+    """Guest + architecture_disclosure: check fires, correction applied."""
+    mock_gen.side_effect = [
+        _mock_haiku_violation("architecture_disclosure", "reveals /home/alex/"),
+        _mock_haiku_corrected("El servidor donde corro está en una red privada."),
+        _mock_haiku_ok(),
+    ]
+    result = check_and_correct_response(
+        "corro en una Raspberry Pi en /home/alex/projects",
+        "guest:abc",
+        is_admin=False,
+        tool_called=False,
+    )
+    assert result == "El servidor donde corro está en una red privada."
