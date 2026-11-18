@@ -44,6 +44,14 @@ class RuntimeConfig:
     # Maintenance mode — blocks Guest/User with 503; Admin always passes through.
     # Toggle without rebuild: set SITY_MAINTENANCE_MODE=true in .env, then ./deploy.sh
     maintenance_mode: bool
+    # Shell execution — disabled by default until classify_command is hardened against
+    # shell metacharacters, injection via && ; | $() and similar.
+    # Set SITY_SHELL_TOOLS_ENABLED=true to re-enable once the classifier is safe.
+    shell_tools_enabled: bool
+    # Yolo mode — disabled by default until shell is safe. When disabled,
+    # ConfirmationManager never reads User.yolo_mode and always requires confirmation.
+    # Set SITY_YOLO_MODE_ENABLED=true to re-enable.
+    yolo_mode_enabled: bool
 
     @property
     def config_dir(self) -> Path:
@@ -78,4 +86,6 @@ def get_runtime_config() -> RuntimeConfig:
         local_ai_enabled=env_bool("SITY_LOCAL_AI_ENABLED", False),
         local_ai_provider=env_str("SITY_LOCAL_AI_PROVIDER", "ollama"),
         maintenance_mode=env_bool("SITY_MAINTENANCE_MODE", False),
+        shell_tools_enabled=env_bool("SITY_SHELL_TOOLS_ENABLED", False),
+        yolo_mode_enabled=env_bool("SITY_YOLO_MODE_ENABLED", False),
     )

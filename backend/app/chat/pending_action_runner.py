@@ -265,6 +265,15 @@ class PendingActionRunner:
             return _ActionResult(text=t("action_exec_exception", lang, action_id=action.id, exc=str(exc)))
 
     def _run_shell(self, action: PendingAction, trace_id: str, lang: str) -> _ActionResult:
+        from app.core.runtime_config import get_runtime_config
+        if not get_runtime_config().shell_tools_enabled:
+            msg = (
+                "execute_shell está desactivado. "
+                "Esta acción pendiente no puede ejecutarse hasta que se reactive el flag."
+            )
+            self.cm.mark_failed(action, trace_id, msg)
+            return _ActionResult(text=msg)
+
         try:
             payload = json.loads(action.payload_json)
             result = execute_shell_action(payload)

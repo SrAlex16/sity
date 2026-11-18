@@ -322,7 +322,7 @@ SET_YOLO_MODE_TOOL = {
 }
 
 
-SYSTEM_TOOLSET = [
+_SYSTEM_TOOLSET_BASE = [
     READ_SYSTEM_STATUS_TOOL,
     READ_DISK_USAGE_TOOL,
     READ_PROCESSES_TOOL,
@@ -335,7 +335,19 @@ SYSTEM_TOOLSET = [
     ADD_ALLOWED_SERVICE_TOOL,
     REMOVE_ALLOWED_SERVICE_TOOL,
     LIST_ALLOWED_SERVICES_TOOL,
-    SET_YOLO_MODE_TOOL,
-    EXECUTE_SHELL_TOOL,
     NO_ACTION_REQUIRED_TOOL,
 ]
+
+
+def build_system_toolset() -> list[dict]:
+    from app.core.runtime_config import get_runtime_config
+    cfg = get_runtime_config()
+    tools = list(_SYSTEM_TOOLSET_BASE)
+    if cfg.yolo_mode_enabled:
+        tools.insert(-1, SET_YOLO_MODE_TOOL)
+    if cfg.shell_tools_enabled:
+        tools.insert(-1, EXECUTE_SHELL_TOOL)
+    return tools
+
+
+SYSTEM_TOOLSET = build_system_toolset()

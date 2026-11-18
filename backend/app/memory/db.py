@@ -710,6 +710,50 @@ def _migrate_bugreport() -> None:
                       payload={"table": "bugreport", "added_columns": added})
 
 
+def _migrate_reset_yolo_mode() -> None:
+    """Set yolo_mode=0 for all users (idempotent safety reset).
+
+    Yolo mode is disabled by SITY_YOLO_MODE_ENABLED=false (the default).
+    This reset ensures that if yolo_mode_enabled is ever flipped on, no user
+    silently inherits a previously-active yolo session.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(user)"))
+        cols = {row[1] for row in result.fetchall()}
+        if "yolo_mode" not in cols:
+            return
+        affected = conn.execute(
+            text("UPDATE user SET yolo_mode = 0 WHERE yolo_mode != 0")
+        ).rowcount
+        conn.commit()
+        if affected:
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "user", "reset_yolo_mode_rows": affected})
+
+
+def _migrate_cancel_shell_pending_actions() -> None:
+    """Cancel any pending PendingActions with action_type='shell'.
+
+    execute_shell is disabled by default.  Stale shell actions in the queue
+    can never be confirmed safely, so we cancel them on startup.
+    This is idempotent and skips if the table doesn't exist yet.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(pendingaction)"))
+        if not result.fetchall():
+            return
+        affected = conn.execute(
+            text(
+                "UPDATE pendingaction SET status = 'cancelled' "
+                "WHERE action_type = 'shell' AND status = 'pending'"
+            )
+        ).rowcount
+        conn.commit()
+        if affected:
+            write_log(level="INFO", module="memory", event="db_migration_applied",
+                      payload={"table": "pendingaction", "cancelled_shell_actions": affected})
+
+
 def init_db() -> None:
     import app.memory.models as _models  # noqa: F401 — registers tables in SQLModel.metadata
     try:
@@ -739,6 +783,8 @@ def init_db() -> None:
         _migrate_punto5()
         _migrate_evidence_trail_schema()
         _migrate_bugreport()
+        _migrate_reset_yolo_mode()
+        _migrate_cancel_shell_pending_actions()
         # Set up FTS5 at startup so worker threads never contend on first-time setup.
         from app.memory.search import _setup_fts
         _setup_fts()

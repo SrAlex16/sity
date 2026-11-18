@@ -37,6 +37,9 @@ class ConfirmationManager:
         self.yolo_mode = self._load_yolo_mode()
 
     def _load_yolo_mode(self) -> bool:
+        from app.core.runtime_config import get_runtime_config
+        if not get_runtime_config().yolo_mode_enabled:
+            return False
         if not self._session_id.startswith("user:"):
             return False
         try:

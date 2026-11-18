@@ -8,6 +8,21 @@ This file records significant implementation events extracted from state.md and 
 
 ## English
 
+### 2026-11-18 — execute_shell and yolo mode disabled by security flags
+
+`execute_shell` and `set_yolo_mode` have been disabled by default via two new runtime flags
+(`SITY_SHELL_TOOLS_ENABLED`, `SITY_YOLO_MODE_ENABLED`, both `false`). Both tools are removed
+from `SYSTEM_TOOLSET` and their handlers reject with a clear Spanish error. `ConfirmationManager`
+ignores `User.yolo_mode` when the flag is off. Existing pending shell actions in the DB are
+cancelled on startup. All users' `yolo_mode` is reset to 0.
+
+**Known gaps that must be closed before re-enabling:**
+
+- `classify_command()` only inspects the first token — `ls && evil_command` is classified as "read"
+- `execute_shell_action()` runs with `shell=True` — metacharacters (`;`, `&&`, `|`, `$()`, redirections) execute freely
+- Read commands (`cat`, `env`, `printenv`) can exfiltrate secrets from `.env` or environment
+- `sudo` is only blocked for `reboot/shutdown/halt`; with yolo active, other `sudo` commands execute without confirmation
+
 ### 2026-10-08
 
 - **Status**: Public beta active. 0 known P0 issues.

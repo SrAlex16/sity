@@ -90,6 +90,20 @@ def handle_list_allowed_directory(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("execute_shell")
 def handle_execute_shell(ctx: ToolContext) -> ToolExecutionResult:
+    from app.core.runtime_config import get_runtime_config
+    if not get_runtime_config().shell_tools_enabled:
+        msg = (
+            "La herramienta execute_shell está desactivada temporalmente por seguridad. "
+            "El clasificador de comandos no está endurecido para metacaracteres de shell."
+        )
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
+
     from app.actions.confirmation_manager import ConfirmationManager
     from app.actions.shell_actions import classify_command, execute_shell_action
 
@@ -185,6 +199,20 @@ def handle_execute_shell(ctx: ToolContext) -> ToolExecutionResult:
 
 @tool_handler("set_yolo_mode")
 def handle_set_yolo_mode(ctx: ToolContext) -> ToolExecutionResult:
+    from app.core.runtime_config import get_runtime_config
+    if not get_runtime_config().yolo_mode_enabled:
+        msg = (
+            "El modo yolo está desactivado temporalmente por seguridad. "
+            "Se reactivará cuando execute_shell tenga un clasificador de comandos endurecido."
+        )
+        return ToolExecutionResult(
+            tool_name=ctx.tool_name, ok=False, message=msg,
+            updated_parameters=[], raw_result={
+                "success": False, "message": msg,
+                "local_final": True, "text": msg, "local_model": "tool-policy",
+            },
+        )
+
     enabled = bool(ctx.tool_input.get("enabled", False))
     session_id = ctx.executor.session_id
 

@@ -40,6 +40,8 @@ def _maintenance_on():
         local_ai_enabled=base.local_ai_enabled,
         local_ai_provider=base.local_ai_provider,
         maintenance_mode=True,
+        shell_tools_enabled=base.shell_tools_enabled,
+        yolo_mode_enabled=base.yolo_mode_enabled,
     )
     return patch("app.auth.maintenance.get_runtime_config", return_value=patched)
 

@@ -70,6 +70,10 @@ os.environ.setdefault("SITY_DB_URL", f"sqlite:///{_TEST_DB_PATH}")
 # sets it to "true" for local-AI tests and teardown races with background threads.
 # setdefault wins because load_dotenv() does not override existing env vars.
 os.environ.setdefault("SITY_LOCAL_AI_ENABLED", "false")
+# Shell tools and yolo mode are disabled by default for security (see SITY_SHELL_TOOLS_ENABLED).
+# Tests that need them enabled must patch get_runtime_config() directly.
+os.environ.setdefault("SITY_SHELL_TOOLS_ENABLED", "false")
+os.environ.setdefault("SITY_YOLO_MODE_ENABLED", "false")
 # Prevent SITY_OLLAMA_MODEL from leaking across local-AI tests; an empty value
 # is treated as absent by resolve_local_provider_model() so tests that expect
 # a missing model still see provider_not_configured as intended.
